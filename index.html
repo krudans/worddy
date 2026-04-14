@@ -836,15 +836,16 @@ function startApp() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'study',ic:'📖',lb:'학습'},{id:'games',ic:'🎮',lb:'게임'},{id:'diary',ic:'✍️',lb:'일기'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'study',ic:'📖',lb:'학습'},{id:'games',ic:'🎮',lb:'게임'},{id:'market',ic:'🛒',lb:'마켓'},{id:'diary',ic:'✍️',lb:'일기'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function go(tab,sub) {
-  if(tab&&tab!=='game') S.tab=tab;
+  if(tab&&tab!=='game'&&tab!=='ranking') S.tab=tab;
+  if(tab==='ranking') S.tab='ranking';
   if(tab==='game') S.tab='game';
   if(sub) S.stab=sub;
   const nav=document.getElementById('nav');
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,study:rStudy,games:rGames,game:rGame,diary:rDiary,profile:rProfile};
+  const map={home:rHome,study:rStudy,games:rGames,game:rGame,market:rMarket,ranking:rRanking,diary:rDiary,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
@@ -1203,6 +1204,7 @@ function rLearn() {
     <div style="display:flex;gap:8px">
       <button class="btn bgr" onclick="S.idx=Math.max(0,S.idx-1);S.flip=false;go()" style="font-size:13px">← 이전</button>
       <button class="btn bgr" onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${w.en}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="font-size:13px">🔊 듣기</button>
+      <button class="btn bgr" onclick="showPronounce(S.words[S.idx%S.words.length])" style="font-size:13px">🎤 따라하기</button>
       <button class="btn bgr" onclick="nxtL(false)" style="font-size:13px">다음 →</button>
     </div>
     ${S.learned.size===S.words.length&&S.words.length>0?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">
@@ -1344,7 +1346,10 @@ const GCFG=[
 function rGames(){
   const hw=S.words.length>=2;
   return `<div class="pad">${cbrow('재미있는 게임으로 단어 정복! 🎮',S.lid,'happy')}
-    <div style="background:#EFF6FF;border-radius:12px;padding:10px 14px;font-size:12px;color:#1E5FA5;font-weight:600">🎮 전체 단어 사용 · 레벨 상관없이 자유롭게 즐기세요!</div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1;background:#EFF6FF;border-radius:12px;padding:10px 14px;font-size:12px;color:#1E5FA5;font-weight:600">🎮 전체 단어 · 자유롭게 즐기세요!</div>
+      <button onclick="S.tab='ranking';go('ranking')" style="background:linear-gradient(135deg,#FFD700,#FFA500);border:none;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;color:#fff;white-space:nowrap">🏆 랭킹</button>
+    </div>
     ${!hw?`<div class="card" style="background:#FFF7ED;border-color:#FDE68A;text-align:center;padding:14px"><div style="font-size:13px;color:#D97706">단어 2개 이상 필요해요!</div><button class="btn bb" onclick="go('study','add')" style="margin-top:10px">단어 추가하러 가기</button></div>`:''}
     <div class="g2">${GCFG.map(g=>`<div class="game-card" onclick="${hw?`startGameW('${g.id}',null)`:''}" style="opacity:${hw?1:.5}">
       <div style="background:${g.grad};height:100px;display:flex;align-items:center;justify-content:center;position:relative">
@@ -1374,6 +1379,8 @@ function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wo
 
 function rGameDone(){
   SFX.stopBG();
+  // 랭킹 저장
+  if(typeof saveGameScore==='function') saveGameScore(S.gScore);
   const tot=Math.max(S.gWords.length*100,1),pct=Math.round(S.gScore/tot*100),hp=pct>=70;
   if(hp){SFX.play('levelup');vib([100,50,100,50,200]);}else{SFX.play('wrong');vib([100,100,200]);}
   return `<div class="pad" style="align-items:center;text-align:center;gap:14px">
@@ -1684,7 +1691,7 @@ function rDiaryList(){
     parts.push('<div class="card" style="text-align:center;padding:30px">'+charSVG(S.lid,50)+'<div style="font-size:14px;color:#9CA3AF;margin-top:10px">아직 일기가 없어요</div></div>');
   } else {
     S.dList.forEach(e=>{
-      parts.push('<div class="card" onclick="vwDiary('+e.id+')" style="cursor:pointer"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:13px;font-weight:700;color:#374151">'+e.date+' '+e.mood+'</div><button onclick="event.stopPropagation();if(confirm(\'삭제?\')){S.dList=S.dList.filter(d=>d.id!=='+e.id+');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:16px;cursor:pointer">×</button></div><div style="font-size:13px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.kr||e.en||'(내용 없음)')+'</div></div>');
+      parts.push('<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:13px;font-weight:700;color:#374151" onclick="vwDiary('+e.id+');return false">'+e.date+' '+e.mood+'</div><div style="display:flex;gap:6px"><button onclick="shareDiary('+JSON.stringify(e).replace(/"/g,"'")+');" style="background:#EFF6FF;border:none;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#1E5FA5">📤공유</button><button onclick="if(confirm(\'삭제?\')){S.dList=S.dList.filter(d=>d.id!=='+e.id+');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:16px;cursor:pointer">×</button></div></div><div style="font-size:13px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="vwDiary('+e.id+')">'+(e.kr||e.en||'(내용 없음)')+'</div></div>');
     });
   }
   parts.push('</div>');
@@ -1799,5 +1806,7 @@ function reqNotif(){
 
 // ── 시작 ──
 </script>
+<script src="js/wordpacks.js"></script>
+<script src="js/features.js"></script>
 </body>
 </html>

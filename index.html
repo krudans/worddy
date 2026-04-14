@@ -444,6 +444,7 @@ const S = {
   idx:0, flip:false, streak:1, lastDate:'',
   // 테스트
   tQs:[], tIdx:0, tScore:{}, tAns:false, tRes:null, tHistory:[],
+  tCurChoices:null, tCorrectIdx:null,
   // 게임
   gameId:null, gDone:false, gWords:[], gIdx:0, gScore:0,
   gAns:false, gRes:null, gInput:'',
@@ -806,9 +807,22 @@ function renderTQ() {
 
 function renderMCQ(q) {
   const l=lv(q.lv), prog=S.tIdx+1;
-  // 보기 순서 랜덤
-  const cs = shuf(q.c.map((c,i)=>({c,i})));
-  const correctIdx = cs.findIndex(x=>x.i===q.a);
+  // 보기가 없으면 pool에서 다시 뽑기
+  if(!q.c||!q.c.length) {
+    const pool=TEST_POOL[q.lv]||TEST_POOL.egg;
+    q={...rnd(pool),lv:q.lv};
+  }
+  // 보기 순서: 처음 렌더링 시만 랜덤, 이후 고정
+  if(!S.tAns) {
+    S.tCurChoices = shuf(q.c.map((c,i)=>({c,i})));
+    S.tCorrectIdx = S.tCurChoices.findIndex(x=>x.i===q.a);
+  }
+  const cs = S.tCurChoices||[];
+  const correctIdx = S.tCorrectIdx||0;
+  // 전역 함수로 등록 (onclick 문자열 파싱 오류 방지)
+  window._tAnswers = cs.map((x,ri)=>ri);
+  window._tCorrect = correctIdx;
+  window._tLv = q.lv;
   document.getElementById('body').innerHTML=`<div class="pad">
     ${cbrow(`${prog}번! 집중해봐! 💪`,'egg')}
     <div style="display:flex;align-items:center;gap:8px">
@@ -821,18 +835,31 @@ function renderMCQ(q) {
       <div style="font-size:28px;font-weight:900;color:${l.color};font-family:monospace">${q.q}</div>
     </div>
     <div class="g2">${cs.map((x,ri)=>{
-      let cls='topt';
-      if(S.tAns){if(ri===correctIdx)cls+=' ok';else if(S.tRes===ri)cls+=' ng';}
-      return `<div class="${cls}" onclick="${S.tAns?'':'ansT('+ri+','+correctIdx+',\''+q.lv+'\')'}">${x.c}</div>`;
+      let bg='#fff',col='#374151',bd='#E5E7EB';
+      if(S.tAns){
+        if(ri===correctIdx){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}
+        else if(ri===S.tRes){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}
+      }
+      return `<button onclick="tOptClick(${ri})" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:14px;font-weight:600;cursor:${S.tAns?'default':'pointer'};width:100%;font-family:inherit;transition:all .2s;text-align:center">${x.c}</button>`;
     }).join('')}</div>
   </div>`;
 }
 
+// onclick을 전역 함수로 분리 (따옴표/특수문자 문제 완전 해결)
+window.tOptClick = function(ri) {
+  if(S.tAns) return;
+  ansT(ri, window._tCorrect, window._tLv);
+};
+
 function ansT(sel, correct, lvId) {
   S.tAns=true; S.tRes=sel;
   if(sel===correct){S.tScore[lvId]=(S.tScore[lvId]||0)+1;ok();}else ng();
-  renderMCQ(S.tQs[S.tIdx]); // 색상 업데이트
-  setTimeout(()=>{S.tIdx++;S.tAns=false;S.tRes=null;renderTQ();},800);
+  renderMCQ(S.tQs[S.tIdx]);
+  setTimeout(()=>{
+    S.tIdx++; S.tAns=false; S.tRes=null;
+    S.tCurChoices=null; S.tCorrectIdx=null;
+    renderTQ();
+  },800);
 }
 
 function finishTest() {

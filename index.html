@@ -2486,7 +2486,8 @@ function rStudyMode() {
   const bookName = S.currentBook || '내 단어장';
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const cnt = curWords.length;
-  const marked1 = cnt ? curWords.filter(w=>{const mm=getCurrentBookMarkMap?getCurrentBookMarkMap():{};return (mm[w.en]||0)===1;}).length : 0;
+  const mm = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
+  const marked1 = cnt ? curWords.filter(w=>(mm[w.en]||0)===1).length : 0;
   const pct = cnt ? Math.round(marked1/cnt*100) : 0;
   const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
 
@@ -2496,161 +2497,81 @@ function rStudyMode() {
     {id:'typing',ic:'✏️', nm:'받아쓰기', dc:'단어를 직접 타이핑',      color:'#E65100', bg:'#FFF7ED'},
     {id:'list',  ic:'📋', nm:'단어 목록',dc:'전체 단어 보기 · 수정',   color:'#7C3AED', bg:'#FDF4FF'},
   ];
-
   const studyModes = [
-    {type:'shadow', ic:'🎤', nm:'쉐도잉',   dc:'발음 따라하기',       color:'#EC4899'},
-    {type:'speak',  ic:'🗣️', nm:'말하기',   dc:'뜻 보고 영어로',      color:'#7C3AED'},
-    {type:'srs',    ic:'📖', nm:'SRS 복습', dc:`오늘 ${srsToday}개`, color:'#E65100'},
-    {type:'sleep',  ic:'😴', nm:'수면 암기',dc:'자면서 듣기',         color:'#6B7280'},
-    {type:'stream', ic:'📻', nm:'스트리밍', dc:'자동 재생',           color:'#0284C7'},
+    {type:'shadow', ic:'🎤', nm:'쉐도잉',   dc:'발음 따라하기',        color:'#EC4899'},
+    {type:'speak',  ic:'🗣️', nm:'말하기',   dc:'뜻 보고 영어로',       color:'#7C3AED'},
+    {type:'srs',    ic:'📖', nm:'SRS 복습', dc:'오늘 '+srsToday+'개', color:'#E65100'},
+    {type:'sleep',  ic:'😴', nm:'수면 암기',dc:'자면서 듣기',          color:'#6B7280'},
+    {type:'stream', ic:'📻', nm:'스트리밍', dc:'자동 재생',            color:'#0284C7'},
   ];
 
-  return `<div class="pad">
-    <!-- 헤더 -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="S.stab='books';go('study','books')" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3,#9CA3AF);padding:0">‹</button>
-      <div style="flex:1">
-        <div style="font-size:18px;font-weight:900">${bookName}</div>
-        <div style="font-size:12px;color:var(--text3,#9CA3AF)">${cnt}개 단어 · 암기 ${pct}%</div>
-      </div>
-      <button onclick="S.currentBook='${bookName.replace(/'/g,"\\'")}';S.stab='add';go('study','add')" style="background:#16A34A;color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">➕ 단어 추가</button>
-    </div>
+  let html = '<div class="pad">';
 
-    <!-- 진도 바 -->
-    <div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:13px;font-weight:700">암기 진도</span>
-        <span style="font-size:13px;font-weight:900;color:#1E5FA5">${pct}%</span>
-      </div>
-      <div style="background:var(--border,#E5E7EB);border-radius:4px;height:6px">
-        <div style="height:100%;background:linear-gradient(90deg,#1E5FA5,#7C3AED);border-radius:4px;width:${pct}%;transition:width .5s"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--text3,#9CA3AF)">
-        <span>📝 미분류 ${cnt-marked1}개</span>
-        <span>🐛 암기 ${marked1}개</span>
-        ${srsToday>0?`<span style="color:#E65100">📖 복습 ${srsToday}개</span>`:''}
-      </div>
-    </div>
+  // 헤더
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
+  html += '<button onclick="S.stab=\'books\';go(\'study\',\'books\')" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3,#9CA3AF);padding:0">‹</button>';
+  html += '<div style="flex:1"><div style="font-size:18px;font-weight:900">'+bookName+'</div>';
+  html += '<div style="font-size:12px;color:var(--text3,#9CA3AF)">'+cnt+'개 단어 · 암기 '+pct+'%</div></div>';
+  html += '<button onclick="S.currentBook=\''+bookName.replace(/'/g,"\\'")+'\';\
+S.stab=\'add\';go(\'study\',\'add\')" style="background:#16A34A;color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">➕ 단어 추가</button>';
+  html += '</div>';
 
-    <!-- 단어 없을 때 -->
-    ${cnt===0?`<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px dashed var(--border2,#D1D5DB);padding:24px;text-align:center;margin-bottom:16px">
-      <div style="font-size:36px;margin-bottom:8px">📭</div>
-      <div style="font-size:14px;font-weight:700">단어가 없어요</div>
-      <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-top:4px">단어를 추가하거나 마켓에서 가져오세요</div>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button onclick="S.stab='add';go('study','add')" style="flex:1;background:#16A34A;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">직접 추가</button>
-        <button onclick="go('market')" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">마켓 가기</button>
-      </div>
-    </div>`:''}
+  // 진도 바
+  html += '<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;margin-bottom:16px">';
+  html += '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;font-weight:700">암기 진도</span><span style="font-size:13px;font-weight:900;color:#1E5FA5">'+pct+'%</span></div>';
+  html += '<div style="background:var(--border,#E5E7EB);border-radius:4px;height:6px"><div style="height:100%;background:linear-gradient(90deg,#1E5FA5,#7C3AED);border-radius:4px;width:'+pct+'%;transition:width .5s"></div></div>';
+  html += '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--text3,#9CA3AF)">';
+  html += '<span>📝 미분류 '+(cnt-marked1)+'개</span><span>🐛 암기 '+marked1+'개</span>';
+  if(srsToday>0) html += '<span style="color:#E65100">📖 복습 '+srsToday+'개</span>';
+  html += '</div></div>';
 
-    <!-- 학습 방법 -->
-    <div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">학습 방법 선택</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${methods.map(m=>`
-      <div onclick="${cnt>0?`go('study','${m.id}')`:'toast(\\'단어를 먼저 추가해주세요!\\')'}" style="background:${m.bg};border-radius:16px;border:1.5px solid ${m.color}22;padding:16px;cursor:${cnt>0?'pointer':'default'};opacity:${cnt>0?1:.5}">
-        <div style="font-size:28px;margin-bottom:6px">${m.ic}</div>
-        <div style="font-size:14px;font-weight:800;color:${m.color}">${m.nm}</div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:3px">${m.dc}</div>
-      </div>`).join('')}
-    </div>
+  // 단어 없을 때
+  if(cnt===0) {
+    html += '<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px dashed var(--border2,#D1D5DB);padding:24px;text-align:center;margin-bottom:16px">';
+    html += '<div style="font-size:36px;margin-bottom:8px">📭</div>';
+    html += '<div style="font-size:14px;font-weight:700">단어가 없어요</div>';
+    html += '<div style="font-size:12px;color:var(--text3,#9CA3AF);margin-top:4px">단어를 추가하거나 마켓에서 가져오세요</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:12px">';
+    html += '<button onclick="S.stab=\'add\';go(\'study\',\'add\')" style="flex:1;background:#16A34A;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">직접 추가</button>';
+    html += '<button onclick="go(\'market\')" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">마켓 가기</button>';
+    html += '</div></div>';
+  }
 
-    <!-- 암기 모드 섹션 -->
-    <div style="border-top:1px solid var(--border,#E5E7EB);padding-top:14px;margin-bottom:4px">
-      <div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">🎧 상황에 맞는 암기 모드를 골라봐</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${studyModes.map(m=>`
-        <div onclick="${cnt>0?`startMode('${m.type}')`:'toast(\\'단어를 먼저 추가해주세요!\\')'}" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:13px 16px;cursor:${cnt>0?'pointer':'default'};opacity:${cnt>0?1:.5};display:flex;align-items:center;gap:12px">
-          <div style="width:40px;height:40px;border-radius:12px;background:${m.color}18;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${m.ic}</div>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:700;color:${m.color}">${m.nm}</div>
-            <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${m.dc}</div>
-          </div>
-          <span style="font-size:16px;color:var(--text3,#9CA3AF)">›</span>
-        </div>`).join('')}
-      </div>
-    </div>
+  // 학습 방법
+  html += '<div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">학습 방법 선택</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
+  methods.forEach(function(m) {
+    const fn = cnt>0 ? "go('study','"+m.id+"')" : "toast('단어를 먼저 추가해주세요!')";
+    html += '<div onclick="'+fn+'" style="background:'+m.bg+';border-radius:16px;border:1.5px solid '+m.color+'22;padding:16px;cursor:'+(cnt>0?'pointer':'default')+';opacity:'+(cnt>0?1:.5)+'">';
+    html += '<div style="font-size:28px;margin-bottom:6px">'+m.ic+'</div>';
+    html += '<div style="font-size:14px;font-weight:800;color:'+m.color+'">'+m.nm+'</div>';
+    html += '<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:3px">'+m.dc+'</div></div>';
+  });
+  html += '</div>';
 
-    <!-- 게임으로 -->
-    <div onclick="go('game_center')" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px;margin-top:10px">
-      <span style="font-size:24px">🎮</span>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:700">게임으로 학습하기</div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF)">객관식·받아쓰기·워들 등 다양한 게임</div>
-      </div>
-      <span style="font-size:16px;color:var(--text3,#9CA3AF)">›</span>
-    </div>
-  </div>`;
-}
+  // 암기 모드 섹션
+  html += '<div style="border-top:1px solid var(--border,#E5E7EB);padding-top:14px;margin-bottom:10px">';
+  html += '<div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">🎧 상황에 맞는 암기 모드를 골라봐</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:8px">';
+  studyModes.forEach(function(m) {
+    const fn = cnt>0 ? "startMode('"+m.type+"')" : "toast('단어를 먼저 추가해주세요!')";
+    html += '<div onclick="'+fn+'" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:13px 16px;cursor:'+(cnt>0?'pointer':'default')+';opacity:'+(cnt>0?1:.5)+';display:flex;align-items:center;gap:12px">';
+    html += '<div style="width:40px;height:40px;border-radius:12px;background:'+m.color+'18;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+m.ic+'</div>';
+    html += '<div style="flex:1"><div style="font-size:14px;font-weight:700;color:'+m.color+'">'+m.nm+'</div>';
+    html += '<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">'+m.dc+'</div></div>';
+    html += '<span style="font-size:16px;color:var(--text3,#9CA3AF)">›</span></div>';
+  });
+  html += '</div></div>';
 
-  return `<div class="pad">
-    <!-- 헤더 -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="S.stab='books';go('study','books')" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3,#9CA3AF);padding:0">‹</button>
-      <div style="flex:1">
-        <div style="font-size:18px;font-weight:900">${bookName}</div>
-        <div style="font-size:12px;color:var(--text3,#9CA3AF)">${cnt}개 단어 · 암기 ${pct}%</div>
-      </div>
-      <button onclick="S.currentBook='${bookName.replace(/'/g,"\\'")}';S.stab='add';go('study','add')" style="background:#16A34A;color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">➕ 단어 추가</button>
-    </div>
+  // 게임
+  html += '<div onclick="go(\'game_center\')" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">';
+  html += '<span style="font-size:24px">🎮</span>';
+  html += '<div style="flex:1"><div style="font-size:13px;font-weight:700">게임으로 학습하기</div>';
+  html += '<div style="font-size:11px;color:var(--text3,#9CA3AF)">객관식·받아쓰기·워들 등 다양한 게임</div></div>';
+  html += '<span style="font-size:16px;color:var(--text3,#9CA3AF)">›</span></div>';
 
-    <!-- 진도 바 -->
-    <div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:13px;font-weight:700">암기 진도</span>
-        <span style="font-size:13px;font-weight:900;color:#1E5FA5">${pct}%</span>
-      </div>
-      <div style="background:var(--border,#E5E7EB);border-radius:4px;height:6px">
-        <div style="height:100%;background:linear-gradient(90deg,#1E5FA5,#7C3AED);border-radius:4px;width:${pct}%;transition:width .5s"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--text3,#9CA3AF)">
-        <span>📝 미분류 ${cnt-marked1}개</span>
-        <span>🐛 암기 ${marked1}개</span>
-        ${srsToday>0?`<span style="color:#E65100">📖 오늘 복습 ${srsToday}개</span>`:''}
-      </div>
-    </div>
-
-    <!-- 단어가 없을 때 -->
-    ${cnt===0?`<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px dashed var(--border2,#D1D5DB);padding:24px;text-align:center;margin-bottom:16px">
-      <div style="font-size:36px;margin-bottom:8px">📭</div>
-      <div style="font-size:14px;font-weight:700;color:var(--text2,#374151)">단어가 없어요</div>
-      <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-top:4px">단어를 추가하거나 마켓에서 단어장을 가져오세요</div>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button onclick="S.stab='add';go('study','add')" style="flex:1;background:#16A34A;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">직접 추가</button>
-        <button onclick="go('market')" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">마켓 가기</button>
-      </div>
-    </div>`:''}
-
-    <!-- 학습 방법 선택 -->
-    <div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">학습 방법 선택</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${methods.map(m=>`
-      <div onclick="${cnt>0?`go('study','${m.id}')`:'toast(\'단어를 먼저 추가해주세요!\')'}" style="background:${m.bg};border-radius:16px;border:1.5px solid ${m.color}22;padding:16px;cursor:${cnt>0?'pointer':'default'};opacity:${cnt>0?1:.5}">
-        <div style="font-size:28px;margin-bottom:6px">${m.ic}</div>
-        <div style="font-size:14px;font-weight:800;color:${m.color}">${m.nm}</div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:3px">${m.dc}</div>
-      </div>`).join('')}
-    </div>
-
-    <!-- SRS 복습 -->
-    ${srsToday>0?`<div onclick="startMode('srs')" style="background:linear-gradient(135deg,#FFF8E1,#FFF3CD);border-radius:14px;border:1.5px solid #FFE082;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:10px">
-      <span style="font-size:28px">📖</span>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:800;color:#E65100">오늘의 SRS 복습</div>
-        <div style="font-size:12px;color:#D97706">${srsToday}개 단어 복습이 기다리고 있어요!</div>
-      </div>
-      <span style="font-size:18px;color:#E65100">›</span>
-    </div>`:''}
-
-    <!-- 게임으로 -->
-    <div onclick="go('game_center')" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">
-      <span style="font-size:24px">🎮</span>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:700">게임으로 학습하기</div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF)">객관식·받아쓰기·워들 등 다양한 게임</div>
-      </div>
-      <span style="font-size:16px;color:var(--text3,#9CA3AF)">›</span>
-    </div>
-  </div>`;
+  html += '</div>';
+  return html;
 }
 
 function showBookMenu(name, type) {

@@ -64,6 +64,16 @@ function rMarket() {
     </div>`);
   });
 
+  // 내 단어장 공유 배너
+  parts.push(`<div onclick="showUploadMarket()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:14px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;margin-top:4px">
+    <div style="font-size:28px">📤</div>
+    <div>
+      <div style="font-size:14px;font-weight:800;color:#fff">내 단어장 마켓에 올리기</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.7)">내가 만든 단어장을 다른 사람과 공유해요</div>
+    </div>
+    <div style="margin-left:auto;font-size:18px;color:rgba(255,255,255,.5)">›</div>
+  </div>`);
+
   parts.push('</div></div>');
   return parts.join('');
 }
@@ -665,5 +675,166 @@ function previewPack(packId) {
 }
 
 function showUploadMarket() {
-  toast('준비 중이에요! 곧 공개될 예정이에요 😊');
+  // 내 단어장 목록
+  const allBooks = [
+    {name: '내 단어장', words: S.words},
+    ...(S.books||[])
+  ];
+  if(!allBooks.some(b=>(b.words||[]).length>=5)) {
+    toast('단어가 5개 이상인 단어장이 있어야 공유할 수 있어요','err');
+    return;
+  }
+  const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익','기타'];
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:90vh;display:flex;flex-direction:column">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border,#E5E7EB);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:800">📤 내 단어장 공유하기</div>
+      <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px">
+
+      <div style="background:#EFF6FF;border-radius:12px;padding:12px;margin-bottom:16px;font-size:12px;color:#1E5FA5;line-height:1.7">
+        📢 공유한 단어장은 관리자 검토 후 마켓에 등록돼요.<br>
+        다른 사용자들이 내 단어장을 사용할 수 있어요!
+      </div>
+
+      <!-- 단어장 선택 -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">📚 공유할 단어장</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${allBooks.filter(b=>(b.words||[]).length>=5).map((b,i)=>`
+          <div onclick="selectUploadBook(${i},this)" data-idx="${i}" style="display:flex;align-items:center;justify-content:space-between;padding:12px;border-radius:12px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:16px;height:16px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0" id="upload-radio-${i}"></div>
+              <span style="font-size:13px;font-weight:700">${b.name}</span>
+            </div>
+            <span style="font-size:12px;color:#9CA3AF">${(b.words||[]).length}개</span>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- 카테고리 -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">🏷️ 카테고리</div>
+        <select id="upload-cat" style="width:100%;font-size:13px">
+          ${cats.map(c=>`<option>${c}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- 설명 -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">📝 설명</div>
+        <textarea id="upload-desc" placeholder="단어장에 대한 간단한 설명을 적어주세요" style="width:100%;min-height:70px;resize:none;font-size:13px"></textarea>
+      </div>
+
+      <!-- 공개 여부 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-sub,#F9FAFB);border-radius:12px;margin-bottom:4px">
+        <div>
+          <div style="font-size:13px;font-weight:700">🌍 전체 공개</div>
+          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">모든 사용자에게 공개돼요</div>
+        </div>
+        <button onclick="this.classList.toggle('on');this.style.background=this.classList.contains('on')?'#1E5FA5':'#E5E7EB'" id="upload-public" class="toggle on" style="background:#1E5FA5"><div class="tk"></div></button>
+      </div>
+    </div>
+
+    <div style="padding:12px 20px;border-top:1px solid var(--border,#E5E7EB);flex-shrink:0">
+      <button onclick="submitUploadMarket()" style="width:100%;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
+        📤 마켓에 공유하기
+      </button>
+    </div>
+  </div></div>`;
+
+  // 첫 번째 단어장 기본 선택
+  window._uploadBookIdx = 0;
+  const firstRadio = document.getElementById('upload-radio-0');
+  if(firstRadio) { firstRadio.style.background='#7C3AED'; firstRadio.style.borderColor='#7C3AED'; }
+  const firstDiv = document.querySelector('[data-idx="0"]');
+  if(firstDiv) { firstDiv.style.border='1.5px solid #7C3AED'; firstDiv.style.background='#F5F3FF'; }
 }
+
+function selectUploadBook(idx, el) {
+  window._uploadBookIdx = idx;
+  document.querySelectorAll('[data-idx]').forEach(div=>{
+    div.style.border='1.5px solid var(--border,#E5E7EB)';
+    div.style.background='var(--bg-sub,#F9FAFB)';
+    const radio = div.querySelector('[id^="upload-radio-"]');
+    if(radio){ radio.style.background=''; radio.style.borderColor='#D1D5DB'; }
+  });
+  if(el) {
+    el.style.border='1.5px solid #7C3AED';
+    el.style.background='#F5F3FF';
+    const radio = el.querySelector('[id^="upload-radio-"]');
+    if(radio){ radio.style.background='#7C3AED'; radio.style.borderColor='#7C3AED'; }
+  }
+}
+
+async function submitUploadMarket() {
+  const allBooks = [
+    {name:'내 단어장', words: S.words},
+    ...(S.books||[])
+  ].filter(b=>(b.words||[]).length>=5);
+
+  const idx = window._uploadBookIdx||0;
+  const book = allBooks[idx];
+  if(!book){toast('단어장을 선택해주세요','err');return;}
+
+  const cat = document.getElementById('upload-cat')?.value||'기타';
+  const desc = document.getElementById('upload-desc')?.value.trim()||'';
+  const isPublic = document.getElementById('upload-public')?.classList.contains('on');
+
+  if(!desc){toast('설명을 입력해주세요','err');return;}
+
+  try {
+    // Firebase Firestore에 업로드
+    if(typeof db !== 'undefined') {
+      await db.collection('market_packs').add({
+        name: book.name,
+        cat,
+        desc,
+        isPublic,
+        words: book.words,
+        count: book.words.length,
+        submittedBy: firebase.auth().currentUser?.email || '익명',
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'pending', // pending → approved → rejected
+        emoji: '📚',
+        isPopular: false,
+      });
+      cm();
+      document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:30px 20px">
+        <div style="font-size:60px;margin-bottom:16px">🎉</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:8px">공유 신청 완료!</div>
+        <div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">
+          "<strong>${book.name}</strong>" 단어장이 제출됐어요.<br>
+          관리자 검토 후 마켓에 등록될 예정이에요 😊
+        </div>
+        <button onclick="cm()" style="background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:12px 30px;font-size:14px;font-weight:700;cursor:pointer">확인</button>
+      </div></div>`;
+    } else {
+      // Firebase 없으면 JSON으로 내보내기
+      _exportUploadJSON(book, cat, desc);
+    }
+  } catch(e) {
+    // Firebase 실패 시 JSON 내보내기로 폴백
+    _exportUploadJSON(book, cat, desc);
+  }
+}
+
+function _exportUploadJSON(book, cat, desc) {
+  const data = {
+    name: book.name,
+    cat, desc,
+    emoji: '📚',
+    count: book.words.length,
+    words: book.words,
+    submittedAt: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${book.name}_마켓공유.json`;
+  a.click();
+  cm();
+  toast(`✅ JSON 파일로 내보냈어요! 관리자에게 전달해주세요 😊`);
+}
+

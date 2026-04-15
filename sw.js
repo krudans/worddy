@@ -1,4 +1,4 @@
-const CACHE = 'vocabug-v11';
+const CACHE = 'vocabug-v12';
 const ASSETS = [
   '/worddy/',
   '/worddy/index.html',

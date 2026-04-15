@@ -4046,6 +4046,287 @@ async function startLevelUpTest() {
 
 
 
+
+// ── 일기 탭 ──
+function rDiary() {
+  if(S.dView==='write') return rDiaryWrite();
+  if(S.dView==='read') return rDiaryRead();
+  return rDiaryCalendar();
+}
+
+function rDiaryCalendar() {
+  const now = new Date();
+  if(S.dCalYear===null||S.dCalYear===undefined) S.dCalYear=now.getFullYear();
+  if(S.dCalMonth===null||S.dCalMonth===undefined) S.dCalMonth=now.getMonth();
+  const calYear = S.dCalYear;
+  const calMonth = S.dCalMonth;
+  const todayStr = today();
+
+  const diaryDates = new Set((S.diaries||[]).map(d=>d.date));
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+  let cells = '';
+  for(let i=0;i<firstDay;i++) cells += '<div></div>';
+  for(let d=1;d<=daysInMonth;d++) {
+    const dateStr = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const hasDiary = diaryDates.has(dateStr);
+    const isToday = dateStr===todayStr;
+    cells += `<div onclick="openDiaryDate('${dateStr}')" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;background:${isToday?'#1E5FA5':hasDiary?'#EFF6FF':'transparent'};color:${isToday?'#fff':hasDiary?'#1E5FA5':'var(--text1,#111)'};font-weight:${isToday||hasDiary?'800':'400'};font-size:14px;position:relative">
+      ${d}${hasDiary?'<div style="position:absolute;bottom:2px;width:4px;height:4px;border-radius:50%;background:'+(isToday?'#fff':'#1E5FA5')+'"></div>':''}
+    </div>`;
+  }
+
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E5E7EB);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="font-size:17px;font-weight:900">✍️ 영어 일기</div>
+      <button onclick="S.dView='write';S.dWriteDate='${todayStr}';go('diary')" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">✏️ 오늘 일기</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px">
+      <div style="background:var(--bg-card,#fff);border-radius:16px;border:1px solid var(--border,#E5E7EB);padding:16px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button onclick="S.dCalMonth=${calMonth===0?11:calMonth-1};if(${calMonth===0})S.dCalYear=${calYear-1};go()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text1,#374151);padding:4px 8px">‹</button>
+          <div style="font-size:15px;font-weight:800">${calYear}년 ${monthNames[calMonth]}</div>
+          <button onclick="S.dCalMonth=${calMonth===11?0:calMonth+1};if(${calMonth===11})S.dCalYear=${calYear+1};go()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text1,#374151);padding:4px 8px">›</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;margin-bottom:8px">
+          ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="font-size:11px;font-weight:700;color:${i===0?'#DC2626':i===6?'#1E5FA5':'#9CA3AF'};padding:4px 0">${d}</div>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${cells}</div>
+      </div>
+
+      <!-- 최근 일기 목록 -->
+      <div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:8px">최근 일기</div>
+      ${(S.diaries||[]).slice().reverse().slice(0,10).map(d=>`
+      <div onclick="S.dView='read';S.dReadId='${d.id}';go('diary')" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;margin-bottom:8px;cursor:pointer">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:800">${d.date}</div>
+          <div style="font-size:11px;color:var(--text3,#9CA3AF)">${d.weather||''} ${d.mood||''}</div>
+        </div>
+        <div style="font-size:13px;color:var(--text2,#374151);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${d.content||''}</div>
+      </div>`).join('')}
+      ${!(S.diaries||[]).length?`<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:36px;margin-bottom:8px">✍️</div><div>첫 일기를 써보세요!</div></div>`:''}
+    </div>
+  </div>`;
+}
+
+function openDiaryDate(dateStr) {
+  const diary = (S.diaries||[]).find(d=>d.date===dateStr);
+  if(diary) {
+    S.dView='read'; S.dReadId=diary.id; go('diary');
+  } else {
+    S.dView='write'; S.dWriteDate=dateStr; go('diary');
+  }
+}
+
+function rDiaryWrite() {
+  const dateStr = S.dWriteDate || today();
+  const existing = (S.diaries||[]).find(d=>d.date===dateStr);
+  const content = existing?.content || '';
+  const moods = ['😊','😢','😤','😴','🤔','😍','😎'];
+  const weathers = ['☀️','🌤️','⛅','🌧️','❄️','🌈'];
+
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E5E7EB);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <button onclick="S.dView=null;go('diary')" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3,#9CA3AF)">‹</button>
+      <div style="font-size:16px;font-weight:800;flex:1">${dateStr}</div>
+      <button onclick="saveDiary()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">저장</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:6px">기분</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">${moods.map(m=>`<button onclick="document.getElementById('d-mood').value='${m}';this.style.background='#EFF6FF';document.querySelectorAll('.mood-btn').forEach(b=>{if(b!==this)b.style.background='var(--btn-gray,#F3F4F6)'}" class="mood-btn" style="background:${existing?.mood===m?'#EFF6FF':'var(--btn-gray,#F3F4F6)'};border:none;border-radius:8px;padding:6px;font-size:18px;cursor:pointer">${m}</button>`).join('')}</div>
+          <input type="hidden" id="d-mood" value="${existing?.mood||''}">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:6px">날씨</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">${weathers.map(w=>`<button onclick="document.getElementById('d-weather').value='${w}';this.style.background='#EFF6FF';document.querySelectorAll('.weather-btn').forEach(b=>{if(b!==this)b.style.background='var(--btn-gray,#F3F4F6)'})" class="weather-btn" style="background:${existing?.weather===w?'#EFF6FF':'var(--btn-gray,#F3F4F6)'};border:none;border-radius:8px;padding:6px;font-size:18px;cursor:pointer">${w}</button>`).join('')}</div>
+          <input type="hidden" id="d-weather" value="${existing?.weather||''}">
+        </div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:6px">제목</div>
+      <input id="d-title" value="${existing?.title||''}" placeholder="오늘의 제목..." style="margin-bottom:10px;font-size:14px;font-weight:700">
+      <div style="font-size:12px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:6px">일기 내용 (영어로 써보세요!)</div>
+      <textarea id="d-content" style="min-height:200px;resize:vertical;font-size:14px;line-height:1.8" placeholder="Today I...">${content}</textarea>
+      <button onclick="aiDiaryHelp()" style="width:100%;background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#7C3AED;margin-top:8px">✨ AI 교정 도움받기</button>
+      ${existing?`<button onclick="deleteDiary('${existing.id}')" style="width:100%;background:var(--btn-gray,#F3F4F6);border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#DC2626;margin-top:8px">🗑 일기 삭제</button>`:''}
+    </div>
+  </div>`;
+}
+
+function saveDiary() {
+  const content = document.getElementById('d-content')?.value.trim();
+  if(!content){toast('내용을 입력해주세요');return;}
+  if(!S.diaries) S.diaries=[];
+  const dateStr = S.dWriteDate || today();
+  const existing = S.diaries.find(d=>d.date===dateStr);
+  const entry = {
+    id: existing?.id || Date.now().toString(),
+    date: dateStr,
+    title: document.getElementById('d-title')?.value.trim()||'',
+    content,
+    mood: document.getElementById('d-mood')?.value||'',
+    weather: document.getElementById('d-weather')?.value||'',
+    createdAt: existing?.createdAt || Date.now(),
+  };
+  if(existing) {
+    const idx = S.diaries.findIndex(d=>d.date===dateStr);
+    S.diaries[idx] = entry;
+  } else {
+    S.diaries.push(entry);
+  }
+  sv();
+  toast('✅ 일기 저장!');
+  S.dView = 'read';
+  S.dReadId = entry.id;
+  go('diary');
+}
+
+function rDiaryRead() {
+  const diary = (S.diaries||[]).find(d=>d.id===S.dReadId);
+  if(!diary){S.dView=null;go('diary');return '';}
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E5E7EB);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <button onclick="S.dView=null;go('diary')" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3,#9CA3AF)">‹</button>
+      <div style="font-size:16px;font-weight:800;flex:1">${diary.date}</div>
+      <button onclick="S.dView='write';S.dWriteDate='${diary.date}';go('diary')" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">✏️ 수정</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        ${diary.mood?`<span style="font-size:24px">${diary.mood}</span>`:''}
+        ${diary.weather?`<span style="font-size:24px">${diary.weather}</span>`:''}
+        ${diary.title?`<div style="font-size:16px;font-weight:800;flex:1">${diary.title}</div>`:''}
+      </div>
+      <div style="font-size:15px;line-height:1.9;color:var(--text1,#1A1A2E);white-space:pre-wrap">${diary.content}</div>
+    </div>
+  </div>`;
+}
+
+function deleteDiary(id) {
+  if(!confirm('일기를 삭제할까요?')) return;
+  S.diaries = (S.diaries||[]).filter(d=>d.id!==id);
+  sv();
+  S.dView=null;
+  go('diary');
+  toast('🗑 삭제됨');
+}
+
+async function aiDiaryHelp() {
+  const content = document.getElementById('d-content')?.value.trim();
+  if(!content){toast('내용을 먼저 입력해주세요');return;}
+  toast('AI 교정 중...');
+  try {
+    const text = await callAI(`다음 영어 일기를 교정해주세요. 틀린 문법/표현을 고치고, 더 자연스러운 표현을 제안해주세요. 원문과 교정문을 비교해서 보여주세요.\n\n"${content}"\n\nJSON으로만 반환: {"corrected":"교정된 전체 내용","tips":["팁1","팁2"]}`);
+    const result = JSON.parse(text);
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+      <div class="mt">✨ AI 교정 결과</div>
+      <div style="background:#F0FDF4;border-radius:12px;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#16A34A;margin-bottom:6px">교정된 내용</div>
+        <div style="font-size:13px;line-height:1.8">${result.corrected||content}</div>
+      </div>
+      ${result.tips?.length?`<div style="background:#EFF6FF;border-radius:12px;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#1E5FA5;margin-bottom:6px">💡 팁</div>
+        ${result.tips.map(t=>`<div style="font-size:12px;color:#374151;margin-bottom:4px">• ${t}</div>`).join('')}
+      </div>`:''}
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('d-content').value=JSON.parse(document.getElementById('ai-result').value).corrected;cm()" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer">교정문 적용</button>
+        <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer">닫기</button>
+      </div>
+      <input type="hidden" id="ai-result" value='${JSON.stringify(result).replace(/'/g,"&#39;")}'>
+    </div></div>`;
+  } catch(e) {
+    toast('AI 교정 실패. 다시 시도해주세요.','err');
+  }
+}
+
+// ── 프로필 탭 ──
+function rProfile() {
+  const l = lv(S.lid);
+  const marked1 = Object.values(S.markMap||{}).filter(v=>v===1).length;
+  const marked2 = Object.values(S.markMap||{}).filter(v=>v===2).length;
+  const xpPct = Math.min(Math.round((S.xp||0)/1000*100),100);
+  const streak = getStreak();
+  const missions = getTodayMissions();
+  const totalWords = S.words.length + (S.books||[]).reduce((a,b)=>a+(b.words||[]).length,0);
+
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="background:linear-gradient(135deg,${l.color},${l.color}cc);padding:calc(env(safe-area-inset-top,0px)+16px) 16px 20px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
+        <div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:30px;border:2px solid rgba(255,255,255,.4)">${l.emoji}</div>
+        <div>
+          <div style="font-size:18px;font-weight:900;color:#fff">${S.name||'Vocabugger'}</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.8)">${l.name} · XP ${S.xp||0}</div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,.25);border-radius:4px;height:6px">
+        <div style="height:100%;background:#fff;border-radius:4px;width:${xpPct}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-around;margin-top:14px">
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#fff">${streak.count}</div><div style="font-size:11px;color:rgba(255,255,255,.7)">🔥 스트릭</div></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#fff">${totalWords}</div><div style="font-size:11px;color:rgba(255,255,255,.7)">📚 총 단어</div></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#fff">${marked1}</div><div style="font-size:11px;color:rgba(255,255,255,.7)">🐛 암기</div></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#fff">${(S.diaries||[]).length}</div><div style="font-size:11px;color:rgba(255,255,255,.7)">✍️ 일기</div></div>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px">
+      <!-- 설정 -->
+      <div style="background:var(--bg-card,#fff);border-radius:16px;border:1px solid var(--border,#E5E7EB);overflow:hidden">
+        <div style="padding:14px 16px;font-size:14px;font-weight:800;border-bottom:1px solid var(--border,#E5E7EB)">⚙️ 설정</div>
+        ${[
+          ['🎨 테마', S.theme==='dark'?'차콜 다크':'크림 라이트', 'showAppSettings("display")'],
+          ['🔊 음성 속도', (S.speechRate||0.85)+'x', 'showAppSettings("voice")'],
+          ['🦋 내 레벨', l.name, 'showLevelModal()'],
+          ['📊 학습 통계', '보기', 'showStats()'],
+          ['💾 데이터 백업', '내보내기/가져오기', 'showAppSettings("backup")'],
+        ].map(([label, val, fn])=>`
+        <div onclick="${fn}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;border-bottom:1px solid var(--border,#F3F4F6)">
+          <div style="font-size:14px;font-weight:600">${label}</div>
+          <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;color:var(--text3,#9CA3AF)">${val}</span><span style="color:var(--text3,#9CA3AF)">›</span></div>
+        </div>`).join('')}
+      </div>
+
+      <!-- 앱 정보 -->
+      <div style="background:var(--bg-card,#fff);border-radius:16px;border:1px solid var(--border,#E5E7EB);overflow:hidden">
+        <div style="padding:14px 16px;font-size:14px;font-weight:800;border-bottom:1px solid var(--border,#E5E7EB)">ℹ️ 앱 정보</div>
+        <div style="padding:14px 16px">
+          <div style="font-size:13px;color:var(--text2,#374151);line-height:1.8">
+            <div style="font-size:16px;font-weight:900;margin-bottom:4px">🐛 Vocabug</div>
+            단어를 먹고 나비가 되는 영어 학습 앱<br>
+            <span style="color:var(--text3,#9CA3AF);font-size:12px">Made with ❤️</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 로그아웃 -->
+      <button onclick="if(confirm('로그아웃 할까요?')){firebase.auth().signOut().then(()=>{location.reload();})}" style="width:100%;background:var(--btn-gray,#F3F4F6);border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;color:#DC2626">로그아웃</button>
+    </div>
+  </div>`;
+}
+
+function showStats() {
+  const marked1 = Object.values(S.markMap||{}).filter(v=>v===1).length;
+  const marked2 = Object.values(S.markMap||{}).filter(v=>v===2).length;
+  const totalW = S.words.length;
+  const pct = totalW ? Math.round(marked1/totalW*100) : 0;
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">📊 학습 통계</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      ${[['총 단어',S.words.length,'#1E5FA5'],['암기 완료',marked1,'#16A34A'],['헷갈리는',marked2,'#EC4899'],['암기율',pct+'%','#7C3AED']].map(([l,v,c])=>`
+      <div style="background:var(--bg-sub,#F9FAFB);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:24px;font-weight:900;color:${c}">${v}</div>
+        <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-top:4px">${l}</div>
+      </div>`).join('')}
+    </div>
+    <button onclick="cm()" class="btn bgr">닫기</button>
+  </div></div>`;
+}
+
+
+
 </script>
 <body>
 <div id="app">

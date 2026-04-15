@@ -2,407 +2,943 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WordDay 관리자</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,sans-serif;background:#F5F7FF;color:#111}
-.hd{background:#1E3A5F;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
-.hd h1{font-size:18px;font-weight:900}
-.nav{background:#fff;border-right:1.5px solid #E5E7EB;width:200px;min-height:calc(100vh - 52px);padding:16px 0;position:fixed;top:52px;left:0}
-.nav a{display:block;padding:10px 20px;font-size:14px;font-weight:600;color:#6B7280;cursor:pointer;text-decoration:none;border-left:3px solid transparent}
-.nav a.on,.nav a:hover{color:#1E5FA5;background:#EFF6FF;border-left-color:#1E5FA5}
-.main{margin-left:200px;padding:24px;min-height:calc(100vh - 52px)}
+body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:#F5F7FF;color:#111;min-height:100vh}
+
+/* ── 로그인 화면 ── */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0F172A,#1E3A5F,#1E5FA5);padding:20px}
+.login-box{background:#fff;border-radius:24px;padding:40px 36px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo .ic{font-size:56px;margin-bottom:8px}
+.login-logo h1{font-size:24px;font-weight:900;color:#1E3A5F}
+.login-logo p{font-size:13px;color:#9CA3AF;margin-top:4px}
+.login-tab{display:flex;background:#F3F4F6;border-radius:12px;padding:4px;margin-bottom:24px;gap:4px}
+.login-tab button{flex:1;padding:9px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:#6B7280}
+.login-tab button.on{background:#fff;color:#1E5FA5;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.lf{display:flex;flex-direction:column;gap:14px}
+.lf-group{position:relative}
+.lf-group label{font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:5px}
+.lf-group input{border:1.5px solid #E5E7EB;border-radius:10px;padding:11px 14px;font-size:14px;width:100%;background:#fff;transition:border-color .15s;font-family:inherit}
+.lf-group input:focus{outline:none;border-color:#1E5FA5;box-shadow:0 0 0 3px rgba(30,95,165,.1)}
+.lf-group .pw-toggle{position:absolute;right:12px;bottom:11px;cursor:pointer;font-size:16px;color:#9CA3AF;border:none;background:none}
+.login-btn{background:linear-gradient(135deg,#1E5FA5,#2563EB);color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;width:100%;font-family:inherit;transition:all .15s;margin-top:4px}
+.login-btn:hover{background:linear-gradient(135deg,#1a52a0,#1d4ed8);transform:translateY(-1px);box-shadow:0 4px 12px rgba(30,95,165,.4)}
+.login-btn:active{transform:translateY(0)}
+.login-err{background:#FEF2F2;border:1.5px solid #FECDD3;border-radius:10px;padding:10px 14px;font-size:13px;color:#DC2626;font-weight:600;display:none}
+.login-err.show{display:block}
+
+/* ── 앱 전체 ── */
+#app-screen{display:none}
+.hd{background:linear-gradient(135deg,#1E3A5F,#1E5FA5);color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.hd h1{font-size:18px;font-weight:900;letter-spacing:.5px}
+.hd-right{display:flex;align-items:center;gap:12px;font-size:13px;opacity:.9}
+.sidebar{width:220px;background:#fff;border-right:1.5px solid #E5E7EB;position:fixed;top:56px;left:0;bottom:0;overflow-y:auto;padding:12px 0;z-index:90}
+.ss{font-size:10px;font-weight:800;color:#9CA3AF;padding:10px 20px 4px;text-transform:uppercase;letter-spacing:.8px}
+.ni{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:14px;font-weight:600;color:#6B7280;cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.ni:hover{color:#1E5FA5;background:#F0F7FF}
+.ni.on{color:#1E5FA5;background:#EFF6FF;border-left-color:#1E5FA5}
+.ni .ic{font-size:16px;width:20px;text-align:center}
+.main{margin-left:220px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px)}
 .card{background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:20px;margin-bottom:16px}
-.card h2{font-size:15px;font-weight:800;color:#111;margin-bottom:14px}
-.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.stat{background:#fff;border-radius:12px;border:1.5px solid #E5E7EB;padding:16px;text-align:center}
-.stat .v{font-size:28px;font-weight:900;color:#1E5FA5}
-.stat .l{font-size:12px;color:#9CA3AF;margin-top:4px}
-.btn{border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
-.bb{background:#1E5FA5;color:#fff}
-.br{background:#DC2626;color:#fff}
-.bg{background:#16A34A;color:#fff}
-.bgr{background:#F3F4F6;color:#6B7280}
+.ct{font-size:15px;font-weight:800;color:#111;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.st{background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:18px;text-align:center}
+.st .v{font-size:32px;font-weight:900;margin-bottom:4px}
+.st .l{font-size:12px;color:#9CA3AF;font-weight:600}
+.btn{border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.btn:active{transform:scale(.97)}
+.bb{background:#1E5FA5;color:#fff}.br{background:#DC2626;color:#fff}.bg{background:#16A34A;color:#fff}
+.bgr{background:#F3F4F6;color:#6B7280}.bp{background:#7C3AED;color:#fff}.bo{background:#E65100;color:#fff}
+.tw{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{background:#F9FAFB;padding:10px 12px;text-align:left;font-weight:700;border-bottom:1.5px solid #E5E7EB}
-td{padding:10px 12px;border-bottom:1px solid #F3F4F6;vertical-align:middle}
-tr:hover td{background:#F9FAFB}
-input,select,textarea{font-family:inherit;border:1.5px solid #E5E7EB;border-radius:8px;padding:8px 12px;font-size:13px;width:100%;background:#fff}
-input:focus,select:focus,textarea:focus{outline:none;border-color:#1E5FA5}
-.tag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;display:inline-block}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:center;justify-content:center}
-.modal{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
-.toast{position:fixed;bottom:24px;right:24px;background:#1A1A2E;color:#fff;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:700;z-index:999;animation:pop .25s ease}
+th{background:#F9FAFB;padding:10px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:1.5px solid #E5E7EB;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid #F3F4F6;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#FAFBFF}
+input,select,textarea{font-family:inherit;border:1.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;font-size:13px;width:100%;background:#fff;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#1E5FA5;box-shadow:0 0 0 3px rgba(30,95,165,.1)}
+label{font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:5px}
+.fg{margin-bottom:12px}
+.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:3px}
+.bb2{background:#EFF6FF;color:#1E5FA5}.bg2{background:#F0FDF4;color:#16A34A}.br2{background:#FEF2F2;color:#DC2626}
+.by{background:#FFF8E1;color:#E65100}.bp2{background:#FDF4FF;color:#7C3AED}
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#fff;border-radius:18px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
+.mt{font-size:17px;font-weight:800;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.tw2{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{background:#1A1A2E;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:700;animation:pop .25s ease}
+.tok{background:#16A34A}.terr{background:#DC2626}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@media(max-width:600px){.nav{width:100%;min-height:auto;position:static;display:flex;flex-wrap:wrap;border-right:none;border-bottom:1.5px solid #E5E7EB}.main{margin-left:0}.stat-grid{grid-template-columns:repeat(2,1fr)}}
+.bi{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bl{width:80px;font-size:12px;font-weight:600;color:#374151;text-align:right;flex-shrink:0}
+.bt{flex:1;background:#F3F4F6;border-radius:4px;height:8px;overflow:hidden}
+.bf{height:100%;border-radius:4px;transition:width .5s}
+.bv{font-size:11px;color:#9CA3AF;width:40px;flex-shrink:0}
+.es{text-align:center;padding:48px 20px;color:#9CA3AF}
+.es .ei{font-size:48px;margin-bottom:12px}
+.es p{font-size:14px;font-weight:600}
+.admin-card{background:linear-gradient(135deg,#1E3A5F,#1E5FA5);border-radius:16px;padding:18px;color:#fff;display:flex;align-items:center;gap:14px}
+.admin-avatar{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border:2px solid rgba(255,255,255,.4);flex-shrink:0}
+@media(max-width:768px){.sidebar{transform:translateX(-100%);transition:transform .3s}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.sg{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
-<div class="hd">
-  <h1>⚡ WordDay 관리자</h1>
-  <div id="admin-user" style="font-size:13px;opacity:.7"></div>
+
+<!-- ── 로그인 화면 ── -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="ic">⚡</div>
+      <h1>WordDay 관리자</h1>
+      <p>관리자 계정으로 로그인하세요</p>
+    </div>
+    <div class="login-tab">
+      <button class="on" id="lt-login" onclick="switchLoginTab('login')">🔐 로그인</button>
+      <button id="lt-reg" onclick="switchLoginTab('reg')">📝 관리자 등록</button>
+    </div>
+
+    <!-- 로그인 폼 -->
+    <div id="lf-login" class="lf">
+      <div class="lf-group">
+        <label>관리자 ID (이메일)</label>
+        <input type="email" id="li-id" placeholder="admin@wordday.com" autocomplete="username">
+      </div>
+      <div class="lf-group">
+        <label>비밀번호</label>
+        <input type="password" id="li-pw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+        <button class="pw-toggle" onclick="togglePw('li-pw',this)" type="button">👁️</button>
+      </div>
+      <div class="login-err" id="li-err"></div>
+      <button class="login-btn" onclick="doLogin()" id="li-btn">로그인</button>
+      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-top:8px">비밀번호를 잊었다면 슈퍼 관리자에게 문의하세요</div>
+    </div>
+
+    <!-- 관리자 등록 폼 -->
+    <div id="lf-reg" class="lf" style="display:none">
+      <div style="background:#FFF8E1;border-radius:10px;padding:10px 14px;font-size:12px;color:#E65100;font-weight:600;margin-bottom:4px">
+        ⚠️ 등록 후 슈퍼 관리자 승인이 필요합니다
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="lf-group">
+          <label>이름 *</label>
+          <input type="text" id="rg-name" placeholder="홍길동">
+        </div>
+        <div class="lf-group">
+          <label>전화번호 *</label>
+          <input type="tel" id="rg-phone" placeholder="010-0000-0000">
+        </div>
+      </div>
+      <div class="lf-group">
+        <label>주소</label>
+        <input type="text" id="rg-addr" placeholder="서울시 강남구...">
+      </div>
+      <div class="lf-group">
+        <label>관리자 ID (이메일) *</label>
+        <input type="email" id="rg-id" placeholder="admin@wordday.com" autocomplete="username">
+      </div>
+      <div class="lf-group">
+        <label>비밀번호 * (8자 이상)</label>
+        <input type="password" id="rg-pw" placeholder="••••••••" autocomplete="new-password">
+        <button class="pw-toggle" onclick="togglePw('rg-pw',this)" type="button">👁️</button>
+      </div>
+      <div class="lf-group">
+        <label>비밀번호 확인 *</label>
+        <input type="password" id="rg-pw2" placeholder="••••••••" autocomplete="new-password">
+        <button class="pw-toggle" onclick="togglePw('rg-pw2',this)" type="button">👁️</button>
+      </div>
+      <div class="lf-group">
+        <label>소속/직책</label>
+        <input type="text" id="rg-role" placeholder="예: 콘텐츠팀 / 단어장 관리자">
+      </div>
+      <div class="lf-group">
+        <label>등록 코드 (슈퍼 관리자에게 받기)</label>
+        <input type="text" id="rg-code" placeholder="WORDDAY-ADMIN-XXXX">
+      </div>
+      <div class="login-err" id="rg-err"></div>
+      <button class="login-btn" onclick="doRegister()" id="rg-btn" style="background:linear-gradient(135deg,#7C3AED,#A855F7)">관리자 등록 신청</button>
+    </div>
+  </div>
 </div>
-<nav class="nav">
-  <a onclick="showTab('dashboard')" id="nav-dashboard" class="on">📊 대시보드</a>
-  <a onclick="showTab('users')" id="nav-users">👥 회원 관리</a>
-  <a onclick="showTab('words')" id="nav-words">📚 단어장 관리</a>
-  <a onclick="showTab('levels')" id="nav-levels">🦋 레벨 관리</a>
-  <a onclick="showTab('settings')" id="nav-settings">⚙️ 기본 설정</a>
-  <a onclick="auth.signOut().then(()=>location.href='index.html')" style="color:#DC2626;margin-top:20px">🚪 로그아웃</a>
-</nav>
-<main class="main" id="main">
-  <div style="text-align:center;padding:60px;color:#9CA3AF">로딩 중...</div>
-</main>
-<div id="toast-area"></div>
-<div id="modal-area"></div>
+
+<!-- ── 앱 화면 ── -->
+<div id="app-screen">
+  <div class="hd">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button onclick="document.getElementById('sb').classList.toggle('open')" style="background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#fff;font-size:16px">☰</button>
+      <h1>⚡ WordDay 관리자</h1>
+    </div>
+    <div class="hd-right">
+      <span id="au" style="font-weight:700"></span>
+      <span id="au-role" style="font-size:11px;opacity:.7;background:rgba(255,255,255,.1);padding:3px 8px;border-radius:20px"></span>
+      <span id="at" style="font-family:monospace;font-size:12px;opacity:.7"></span>
+      <button onclick="doLogout()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:6px 12px;cursor:pointer;color:#fff;font-size:12px;font-weight:700">로그아웃</button>
+    </div>
+  </div>
+  <nav class="sidebar" id="sb">
+    <div class="ss">메인</div>
+    <div class="ni on" onclick="T('db')" id="ni-db"><span class="ic">📊</span>대시보드</div>
+    <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>분석</div>
+    <div class="ss">콘텐츠</div>
+    <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어장 관리</div>
+    <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
+    <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🦋</span>레벨 관리</div>
+    <div class="ni" onclick="T('nt')" id="ni-nt"><span class="ic">📢</span>공지사항</div>
+    <div class="ss">사용자</div>
+    <div class="ni" onclick="T('us')" id="ni-us"><span class="ic">👥</span>회원 관리</div>
+    <div class="ni" onclick="T('po')" id="ni-po"><span class="ic">👉</span>콕 찌르기</div>
+    <div class="ss">관리자</div>
+    <div class="ni" onclick="T('adm')" id="ni-adm"><span class="ic">🔐</span>관리자 관리</div>
+    <div class="ss">시스템</div>
+    <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
+  </nav>
+  <main class="main" id="main">
+    <div style="text-align:center;padding:80px;color:#9CA3AF"><div style="font-size:48px;margin-bottom:16px">⚡</div><div style="font-size:16px;font-weight:700">로딩 중...</div></div>
+  </main>
+</div>
+
+<div id="tw" class="tw2"></div>
+<div id="ma"></div>
+
+<script src="js/wordpacks.js"></script>
 <script>
 firebase.initializeApp({apiKey:"AIzaSyAjs9nugwoI-S9CiPrtn0Y5UXYOKJ1lJic",authDomain:"wordday-75ae0.firebaseapp.com",projectId:"wordday-75ae0",storageBucket:"wordday-75ae0.firebasestorage.app",messagingSenderId:"959781543804",appId:"1:959781543804:web:63630bb49b91c9b3908ef9"});
 const auth=firebase.auth(), db=firebase.firestore();
 
-// 관리자 이메일 목록
-const ADMIN_EMAILS=['krudans@gmail.com'];
+// 슈퍼 관리자 이메일 (Firebase 콘솔에서 직접 생성한 계정)
+const SUPER_ADMINS=['krudans@gmail.com'];
+// 등록 코드 (실제 운영 시 변경 권장)
+const REG_CODE='WORDDAY-ADMIN-2025';
 
-let currentTab='dashboard';
-let adminUser=null;
+const LIDS=['egg','baby','crown','coco','shine','small','big','god'];
+const LI={egg:{n:'알',e:'🥚',c:'#F9A825'},baby:{n:'아기 벌거지',e:'🐛',c:'#43A047'},crown:{n:'왕관 벌거지',e:'🍀',c:'#2E7D32'},coco:{n:'번데기',e:'🫘',c:'#5D4037'},shine:{n:'빛나는 번데기',e:'✨',c:'#E65100'},small:{n:'작은 나비',e:'🦋',c:'#880E4F'},big:{n:'큰 나비',e:'🦋',c:'#6A1B9A'},god:{n:'황금 나비',e:'⚡',c:'#E65100'}};
+let selLv='egg', currentAdmin=null;
 
+// ── 시계 ──
+setInterval(()=>{const e=document.getElementById('at');if(e)e.textContent=new Date().toLocaleTimeString('ko-KR',{hour12:false});},1000);
+
+// ── 인증 상태 감지 ──
 auth.onAuthStateChanged(async u=>{
-  if(!u){location.href='index.html';return;}
-  if(!ADMIN_EMAILS.includes(u.email)){
-    document.getElementById('main').innerHTML='<div style="text-align:center;padding:60px"><div style="font-size:40px;margin-bottom:16px">🚫</div><div style="font-size:18px;font-weight:700;color:#DC2626">접근 권한 없음</div><div style="font-size:14px;color:#9CA3AF;margin-top:8px">관리자 계정으로 로그인해주세요</div><br><button onclick="auth.signOut().then(()=>location.href=\'index.html\')" class="btn bgr">돌아가기</button></div>';
+  if(!u){
+    showLoginScreen();
     return;
   }
-  adminUser=u;
-  document.getElementById('admin-user').textContent=u.email;
-  showTab('dashboard');
+  // Firestore에서 관리자 정보 확인
+  try{
+    const doc=await db.collection('admins').doc(u.uid).get();
+    if(!doc.exists){
+      // 슈퍼 관리자이면 자동 허용
+      if(SUPER_ADMINS.includes(u.email)){
+        currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
+      } else {
+        showErr('승인 대기 중인 계정입니다. 슈퍼 관리자에게 문의하세요.');
+        auth.signOut();
+        return;
+      }
+    } else {
+      const data=doc.data();
+      if(!data.approved && !SUPER_ADMINS.includes(u.email)){
+        showErr('아직 승인되지 않은 계정입니다. 슈퍼 관리자 승인 후 이용 가능합니다.');
+        auth.signOut();
+        return;
+      }
+      currentAdmin={uid:u.uid,email:u.email,...data};
+    }
+    showAppScreen();
+  }catch(e){
+    if(SUPER_ADMINS.includes(u.email)){
+      currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
+      showAppScreen();
+    } else {
+      showErr('오류: '+e.message);
+      auth.signOut();
+    }
+  }
 });
 
-const toast=msg=>{const t=document.createElement('div');t.className='toast';t.textContent=msg;document.getElementById('toast-area').appendChild(t);setTimeout(()=>t.remove(),2500);};
-const cm=()=>document.getElementById('modal-area').innerHTML='';
-const p2=n=>String(n).padStart(2,'0');
-
-function showTab(tab){
-  currentTab=tab;
-  document.querySelectorAll('.nav a').forEach(a=>{
-    const id=a.id?.replace('nav-','');
-    a.className=id===tab?'on':'';
-  });
-  if(tab==='dashboard') renderDashboard();
-  else if(tab==='users') renderUsers();
-  else if(tab==='words') renderWords();
-  else if(tab==='levels') renderLevels();
-  else if(tab==='settings') renderSettings();
+function showLoginScreen(){
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('app-screen').style.display='none';
+}
+function showAppScreen(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app-screen').style.display='block';
+  document.getElementById('au').textContent=currentAdmin?.name||currentAdmin?.email?.split('@')[0]||'관리자';
+  document.getElementById('au-role').textContent=currentAdmin?.role||'관리자';
+  T('db');
+}
+function showErr(msg){
+  const el=document.getElementById('li-err');
+  if(el){el.textContent=msg;el.classList.add('show');}
 }
 
-// ── 대시보드 ──
-async function renderDashboard(){
-  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;padding:20px">데이터 로딩 중...</div>';
-  let userCount=0, wordCount=0;
-  try{
-    const users=await db.collection('users').get();
-    userCount=users.size;
-  }catch(e){}
-  const LEVELS=['egg','baby','crown','coco','shine','small','big','god'];
-  const levelEmoji={egg:'🥚',baby:'🐛',crown:'🍀',coco:'🫘',shine:'✨',small:'🦋',big:'🦋',god:'⚡'};
-  document.getElementById('main').innerHTML=`
-    <h2 style="font-size:20px;font-weight:900;color:#111;margin-bottom:20px">📊 대시보드</h2>
-    <div class="stat-grid">
-      <div class="stat"><div class="v">${userCount}</div><div class="l">총 회원수</div></div>
-      <div class="stat"><div class="v" style="color:#16A34A">-</div><div class="l">오늘 접속</div></div>
-      <div class="stat"><div class="v" style="color:#D97706">-</div><div class="l">이번 주 신규</div></div>
-      <div class="stat"><div class="v" style="color:#880E4F">-</div><div class="l">일기 작성수</div></div>
-    </div>
-    <div class="card">
-      <h2>🦋 레벨별 단어장 현황</h2>
-      <table>
-        <tr><th>레벨</th><th>이름</th><th>단어수</th><th>작업</th></tr>
-        ${LEVELS.map(lid=>`<tr>
-          <td>${levelEmoji[lid]}</td>
-          <td><span id="wc-${lid}">확인 중...</span></td>
-          <td><button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="showTab('words');setTimeout(()=>selectLevel('${lid}'),100)">관리</button></td>
-        </tr>`).join('')}
-      </table>
-    </div>
-    <div class="card">
-      <h2>📋 빠른 메뉴</h2>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn bb" onclick="showTab('users')">👥 회원 관리</button>
-        <button class="btn bg" onclick="showTab('words')">📚 단어 추가</button>
-        <button class="btn" style="background:#7C3AED;color:#fff" onclick="showTab('settings')">⚙️ 앱 설정</button>
-      </div>
-    </div>
-  `;
-  // 각 레벨 단어수 확인
-  LEVELS.forEach(async lid=>{
-    try{
-      const doc=await db.collection('words').doc(lid).get();
-      const cnt=doc.exists?(doc.data().list||[]).length:0;
-      const el=document.getElementById('wc-'+lid);
-      if(el) el.textContent=cnt+'개';
-    }catch(e){
-      const el=document.getElementById('wc-'+lid);
-      if(el) el.textContent='미설정';
-    }
-  });
+// ── 탭 전환 ──
+function switchLoginTab(tab){
+  document.getElementById('lt-login').classList.toggle('on',tab==='login');
+  document.getElementById('lt-reg').classList.toggle('on',tab==='reg');
+  document.getElementById('lf-login').style.display=tab==='login'?'flex':'none';
+  document.getElementById('lf-reg').style.display=tab==='reg'?'flex':'none';
+  document.getElementById('li-err').classList.remove('show');
+  document.getElementById('rg-err').classList.remove('show');
 }
 
-// ── 회원 관리 ──
-async function renderUsers(){
-  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;padding:20px">회원 데이터 로딩 중...</div>';
-  let users=[];
+function togglePw(id,btn){
+  const inp=document.getElementById(id);
+  if(inp.type==='password'){inp.type='text';btn.textContent='🙈';}
+  else{inp.type='password';btn.textContent='👁️';}
+}
+
+// ── 로그인 ──
+async function doLogin(){
+  const id=document.getElementById('li-id').value.trim();
+  const pw=document.getElementById('li-pw').value;
+  const err=document.getElementById('li-err');
+  const btn=document.getElementById('li-btn');
+  err.classList.remove('show');
+  if(!id||!pw){err.textContent='이메일과 비밀번호를 입력하세요';err.classList.add('show');return;}
+  btn.textContent='로그인 중...';btn.disabled=true;
   try{
-    const snap=await db.collection('users').orderBy('createdAt','desc').limit(50).get();
-    users=snap.docs.map(d=>({id:d.id,...d.data()}));
+    await auth.signInWithEmailAndPassword(id,pw);
+    // onAuthStateChanged가 처리
   }catch(e){
-    // users 컬렉션 없을 수 있음
+    const msg={
+      'auth/user-not-found':'등록되지 않은 이메일입니다',
+      'auth/wrong-password':'비밀번호가 틀렸습니다',
+      'auth/invalid-email':'이메일 형식이 올바르지 않습니다',
+      'auth/too-many-requests':'로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요',
+      'auth/invalid-credential':'이메일 또는 비밀번호가 올바르지 않습니다',
+    }[e.code]||'로그인 실패: '+e.message;
+    err.textContent=msg;err.classList.add('show');
   }
-  document.getElementById('main').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:20px;font-weight:900;color:#111">👥 회원 관리</h2>
-      <input placeholder="이메일 검색..." style="width:240px" oninput="filterUsers(this.value)">
-    </div>
-    <div class="card">
-      ${users.length?`<table>
-        <tr><th>이메일</th><th>닉네임</th><th>레벨</th><th>가입일</th><th>상태</th><th>작업</th></tr>
-        ${users.map(u=>`<tr>
-          <td>${u.email||'-'}</td>
-          <td>${u.nick||'-'}</td>
-          <td><span class="tag" style="background:#EFF6FF;color:#1E5FA5">${u.level||'egg'}</span></td>
-          <td>${u.createdAt?new Date(u.createdAt.seconds*1000).toLocaleDateString('ko-KR'):'-'}</td>
-          <td><span class="tag" style="background:${u.banned?'#FEE2E2':'#F0FDF4'};color:${u.banned?'#DC2626':'#16A34A'}">${u.banned?'정지':'정상'}</span></td>
-          <td style="display:flex;gap:6px">
-            <button class="btn bgr" style="font-size:11px;padding:5px 10px" onclick="editUser('${u.id}','${u.level||'egg'}')">수정</button>
-            <button class="btn ${u.banned?'bg':'br'}" style="font-size:11px;padding:5px 10px" onclick="toggleBan('${u.id}',${!u.banned})">${u.banned?'해제':'정지'}</button>
-          </td>
-        </tr>`).join('')}
-      </table>`:'<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:40px;margin-bottom:12px">👥</div><div>아직 회원이 없거나 Firestore users 컬렉션이 없어요</div><div style="font-size:12px;margin-top:8px">앱 로그인 시 자동 생성됩니다</div></div>'}
-    </div>
-  `;
-}
-function filterUsers(v){document.querySelectorAll('table tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
-async function editUser(id,level){
-  const LEVELS=['egg','baby','crown','coco','shine','small','big','god'];
-  document.getElementById('modal-area').innerHTML=`<div class="modal-bg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <h3 style="font-size:16px;font-weight:800;margin-bottom:14px">회원 레벨 변경</h3>
-    <select id="new-level" style="margin-bottom:12px">${LEVELS.map(l=>`<option value="${l}" ${l===level?'selected':''}>${l}</option>`).join('')}</select>
-    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveUserLevel('${id}')">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
-  </div></div>`;
-}
-async function saveUserLevel(id){
-  const level=document.getElementById('new-level').value;
-  try{await db.collection('users').doc(id).update({level});toast('✅ 레벨 변경 완료');cm();renderUsers();}catch(e){toast('오류: '+e.message);}
-}
-async function toggleBan(id,ban){
-  try{await db.collection('users').doc(id).update({banned:ban});toast(ban?'🚫 정지 처리':'✅ 정지 해제');renderUsers();}catch(e){toast('오류: '+e.message);}
+  btn.textContent='로그인';btn.disabled=false;
 }
 
-// ── 단어장 관리 ──
-let selectedLevel='egg';
-const LEVEL_NAMES={egg:'🥚 알',baby:'🐛 아기 벌거지',crown:'🍀 왕관 벌거지',coco:'🫘 번데기',shine:'✨ 빛나는 번데기',small:'🦋 작은 나비',big:'🦋 큰 나비',god:'⚡ 황금 나비'};
-function selectLevel(lid){selectedLevel=lid;document.querySelectorAll('.level-btn').forEach(b=>{b.style.background=b.dataset.lid===lid?'#1E5FA5':'#F3F4F6';b.style.color=b.dataset.lid===lid?'#fff':'#6B7280';});loadWords(lid);}
-async function renderWords(){
+// ── 관리자 등록 ──
+async function doRegister(){
+  const name=document.getElementById('rg-name').value.trim();
+  const phone=document.getElementById('rg-phone').value.trim();
+  const addr=document.getElementById('rg-addr').value.trim();
+  const id=document.getElementById('rg-id').value.trim();
+  const pw=document.getElementById('rg-pw').value;
+  const pw2=document.getElementById('rg-pw2').value;
+  const role=document.getElementById('rg-role').value.trim();
+  const code=document.getElementById('rg-code').value.trim().toUpperCase();
+  const err=document.getElementById('rg-err');
+  const btn=document.getElementById('rg-btn');
+  err.classList.remove('show');
+
+  if(!name||!phone||!id||!pw){err.textContent='필수 항목을 모두 입력하세요';err.classList.add('show');return;}
+  if(pw.length<8){err.textContent='비밀번호는 8자 이상이어야 합니다';err.classList.add('show');return;}
+  if(pw!==pw2){err.textContent='비밀번호가 일치하지 않습니다';err.classList.add('show');return;}
+  if(code && code!==REG_CODE){err.textContent='등록 코드가 올바르지 않습니다';err.classList.add('show');return;}
+
+  btn.textContent='등록 중...';btn.disabled=true;
+  try{
+    // Firebase Auth에 계정 생성
+    const cred=await auth.createUserWithEmailAndPassword(id,pw);
+    // Firestore에 관리자 정보 저장
+    await db.collection('admins').doc(cred.user.uid).set({
+      name,phone,addr:addr||'',email:id,role:role||'관리자',
+      approved:code===REG_CODE, // 코드 있으면 자동 승인
+      isSuperAdmin:false,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      registeredAt:new Date().toISOString(),
+    });
+    if(code!==REG_CODE){
+      toast('✅ 등록 신청 완료! 슈퍼 관리자 승인 후 로그인 가능합니다','ok');
+      auth.signOut();
+      switchLoginTab('login');
+    }
+    // 코드 있으면 onAuthStateChanged가 자동으로 앱 화면으로 이동
+  }catch(e){
+    const msg={
+      'auth/email-already-in-use':'이미 등록된 이메일입니다',
+      'auth/invalid-email':'이메일 형식이 올바르지 않습니다',
+      'auth/weak-password':'비밀번호가 너무 약합니다 (8자 이상, 영문+숫자)',
+    }[e.code]||'등록 실패: '+e.message;
+    err.textContent=msg;err.classList.add('show');
+  }
+  btn.textContent='관리자 등록 신청';btn.disabled=false;
+}
+
+function doLogout(){
+  if(confirm('로그아웃 하시겠습니까?')){
+    auth.signOut().then(()=>{currentAdmin=null;});
+  }
+}
+
+// ── 유틸 ──
+function toast(m,t=''){const w=document.getElementById('tw'),el=document.createElement('div');el.className='toast '+(t==='ok'?'tok':t==='err'?'terr':'');el.textContent=m;w.appendChild(el);setTimeout(()=>el.remove(),2800);}
+const cm=()=>document.getElementById('ma').innerHTML='';
+const today=()=>new Date().toISOString().slice(0,10);
+const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?.isSuperAdmin;
+
+function T(tab){
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
+  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST})[tab]?.();
+}
+
+// ══════════════════════════════════
+// 📊 대시보드
+// ══════════════════════════════════
+async function rDB(){
+  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
+  let uc=0,tu=0,wu=0,pc=0,ac=0;
+  const td=today(),wa=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  try{const s=await db.collection('users').get();uc=s.size;s.forEach(d=>{const x=d.data();if(x.updatedAt?.toDate?.()?.toISOString().slice(0,10)===td)tu++;if(x.updatedAt?.toDate?.()?.toISOString().slice(0,10)>=wa)wu++;});}catch(e){}
+  try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
+  try{const as=await db.collection('admins').get();ac=as.size;}catch(e){}
+  const packs=typeof WORD_PACKS!=='undefined'?WORD_PACKS:[];
   document.getElementById('main').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:20px;font-weight:900;color:#111">📚 단어장 관리</h2>
-      <div style="display:flex;gap:8px">
-        <button class="btn bg" onclick="showAddWord()">➕ 단어 추가</button>
-        <button class="btn" style="background:#7C3AED;color:#fff" onclick="document.getElementById('csv-upload').click()">📤 CSV 업로드</button>
-        <input type="file" id="csv-upload" accept=".csv,.txt" style="display:none" onchange="uploadCSV(this)">
-      </div>
+      <h2 style="font-size:22px;font-weight:900">📊 대시보드</h2>
+      <div style="font-size:13px;color:#9CA3AF">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${Object.entries(LEVEL_NAMES).map(([lid,nm])=>`<button class="btn level-btn" data-lid="${lid}" onclick="selectLevel('${lid}')" style="background:${lid===selectedLevel?'#1E5FA5':'#F3F4F6'};color:${lid===selectedLevel?'#fff':'#6B7280'};font-size:12px;padding:6px 12px">${nm}</button>`).join('')}
+    <div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);border-radius:16px;padding:18px;color:#fff;margin-bottom:20px;display:flex;align-items:center;gap:14px">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border:2px solid rgba(255,255,255,.4);flex-shrink:0">${(currentAdmin?.name||'A')[0].toUpperCase()}</div>
+      <div><div style="font-size:16px;font-weight:800">${currentAdmin?.name||'관리자'}</div><div style="font-size:12px;opacity:.8">${currentAdmin?.role||'관리자'} · ${currentAdmin?.email||''}</div></div>
+      <div style="margin-left:auto;font-size:12px;opacity:.7">${isSuperAdmin()?'👑 슈퍼 관리자':''}</div>
+    </div>
+    <div class="sg">
+      <div class="st"><div class="v" style="color:#1E5FA5">${uc}</div><div class="l">총 회원수</div></div>
+      <div class="st"><div class="v" style="color:#16A34A">${tu}</div><div class="l">오늘 활동</div></div>
+      <div class="st"><div class="v" style="color:#D97706">${wu}</div><div class="l">이번 주 활성</div></div>
+      <div class="st"><div class="v" style="color:#EC4899">${pc}</div><div class="l">미확인 콕</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div class="ct">📚 레벨별 단어수</div>
+        ${LIDS.map(l=>`<div class="bi"><div class="bl">${LI[l].e} ${LI[l].n.split(' ')[0]}</div><div class="bt"><div class="bf" id="bf-${l}" style="width:0%;background:#1E5FA5"></div></div><div class="bv" id="bv-${l}">-</div></div>`).join('')}
+      </div>
+      <div class="card">
+        <div class="ct">⚡ 빠른 작업</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn bb" onclick="T('wd')" style="justify-content:flex-start">📚 단어 추가/관리</button>
+          <button class="btn bg" onclick="T('us')" style="justify-content:flex-start">👥 회원 관리</button>
+          <button class="btn bp" onclick="T('nt')" style="justify-content:flex-start">📢 공지사항 작성</button>
+          <button class="btn bo" onclick="T('an')" style="justify-content:flex-start">📈 이용 분석</button>
+          ${isSuperAdmin()?`<button class="btn" style="background:#1E3A5F;color:#fff;justify-content:flex-start" onclick="T('adm')">🔐 관리자 관리 (${ac}명)</button>`:''}
+          <hr style="border:none;border-top:1px solid #E5E7EB">
+          <button class="btn bgr" onclick="window.open('index.html','_blank')" style="justify-content:flex-start">🔗 앱 열기</button>
+        </div>
+      </div>
     </div>
     <div class="card">
-      <div id="word-table">선택한 레벨의 단어를 불러오는 중...</div>
-    </div>
-    <div style="font-size:12px;color:#9CA3AF;margin-top:8px">💡 CSV 형식: en,kr,ph,ex,img (한 줄에 하나)</div>
-  `;
-  loadWords(selectedLevel);
+      <div class="ct">🛒 마켓 팩 현황</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(c=>{const cnt=packs.filter(p=>p.cat===c).length;return `<div style="background:#F9FAFB;border-radius:10px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:900;color:#1E5FA5">${cnt}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${c}</div></div>`;}).join('')}
+      </div>
+    </div>`;
+  let mx=1;const wcs={};
+  await Promise.all(LIDS.map(async l=>{try{const d=await db.collection('words').doc(l).get();wcs[l]=d.exists?(d.data().list||[]).length:0;if(wcs[l]>mx)mx=wcs[l];}catch(e){wcs[l]=0;}}));
+  LIDS.forEach(l=>{const be=document.getElementById('bf-'+l),bv=document.getElementById('bv-'+l);if(be){be.style.width=Math.round(wcs[l]/mx*100)+'%';be.style.background=wcs[l]>0?'#1E5FA5':'#E5E7EB';}if(bv)bv.textContent=wcs[l]+'개';});
 }
-async function loadWords(lid){
-  const el=document.getElementById('word-table');
-  if(!el)return;
-  el.innerHTML='<div style="color:#9CA3AF;padding:20px">로딩 중...</div>';
+
+// ══════════════════════════════════
+// 🔐 관리자 관리 (슈퍼 관리자 전용)
+// ══════════════════════════════════
+async function rADM(){
+  if(!isSuperAdmin()){document.getElementById('main').innerHTML='<div class="es"><div class="ei">🚫</div><p>슈퍼 관리자만 접근 가능합니다</p></div>';return;}
+  let admins=[];
+  try{const s=await db.collection('admins').get();admins=s.docs.map(d=>({uid:d.id,...d.data()}));}catch(e){}
+  document.getElementById('main').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px;font-weight:900">🔐 관리자 관리</h2>
+      <div style="display:flex;gap:8px">
+        <span class="badge bp2">슈퍼 관리자 전용</span>
+        <button class="btn bb" onclick="showAddAdmin()">➕ 관리자 직접 추가</button>
+      </div>
+    </div>
+    <div class="sg" style="grid-template-columns:repeat(3,1fr)">
+      <div class="st"><div class="v" style="color:#1E5FA5">${admins.length}</div><div class="l">전체 관리자</div></div>
+      <div class="st"><div class="v" style="color:#16A34A">${admins.filter(a=>a.approved).length}</div><div class="l">승인됨</div></div>
+      <div class="st"><div class="v" style="color:#D97706">${admins.filter(a=>!a.approved).length}</div><div class="l">승인 대기</div></div>
+    </div>
+    ${admins.filter(a=>!a.approved).length>0?`<div style="background:#FFF8E1;border-radius:14px;padding:14px;border:1.5px solid #FFE082;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;color:#E65100;margin-bottom:8px">⏳ 승인 대기 중 (${admins.filter(a=>!a.approved).length}명)</div>
+      ${admins.filter(a=>!a.approved).map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #FFE082">
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">${a.name}</div><div style="font-size:11px;color:#9CA3AF">${a.email} · ${a.phone||'-'}</div></div>
+        <button class="btn bg" style="font-size:11px;padding:5px 10px" onclick="approveAdmin('${a.uid}','${a.name}')">✅ 승인</button>
+        <button class="btn br" style="font-size:11px;padding:5px 10px" onclick="rejectAdmin('${a.uid}','${a.name}')">❌ 거절</button>
+      </div>`).join('')}
+    </div>`:''}
+    <div class="card">
+      <div class="ct">👤 전체 관리자 목록</div>
+      ${admins.length?`<div class="tw"><table>
+        <tr><th></th><th>이름</th><th>이메일(ID)</th><th>전화번호</th><th>주소</th><th>직책</th><th>등록일</th><th>상태</th><th>작업</th></tr>
+        ${admins.map(a=>`<tr>
+          <td><div style="width:36px;height:36px;border-radius:50%;background:#EFF6FF;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#1E5FA5">${(a.name||'A')[0].toUpperCase()}</div></td>
+          <td><strong>${a.name||'-'}</strong>${a.isSuperAdmin?'<span class="badge bp2" style="margin-left:4px">👑</span>':''}</td>
+          <td style="font-family:monospace;font-size:12px">${a.email||'-'}</td>
+          <td style="font-size:12px">${a.phone||'-'}</td>
+          <td style="font-size:12px;color:#6B7280;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.addr||'-'}</td>
+          <td><span class="badge bb2">${a.role||'관리자'}</span></td>
+          <td style="font-size:11px;color:#9CA3AF">${a.registeredAt?new Date(a.registeredAt).toLocaleDateString('ko-KR'):'-'}</td>
+          <td><span class="badge ${a.approved?'bg2':'by'}">${a.approved?'✅ 승인':'⏳ 대기'}</span></td>
+          <td><div style="display:flex;gap:4px">
+            <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editAdmin('${a.uid}')">✏️</button>
+            ${!a.isSuperAdmin?`<button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteAdmin('${a.uid}','${a.name||''}')">🗑</button>`:''}
+          </div></td>
+        </tr>`).join('')}
+      </table></div>`:'<div class="es"><div class="ei">👤</div><p>등록된 관리자가 없어요</p></div>'}
+    </div>
+    <div class="card">
+      <div class="ct">🔑 등록 코드 안내</div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:14px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:13px;font-weight:700;color:#374151">현재 등록 코드</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">신규 관리자에게 이 코드를 주면 자동 승인됩니다</div></div>
+        <div style="font-size:20px;font-weight:900;color:#7C3AED;font-family:monospace;letter-spacing:2px;background:#FDF4FF;padding:8px 16px;border-radius:10px">${REG_CODE}</div>
+      </div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:8px">코드 변경은 admin.html의 REG_CODE 값을 수정하세요.</div>
+    </div>`;
+}
+
+async function approveAdmin(uid,name){
   try{
-    const doc=await db.collection('words').doc(lid).get();
-    const words=doc.exists?(doc.data().list||[]):[];
-    el.innerHTML=words.length?`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:700;color:#374151">총 ${words.length}개</div>
-      <input placeholder="단어 검색..." style="width:200px;font-size:12px" oninput="filterWords(this.value)">
-    </div>
-    <table id="wtable">
-      <tr><th>이모지</th><th>영단어</th><th>뜻</th><th>발음기호</th><th>작업</th></tr>
-      ${words.map((w,i)=>`<tr>
-        <td style="font-size:20px">${w.img||'📝'}</td>
-        <td style="font-family:monospace;font-weight:700">${w.en}</td>
-        <td>${w.kr}</td>
-        <td style="font-size:12px;color:#9CA3AF">${w.ph||''}</td>
-        <td style="display:flex;gap:4px">
-          <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editWord('${lid}',${i})">수정</button>
-          <button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteWord('${lid}',${i})">삭제</button>
-        </td>
-      </tr>`).join('')}
-    </table>`:'<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:40px;margin-bottom:12px">📚</div><div>아직 단어가 없어요</div><div style="font-size:12px;margin-top:8px">단어를 추가하거나 CSV를 업로드해주세요</div></div>';
-  }catch(e){el.innerHTML='<div style="color:#DC2626;padding:20px">로드 실패: Firestore 설정을 확인하세요</div>';}
+    await db.collection('admins').doc(uid).update({approved:true,approvedAt:firebase.firestore.FieldValue.serverTimestamp(),approvedBy:currentAdmin?.email});
+    toast(`✅ ${name} 승인 완료`,'ok');rADM();
+  }catch(e){toast('오류: '+e.message,'err');}
 }
-function filterWords(v){document.querySelectorAll('#wtable tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
-function showAddWord(){
-  document.getElementById('modal-area').innerHTML=`<div class="modal-bg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <h3 style="font-size:16px;font-weight:800;margin-bottom:14px">단어 추가 (${LEVEL_NAMES[selectedLevel]})</h3>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-      <input id="w-en" placeholder="영단어 *" required>
-      <input id="w-kr" placeholder="한국어 뜻 *" required>
-      <input id="w-ph" placeholder="발음기호 예: [ˈæpl]">
-      <input id="w-ex" placeholder="예문 예: I eat an apple.">
-      <input id="w-img" placeholder="이모지 예: 🍎">
-      <input id="w-tip" placeholder="암기 팁 예: 에이플 = 사과!">
+
+async function rejectAdmin(uid,name){
+  if(!confirm(`${name}의 등록 신청을 거절하고 삭제할까요?`))return;
+  try{
+    // Firebase Auth 계정 삭제는 Admin SDK 필요, Firestore 문서만 삭제
+    await db.collection('admins').doc(uid).delete();
+    toast(`🗑 ${name} 거절 및 삭제`,'ok');rADM();
+  }catch(e){toast('오류: '+e.message,'err');}
+}
+
+function showAddAdmin(){
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">➕ 관리자 직접 추가</div>
+    <div style="background:#EFF6FF;border-radius:10px;padding:10px 14px;font-size:12px;color:#1E5FA5;margin-bottom:14px">이미 Firebase Auth에 등록된 계정의 UID를 입력하거나, 이메일/비밀번호로 신규 생성합니다</div>
+    <div class="fg"><label>이름 *</label><input id="aa-name" placeholder="홍길동"></div>
+    <div class="fg"><label>전화번호</label><input id="aa-phone" placeholder="010-0000-0000"></div>
+    <div class="fg"><label>주소</label><input id="aa-addr" placeholder="서울시..."></div>
+    <div class="fg"><label>이메일(ID) *</label><input type="email" id="aa-email" placeholder="admin@wordday.com"></div>
+    <div class="fg"><label>비밀번호 * (8자 이상)</label><input type="password" id="aa-pw" placeholder="초기 비밀번호"></div>
+    <div class="fg"><label>직책/소속</label><input id="aa-role" placeholder="콘텐츠팀 / 단어장 관리자"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn bb" onclick="saveAddAdmin()" style="flex:1">추가</button>
+      <button class="btn bgr" onclick="cm()">취소</button>
     </div>
-    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveNewWord()">추가</button><button class="btn bgr" onclick="cm()">취소</button></div>
+    <div id="aa-err" style="margin-top:8px;color:#DC2626;font-size:12px;font-weight:600;display:none"></div>
   </div></div>`;
 }
-async function saveNewWord(){
-  const en=document.getElementById('w-en').value.trim();
-  const kr=document.getElementById('w-kr').value.trim();
-  if(!en||!kr){toast('영단어와 뜻은 필수입니다');return;}
-  const newWord={en,kr,ph:document.getElementById('w-ph').value.trim(),ex:document.getElementById('w-ex').value.trim()||en+'.',img:document.getElementById('w-img').value.trim()||'📝',tip:document.getElementById('w-tip').value.trim(),meanings:[kr]};
+
+async function saveAddAdmin(){
+  const name=document.getElementById('aa-name')?.value.trim();
+  const email=document.getElementById('aa-email')?.value.trim();
+  const pw=document.getElementById('aa-pw')?.value;
+  const errEl=document.getElementById('aa-err');
+  if(!name||!email||!pw){if(errEl){errEl.textContent='필수 항목을 입력하세요';errEl.style.display='block';}return;}
+  if(pw.length<8){if(errEl){errEl.textContent='비밀번호는 8자 이상이어야 합니다';errEl.style.display='block';}return;}
   try{
-    const doc=await db.collection('words').doc(selectedLevel).get();
-    const words=doc.exists?(doc.data().list||[]):[];
-    words.push(newWord);
-    await db.collection('words').doc(selectedLevel).set({list:words,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast('✅ 단어 추가 완료!');cm();loadWords(selectedLevel);
-  }catch(e){toast('오류: '+e.message);}
+    // 새 계정 생성 (현재 로그인은 유지됨 - Firebase 특성상 일시적으로 해당 계정으로 전환됨)
+    // 실제로는 Admin SDK가 필요하지만, 클라이언트에서 임시로 처리
+    const oldUser=auth.currentUser;
+    const cred=await auth.createUserWithEmailAndPassword(email,pw);
+    await db.collection('admins').doc(cred.user.uid).set({
+      name,email,
+      phone:document.getElementById('aa-phone')?.value.trim()||'',
+      addr:document.getElementById('aa-addr')?.value.trim()||'',
+      role:document.getElementById('aa-role')?.value.trim()||'관리자',
+      approved:true,
+      isSuperAdmin:false,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      registeredAt:new Date().toISOString(),
+      createdBy:currentAdmin?.email,
+    });
+    // 다시 원래 계정으로 로그인
+    await auth.signOut();
+    toast(`✅ ${name} 관리자 추가 완료! 다시 로그인해주세요.`,'ok');
+    currentAdmin=null;
+    cm();
+    showLoginScreen();
+  }catch(e){
+    const msg={'auth/email-already-in-use':'이미 등록된 이메일입니다','auth/weak-password':'비밀번호가 너무 약합니다'}[e.code]||e.message;
+    if(errEl){errEl.textContent='오류: '+msg;errEl.style.display='block';}
+  }
 }
-async function editWord(lid,idx){
+
+async function editAdmin(uid){
+  let a={};
+  try{const d=await db.collection('admins').doc(uid).get();a=d.data()||{};}catch(e){}
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">✏️ 관리자 수정</div>
+    <div class="fg"><label>이름</label><input id="ea-name" value="${a.name||''}"></div>
+    <div class="fg"><label>전화번호</label><input id="ea-phone" value="${a.phone||''}"></div>
+    <div class="fg"><label>주소</label><input id="ea-addr" value="${a.addr||''}"></div>
+    <div class="fg"><label>직책/소속</label><input id="ea-role" value="${a.role||'관리자'}"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <input type="checkbox" id="ea-ap" ${a.approved?'checked':''} style="width:18px;height:18px">
+      <label style="display:inline;margin-bottom:0;font-size:13px;cursor:pointer" for="ea-ap">승인 상태</label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bb" onclick="saveEditAdmin('${uid}')" style="flex:1">저장</button>
+      <button class="btn bgr" onclick="cm()">취소</button>
+    </div>
+  </div></div>`;
+}
+
+async function saveEditAdmin(uid){
   try{
-    const doc=await db.collection('words').doc(lid).get();
-    const words=doc.data().list||[];
-    const w=words[idx];
-    document.getElementById('modal-area').innerHTML=`<div class="modal-bg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-      <h3 style="font-size:16px;font-weight:800;margin-bottom:14px">단어 수정</h3>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-        <input id="ew-en" value="${w.en}" placeholder="영단어">
-        <input id="ew-kr" value="${w.kr}" placeholder="뜻">
-        <input id="ew-ph" value="${w.ph||''}" placeholder="발음기호">
-        <input id="ew-ex" value="${w.ex||''}" placeholder="예문">
-        <input id="ew-img" value="${w.img||'📝'}" placeholder="이모지">
-        <input id="ew-tip" value="${w.tip||''}" placeholder="암기 팁">
+    await db.collection('admins').doc(uid).update({
+      name:document.getElementById('ea-name').value.trim(),
+      phone:document.getElementById('ea-phone').value.trim(),
+      addr:document.getElementById('ea-addr').value.trim(),
+      role:document.getElementById('ea-role').value.trim(),
+      approved:document.getElementById('ea-ap').checked,
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    toast('✅ 수정 완료','ok');cm();rADM();
+  }catch(e){toast('오류: '+e.message,'err');}
+}
+
+async function deleteAdmin(uid,name){
+  if(!confirm(`${name} 관리자를 삭제할까요?\n(Firebase Auth 계정은 유지됩니다)`))return;
+  try{await db.collection('admins').doc(uid).delete();toast(`🗑 ${name} 관리자 삭제`,'ok');rADM();}catch(e){toast('오류: '+e.message,'err');}
+}
+
+// ══════════════════════════════════
+// 📈 분석
+// ══════════════════════════════════
+async function rAN(){
+  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">분석 데이터 로딩 중...</div>';
+  let users=[],ld={};
+  try{const s=await db.collection('users').get();s.forEach(d=>{const x=d.data();users.push(x);if(x.lid||x.level){const k=x.lid||x.level;ld[k]=(ld[k]||0)+1;}});}catch(e){}
+  const LN={egg:'🥚 알',baby:'🐛 벌거지',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛나는',small:'🦋 작은',big:'🦋 큰',god:'⚡ 황금'};
+  const rd=Array.from({length:7},(_,i)=>{const d=new Date(Date.now()-(6-i)*86400000);return d.toISOString().slice(0,10);});
+  document.getElementById('main').innerHTML=`
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📈 이용 분석</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card"><div class="ct">🦋 레벨 분포</div>
+        ${LIDS.map(l=>{const cnt=ld[l]||0;const p=users.length?Math.round(cnt/users.length*100):0;return `<div class="bi"><div class="bl" style="font-size:11px">${LN[l]}</div><div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div><div class="bv">${cnt}명</div></div>`;}).join('')}
+        <div style="font-size:12px;color:#9CA3AF;margin-top:10px">총 ${users.length}명</div>
       </div>
-      <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveEditWord('${lid}',${idx})">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
-    </div></div>`;
-  }catch(e){toast('오류: '+e.message);}
+      <div class="card"><div class="ct">📊 통계 요약</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${[['총 회원수',users.length+'명','#1E5FA5'],['평균 streak',Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/Math.max(users.length,1))+'일','#16A34A'],['마켓 팩 수',(typeof WORD_PACKS!=='undefined'?WORD_PACKS.length:0)+'개','#D97706'],['게임 종류','12종','#7C3AED']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:10px"><span style="font-size:13px;font-weight:600;color:#374151">${l}</span><span style="font-size:16px;font-weight:900;color:${c}">${v}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="card"><div class="ct">📅 최근 7일 활동</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;height:80px">
+        ${rd.map(d=>{const cnt=users.filter(u=>u.updatedAt?.toDate?.()?.toISOString().slice(0,10)===d).length;const h=Math.max(cnt*20,4);const it=d===today();return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:10px;color:#1E5FA5;font-weight:700">${cnt||''}</div><div style="width:100%;background:${it?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${h}px;min-height:4px"></div><div style="font-size:10px;color:${it?'#1E5FA5':'#9CA3AF'};font-weight:${it?700:400}">${d.slice(5)}</div></div>`;}).join('')}
+      </div>
+    </div>`;
 }
-async function saveEditWord(lid,idx){
+
+// ══════════════════════════════════
+// 📚 단어장 관리
+// ══════════════════════════════════
+async function rWD(){
+  document.getElementById('main').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:22px;font-weight:900">📚 단어장 관리</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn bg" onclick="showAddW()">➕ 단어 추가</button>
+        <button class="btn bp" onclick="document.getElementById('csv-ul').click()">📤 CSV 업로드</button>
+        <button class="btn bo" onclick="aiGenW()">✨ AI 생성</button>
+        <button class="btn bgr" onclick="exportW()">📥 내보내기</button>
+        <input type="file" id="csv-ul" accept=".csv,.txt" style="display:none" onchange="uploadCSV(this)">
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      ${LIDS.map(l=>`<button onclick="selLv='${l}';loadW('${l}');document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l}'?'#fff':'#6B7280';})" class="lb" data-l="${l}" style="padding:7px 14px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:${l===selLv?LI[l].c:'#F3F4F6'};color:${l===selLv?'#fff':'#6B7280'}">${LI[l].e} ${LI[l].n.split(' ')[0]}</button>`).join('')}
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div id="wc" style="font-size:13px;font-weight:700;color:#374151">로딩 중...</div>
+        <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:240px"><span>🔍</span><input id="ws" placeholder="단어 검색..." oninput="filterW(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none"></div>
+      </div>
+      <div class="tw" id="wt"><div style="color:#9CA3AF;padding:20px;text-align:center">로딩 중...</div></div>
+    </div>`;
+  loadW(selLv);
+}
+
+async function loadW(l){
+  const el=document.getElementById('wt'),ce=document.getElementById('wc');if(!el)return;
+  el.innerHTML='<div style="color:#9CA3AF;padding:20px;text-align:center">로딩 중...</div>';
   try{
-    const doc=await db.collection('words').doc(lid).get();
-    const words=doc.data().list||[];
-    words[idx]={...words[idx],en:document.getElementById('ew-en').value.trim(),kr:document.getElementById('ew-kr').value.trim(),ph:document.getElementById('ew-ph').value.trim(),ex:document.getElementById('ew-ex').value.trim(),img:document.getElementById('ew-img').value.trim(),tip:document.getElementById('ew-tip').value.trim(),meanings:[document.getElementById('ew-kr').value.trim()]};
-    await db.collection('words').doc(lid).set({list:words,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast('✅ 수정 완료');cm();loadWords(lid);
-  }catch(e){toast('오류: '+e.message);}
+    const doc=await db.collection('words').doc(l).get();const ws=doc.exists?(doc.data().list||[]):[];
+    if(ce)ce.textContent=`${LI[l].e} ${LI[l].n} · 총 ${ws.length}개`;
+    if(!ws.length){el.innerHTML='<div class="es"><div class="ei">📚</div><p>단어가 없어요</p><small>추가하거나 CSV를 업로드해주세요</small></div>';return;}
+    el.innerHTML=`<table id="wtb"><tr><th></th><th>영단어</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:100px">작업</th></tr>
+    ${ws.map((w,i)=>`<tr><td style="font-size:18px;text-align:center">${w.img||'📝'}</td><td><strong style="font-family:monospace">${w.en}</strong></td><td>${w.kr}</td><td style="font-size:11px;color:#9CA3AF">${w.ph||''}</td><td style="font-size:12px;color:#6B7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.ex||''}</td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editW('${l}',${i})">✏️</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delW('${l}',${i})">🗑</button></div></td></tr>`).join('')}
+    </table>`;
+  }catch(e){el.innerHTML=`<div style="color:#DC2626;padding:20px;text-align:center">로드 실패: ${e.message}</div>`;}
 }
-async function deleteWord(lid,idx){
+
+function filterW(v){document.querySelectorAll('#wtb tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
+
+function showAddW(){
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">➕ 단어 추가 <span style="font-size:13px;color:#9CA3AF">${LI[selLv].e} ${LI[selLv].n}</span></div>
+    <div class="fg"><label>영단어 *</label><input id="we" placeholder="apple"></div>
+    <div class="fg"><label>한국어 뜻 *</label><input id="wk" placeholder="사과"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fg"><label>발음기호</label><input id="wp" placeholder="[ˈæpl]"></div>
+      <div class="fg"><label>이모지</label><input id="wi" placeholder="🍎"></div>
+    </div>
+    <div class="fg"><label>예문</label><input id="wx" placeholder="I eat an apple."></div>
+    <div class="fg"><label>암기 팁</label><input id="wt2" placeholder="에이플 = 사과!"></div>
+    <div style="margin-bottom:14px"><button class="btn bp" style="width:100%" onclick="aiAF()">✨ AI 자동완성</button></div>
+    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveW()" style="flex:1">추가</button><button class="btn bgr" onclick="cm()">취소</button></div>
+  </div></div>`;
+}
+
+async function aiAF(){
+  const en=document.getElementById('we')?.value.trim();if(!en){toast('영단어를 입력하세요','err');return;}
+  toast('AI 자동완성 중...');
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,messages:[{role:'user',content:`"${en}" 단어 정보를 JSON으로만: {"kr":"뜻1,뜻2","ph":"[발음기호]","ex":"짧은 예문","tip":"한국어 암기팁","img":"이모지 하나"}`}]})});
+    const d=await r.json();const p=JSON.parse((d.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());
+    if(p.kr)document.getElementById('wk').value=p.kr;if(p.ph)document.getElementById('wp').value=p.ph;if(p.ex)document.getElementById('wx').value=p.ex;if(p.tip)document.getElementById('wt2').value=p.tip;if(p.img)document.getElementById('wi').value=p.img;
+    toast('✅ AI 자동완성 완료!','ok');
+  }catch(e){toast('AI 오류: '+e.message,'err');}
+}
+
+async function saveW(){
+  const en=document.getElementById('we')?.value.trim(),kr=document.getElementById('wk')?.value.trim();
+  if(!en||!kr){toast('영단어와 뜻은 필수입니다','err');return;}
+  try{
+    const doc=await db.collection('words').doc(selLv).get();const ws=doc.exists?(doc.data().list||[]):[];
+    if(ws.find(w=>w.en.toLowerCase()===en.toLowerCase())){toast('이미 있는 단어입니다','err');return;}
+    ws.push({en,kr,ph:document.getElementById('wp')?.value.trim()||'',ex:document.getElementById('wx')?.value.trim()||en+'.',img:document.getElementById('wi')?.value.trim()||'📝',tip:document.getElementById('wt2')?.value.trim()||'',meanings:[kr]});
+    await db.collection('words').doc(selLv).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    toast(`✅ "${en}" 추가 완료!`,'ok');cm();loadW(selLv);
+  }catch(e){toast('오류: '+e.message,'err');}
+}
+
+async function editW(l,i){
+  try{
+    const doc=await db.collection('words').doc(l).get();const w=(doc.data().list||[])[i];
+    document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+      <div class="mt">✏️ 단어 수정</div>
+      <div class="fg"><label>영단어</label><input id="ee" value="${w.en.replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>한국어 뜻</label><input id="ek" value="${w.kr.replace(/"/g,'&quot;')}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fg"><label>발음기호</label><input id="ep" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
+        <div class="fg"><label>이모지</label><input id="ei" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <div class="fg"><label>예문</label><input id="ex2" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>암기 팁</label><input id="et" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
+      <div style="display:flex;gap:8px;margin-top:4px"><button class="btn bb" onclick="saveEW('${l}',${i})" style="flex:1">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
+    </div></div>`;
+  }catch(e){toast('오류','err');}
+}
+
+async function saveEW(l,i){
+  try{
+    const doc=await db.collection('words').doc(l).get();const ws=doc.data().list||[];
+    ws[i]={...ws[i],en:document.getElementById('ee').value.trim(),kr:document.getElementById('ek').value.trim(),ph:document.getElementById('ep').value.trim(),ex:document.getElementById('ex2').value.trim(),img:document.getElementById('ei').value.trim(),tip:document.getElementById('et').value.trim(),meanings:[document.getElementById('ek').value.trim()]};
+    await db.collection('words').doc(l).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    toast('✅ 수정 완료','ok');cm();loadW(l);
+  }catch(e){toast('오류: '+e.message,'err');}
+}
+
+async function delW(l,i){
   if(!confirm('삭제할까요?'))return;
   try{
-    const doc=await db.collection('words').doc(lid).get();
-    const words=doc.data().list||[];
-    words.splice(idx,1);
-    await db.collection('words').doc(lid).set({list:words,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast('🗑 삭제 완료');loadWords(lid);
-  }catch(e){toast('오류: '+e.message);}
+    const doc=await db.collection('words').doc(l).get();const ws=doc.data().list||[];const en=ws[i]?.en;ws.splice(i,1);
+    await db.collection('words').doc(l).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    toast(`🗑 "${en}" 삭제 완료`,'ok');loadW(l);
+  }catch(e){toast('오류: '+e.message,'err');}
 }
+
 async function uploadCSV(input){
   const file=input.files[0];if(!file)return;
-  const text=await file.text();
-  const lines=text.split('\n').filter(l=>l.trim());
-  const words=[];
-  lines.forEach(line=>{
-    const parts=line.split(',');
-    if(parts.length>=2){
-      words.push({en:parts[0].trim(),kr:parts[1].trim(),ph:parts[2]?.trim()||'',ex:parts[3]?.trim()||parts[0].trim()+'.',img:parts[4]?.trim()||'📝',tip:'',meanings:[parts[1].trim()]});
-    }
-  });
-  if(!words.length){toast('유효한 데이터가 없어요');return;}
-  if(!confirm(words.length+'개 단어를 '+selectedLevel+' 레벨에 추가할까요?'))return;
+  const text=await file.text();const lines=text.split('\n').filter(l=>l.trim());
+  const ws=[];const start=lines[0].toLowerCase().includes('en')||lines[0].toLowerCase().includes('영')?1:0;
+  lines.slice(start).forEach(line=>{const p=line.split(',').map(x=>x.trim().replace(/^"|"$/g,''));if(p.length>=2&&p[0]&&p[1])ws.push({en:p[0],kr:p[1],ph:p[2]||'',ex:p[3]||p[0]+'.',img:p[4]||'📝',tip:p[5]||'',meanings:[p[1]]});});
+  if(!ws.length){toast('유효한 데이터가 없어요','err');return;}
+  if(!confirm(`${ws.length}개 단어를 "${LI[selLv].n}"에 추가할까요?`))return;
   try{
-    const doc=await db.collection('words').doc(selectedLevel).get();
-    const existing=doc.exists?(doc.data().list||[]):[];
-    const merged=[...existing,...words.filter(w=>!existing.find(e=>e.en===w.en))];
-    await db.collection('words').doc(selectedLevel).set({list:merged,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast('✅ '+words.length+'개 업로드 완료!');loadWords(selectedLevel);
-  }catch(e){toast('오류: '+e.message);}
+    const doc=await db.collection('words').doc(selLv).get();const ex=doc.exists?(doc.data().list||[]):[];let added=0;const mg=[...ex];
+    ws.forEach(w=>{if(!mg.find(e=>e.en.toLowerCase()===w.en.toLowerCase())){mg.push(w);added++;}});
+    await db.collection('words').doc(selLv).set({list:mg,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    toast(`✅ ${added}개 추가! (중복 ${ws.length-added}개 제외)`,'ok');loadW(selLv);
+  }catch(e){toast('오류: '+e.message,'err');}
+}
+
+function exportW(){
+  (async()=>{
+    try{
+      const doc=await db.collection('words').doc(selLv).get();const ws=doc.exists?(doc.data().list||[]):[];
+      if(!ws.length){toast('단어가 없어요','err');return;}
+      const rows=['en,kr,ph,ex,img,tip'];ws.forEach(w=>rows.push([w.en,w.kr,w.ph||'',w.ex||'',w.img||'',w.tip||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
+      const blob=new Blob(['\uFEFF'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`WordDay_${selLv}_${today()}.csv`;a.click();
+      toast('✅ 내보내기 완료','ok');
+    }catch(e){toast('오류: '+e.message,'err');}
+  })();
+}
+
+function aiGenW(){
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">✨ AI 단어 생성</div>
+    <div class="fg"><label>생성 기준/테마</label><input id="ag-t" placeholder="예: 수능 빈출 동사 20개, 프렌즈 드라마 일상 표현"></div>
+    <div class="fg"><label>개수</label><input id="ag-c" type="number" value="20" min="5" max="50"></div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">대상: ${LI[selLv].e} ${LI[selLv].n}</div>
+    <div style="display:flex;gap:8px"><button class="btn bp" onclick="doAG()" style="flex:1">✨ 생성</button><button class="btn bgr" onclick="cm()">취소</button></div>
+    <div id="ag-r" style="margin-top:12px"></div>
+  </div></div>`;
+}
+
+async function doAG(){
+  const th=document.getElementById('ag-t')?.value.trim(),cnt=document.getElementById('ag-c')?.value||20,re=document.getElementById('ag-r');
+  if(!th){toast('테마를 입력해주세요','err');return;}
+  re.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:16px">AI 생성 중... ⏳</div>';
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:`영어 단어 ${cnt}개를 JSON 배열로만 반환. 테마: "${th}"\n형식: [{"en":"word","kr":"뜻","ph":"[발음기호]","ex":"예문","img":"이모지","tip":"암기팁"}]`}]})});
+    const d=await r.json();const ws=JSON.parse((d.content?.[0]?.text||'[]').replace(/```json|```/g,'').trim());
+    re.innerHTML=`<div style="background:#F0FDF4;border-radius:10px;padding:12px;margin-bottom:10px"><div style="font-size:13px;font-weight:700;color:#16A34A;margin-bottom:8px">✅ ${ws.length}개 생성 완료</div><div style="font-size:12px;color:#374151;max-height:120px;overflow-y:auto">${ws.slice(0,5).map(w=>`• ${w.en} - ${w.kr}`).join('<br>')}${ws.length>5?`<br>... 외 ${ws.length-5}개`:''}</div></div>
+    <button class="btn bg" style="width:100%" onclick="saveAG(${JSON.stringify(ws).replace(/"/g,'&quot;')})">📥 단어장에 저장</button>`;
+  }catch(e){re.innerHTML=`<div style="color:#DC2626;padding:10px">생성 실패: ${e.message}</div>`;}
+}
+
+async function saveAG(wj){
+  try{
+    const ws=typeof wj==='string'?JSON.parse(wj.replace(/&quot;/g,'"')):wj;
+    const doc=await db.collection('words').doc(selLv).get();const ex=doc.exists?(doc.data().list||[]):[];let added=0;const mg=[...ex];
+    ws.forEach(w=>{const ww={en:w.en,kr:w.kr,ph:w.ph||'',ex:w.ex||w.en+'.',img:w.img||'📝',tip:w.tip||'',meanings:[w.kr]};if(!mg.find(e=>e.en.toLowerCase()===w.en.toLowerCase())){mg.push(ww);added++;}});
+    await db.collection('words').doc(selLv).set({list:mg,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    toast(`✅ ${added}개 저장 완료!`,'ok');cm();loadW(selLv);
+  }catch(e){toast('저장 오류: '+e.message,'err');}
+}
+
+// ── 마켓 팩 ──
+function rPK(){
+  const packs=typeof WORD_PACKS!=='undefined'?WORD_PACKS:[];
+  const cats=[...new Set(packs.map(p=>p.cat))];
+  document.getElementById('main').innerHTML=`
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">🛒 마켓 팩 현황</h2>
+    <div class="sg"><div class="st"><div class="v" style="color:#1E5FA5">${packs.length}</div><div class="l">전체 팩</div></div><div class="st"><div class="v" style="color:#16A34A">${packs.filter(p=>p.isPopular).length}</div><div class="l">인기 팩 🔥</div></div><div class="st"><div class="v" style="color:#EC4899">${packs.filter(p=>p.addedAt).length}</div><div class="l">NEW 뱃지</div></div><div class="st"><div class="v" style="color:#D97706">${cats.length}</div><div class="l">카테고리 수</div></div></div>
+    <div class="card"><div class="ct">📦 전체 팩 목록</div><div class="tw"><table><tr><th></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>뱃지</th><th>샘플</th></tr>${packs.map(p=>`<tr><td style="font-size:22px;text-align:center">${p.emoji}</td><td><strong>${p.name}</strong><div style="font-size:11px;color:#9CA3AF">${p.desc.slice(0,30)}...</div></td><td><span class="badge bb2">${p.cat}</span></td><td style="font-weight:700;color:#1E5FA5">${p.words?.length||0}</td><td>${p.isPopular?'<span class="badge by">🔥 인기</span> ':''}${p.addedAt?'<span class="badge bg2">NEW</span>':''}</td><td style="font-size:11px;color:#6B7280">${(p.words||[]).slice(0,3).map(w=>w.en).join(', ')}</td></tr>`).join('')}</table></div></div>`;
 }
 
 // ── 레벨 관리 ──
-function renderLevels(){
-  const LEVELS=[
-    {id:'egg',name:'알',emoji:'🥚',desc:'초등 저학년',basis:'Dolch Word List + 교육부 초등 3~4학년'},
-    {id:'baby',name:'아기 벌거지',emoji:'🐛',desc:'초등 중학년',basis:'교육부 초등 5~6학년 + Cambridge YL'},
-    {id:'crown',name:'왕관 벌거지',emoji:'🍀',desc:'초등 고학년',basis:'교육부 중학교 기본어휘 + Oxford 3000'},
-    {id:'coco',name:'번데기',emoji:'🫘',desc:'중등',basis:'중학교 교육과정 + Cambridge KET'},
-    {id:'shine',name:'빛나는 번데기',emoji:'✨',desc:'고등',basis:'수능 15개년 기출 + EBS'},
-    {id:'small',name:'작은 나비',emoji:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출'},
-    {id:'big',name:'큰 나비',emoji:'🦋',desc:'교수',basis:'토플 + AWL (Victoria대학 Coxhead)'},
-    {id:'god',name:'황금 나비',emoji:'⚡',desc:'God',basis:'GRE + Barron\'s 3500 + SAT'},
-  ];
+function rLV(){
+  const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🍀',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🫘',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'✨',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#880E4F'},{id:'big',n:'큰 나비',e:'🦋',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'황금 나비',e:'⚡',desc:'God',basis:"GRE + Barron's 3500",c:'#E65100'}];
   document.getElementById('main').innerHTML=`
-    <h2 style="font-size:20px;font-weight:900;color:#111;margin-bottom:20px">🦋 레벨 관리</h2>
-    <div class="card">
-      <table>
-        <tr><th>레벨</th><th>이름</th><th>설명</th><th>선정 기준</th><th>작업</th></tr>
-        ${LEVELS.map(l=>`<tr>
-          <td style="font-size:22px">${l.emoji}</td>
-          <td style="font-weight:700">${l.name}</td>
-          <td><span class="tag" style="background:#EFF6FF;color:#1E5FA5">${l.desc}</span></td>
-          <td style="font-size:12px;color:#6B7280;max-width:200px">${l.basis}</td>
-          <td><button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="showTab('words');setTimeout(()=>selectLevel('${l.id}'),100)">단어관리</button></td>
-        </tr>`).join('')}
-      </table>
-    </div>
-  `;
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">🦋 레벨 관리</h2>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">${lvs.map(l=>`<div style="background:#fff;border-radius:14px;border:2px solid ${l.c}33;padding:16px;text-align:center;cursor:pointer" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)"><div style="font-size:32px;margin-bottom:6px">${l.e}</div><div style="font-size:12px;font-weight:800;color:${l.c}">${l.n}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${l.desc}</div><div id="lc-${l.id}" style="font-size:18px;font-weight:900;color:${l.c};margin-top:8px">-</div><div style="font-size:10px;color:#9CA3AF">단어</div></div>`).join('')}</div>
+    <div class="card"><div class="ct">📋 레벨 기준</div><div class="tw"><table><tr><th>레벨</th><th>이름</th><th>대상</th><th>선정 기준</th><th>단어 관리</th></tr>${lvs.map(l=>`<tr><td style="font-size:22px">${l.e}</td><td style="font-weight:700;color:${l.c}">${l.n}</td><td><span class="badge" style="background:${l.c}22;color:${l.c}">${l.desc}</span></td><td style="font-size:12px;color:#6B7280">${l.basis}</td><td><button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)">단어 관리 →</button></td></tr>`).join('')}</table></div></div>`;
+  lvs.forEach(async l=>{try{const d=await db.collection('words').doc(l.id).get();const e=document.getElementById('lc-'+l.id);if(e)e.textContent=d.exists?(d.data().list||[]).length:0;}catch(e){}});
 }
 
-// ── 기본 설정 ──
-async function renderSettings(){
-  let settings={appName:'WordDay',notice:'',maintenanceMode:false,xpMultiplier:1};
-  try{
-    const doc=await db.collection('settings').doc('app').get();
-    if(doc.exists) settings={...settings,...doc.data()};
-  }catch(e){}
+// ── 공지사항 ──
+async function rNT(){
+  let ns=[];
+  try{const s=await db.collection('notices').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
   document.getElementById('main').innerHTML=`
-    <h2 style="font-size:20px;font-weight:900;color:#111;margin-bottom:20px">⚙️ 기본 설정</h2>
-    <div class="card">
-      <h2>앱 기본 설정</h2>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div><label style="font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">앱 이름</label><input id="s-name" value="${settings.appName}"></div>
-        <div><label style="font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">공지사항</label><textarea id="s-notice" style="min-height:80px;resize:none">${settings.notice}</textarea></div>
-        <div><label style="font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">XP 배율</label><input id="s-xp" type="number" value="${settings.xpMultiplier}" min="0.5" max="5" step="0.5"></div>
-        <div style="display:flex;align-items:center;gap:10px"><label style="font-size:13px;font-weight:700;color:#111">점검 모드</label><input type="checkbox" id="s-maint" ${settings.maintenanceMode?'checked':''} style="width:20px;height:20px"></div>
-        <button class="btn bb" onclick="saveSettings()">설정 저장</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>
+      <button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button>
+    </div>
+    <div class="card">${ns.length?`<div class="tw"><table><tr><th>제목</th><th>유형</th><th>작성일</th><th>상태</th><th>작업</th></tr>${ns.map(n=>`<tr><td><strong>${n.title}</strong></td><td><span class="badge ${n.type==='update'?'bb2':n.type==='event'?'by':'bg2'}">${{update:'업데이트',event:'이벤트',notice:'공지'}[n.type]||'공지'}</span></td><td style="font-size:12px;color:#9CA3AF">${n.createdAt?.toDate?.()?.toLocaleDateString('ko-KR')||'-'}</td><td><span class="badge ${n.active?'bg2':'br2'}">${n.active?'게시중':'숨김'}</span></td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="toggleNT('${n.id}',${!n.active})">${n.active?'숨김':'게시'}</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delNT('${n.id}')">삭제</button></div></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">📢</div><p>공지사항이 없어요</p></div>'}
+    </div>`;
+}
+
+function showAddNT(){
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">✏️ 공지 작성</div>
+    <div class="fg"><label>제목</label><input id="nt" placeholder="공지 제목"></div>
+    <div class="fg"><label>유형</label><select id="nt2"><option value="notice">📢 공지</option><option value="update">🆕 업데이트</option><option value="event">🎉 이벤트</option></select></div>
+    <div class="fg"><label>내용</label><textarea id="nb" style="min-height:100px;resize:vertical" placeholder="공지 내용..."></textarea></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><input type="checkbox" id="na" checked style="width:18px;height:18px"><label style="display:inline;margin-bottom:0;font-size:13px;cursor:pointer" for="na">즉시 게시</label></div>
+    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveNT()" style="flex:1">작성</button><button class="btn bgr" onclick="cm()">취소</button></div>
+  </div></div>`;
+}
+
+async function saveNT(){
+  const t=document.getElementById('nt')?.value.trim(),b=document.getElementById('nb')?.value.trim();
+  if(!t||!b){toast('제목과 내용을 입력하세요','err');return;}
+  try{await db.collection('notices').add({title:t,body:b,type:document.getElementById('nt2').value,active:document.getElementById('na').checked,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentAdmin?.email});toast('✅ 공지 작성 완료','ok');cm();rNT();}catch(e){toast('오류: '+e.message,'err');}
+}
+async function toggleNT(id,active){try{await db.collection('notices').doc(id).update({active});toast(active?'✅ 게시됨':'🙈 숨김','ok');rNT();}catch(e){toast('오류','err');}}
+async function delNT(id){if(!confirm('삭제할까요?'))return;try{await db.collection('notices').doc(id).delete();toast('🗑 삭제 완료','ok');rNT();}catch(e){toast('오류','err');}}
+
+// ── 회원 관리 ──
+async function rUS(){
+  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">회원 데이터 로딩 중...</div>';
+  let us=[];
+  try{const s=await db.collection('users').limit(100).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
+  document.getElementById('main').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:22px;font-weight:900">👥 회원 관리 <span style="font-size:14px;color:#9CA3AF">(${us.length}명)</span></h2>
+      <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:260px"><span>🔍</span><input placeholder="닉네임/코드 검색..." oninput="filterUS(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none"></div>
+    </div>
+    <div class="card">${us.length?`<div class="tw"><table id="utb"><tr><th>닉네임</th><th>레벨</th><th>streak</th><th>코드</th><th>상태</th><th>작업</th></tr>${us.map(u=>`<tr><td><strong>${u.nick||'-'}</strong><div style="font-size:11px;color:#9CA3AF">${u.id.slice(0,8)}</div></td><td>${LI[u.lid||u.level||'egg']?.e||'🥚'} <span class="badge bb2">${u.lid||u.level||'egg'}</span></td><td style="font-weight:700;color:#E65100">🔥 ${u.streak||0}일</td><td style="font-family:monospace;font-size:12px;color:#7C3AED">${u.code||'-'}</td><td><span class="badge ${u.banned?'br2':'bg2'}">${u.banned?'정지':'정상'}</span></td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editUS('${u.id}','${u.lid||u.level||'egg'}','${(u.nick||'').replace(/'/g,"\\'")}')">수정</button><button class="btn ${u.banned?'bg':'br'}" style="font-size:11px;padding:4px 8px" onclick="toggleBan('${u.id}',${!u.banned})">${u.banned?'해제':'정지'}</button></div></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">👥</div><p>회원이 없거나 users 컬렉션이 없어요</p></div>'}
+    </div>`;
+}
+function filterUS(v){document.querySelectorAll('#utb tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
+function editUS(id,lv,nick){
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">회원 수정</div>
+    <div class="fg"><label>닉네임</label><input id="un" value="${nick}"></div>
+    <div class="fg"><label>레벨</label><select id="ul">${LIDS.map(l=>`<option value="${l}" ${l===lv?'selected':''}>${LI[l].e} ${LI[l].n}</option>`).join('')}</select></div>
+    <div style="display:flex;gap:8px;margin-top:4px"><button class="btn bb" onclick="saveUS('${id}')" style="flex:1">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
+  </div></div>`;
+}
+async function saveUS(id){try{await db.collection('users').doc(id).update({nick:document.getElementById('un').value.trim(),lid:document.getElementById('ul').value});toast('✅ 수정 완료','ok');cm();rUS();}catch(e){toast('오류: '+e.message,'err');}}
+async function toggleBan(id,ban){try{await db.collection('users').doc(id).update({banned:ban});toast(ban?'🚫 정지 처리':'✅ 정지 해제','ok');rUS();}catch(e){toast('오류','err');}}
+
+// ── 콕 찌르기 ──
+async function rPO(){
+  let ps=[];
+  try{const s=await db.collection('pokes').limit(50).get();ps=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
+  document.getElementById('main').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px;font-weight:900">👉 콕 찌르기 로그</h2>
+      <span class="badge bp2">최근 50개</span>
+    </div>
+    <div class="sg" style="grid-template-columns:repeat(3,1fr)"><div class="st"><div class="v" style="color:#7C3AED">${ps.length}</div><div class="l">전체</div></div><div class="st"><div class="v" style="color:#DC2626">${ps.filter(p=>!p.read).length}</div><div class="l">미읽음</div></div><div class="st"><div class="v" style="color:#16A34A">${ps.filter(p=>p.read).length}</div><div class="l">읽음</div></div></div>
+    <div class="card">${ps.length?`<div class="tw"><table><tr><th>보낸 사람</th><th>메시지</th><th>시간</th><th>상태</th></tr>${ps.map(p=>`<tr><td><strong>${p.fromNick||'?'}</strong></td><td style="font-size:12px;color:#6B7280">${p.msg||'-'}</td><td style="font-size:12px;color:#9CA3AF">${p.at?new Date(p.at).toLocaleString('ko-KR'):'-'}</td><td><span class="badge ${p.read?'bg2':'br2'}">${p.read?'읽음':'미읽음'}</span></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">👉</div><p>기록이 없어요</p></div>'}
+    </div>`;
+}
+
+// ── 앱 설정 ──
+async function rST(){
+  let s={appName:'WordDay',notice:'',maintenanceMode:false,xpMultiplier:1};
+  try{const d=await db.collection('settings').doc('app').get();if(d.exists)s={...s,...d.data()};}catch(e){}
+  document.getElementById('main').innerHTML=`
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">⚙️ 앱 설정</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card"><div class="ct">📱 기본 설정</div>
+        <div class="fg"><label>앱 이름</label><input id="sn" value="${s.appName}"></div>
+        <div class="fg"><label>XP 배율</label><input id="sx" type="number" value="${s.xpMultiplier}" min="0.5" max="10" step="0.5"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:12px;background:#FEF2F2;border-radius:10px">
+          <input type="checkbox" id="sm" ${s.maintenanceMode?'checked':''} style="width:18px;height:18px">
+          <div><label style="display:inline;margin-bottom:0;font-size:13px;font-weight:700;color:#DC2626" for="sm">🚧 점검 모드</label><div style="font-size:11px;color:#9CA3AF">활성화 시 일반 사용자 접근 차단</div></div>
+        </div>
+        <button class="btn bb" onclick="saveST()" style="width:100%">설정 저장</button>
+      </div>
+      <div class="card"><div class="ct">📢 앱 내 공지</div>
+        <div class="fg"><label>공지 메시지</label><textarea id="so" style="min-height:100px;resize:none" placeholder="앱에 표시할 공지사항...">${s.notice||''}</textarea></div>
+        <div class="fg"><label>공지 유형</label><select id="sot"><option value="info">ℹ️ 안내</option><option value="warning">⚠️ 경고</option><option value="event">🎉 이벤트</option></select></div>
+        <button class="btn bg" onclick="saveST()" style="width:100%">공지 저장</button>
       </div>
     </div>
-    <div class="card">
-      <h2>관리자 이메일</h2>
-      <div style="font-size:13px;color:#374151;margin-bottom:10px">현재 관리자 이메일 목록을 admin.html의 ADMIN_EMAILS 배열에서 수정하세요.</div>
-      <code style="background:#F9FAFB;padding:10px;border-radius:8px;display:block;font-size:13px">const ADMIN_EMAILS = ['krudans@gmail.com'];</code>
-    </div>
-  `;
+    <div class="card"><div class="ct">🗄️ Firestore 컬렉션 구조</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        ${[['users','회원 정보'],['words','레벨별 단어장'],['admins','관리자 계정'],['pokes','콕 찌르기'],['notices','공지사항'],['settings','앱 설정']].map(([c,d])=>`<div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:13px;font-weight:700;color:#1E5FA5;font-family:monospace">${c}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${d}</div></div>`).join('')}
+      </div>
+    </div>`;
 }
-async function saveSettings(){
+
+async function saveST(){
   try{
-    await db.collection('settings').doc('app').set({
-      appName:document.getElementById('s-name').value,
-      notice:document.getElementById('s-notice').value,
-      xpMultiplier:+document.getElementById('s-xp').value,
-      maintenanceMode:document.getElementById('s-maint').checked,
-      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
-    toast('✅ 설정 저장 완료!');
-  }catch(e){toast('오류: '+e.message);}
+    await db.collection('settings').doc('app').set({appName:document.getElementById('sn').value,notice:document.getElementById('so').value,noticeType:document.getElementById('sot').value,xpMultiplier:+document.getElementById('sx').value,maintenanceMode:document.getElementById('sm').checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    toast('✅ 설정 저장 완료!','ok');
+  }catch(e){toast('오류: '+e.message,'err');}
 }
 </script>
 </body>

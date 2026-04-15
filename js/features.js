@@ -1,80 +1,133 @@
 // ── 마켓 탭 ──
 function rMarket() {
-  const langCats = ['전체','🇺🇸 영어','🇯🇵 일본어','🇨🇳 중국어','🇪🇸 스페인어','🇫🇷 프랑스어'];
   const topicCats = ['전체','여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
-  const activeLang = window._mLang || '전체';
   const activeCat = window._mCat || '전체';
-  // 최근 30일 내 추가된 팩 NEW 표시
+  const searchQ = (window._mSearch || '').toLowerCase();
+
   const now = Date.now();
   const isNew = p => p.addedAt && (now - new Date(p.addedAt).getTime()) < 30*86400000;
-  const filtered = WORD_PACKS.filter(p => {
-    const langOk = activeLang==='전체' || (p.lang||'영어')===activeLang.replace(/[🇺🇸🇯🇵🇨🇳🇪🇸🇫🇷 ]/g,'');
+
+  // 필터
+  let filtered = WORD_PACKS.filter(p => {
     const catOk = activeCat==='전체' || p.cat===activeCat;
-    return langOk && catOk;
+    const searchOk = !searchQ || p.name.toLowerCase().includes(searchQ) || p.desc.toLowerCase().includes(searchQ) || (p.words||[]).some(w=>w.en.toLowerCase().includes(searchQ)||w.kr.includes(searchQ));
+    return catOk && searchOk;
   });
+
+  // 내가 추가한 팩
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+
   const parts = [];
   parts.push('<div style="display:flex;flex-direction:column;height:100%">');
-  // 언어 탭
-  parts.push('<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:6px 12px;display:flex;gap:5px;overflow-x:auto;flex-shrink:0">');
-  langCats.forEach(c=>{
-    const on=c===activeLang;
-    parts.push(`<button onclick="window._mLang='${c}';go('market')" style="padding:5px 12px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;background:${on?'#1E5FA5':'#F3F4F6'};color:${on?'#fff':'#6B7280'}">${c}</button>`);
-  });
-  parts.push('</div>');
-  // 주제 탭
-  parts.push('<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:6px 12px;display:flex;gap:5px;overflow-x:auto;flex-shrink:0">');
+
+  // 상단 헤더
+  parts.push(`<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:12px 14px;flex-shrink:0">
+    <div style="font-size:17px;font-weight:900;color:#111;margin-bottom:10px">🛒 단어장 마켓</div>
+    <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:9px 12px">
+      <span style="font-size:16px">🔍</span>
+      <input value="${window._mSearch||''}" placeholder="단어장 또는 단어 검색..." oninput="window._mSearch=this.value;go('market')" style="border:none;background:transparent;padding:0;font-size:14px;flex:1;outline:none">
+      ${searchQ?`<button onclick="window._mSearch='';go('market')" style="background:none;border:none;font-size:16px;cursor:pointer;color:#9CA3AF">✕</button>`:''}
+    </div>
+  </div>`);
+
+  // 카테고리 탭
+  parts.push('<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:8px 12px;display:flex;gap:5px;overflow-x:auto;flex-shrink:0">');
   topicCats.forEach(c=>{
     const on=c===activeCat;
-    parts.push(`<button onclick="window._mCat='${c}';go('market')" style="padding:5px 12px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;background:${on?'#EC4899':'#F3F4F6'};color:${on?'#fff':'#6B7280'}">${c}</button>`);
+    const cnt = c==='전체' ? WORD_PACKS.length : WORD_PACKS.filter(p=>p.cat===c).length;
+    parts.push(`<button onclick="window._mCat='${c}';go('market')" style="padding:6px 14px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;background:${on?'#1E5FA5':'#F3F4F6'};color:${on?'#fff':'#6B7280'}">${c} ${cnt}</button>`);
   });
   parts.push('</div>');
-  parts.push('<div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px">');
-  // 내 단어장 업로드 카드
-  parts.push(`<div onclick="showUploadMarket()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;display:flex;align-items:center;gap:14px">
-    <div style="font-size:36px">📤</div>
-    <div><div style="font-size:14px;font-weight:800;color:#fff">내 단어장 마켓에 올리기</div>
-    <div style="font-size:12px;color:rgba(255,255,255,.7)">내가 만든 단어장을 공유하고 리워드 받기</div></div>
-  </div>`);
-  // 단어장 팩
-  if(filtered.length===0){
-    parts.push('<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:40px;margin-bottom:10px">📭</div><div style="font-size:14px">해당 카테고리 단어장이 없어요<br>곧 추가될 예정이에요!</div></div>');
-  }
-  filtered.forEach(p=>{
-    const grad = p.lang==='일본어'?'linear-gradient(135deg,#DC2626,#EF4444)':
-      p.lang==='중국어'?'linear-gradient(135deg,#D97706,#F59E0B)':
-      p.lang==='스페인어'?'linear-gradient(135deg,#16A34A,#22C55E)':
-      p.lang==='프랑스어'?'linear-gradient(135deg,#7C3AED,#A855F7)':
-      'linear-gradient(135deg,#1E5FA5,#2563EB)';
-    parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;overflow:hidden">
-      <div style="background:${grad};padding:14px 16px;display:flex;align-items:center;gap:10px;position:relative">
-        <div style="font-size:32px">${p.emoji}</div>
-        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:#fff">${p.name}${isNew(p)?'<span style="background:rgba(255,255,255,.25);font-size:10px;padding:2px 6px;border-radius:10px;margin-left:6px">NEW</span>':''}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.7)">${p.cat} · ${p.count}단어</div></div>
-        ${p.isPopular?'<span style="font-size:10px;background:rgba(255,200,0,.3);color:#fff;padding:3px 8px;border-radius:20px;font-weight:700">🔥 인기</span>':''}
-      </div>
-      <div style="padding:12px 16px">
-        <div style="font-size:12px;color:#6B7280;margin-bottom:8px">${p.desc}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${p.words.slice(0,6).map(w=>`<span style="padding:3px 8px;background:#EFF6FF;color:#1E5FA5;border-radius:20px;font-size:11px;font-weight:700;font-family:monospace">${w.en}</span>`).join('')}<span style="font-size:11px;color:#9CA3AF;padding:3px">+${p.words.length-6}개</span></div>
-        <div style="display:flex;gap:8px">
-          <button onclick="previewPack('${p.id}')" style="flex:1;background:#F3F4F6;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:#374151">👀 미리보기</button>
-          <button onclick="downloadPack('${p.id}')" style="flex:2;background:#1E5FA5;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:#fff">⬇️ 추가</button>
-        </div>
-      </div>
+
+  parts.push('<div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px">');
+
+  // 검색 결과 없음
+  if(searchQ && filtered.length===0) {
+    parts.push(`<div style="text-align:center;padding:40px;color:#9CA3AF">
+      <div style="font-size:40px;margin-bottom:10px">🔍</div>
+      <div style="font-size:14px;font-weight:700">"${window._mSearch}" 검색 결과가 없어요</div>
+      <div style="font-size:12px;margin-top:6px">다른 검색어를 입력해보세요</div>
     </div>`);
-  });
-  // 준비중 추천
-  if(activeCat==='전체'||activeLang==='전체'){
-    MARKET_SUGGESTIONS.forEach(s=>{
-      parts.push(`<div style="background:linear-gradient(135deg,#F9FAFB,#F3F4F6);border:1.5px dashed #D1D5DB;border-radius:16px;padding:14px;display:flex;align-items:center;gap:12px">
-        <div style="font-size:32px">${s.emoji}</div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:700;color:#374151">${s.name}</div>
-        <div style="font-size:11px;color:#9CA3AF">${s.desc}</div></div>
-        <span style="font-size:10px;background:#FFF8E1;color:#E65100;padding:3px 8px;border-radius:20px;font-weight:700">준비중</span>
+  }
+
+  // 인기 팩 배너 (검색·필터 없을 때)
+  if(!searchQ && activeCat==='전체') {
+    const popular = WORD_PACKS.filter(p=>p.isPopular).slice(0,3);
+    if(popular.length) {
+      parts.push(`<div>
+        <div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:8px">🔥 인기 단어장</div>
+        <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">
+          ${popular.map(p=>`<div onclick="previewPack('${p.id}')" style="flex-shrink:0;width:140px;background:linear-gradient(135deg,#1E5FA5,#7C3AED);border-radius:14px;padding:12px;cursor:pointer">
+            <div style="font-size:28px;margin-bottom:6px">${p.emoji}</div>
+            <div style="font-size:12px;font-weight:800;color:#fff">${p.name}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.7);margin-top:2px">${p.words.length}개</div>
+          </div>`).join('')}
+        </div>
+      </div>`);
+    }
+  }
+
+  // 단어장 팩 목록
+  if(filtered.length > 0) {
+    if(searchQ || activeCat!=='전체') {
+      parts.push(`<div style="font-size:12px;color:#9CA3AF;font-weight:600">${filtered.length}개 단어장</div>`);
+    }
+    filtered.forEach(p=>{
+      const added = myPacks.has(p.id);
+      const catColor = {
+        '여행':'#0284C7','비즈니스':'#0F766E','학업':'#7C3AED',
+        '미디어':'#DC2626','드라마/영화':'#9333EA','취미문화':'#D97706',
+        '수능':'#16A34A','토익':'#EA580C'
+      }[p.cat]||'#1E5FA5';
+
+      const wordCnt = p.words.length;
+      const displayCnt = wordCnt >= 100 ? `${wordCnt}개` : `${wordCnt}개 (업데이트 예정)`;
+
+      parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;overflow:hidden">
+        <div style="padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
+          <div style="width:52px;height:52px;background:${catColor}22;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0">${p.emoji}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+              <div style="font-size:14px;font-weight:800;color:#111">${p.name}</div>
+              ${isNew(p)?'<span style="background:#FFF8E1;color:#E65100;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700">NEW</span>':''}
+              ${p.isPopular?'<span style="background:#FEF2F2;color:#DC2626;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700">🔥 인기</span>':''}
+            </div>
+            <div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">${p.cat} · ${displayCnt}</div>
+            <div style="font-size:12px;color:#6B7280;line-height:1.6">${p.desc}</div>
+          </div>
+        </div>
+        <div style="padding:0 16px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px">
+          ${(p.words||[]).slice(0,5).map(w=>`<span style="padding:3px 8px;background:#F3F4F6;color:#374151;border-radius:20px;font-size:11px;font-weight:600;font-family:monospace">${w.en}</span>`).join('')}
+          ${(p.words||[]).length>5?`<span style="font-size:11px;color:#9CA3AF;padding:3px 4px">+${(p.words||[]).length-5}개</span>`:''}
+        </div>
+        <div style="border-top:1px solid #F3F4F6;display:flex">
+          <button onclick="previewPack('${p.id}')" style="flex:1;padding:12px;background:none;border:none;font-size:13px;font-weight:700;cursor:pointer;color:#374151;border-right:1px solid #F3F4F6">👀 미리보기</button>
+          <button onclick="${added?"removePack('"+p.id+"')":`downloadPack('${p.id}')`}" style="flex:2;padding:12px;background:none;border:none;font-size:13px;font-weight:700;cursor:pointer;color:${added?'#9CA3AF':'#1E5FA5'}">${added?'✅ 추가됨':'⬇️ 내 단어장에 추가'}</button>
+        </div>
       </div>`);
     });
   }
+
+  // 내 단어장 공유 배너
+  parts.push(`<div onclick="showUploadMarket()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;display:flex;align-items:center;gap:14px">
+    <div style="font-size:36px">📤</div>
+    <div>
+      <div style="font-size:14px;font-weight:800;color:#fff">내 단어장 마켓에 올리기</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.7)">내가 만든 단어장을 공유해요</div>
+    </div>
+  </div>`);
+
   parts.push('</div></div>');
   return parts.join('');
+}
+
+function removePack(packId) {
+  if(!confirm('단어장을 제거할까요?')) return;
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  myPacks.delete(packId);
+  localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+  toast('단어장 제거됨');
+  go('market');
 }
 
 
@@ -373,4 +426,104 @@ async function downloadDiaryImg(e) {
     toast('이미지 생성 실패. 텍스트로 공유할게요');
     shareToSNS(e);
   }
+}
+
+// ── 마켓 단어장 추가/미리보기 ──
+function downloadPack(packId) {
+  const pack = WORD_PACKS.find(p=>p.id===packId);
+  if(!pack){toast('단어장을 찾을 수 없어요');return;}
+
+  // 추가됨 표시
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  if(myPacks.has(packId)){toast('이미 추가된 단어장이에요');return;}
+
+  // 내 단어장에 추가
+  const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
+  const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
+
+  if(!newWords.length){
+    myPacks.add(packId);
+    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+    toast('✅ 단어장 추가됨 (단어는 이미 모두 있어요)');
+    go('market');
+    return;
+  }
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:800;margin-bottom:8px">${pack.emoji} ${pack.name}</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:14px">${pack.desc}</div>
+    <div style="background:#EFF6FF;border-radius:12px;padding:12px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#1E5FA5;margin-bottom:6px">추가될 단어 미리보기</div>
+      <div style="font-size:12px;color:#374151;max-height:120px;overflow-y:auto;line-height:1.8">
+        ${newWords.slice(0,10).map(w=>`• <strong>${w.en}</strong> - ${w.kr}`).join('<br>')}
+        ${newWords.length>10?`<br>... 외 ${newWords.length-10}개`:''}
+      </div>
+    </div>
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:14px">
+      <strong style="color:#1E5FA5">${newWords.length}개</strong> 단어가 내 단어장에 추가돼요
+      ${existing.size>0?`<br><span style="font-size:11px;color:#9CA3AF">(중복 ${pack.words.length-newWords.length}개 제외)</span>`:''}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmDownloadPack('${packId}')" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">⬇️ 추가하기</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    </div>
+  </div></div>`;
+}
+
+function confirmDownloadPack(packId) {
+  const pack = WORD_PACKS.find(p=>p.id===packId);
+  if(!pack) return;
+
+  // 팩에서 새 단어만 추가
+  const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
+  const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
+  S.words.push(...newWords);
+
+  // myPacks 저장
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  myPacks.add(packId);
+  localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+
+  sv(); cm();
+  toast(`✅ "${pack.name}" ${newWords.length}개 추가 완료!`);
+  addXP(newWords.length);
+  go('market');
+}
+
+function previewPack(packId) {
+  const pack = WORD_PACKS.find(p=>p.id===packId);
+  if(!pack) return;
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  const added = myPacks.has(packId);
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="font-size:40px">${pack.emoji}</div>
+      <div>
+        <div style="font-size:17px;font-weight:800">${pack.name}</div>
+        <div style="font-size:12px;color:#9CA3AF">${pack.cat} · ${pack.words.length}개</div>
+      </div>
+    </div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:14px;line-height:1.7">${pack.desc}</div>
+    <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">단어 목록</div>
+    <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+      ${(pack.words||[]).slice(0,20).map(w=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#F9FAFB;border-radius:10px">
+        <span style="font-size:18px">${w.img||'📝'}</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;font-family:monospace">${w.en}</div>
+          <div style="font-size:11px;color:#6B7280">${w.kr}</div>
+        </div>
+        ${w.ph?`<span style="font-size:10px;color:#9CA3AF">${w.ph}</span>`:''}
+      </div>`).join('')}
+      ${pack.words.length>20?`<div style="text-align:center;font-size:12px;color:#9CA3AF;padding:8px">외 ${pack.words.length-20}개</div>`:''}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="${added?"cm();toast('이미 추가된 단어장이에요')":`confirmDownloadPack('${packId}')`}" style="flex:2;background:${added?'#9CA3AF':'#1E5FA5'};color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">${added?'✅ 추가됨':'⬇️ 내 단어장에 추가'}</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button>
+    </div>
+  </div></div>`;
+}
+
+function showUploadMarket() {
+  toast('준비 중이에요! 곧 공개될 예정이에요 😊');
 }

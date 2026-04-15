@@ -3,119 +3,66 @@ function rMarket() {
   const topicCats = ['전체','여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
   const activeCat = window._mCat || '전체';
   const searchQ = (window._mSearch || '').toLowerCase();
-
   const now = Date.now();
   const isNew = p => p.addedAt && (now - new Date(p.addedAt).getTime()) < 30*86400000;
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
 
-  // 필터
   let filtered = WORD_PACKS.filter(p => {
     const catOk = activeCat==='전체' || p.cat===activeCat;
-    const searchOk = !searchQ || p.name.toLowerCase().includes(searchQ) || p.desc.toLowerCase().includes(searchQ) || (p.words||[]).some(w=>w.en.toLowerCase().includes(searchQ)||w.kr.includes(searchQ));
+    const searchOk = !searchQ || p.name.toLowerCase().includes(searchQ) || (p.desc||'').toLowerCase().includes(searchQ);
     return catOk && searchOk;
   });
-
-  // 내가 추가한 팩
-  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
 
   const parts = [];
   parts.push('<div style="display:flex;flex-direction:column;height:100%">');
 
-  // 상단 헤더
-  parts.push(`<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:12px 14px;flex-shrink:0">
-    <div style="font-size:17px;font-weight:900;color:#111;margin-bottom:10px">🛒 단어장 마켓</div>
-    <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:9px 12px">
-      <span style="font-size:16px">🔍</span>
-      <input value="${window._mSearch||''}" placeholder="단어장 또는 단어 검색..." oninput="window._mSearch=this.value;go('market')" style="border:none;background:transparent;padding:0;font-size:14px;flex:1;outline:none">
-      ${searchQ?`<button onclick="window._mSearch='';go('market')" style="background:none;border:none;font-size:16px;cursor:pointer;color:#9CA3AF">✕</button>`:''}
+  // 검색바
+  parts.push(`<div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E5E7EB);padding:10px 14px;flex-shrink:0">
+    <div style="font-size:17px;font-weight:900;margin-bottom:8px">🛒 단어장 마켓</div>
+    <div style="display:flex;align-items:center;gap:8px;background:var(--bg-sub,#F9FAFB);border:1px solid var(--border,#E5E7EB);border-radius:10px;padding:8px 12px">
+      <span>🔍</span>
+      <input value="${window._mSearch||''}" placeholder="검색..." oninput="window._mSearch=this.value;go('market')" style="border:none;background:transparent;padding:0;font-size:14px;flex:1;outline:none">
+      ${searchQ?`<button onclick="window._mSearch=\'\';go(\'market\')" style="background:none;border:none;font-size:16px;cursor:pointer;color:#9CA3AF">✕</button>`:''}
     </div>
   </div>`);
 
   // 카테고리 탭
-  parts.push('<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:8px 12px;display:flex;gap:5px;overflow-x:auto;flex-shrink:0">');
-  topicCats.forEach(c=>{
-    const on=c===activeCat;
+  parts.push('<div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E5E7EB);padding:8px 12px;display:flex;gap:6px;overflow-x:auto;flex-shrink:0">');
+  topicCats.forEach(c => {
+    const on = c===activeCat;
     const cnt = c==='전체' ? WORD_PACKS.length : WORD_PACKS.filter(p=>p.cat===c).length;
-    parts.push(`<button onclick="window._mCat='${c}';go('market')" style="padding:6px 14px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;background:${on?'#1E5FA5':'#F3F4F6'};color:${on?'#fff':'#6B7280'}">${c} ${cnt}</button>`);
+    parts.push(`<button onclick="window._mCat='${c}';go('market')" style="padding:5px 12px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;background:${on?'#1E5FA5':'var(--btn-gray,#F3F4F6)'};color:${on?'#fff':'var(--text2,#6B7280)'}">${c} ${cnt}</button>`);
   });
   parts.push('</div>');
 
-  parts.push('<div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px">');
+  parts.push('<div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px">');
 
-  // 검색 결과 없음
   if(searchQ && filtered.length===0) {
     parts.push(`<div style="text-align:center;padding:40px;color:#9CA3AF">
-      <div style="font-size:40px;margin-bottom:10px">🔍</div>
-      <div style="font-size:14px;font-weight:700">"${window._mSearch}" 검색 결과가 없어요</div>
-      <div style="font-size:12px;margin-top:6px">다른 검색어를 입력해보세요</div>
+      <div style="font-size:36px">🔍</div>
+      <div style="font-size:14px;font-weight:700;margin-top:8px">"${window._mSearch}" 검색 결과 없음</div>
     </div>`);
   }
 
-  // 인기 팩 배너 (검색·필터 없을 때)
-  if(!searchQ && activeCat==='전체') {
-    const popular = WORD_PACKS.filter(p=>p.isPopular).slice(0,3);
-    if(popular.length) {
-      parts.push(`<div>
-        <div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:8px">🔥 인기 단어장</div>
-        <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">
-          ${popular.map(p=>`<div onclick="previewPack('${p.id}')" style="flex-shrink:0;width:140px;background:linear-gradient(135deg,#1E5FA5,#7C3AED);border-radius:14px;padding:12px;cursor:pointer">
-            <div style="font-size:28px;margin-bottom:6px">${p.emoji}</div>
-            <div style="font-size:12px;font-weight:800;color:#fff">${p.name}</div>
-            <div style="font-size:10px;color:rgba(255,255,255,.7);margin-top:2px">${p.words.length}개</div>
-          </div>`).join('')}
+  filtered.forEach(p => {
+    const added = myPacks.has(p.id);
+    const wordCnt = (p.words||[]).length;
+    parts.push(`<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);display:flex;align-items:center;padding:12px 14px;gap:12px">
+      <div style="font-size:32px;flex-shrink:0">${p.emoji}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:800;color:var(--text1,#111)">${p.name}</span>
+          ${isNew(p)?'<span style="background:#FFF8E1;color:#E65100;font-size:10px;padding:1px 5px;border-radius:6px;font-weight:700">NEW</span>':''}
+          ${p.isPopular?'<span style="background:#FEF2F2;color:#DC2626;font-size:10px;padding:1px 5px;border-radius:6px;font-weight:700">🔥</span>':''}
         </div>
-      </div>`);
-    }
-  }
-
-  // 단어장 팩 목록
-  if(filtered.length > 0) {
-    if(searchQ || activeCat!=='전체') {
-      parts.push(`<div style="font-size:12px;color:#9CA3AF;font-weight:600">${filtered.length}개 단어장</div>`);
-    }
-    filtered.forEach(p=>{
-      const added = myPacks.has(p.id);
-      const catColor = {
-        '여행':'#0284C7','비즈니스':'#0F766E','학업':'#7C3AED',
-        '미디어':'#DC2626','드라마/영화':'#9333EA','취미문화':'#D97706',
-        '수능':'#16A34A','토익':'#EA580C'
-      }[p.cat]||'#1E5FA5';
-
-      const wordCnt = p.words.length;
-      const displayCnt = wordCnt >= 100 ? `${wordCnt}개` : `${wordCnt}개 (업데이트 예정)`;
-
-      parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;overflow:hidden">
-        <div style="padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
-          <div style="width:52px;height:52px;background:${catColor}22;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0">${p.emoji}</div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
-              <div style="font-size:14px;font-weight:800;color:#111">${p.name}</div>
-              ${isNew(p)?'<span style="background:#FFF8E1;color:#E65100;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700">NEW</span>':''}
-              ${p.isPopular?'<span style="background:#FEF2F2;color:#DC2626;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700">🔥 인기</span>':''}
-            </div>
-            <div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">${p.cat} · ${displayCnt}</div>
-            <div style="font-size:12px;color:#6B7280;line-height:1.6">${p.desc}</div>
-          </div>
-        </div>
-        <div style="padding:0 16px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px">
-          ${(p.words||[]).slice(0,5).map(w=>`<span style="padding:3px 8px;background:#F3F4F6;color:#374151;border-radius:20px;font-size:11px;font-weight:600;font-family:monospace">${w.en}</span>`).join('')}
-          ${(p.words||[]).length>5?`<span style="font-size:11px;color:#9CA3AF;padding:3px 4px">+${(p.words||[]).length-5}개</span>`:''}
-        </div>
-        <div style="border-top:1px solid #F3F4F6;display:flex">
-          <button onclick="previewPack('${p.id}')" style="flex:1;padding:12px;background:none;border:none;font-size:13px;font-weight:700;cursor:pointer;color:#374151;border-right:1px solid #F3F4F6">👀 미리보기</button>
-          <button onclick="${added?"removePack('"+p.id+"')":`downloadPack('${p.id}')`}" style="flex:2;padding:12px;background:none;border:none;font-size:13px;font-weight:700;cursor:pointer;color:${added?'#9CA3AF':'#1E5FA5'}">${added?'✅ 추가됨':'⬇️ 내 단어장에 추가'}</button>
-        </div>
-      </div>`);
-    });
-  }
-
-  // 내 단어장 공유 배너
-  parts.push(`<div onclick="showUploadMarket()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;display:flex;align-items:center;gap:14px">
-    <div style="font-size:36px">📤</div>
-    <div>
-      <div style="font-size:14px;font-weight:800;color:#fff">내 단어장 마켓에 올리기</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.7)">내가 만든 단어장을 공유해요</div>
-    </div>
-  </div>`);
+        <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">${p.cat} · ${wordCnt}개${wordCnt<100?' (업데이트 예정)':''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+        <button onclick="previewPack('${p.id}')" style="padding:6px 10px;background:var(--btn-gray,#F3F4F6);border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#374151)">미리보기</button>
+        <button onclick="${added?`removePack('${p.id}')`:`downloadPack('${p.id}')`}" style="padding:6px 10px;background:${added?'#E5E7EB':'#1E5FA5'};border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:${added?'#9CA3AF':'#fff'}">${added?'✅ 추가됨':'+ 추가'}</button>
+      </div>
+    </div>`);
+  });
 
   parts.push('</div></div>');
   return parts.join('');
@@ -126,8 +73,53 @@ function removePack(packId) {
   const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
   myPacks.delete(packId);
   localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+  const pack = WORD_PACKS.find(p=>p.id===packId);
+  if(pack && S.books) {
+    S.books = S.books.filter(b=>b.name!==pack.name);
+    sv();
+  }
   toast('단어장 제거됨');
   go('market');
+}
+
+function downloadPack(packId) {
+  const pack = WORD_PACKS.find(p=>p.id===packId);
+  if(!pack){toast('단어장을 찾을 수 없어요');return;}
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  if(myPacks.has(packId)){toast('이미 추가된 단어장이에요');return;}
+  const wordCnt = (pack.words||[]).length;
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:48px;margin-bottom:8px">${pack.emoji}</div>
+      <div style="font-size:17px;font-weight:800">${pack.name}</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:4px">${pack.cat} · ${wordCnt}개 단어</div>
+    </div>
+    <div style="background:#EFF6FF;border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;color:#1E5FA5;line-height:1.7">
+      📚 "${pack.name}" 단어장이 내 단어장 목록에 추가돼요.<br>단어장 이름과 단어 ${wordCnt}개가 그대로 등록됩니다.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmDownloadPack('${packId}')" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">추가하기</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    </div>
+  </div></div>`;
+}
+
+function confirmDownloadPack(packId) {
+  const pack = WORD_PACKS.find(p=>p.id===packId);
+  if(!pack) return;
+  if(!S.books) S.books = [];
+  let bookName = pack.name;
+  let cnt = 1;
+  while(S.books.find(b=>b.name===bookName) || bookName==='내 단어장') {
+    bookName = `${pack.name} (${++cnt})`;
+  }
+  S.books.push({name:bookName, words:[...(pack.words||[])], markMap:{}, srsMap:{}, learned:[]});
+  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  myPacks.add(packId);
+  localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+  sv(); cm();
+  toast(`✅ "${bookName}" 추가 완료! (${(pack.words||[]).length}개)`);
+  go('study');
 }
 
 
@@ -433,60 +425,207 @@ function downloadPack(packId) {
   const pack = WORD_PACKS.find(p=>p.id===packId);
   if(!pack){toast('단어장을 찾을 수 없어요');return;}
 
-  // 추가됨 표시
   const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
   if(myPacks.has(packId)){toast('이미 추가된 단어장이에요');return;}
 
-  // 내 단어장에 추가
+  // 단어 수 미리 계산
   const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
-  const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
+  const newWordsToMain = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
+  const totalWords = pack.words.length;
 
-  if(!newWords.length){
-    myPacks.add(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-    toast('✅ 단어장 추가됨 (단어는 이미 모두 있어요)');
-    go('market');
-    return;
-  }
+  // 전체 단어장 목록
+  const allBooks = [
+    {name:'내 단어장', cnt: S.words.length},
+    ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))
+  ];
 
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div style="font-size:17px;font-weight:800;margin-bottom:8px">${pack.emoji} ${pack.name}</div>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:14px">${pack.desc}</div>
-    <div style="background:#EFF6FF;border-radius:12px;padding:12px;margin-bottom:14px">
-      <div style="font-size:13px;font-weight:700;color:#1E5FA5;margin-bottom:6px">추가될 단어 미리보기</div>
-      <div style="font-size:12px;color:#374151;max-height:120px;overflow-y:auto;line-height:1.8">
-        ${newWords.slice(0,10).map(w=>`• <strong>${w.en}</strong> - ${w.kr}`).join('<br>')}
-        ${newWords.length>10?`<br>... 외 ${newWords.length-10}개`:''}
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:88vh;display:flex;flex-direction:column">
+    <!-- 헤더 -->
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:36px">${pack.emoji}</div>
+        <div>
+          <div style="font-size:16px;font-weight:800">${pack.name}</div>
+          <div style="font-size:12px;color:#9CA3AF">${pack.cat} · 총 ${totalWords}개 단어</div>
+        </div>
       </div>
     </div>
-    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:14px">
-      <strong style="color:#1E5FA5">${newWords.length}개</strong> 단어가 내 단어장에 추가돼요
-      ${existing.size>0?`<br><span style="font-size:11px;color:#9CA3AF">(중복 ${pack.words.length-newWords.length}개 제외)</span>`:''}
+
+    <div style="flex:1;overflow-y:auto;padding:16px 20px">
+
+      <!-- 추가 방법 선택 -->
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">📚 어떻게 추가할까요?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+
+        <!-- 옵션 1: 기존 단어장에 추가 -->
+        <div id="opt-existing" onclick="selectAddOpt('existing')" style="border:2px solid #1E5FA5;border-radius:14px;padding:14px;cursor:pointer;background:#EFF6FF">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:20px;height:20px;border-radius:50%;background:#1E5FA5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <div style="width:8px;height:8px;border-radius:50%;background:#fff"></div>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E5FA5">📖 기존 단어장에 단어 추가</div>
+              <div style="font-size:11px;color:#6B7280;margin-top:2px">선택한 단어장에 단어들을 합쳐요</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 옵션 2: 새 단어장으로 추가 -->
+        <div id="opt-new" onclick="selectAddOpt('new')" style="border:2px solid #E5E7EB;border-radius:14px;padding:14px;cursor:pointer;background:#fff">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:20px;height:20px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0"></div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#374151">✨ 새 단어장으로 만들기</div>
+              <div style="font-size:11px;color:#6B7280;margin-top:2px">"${pack.name}" 이름으로 새 단어장 생성</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 기존 단어장 선택 (기본 표시) -->
+      <div id="book-select-area">
+        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">추가할 단어장 선택</div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="book-list">
+          ${allBooks.map(b=>{
+            const bExisting = b.name==='내 단어장'
+              ? existing
+              : new Set((S.books?.find(x=>x.name===b.name)?.words||[]).map(w=>w.en.toLowerCase()));
+            const addable = pack.words.filter(w=>!bExisting.has(w.en.toLowerCase())).length;
+            return `<div onclick="selectBook('${b.name.replace(/'/g,"\\'")}',this)" data-book="${b.name.replace(/"/g,'&quot;')}"
+              style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;border:1.5px solid #E5E7EB;background:#F9FAFB;cursor:pointer">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="width:18px;height:18px;border-radius:50%;border:2px solid #D1D5DB" id="book-radio-${b.name.replace(/[^a-zA-Z가-힣]/g,'_')}"></div>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:#374151">${b.name}</div>
+                  <div style="font-size:11px;color:#9CA3AF">현재 ${b.cnt}개</div>
+                </div>
+              </div>
+              <div style="font-size:12px;font-weight:700;color:${addable>0?'#1E5FA5':'#9CA3AF'}">
+                +${addable}개
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- 새 단어장 이름 (숨김) -->
+      <div id="new-book-area" style="display:none">
+        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">새 단어장 이름</div>
+        <input id="new-book-input" value="${pack.name}" style="font-size:14px;font-weight:700">
+        <div style="font-size:11px;color:#9CA3AF;margin-top:6px">${totalWords}개 단어로 새 단어장이 만들어져요</div>
+      </div>
     </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="confirmDownloadPack('${packId}')" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">⬇️ 추가하기</button>
-      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+
+    <!-- 하단 버튼 -->
+    <div style="padding:12px 20px;border-top:1px solid #E5E7EB;flex-shrink:0">
+      <button onclick="confirmDownloadPack('${packId}')" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
+        ⬇️ 추가하기
+      </button>
     </div>
   </div></div>`;
+
+  // 기본 선택: 내 단어장
+  window._selectedBook = '내 단어장';
+  window._addOpt = 'existing';
+  selectBook('내 단어장', document.querySelector('[data-book="내 단어장"]'));
+}
+
+function selectAddOpt(opt) {
+  window._addOpt = opt;
+  const optExisting = document.getElementById('opt-existing');
+  const optNew = document.getElementById('opt-new');
+  const bookArea = document.getElementById('book-select-area');
+  const newArea = document.getElementById('new-book-area');
+
+  if(opt==='existing') {
+    if(optExisting) { optExisting.style.border='2px solid #1E5FA5'; optExisting.style.background='#EFF6FF'; optExisting.querySelector('div div').style.background='#1E5FA5'; }
+    if(optNew) { optNew.style.border='2px solid #E5E7EB'; optNew.style.background='#fff'; optNew.querySelector('div div').style.background='transparent'; optNew.querySelector('div div').style.border='2px solid #D1D5DB'; }
+    if(bookArea) bookArea.style.display='block';
+    if(newArea) newArea.style.display='none';
+  } else {
+    if(optNew) { optNew.style.border='2px solid #1E5FA5'; optNew.style.background='#EFF6FF'; }
+    if(optExisting) { optExisting.style.border='2px solid #E5E7EB'; optExisting.style.background='#fff'; }
+    if(bookArea) bookArea.style.display='none';
+    if(newArea) newArea.style.display='block';
+  }
+}
+
+function selectBook(name, el) {
+  window._selectedBook = name;
+  // 모든 라디오 초기화
+  document.querySelectorAll('#book-list > div').forEach(div=>{
+    div.style.border='1.5px solid #E5E7EB';
+    div.style.background='#F9FAFB';
+    const radio = div.querySelector('[id^="book-radio-"]');
+    if(radio){ radio.style.background=''; radio.style.border='2px solid #D1D5DB'; }
+  });
+  // 선택된 것 활성화
+  if(el) {
+    el.style.border='1.5px solid #1E5FA5';
+    el.style.background='#EFF6FF';
+    const radio = el.querySelector('[id^="book-radio-"]');
+    if(radio){ radio.style.background='#1E5FA5'; radio.style.border='2px solid #1E5FA5'; }
+  }
 }
 
 function confirmDownloadPack(packId) {
   const pack = WORD_PACKS.find(p=>p.id===packId);
   if(!pack) return;
 
-  // 팩에서 새 단어만 추가
-  const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
-  const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
-  S.words.push(...newWords);
+  const opt = window._addOpt || 'existing';
 
-  // myPacks 저장
-  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-  myPacks.add(packId);
-  localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+  if(opt === 'new') {
+    // 새 단어장 생성
+    const newName = document.getElementById('new-book-input')?.value.trim() || pack.name;
+    if(!S.books) S.books = [];
+    if(S.books.find(b=>b.name===newName)) {
+      toast('이미 같은 이름의 단어장이 있어요','err');
+      return;
+    }
+    S.books.push({
+      name: newName,
+      words: [...pack.words],
+      markMap: {},
+      srsMap: {},
+      learned: []
+    });
+    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+    myPacks.add(packId);
+    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+    sv(); cm();
+    toast(`✅ "${newName}" 단어장 생성! (${pack.words.length}개)`);
+    addXP(pack.words.length);
+    go('market');
+    return;
+  }
 
-  sv(); cm();
-  toast(`✅ "${pack.name}" ${newWords.length}개 추가 완료!`);
-  addXP(newWords.length);
+  // 기존 단어장에 추가
+  const targetBook = window._selectedBook || '내 단어장';
+
+  if(targetBook === '내 단어장') {
+    const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
+    const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
+    S.words.push(...newWords);
+    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+    myPacks.add(packId);
+    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+    sv(); cm();
+    toast(`✅ "내 단어장"에 ${newWords.length}개 추가!`);
+    addXP(newWords.length);
+  } else {
+    const bk = S.books?.find(b=>b.name===targetBook);
+    if(!bk){ toast('단어장을 찾을 수 없어요','err'); return; }
+    const existing = new Set((bk.words||[]).map(w=>w.en.toLowerCase()));
+    const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
+    if(!bk.words) bk.words = [];
+    bk.words.push(...newWords);
+    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+    myPacks.add(packId);
+    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+    sv(); cm();
+    toast(`✅ "${targetBook}"에 ${newWords.length}개 추가!`);
+    addXP(newWords.length);
+  }
   go('market');
 }
 
@@ -518,7 +657,7 @@ function previewPack(packId) {
       ${pack.words.length>20?`<div style="text-align:center;font-size:12px;color:#9CA3AF;padding:8px">외 ${pack.words.length-20}개</div>`:''}
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="${added?"cm();toast('이미 추가된 단어장이에요')":`confirmDownloadPack('${packId}')`}" style="flex:2;background:${added?'#9CA3AF':'#1E5FA5'};color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">${added?'✅ 추가됨':'⬇️ 내 단어장에 추가'}</button>
+      <button onclick="${added?"cm();toast('이미 추가된 단어장이에요')":`cm();downloadPack('${packId}')`}" style="flex:2;background:${added?'#9CA3AF':'#1E5FA5'};color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">${added?'✅ 추가됨':'⬇️ 내 단어장에 추가'}</button>
       <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button>
     </div>
   </div></div>`;

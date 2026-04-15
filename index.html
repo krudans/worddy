@@ -1266,7 +1266,7 @@ function go(tab,sub) {
   if(sub) S.stab=sub;
   const nav=document.getElementById('nav');
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,study:rStudy,games:rGames,game:rGame,market:rMarket,ranking:rRanking,diary:rDiary,profile:rProfile};
+  const map={home:rHome,study:rStudy,game:rGame,market:rMarket,diary:rDiary,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
@@ -2381,62 +2381,49 @@ function rList(){
   if(!S.words.length)return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}</div>`;
   const filterMark=S.listMarkFilter??-1;
   const searchQ=(S.listSearch||'').toLowerCase();
-  const sortBy=S.listSort||'default'; // default|alpha|alpha_kr|mark
+  const sortBy=S.listSort||'default';
   const marked1=S.words.filter(w=>getMark(w.en)===1).length;
   const marked2=S.words.filter(w=>getMark(w.en)===2).length;
   let filtered=filterMark<0?[...S.words]:S.words.filter(w=>getMark(w.en)===filterMark);
   if(searchQ) filtered=filtered.filter(w=>w.en.toLowerCase().includes(searchQ)||w.kr.includes(searchQ));
-  // 정렬
   if(sortBy==='alpha') filtered.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sortBy==='alpha_kr') filtered.sort((a,b)=>a.kr.localeCompare(b.kr));
   else if(sortBy==='mark') filtered.sort((a,b)=>getMark(b.en)-getMark(a.en));
-  return `<div class="pad">
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <input oninput="S.listSearch=this.value;go()" value="${S.listSearch||''}" placeholder="🔍 단어 검색..." style="flex:1;font-size:13px">
-      <select onchange="S.listSort=this.value;go()" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">
-        <option value="default" ${sortBy==='default'?'selected':''}>추가순</option>
-        <option value="alpha" ${sortBy==='alpha'?'selected':''}>영어 A-Z</option>
-        <option value="alpha_kr" ${sortBy==='alpha_kr'?'selected':''}>한글 가나다</option>
-        <option value="mark" ${sortBy==='mark'?'selected':''}>마크순</option>
-      </select>
-      <button onclick="if(confirm('마크 초기화?')){S.markMap={};S.learned.clear();sv();go();}" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;white-space:nowrap">초기화</button>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px">
-      ${[[-1,'전체',S.words.length,'#374151','#F3F4F6'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF','#F3F4F6'],[1,'외운 🐾',marked1,'#1E5FA5','#EFF6FF'],[2,'헷갈리는 🐾',marked2,'#EC4899','#FDF2F8']].map(([v,lb,cnt,col,bg])=>
-        `<button onclick="S.listMarkFilter=${v};go()" style="padding:5px 10px;border-radius:20px;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;background:${filterMark===v?col:'#F3F4F6'};color:${filterMark===v?'#fff':col}">${lb} ${cnt}</button>`
-      ).join('')}
-    </div>
-    <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">${filtered.length}개 표시</div>
-    <div style="display:flex;flex-direction:column;gap:6px">${filtered.map((w)=>{
-      const mark=getMark(w.en); const mInfo=MARK_INFO[mark];
-      const safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      return `<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px 14px;display:flex;align-items:center;gap:10px">
-        <div style="font-size:22px">${w.img||'📝'}</div>
-        <div style="flex:1;min-width:0;cursor:pointer" onclick="showWordDetail('${safeEn}')">
-          <div style="font-size:15px;font-weight:800;color:#111;font-family:monospace">${w.en}</div>
-          <div style="font-size:12px;color:#6B7280">${w.kr}</div>
-          ${w.ph?`<div style="font-size:11px;color:#9CA3AF">${w.ph}</div>`:''}
-        </div>
-        <button onclick="event.stopPropagation();const n=cycleMark('${safeEn}');const inf=MARK_INFO[n];toast(inf.label+'!');go();" style="width:36px;height:36px;border-radius:50%;background:${mInfo.bg};border:1.5px solid ${mInfo.color}44;font-size:16px;cursor:pointer;flex-shrink:0">${mark===0?'○':'🐾'}</button>
-        <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:36px;height:36px;border-radius:50%;background:#F3F4F6;border:none;font-size:16px;cursor:pointer;flex-shrink:0">🔊</button>
-        <button onclick="if(confirm('삭제?')){S.words=S.words.filter(x=>x.en!=='${safeEn}');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:18px;cursor:pointer;flex-shrink:0">×</button>
-      </div>`;
-    }).join('')}</div>
-  </div>`;
-
-      return `<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px 14px;display:flex;align-items:center;gap:10px">
-        <div style="font-size:22px">${w.img||'📝'}</div>
-        <div style="flex:1;min-width:0;cursor:pointer" onclick="showWordDetail('${safeEn}')">
-          <div style="font-size:15px;font-weight:800;color:#111;font-family:monospace">${w.en}</div>
-          <div style="font-size:12px;color:#6B7280">${w.kr}</div>
-          ${w.ph?`<div style="font-size:11px;color:#9CA3AF">${w.ph}</div>`:''}
-        </div>
-        <button onclick="event.stopPropagation();const n=cycleMark('${safeEn}');const inf=MARK_INFO[n];toast(inf.label+'!');go();" style="width:36px;height:36px;border-radius:50%;background:${mInfo.bg};border:1.5px solid ${mInfo.color}44;font-size:16px;cursor:pointer;flex-shrink:0">${mark===0?'○':'🐾'}</button>
-        <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:36px;height:36px;border-radius:50%;background:#F3F4F6;border:none;font-size:16px;cursor:pointer;flex-shrink:0">🔊</button>
-        <button onclick="if(confirm('삭제?')){S.words=S.words.filter(x=>x.en!=='${safeEn}');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:18px;cursor:pointer;flex-shrink:0">×</button>
-      </div>`;
-    }).join('')}</div>
-  </div>`;
+  const rows=filtered.map(w=>{
+    const mark=getMark(w.en); const mInfo=MARK_INFO[mark];
+    const safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px 14px;display:flex;align-items:center;gap:10px">'
+      +'<div style="font-size:22px">'+( w.img||'📝')+'</div>'
+      +'<div style="flex:1;min-width:0;cursor:pointer" onclick="showWordDetail(\''+safeEn+'\')">'
+      +'<div style="font-size:15px;font-weight:800;color:#111;font-family:monospace">'+w.en+'</div>'
+      +'<div style="font-size:12px;color:#6B7280">'+w.kr+'</div>'
+      +(w.ph?'<div style="font-size:11px;color:#9CA3AF">'+w.ph+'</div>':'')
+      +'</div>'
+      +'<button onclick="event.stopPropagation();const n=cycleMark(\''+safeEn+'\');const inf=MARK_INFO[n];toast(inf.label+\'!\');go();" style="width:36px;height:36px;border-radius:50%;background:'+mInfo.bg+';border:1.5px solid '+mInfo.color+'44;font-size:16px;cursor:pointer;flex-shrink:0">'+(mark===0?'○':'🐾')+'</button>'
+      +'<button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(\''+safeEn+'\');u.lang=\'en-US\';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:36px;height:36px;border-radius:50%;background:#F3F4F6;border:none;font-size:16px;cursor:pointer;flex-shrink:0">🔊</button>'
+      +'<button onclick="if(confirm(\'삭제?\')){S.words=S.words.filter(x=>x.en!==\''+safeEn+'\');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:18px;cursor:pointer;flex-shrink:0">×</button>'
+      +'</div>';
+  }).join('');
+  return '<div class="pad">'
+    +'<div style="display:flex;gap:8px;margin-bottom:8px">'
+    +'<input oninput="S.listSearch=this.value;go()" value="'+(S.listSearch||'')+'" placeholder="🔍 단어 검색..." style="flex:1;font-size:13px">'
+    +'<select onchange="S.listSort=this.value;go()" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">'
+    +'<option value="default" '+(sortBy==='default'?'selected':'')+'>추가순</option>'
+    +'<option value="alpha" '+(sortBy==='alpha'?'selected':'')+'>영어 A-Z</option>'
+    +'<option value="alpha_kr" '+(sortBy==='alpha_kr'?'selected':'')+'>한글 가나다</option>'
+    +'<option value="mark" '+(sortBy==='mark'?'selected':'')+'>마크순</option>'
+    +'</select>'
+    +'<button onclick="if(confirm(\'마크 초기화?\')){S.markMap={};S.learned.clear();sv();go();}" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;white-space:nowrap">초기화</button>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px">'
+    +[[-1,'전체',S.words.length,'#374151'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF'],[1,'외운 🐾',marked1,'#1E5FA5'],[2,'헷갈리는 🐾',marked2,'#EC4899']].map(function(arr){
+      const v=arr[0],lb=arr[1],cnt=arr[2],col=arr[3];
+      return '<button onclick="S.listMarkFilter='+v+';go()" style="padding:5px 10px;border-radius:20px;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;background:'+(filterMark===v?col:'#F3F4F6')+';color:'+(filterMark===v?'#fff':col)+'">'+lb+' '+cnt+'</button>';
+    }).join('')
+    +'</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">'+filtered.length+'개 표시</div>'
+    +'<div style="display:flex;flex-direction:column;gap:6px">'+rows+'</div>'
+    +'</div>';
 }
 
 function showWordDetail(en) {

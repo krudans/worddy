@@ -1,5 +1,5 @@
-const CACHE = 'wordday-v3';
-const ASSETS = ['/', '/index.html', '/manifest.json'];
+const CACHE = 'wordday-v10';
+const ASSETS = ['/', '/index.html', '/manifest.json', '/js/features.js', '/js/wordpacks.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));

@@ -3569,162 +3569,484 @@ function rLearnTab() {
   return html;
 }
 
+
+// ── 게임 공통 ──
+const GGRADS={quiz:'linear-gradient(135deg,#1E5FA5,#2563EB)',fill:'linear-gradient(135deg,#D97706,#F59E0B)',typing:'linear-gradient(135deg,#EC4899,#F472B6)',match:'linear-gradient(135deg,#7C3AED,#A855F7)',wordle:'linear-gradient(135deg,#16A34A,#22C55E)',wordfind:'linear-gradient(135deg,#0284C7,#38BDF8)',chain:'linear-gradient(135deg,#9333EA,#C084FC)',sentence:'linear-gradient(135deg,#E65100,#FB923C)',listen:'linear-gradient(135deg,#0F766E,#14B8A6)',ssort:'linear-gradient(135deg,#1D4ED8,#3B82F6)',wc:'linear-gradient(135deg,#BE185D,#EC4899)'};
+
+function ghdr(title,prog){
+  const grd=GGRADS[S.gameId]||GGRADS.quiz;
+  return `<div style="background:${grd};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><button onclick="SFX.stopBG();S.tab='mybooks';S.stab='mode';go()" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button><div style="font-size:14px;font-weight:800;color:#fff">${title}</div><div style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</div></div>`;
+}
+
+function startGameW(id, ws) {
+  SFX.playBG(); vib(30);
+  const gs = S.gameSettings||{count:10};
+  const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  S.gameId=id; S.gDone=false; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput='';
+  S.gResultMap={};
+  const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
+  S.gWords=ws||pick(src,cnt);
+  if(id==='quiz'||id==='typing') {
+    S.gSavedGame={id,words:S.gWords,score:0,idx:0};
+  }
+  if(id==='match'){S.mPairs=pick(src,Math.min(5,src.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mEn0=null;S.mKr0=null;S.mScore=0;}
+  if(id==='wordle'){const pool=src.filter(w=>w.en.length>=4&&w.en.length<=7);S.wWord=pool.length?rnd(pool):src[0];S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
+  if(id==='wordfind'){buildWF(src);}
+  if(id==='wc'){const pool=src.filter(w=>w.en.length>=3);S.wcWord=pool.length?rnd(pool):src[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
+  if(id==='sentence'||id==='ssort'){const sts=[{kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing','yesterday']},{kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are','sad']},{kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach','Korean']}];S.sbS=rnd(sts);S.sbP=shuf([...S.sbS.words,...S.sbS.wrong.slice(0,2)]);S.sbC=[];S.sbAns=false;S.sbOk=false;if(id==='ssort')speak(S.sbS.en);}
+  if(id==='chain'){S.chStory=rnd(['Yesterday I went to the park.','One morning a bird sang outside.','My best friend called me last night.']);S.chIdx=0;S.chIn='';S.chDone=false;}
+  if(id==='flip') {
+    S._flipWords = S.gWords;
+    S._flipIdx = 0;
+    S.flip = false;
+    S.tab = 'mybooks'; S.stab = 'learn'; go();
+    toast('⚡ 깜빡이 시작! '+S.gWords.length+'개 단어');
+    return;
+  }
+  S.tab='game'; S.stab=null;
+  const navEl=document.getElementById('nav');
+  if(navEl) navEl.style.display='none';
+  go();
+}
+
+function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rTyping,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
+
+function rGameDone(){
+  SFX.stopBG();
+  if(typeof saveGameScore==='function') saveGameScore(S.gScore);
+  const tot=Math.max(S.gWords.length,1);
+  const right=Math.round(S.gScore/100);
+  const pct=Math.round(right/tot*100);
+  const hp=pct>=70;
+  if(hp){SFX.play('levelup');vib([100,50,100,50,200]);}else{SFX.play('wrong');vib([100,100,200]);}
+  const lvInfo=lv(S.lid);
+  const msg=pct>=100?['완벽해! 천재다! 🏆',lvInfo.id,'happy']:pct>=80?['아주 잘했어! 🎉',lvInfo.id,'happy']:pct>=60?['조금 더 할 수 있어! 💪',lvInfo.id,'normal']:['괜찮아! 다시 도전! 🔥',lvInfo.id,'sad'];
+  // 레벨업 테스트 결과 처리
+  if(window._levelUpTest) {
+    window._levelUpTest = false;
+    if(pct>=80) {
+      const nextLvId = SYS_LEVEL_INFO[S.lid]?.next;
+      if(nextLvId) {
+        S.lid = nextLvId;
+        S.xp = 0;
+        sv();
+        toast('🎉 레벨업! '+SYS_LEVEL_INFO[nextLvId].name+'이 됐어요!');
+      }
+    }
+  }
+  // 미션 퀴즈 저장
+  if(S.gameId==='quiz') saveMission('quiz', right);
+  const navEl=document.getElementById('nav');
+  if(navEl) navEl.style.display='flex';
+  return `<div class="pad" style="text-align:center">
+    ${charSVG(msg[1],80,msg[2])}
+    <div style="font-size:22px;font-weight:900;margin:12px 0 6px">${msg[0]}</div>
+    <div style="font-size:14px;color:#6B7280;margin-bottom:16px">${right}/${tot}개 정답 · ${pct}%</div>
+    <div style="background:${hp?'#F0FDF4':'#FFF1F2'};border-radius:16px;padding:16px;margin-bottom:16px">
+      <div style="font-size:36px;font-weight:900;color:${hp?'#16A34A':'#DC2626'}">${pct}%</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn bb" onclick="SFX.stopBG();startGameW(S.gameId,null)" style="flex:1">다시 하기</button>
+      <button class="btn bgr" onclick="SFX.stopBG();S.tab='mybooks';S.stab='mode';go()">단어장으로</button>
+    </div>
+  </div>`;
+}
+
+function rQ4(){
+  const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
+  const pool=S.gWords.length>=4?S.gWords:(getCurrentBookWords().length>=4?getCurrentBookWords():(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  const cs=shuf([w,...pick(pool.filter(x=>x.en!==w.en),3)]);
+  return ghdr('🎯 뜻 맞추기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+    ${cbrow(S.gAns?(S.gRes==='ok'?'맞아! 🎉':'아쉬워! 💪'):'이 단어의 뜻은?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
+    <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#1E5FA5"></div></div>
+    <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:20px;padding:24px;text-align:center;border:3px solid #BFDBFE">
+      ${S.showImg!==false?`<div style="font-size:72px;margin-bottom:8px">${w.img||'📝'}</div>`:''}
+      <div style="font-size:28px;font-weight:900;color:#1E5FA5;font-family:monospace">${w.en}</div>
+      <div style="font-size:13px;color:#64748B;margin-top:4px">${w.ph||''}</div>
+    </div>
+    <div class="g2">${cs.map(c=>{let bg='var(--bg-card,#fff)',col='var(--text1,#111)',bd='var(--border,#E5E7EB)';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${c.kr}</button>`;}).join('')}
+    </div>
+  </div>`;
+}
+function ansQ(c,ok2){
+  S.gAns=true; S.gRes=c===ok2?'ok':'ng';
+  if(c===ok2){S.gScore+=100;ok();S.gResultMap[ok2]=true;}
+  else{ng();S.gResultMap[ok2]=false;}
+  logStudy('quiz'); go();
+  const delay=S.gameSettings?.autoNext?600:900;
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+}
+
+function rFill(){
+  const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
+  const pool=S.gWords.length>=4?S.gWords:(getCurrentBookWords().length>=4?getCurrentBookWords():(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  const cs=shuf([w,...pick(pool.filter(x=>x.en!==w.en),3)]);
+  return ghdr('📝 빈칸 채우기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+    ${cbrow(S.gAns?(S.gRes==='ok'?'완벽해! 🎉':'아쉬워! 💪'):'빈칸에 들어갈 단어는?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
+    <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#D97706"></div></div>
+    <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border-radius:20px;padding:20px;text-align:center;border:3px solid #FDE68A">
+      ${S.showImg!==false?`<div style="font-size:52px;margin-bottom:6px">${w.img||'📝'}</div>`:''}
+      <div style="font-size:15px;color:#111;font-style:italic;line-height:2">"${(w.ex||w.en+'.').replace(w.en,'_______')}"</div>
+      <div style="font-size:13px;color:#D97706;margin-top:8px;font-weight:700">뜻: ${w.kr}</div>
+    </div>
+    <div class="g2">${cs.map(c=>{let bg='var(--bg-card,#fff)',col='var(--text1,#111)',bd='var(--border,#E5E7EB)';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};font-family:monospace">${c.en}</button>`;}).join('')}
+    </div>
+  </div>`;
+}
+
+function rTyping(){
+  const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
+  const isSc=S.gameId==='scramble';
+  return ghdr(isSc?'🔀 스크램블':'✏️ 받아쓰기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+    ${cbrow(S.gAns?(S.gRes==='ok'?'정답! 🎉':'오답! 💪'):'영단어를 입력해봐!',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
+    <div style="background:linear-gradient(135deg,#FDF2F8,#FCE7F3);border-radius:20px;padding:24px;text-align:center;border:3px solid #F9A8D4">
+      ${S.showImg!==false?`<div style="font-size:72px;margin-bottom:8px">${w.img||'📝'}</div>`:''}
+      <div style="font-size:22px;font-weight:800;color:#374151">${w.kr}</div>
+      ${w.ph?`<div style="font-size:13px;color:#9CA3AF;margin-top:4px">${w.ph}</div>`:''}
+      ${w.ex?`<div style="font-size:12px;color:#9CA3AF;font-style:italic;margin-top:8px">"${w.ex.replace(w.en,'_____')}"</div>`:''}
+    </div>
+    <input id="ti" value="${S.gInput}" oninput="S.gInput=this.value" onkeydown="if(event.key==='Enter')chkT('${w.en}')" placeholder="영단어 입력..." style="border:2px solid ${S.gRes==='ok'?'#16A34A':S.gRes==='ng'?'#DC2626':'#BFDBFE'};font-size:17px;font-family:monospace;font-weight:700">
+    <button class="btn" onclick="chkT('${w.en}')" ${S.gAns?'disabled':''} style="background:#EC4899;color:#fff">확인</button>
+  </div>`;
+}
+function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[ok2]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[ok2]=false;}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
+
+function rMatch(){
+  const all=S.mMatched.size>=S.mPairs.length*2;
+  if(all&&!S.gDone){S.gDone=true;S.gScore=S.mScore;setTimeout(()=>go(),300);}
+  return ghdr('⚡ 스피드 매칭',`${S.mMatched.size/2}/${S.mPairs.length}`)+`<div class="pad">
+    ${cbrow(all?'완벽해! 🎉':'단어와 뜻을 탭해서 짝 맞추자!',S.lid,all?'happy':'normal')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="display:flex;flex-direction:column;gap:6px">${S.mEn.map(en=>{const done=S.mMatched.has('en:'+en);const sel=S.mEn0===en;return `<button onclick="selMatch('en','${en.replace(/'/g,"\\'")}',this)" style="background:${done?'#F0FDF4':sel?'#EFF6FF':'var(--bg-card,#fff)'};border:2px solid ${done?'#86EFAC':sel?'#1E5FA5':'var(--border,#E5E7EB)'};border-radius:12px;padding:12px 8px;font-size:13px;font-weight:700;cursor:pointer;font-family:monospace;color:${done?'#16A34A':'var(--text1,#111)'};text-decoration:${done?'line-through':'none'}">${en}</button>`;}).join('')}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${S.mKr.map(kr=>{const done=S.mMatched.has('kr:'+kr);const sel=S.mKr0===kr;return `<button onclick="selMatch('kr','${kr.replace(/'/g,"\\'")}',this)" style="background:${done?'#F0FDF4':sel?'#EFF6FF':'var(--bg-card,#fff)'};border:2px solid ${done?'#86EFAC':sel?'#1E5FA5':'var(--border,#E5E7EB)'};border-radius:12px;padding:12px 8px;font-size:13px;font-weight:700;cursor:pointer;color:${done?'#16A34A':'var(--text1,#111)'};text-decoration:${done?'line-through':'none'}">${kr}</button>`;}).join('')}</div>
+    </div>
+  </div>`;
+}
+function selMatch(type,val,el){
+  if(type==='en') S.mEn0=val;
+  else S.mKr0=val;
+  if(S.mEn0&&S.mKr0){
+    const pair=S.mPairs.find(p=>p.en===S.mEn0);
+    if(pair&&pair.kr===S.mKr0){
+      S.mMatched.add('en:'+S.mEn0);S.mMatched.add('kr:'+S.mKr0);
+      S.mScore+=100;ok();
+    } else {ng();}
+    S.mEn0=null;S.mKr0=null;
+  }
+  go();
+}
+
+function rChain(){
+  const prompts=['And then...','Suddenly...','After that...','Finally...'];
+  return ghdr('문장 이어가기',`${S.chIdx}/4`)+`<div class="pad">
+    ${cbrow(S.chDone?'멋진 이야기 완성! 🎉':rnd(['이야기를 이어봐! ✍️','창의적으로! 😊','영어로 도전! 💪']),S.lid,S.chDone?'happy':'normal')}
+    ${S.chIdx===0&&!S.chDone?`<div style="background:#FFF8E1;border-radius:12px;padding:10px 14px;font-size:12px;color:#E65100;margin-bottom:8px;line-height:1.7">💡 제시된 문장에 이어지는 내용을 영어로 써주세요. 4번 이어쓰면 하나의 이야기가 완성돼요!</div>`:''}
+    <div style="background:linear-gradient(135deg,#FDF4FF,#F3E8FF);border-radius:20px;padding:16px;border:2px solid #E9D5FF"><div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">📖 지금까지의 이야기</div><div style="font-size:14px;color:#111;line-height:1.9;white-space:pre-wrap">${S.chStory}</div></div>
+    ${S.chDone?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">${charSVG(S.lid,56,'happy')}<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">이야기 완성! 🎊</div><button class="btn bb" onclick="SFX.stopBG();S.gDone=true;go()">완료</button></div>`:`
+    <div style="background:#EFF6FF;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:700;color:#1E5FA5">${prompts[S.chIdx]||'마무리해봐!'}</div>
+    <textarea id="ci" style="min-height:80px;resize:none;line-height:1.7" placeholder="영어로 이어서 쓰세요..." oninput="S.chIn=this.value">${S.chIn}</textarea>
+    <button class="btn bb" onclick="svChain()">이어가기 →</button>`}
+  </div>`;
+}
+function svChain(){
+  const input=document.getElementById('ci')?.value.trim()||S.chIn.trim();
+  if(!input){toast('내용을 입력해주세요!');return;}
+  S.chIn=input;
+  S.chStory+='\n'+input;
+  S.chIdx++;S.chIn='';S.gScore+=100;addXP(10);
+  if(S.chIdx>=4)S.chDone=true;
+  go();
+}
+
+function buildWF(src){
+  const wordCount=Math.min((src||S.gWords||[]).length,8);
+  const pickWords=pick((src||S.gWords).map(w=>w.en.toUpperCase().replace(/\s/g,'_')),wordCount);
+  const sz=Math.max(8,Math.ceil(Math.sqrt(pickWords.reduce((a,w)=>a+w.length,0)*2)));
+  const gridSz=Math.min(sz,12);
+  const grid=Array.from({length:gridSz},()=>Array(gridSz).fill(''));
+  const placed=[];
+  const alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  pickWords.forEach(w=>{
+    for(let t=0;t<100;t++){
+      const dir=Math.floor(Math.random()*2);
+      const dr=[0,1][dir],dc=[1,0][dir];
+      const r=Math.floor(Math.random()*(gridSz-dr*(w.length-1)));
+      const c=Math.floor(Math.random()*(gridSz-dc*(w.length-1)));
+      if(r+dr*(w.length-1)>=gridSz||c+dc*(w.length-1)>=gridSz)continue;
+      let ok=true;const cells=[];
+      for(let i=0;i<w.length;i++){const cr=r+dr*i,cc=c+dc*i;if(grid[cr][cc]&&grid[cr][cc]!==w[i]){ok=false;break;}cells.push(`${cr},${cc}`);}
+      if(ok){cells.forEach((k,i)=>{const[rr,cc]=k.split(',').map(Number);grid[rr][cc]=w[i];});placed.push({word:w,cells});break;}
+    }
+  });
+  for(let r=0;r<gridSz;r++)for(let c=0;c<gridSz;c++)if(!grid[r][c])grid[r][c]=alpha[Math.floor(Math.random()*26)];
+  S.wfGrid=grid;S.wfWords=placed;S.wfFound=new Set();S.wfSel=[];S.wfGridSz=gridSz;
+}
+function rWF(){
+  if(!S.wfGrid.length)buildWF(S.gWords);
+  const sz=S.wfGrid.length;
+  const foundCells=new Set(S.wfWords.filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));
+  const all=S.wfFound.size>=S.wfWords.length;
+  if(all&&!S.gDone){S.gDone=true;S.gScore=S.wfFound.size*100;setTimeout(()=>go(),300);}
+  return ghdr('🔍 단어 찾기',`${S.wfFound.size}/${S.wfWords.length}`)+`<div class="pad">
+    ${cbrow(all?'모두 찾았어! 🎉':'격자에서 단어를 찾아 순서대로 탭!',S.lid,all?'happy':'normal')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${S.wfWords.map(w=>{const ww=S.gWords.find(x=>x.en.toUpperCase()===w.word);return `<span style="padding:5px 11px;border-radius:20px;font-size:12px;font-weight:700;font-family:monospace;background:${S.wfFound.has(w.word)?'#DCFCE7':'var(--btn-gray,#F3F4F6)'};color:${S.wfFound.has(w.word)?'#16A34A':'var(--text1,#374151)'};text-decoration:${S.wfFound.has(w.word)?'line-through':'none'}">${ww?.img||'📝'} ${w.word}</span>`;}).join('')}</div>
+    <div style="display:flex;justify-content:center;overflow-x:auto"><div class="wf-grid" style="grid-template-columns:repeat(${sz},1fr)">${S.wfGrid.map((row,r)=>row.map((cell,c)=>{const k=`${r},${c}`;const isSel=S.wfSel.includes(k);const isFnd=foundCells.has(k);return `<div class="wf-cell ${isFnd?'fnd':isSel?'sel':''}" onclick="selWF(${r},${c})">${cell}</div>`;}).join('')).join('')}</div></div>
+    ${S.wfSel.length?`<button class="btn bgr" onclick="S.wfSel=[];go()" style="font-size:13px">선택 취소</button>`:''}
+  </div>`;
+}
+function selWF(r,c){const k=`${r},${c}`;const foundCells=new Set(S.wfWords.filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));if(foundCells.has(k))return;if(S.wfSel.includes(k)){S.wfSel=S.wfSel.filter(x=>x!==k);}else{S.wfSel.push(k);}S.wfWords.forEach(wd=>{if(S.wfFound.has(wd.word))return;const m=wd.cells.every(c2=>S.wfSel.includes(c2))&&S.wfSel.every(c2=>wd.cells.includes(c2));if(m){S.wfFound.add(wd.word);S.wfSel=[];ok();toast('✅ "'+wd.word+'"!');}});go();}
+
+function scoreW(g,t){const r=Array(t.length).fill('absent'),tA=[...t],gA=[...g];gA.forEach((c,i)=>{if(c===tA[i]){r[i]='correct';tA[i]=gA[i]=null;}});gA.forEach((c,i)=>{if(!c)return;const j=tA.indexOf(c);if(j>-1){r[i]='present';tA[j]=null;}});return r;}
+function rWordle(){
+  const W=S.wWord.en.toLowerCase(),LEN=W.length,cw=Math.min(46,250/LEN);
+  return ghdr('🟩 워들','')+`<div class="pad" style="align-items:center;gap:10px">
+    ${cbrow(S.wOver?(S.wWon?'맞췄어! 🎉':'아쉬워!'):S.wGuess.length===0?`힌트: "${S.wWord.kr}" · 6번 안에!`:`힌트: "${S.wWord.kr}"`,S.lid,S.wOver?(S.wWon?'happy':'sad'):'normal')}
+    <div style="font-size:42px;margin:4px 0">${S.wWord.img||'📝'}</div>
+    ${Array.from({length:6}).map((_,ri)=>{const g=S.wGuess[ri]||'',sc=g?scoreW(g,W):[],isCur=ri===S.wGuess.length&&!S.wOver,dp=isCur?S.wIn.padEnd(LEN):g.padEnd(LEN);return `<div style="display:flex;gap:5px">${Array.from({length:LEN}).map((_,ci)=>{const ch=dp[ci]||'',st=sc[ci]||'',bg=st==='correct'?'#16A34A':st==='present'?'#D97706':st==='absent'?'#6B7280':'transparent',bd=st?bg:(ch?'#1E5FA5':'var(--border,#E5E7EB)');return `<div class="wc" style="width:${cw}px;height:${cw}px;border-color:${bd};background:${bg};color:${st?'#fff':'var(--text1,#111)'}">${ch.toUpperCase()}</div>`;}).join('')}</div>`;}).join('')}
+    ${S.wOver?`<div style="text-align:center;background:${S.wWon?'#F0FDF4':'#FFF1F2'};border-radius:14px;padding:14px;width:100%"><div style="font-size:15px;font-weight:800;color:${S.wWon?'#16A34A':'#DC2626'}">${S.wWon?'🎉 정답!':'정답: '+S.wWord.en}</div><button class="btn bb" onclick="S.gDone=true;S.gScore=S.wWon?(7-S.wGuess.length)*100:0;go()" style="margin-top:10px">완료</button></div>`:`
+    <input id="wi" value="${S.wIn}" oninput="S.wIn=this.value.slice(0,${LEN})" onkeydown="if(event.key==='Enter')subW('${W}')" placeholder="${LEN}글자 입력..." style="font-size:18px;font-family:monospace;font-weight:700;text-transform:lowercase;width:100%" maxlength="${LEN}">
+    <button class="btn" onclick="subW('${W}')" style="background:#D97706;color:#fff;width:100%">제출</button>`}
+  </div>`;
+}
+function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(v===t){S.wWon=true;S.wOver=true;ok();}else if(ng2.length>=6){S.wOver=true;ng();}go();}
+
+function rWC(){
+  if(!S.wcWord){S.gDone=true;return rGame();}
+  const w=S.wcWord;
+  const visibleWord=S.wcLetters.map((l,i)=>{
+    if(!l.hidden||S.wcGuessed.has(i))return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:#1E5FA5;margin:0 2px;border-bottom:3px solid #1E5FA5;padding:0 4px">${l.letter.toUpperCase()}</span>`;
+    return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:transparent;margin:0 2px;border-bottom:3px solid ${S.wcWrong>=6?'#DC2626':'#BFDBFE'};padding:0 4px">_</span>`;
+  }).join('');
+  const allDone=S.wcLetters.every((l,i)=>!l.hidden||S.wcGuessed.has(i));
+  if(allDone){S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{const pool=(getCurrentBookWords().filter(ww=>ww.en.length>=3));S.wcWord=rnd(pool.length?pool:S.gWords);S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;}go();},800);}
+  const alpha='abcdefghijklmnopqrstuvwxyz'.split('');
+  return ghdr('🔡 단어 완성하기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+    ${cbrow(S.wcWrong>=6?'아쉬워! 다음엔 꼭!':allDone?'맞췄어! 🎉':'빈칸의 글자를 채워봐! 🔡',S.lid,allDone?'happy':S.wcWrong>=6?'sad':'normal')}
+    <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:20px;padding:20px;text-align:center;border:3px solid #BFDBFE">
+      <div style="font-size:64px;margin-bottom:8px">${w.img||'📝'}</div>
+      <div style="font-size:14px;color:#6B7280;margin-bottom:8px">뜻: <strong style="color:#1E5FA5">${w.kr}</strong></div>
+      <div style="display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:4px;margin:8px 0">${visibleWord}</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:8px">오답: ${S.wcWrong}/6</div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center">
+      ${alpha.map(letter=>{const guessedIdx=S.wcLetters.findIndex((l,i)=>l.letter===letter&&l.hidden&&S.wcGuessed.has(i));const isCorrect=guessedIdx>=0;return `<button onclick="guessWC('${letter}')" style="width:32px;height:36px;background:${isCorrect?'#DCFCE7':'var(--bg-card,#fff)'};border:1.5px solid ${isCorrect?'#86EFAC':'var(--border,#E5E7EB)'};border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace;color:${isCorrect?'#16A34A':'var(--text1,#111)'}">${letter.toUpperCase()}</button>`;}).join('')}
+    </div>
+  </div>`;
+}
+function guessWC(letter){
+  SFX.play('tap');vib(20);
+  const hits=S.wcLetters.reduce((acc,l,i)=>{if(l.letter===letter&&l.hidden&&!S.wcGuessed.has(i)){acc.push(i);}return acc;},[]);
+  if(hits.length>0){hits.forEach(i=>S.wcGuessed.add(i));ok();}
+  else{S.wcWrong++;ng();if(S.wcWrong>=6){setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length)S.gDone=true;const pool=getCurrentBookWords().filter(ww=>ww.en.length>=3);S.wcWord=rnd(pool.length?pool:S.gWords);S.wcLetters=S.wcWord.en.split('').map((l,i2)=>{const hide=Math.random()<.5&&i2>0&&i2<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;go();},1000);}  }
+  go();
+}
+
+function rSentence(){
+  if(!S.sbS){S.gDone=true;return rGame();}
+  return ghdr('🔤 문장 구성',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+    ${cbrow(S.sbOk?'완벽해! 🎉':S.sbAns?'아쉬워! 💪':'단어를 올바른 순서로 배치해봐!',S.lid,S.sbOk?'happy':S.sbAns?'sad':'normal')}
+    <div style="background:#EFF6FF;border-radius:14px;padding:12px;font-size:14px;color:#1E5FA5;font-weight:700;text-align:center">${S.sbS.kr}</div>
+    <div style="min-height:48px;background:var(--bg-sub,#F9FAFB);border-radius:12px;padding:10px;display:flex;flex-wrap:wrap;gap:6px;border:2px dashed ${S.sbOk?'#16A34A':S.sbAns?'#DC2626':'var(--border,#E5E7EB)'}">
+      ${S.sbC.map((w,i)=>`<button onclick="S.sbC.splice(${i},1);S.sbP.push(w);S.sbAns=false;S.sbOk=false;go()" style="background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">${w}</button>`).join('')}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${S.sbP.map((w,i)=>`<button onclick="S.sbC.push(S.sbP.splice(${i},1)[0]);go()" style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#E5E7EB);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">${w}</button>`).join('')}
+    </div>
+    ${S.sbAns?`<div style="background:${S.sbOk?'#F0FDF4':'#FFF1F2'};border-radius:10px;padding:10px;font-size:13px;color:${S.sbOk?'#16A34A':'#DC2626'};font-weight:700;text-align:center">${S.sbOk?'✅ 정답!':'❌ 정답: '+S.sbS.en}</div>
+    <button class="btn bb" onclick="S.gIdx++;S.sbS=null;S.gDone=S.gIdx>=S.gWords.length;go()">다음</button>`:`
+    <button class="btn bb" onclick="const ans=S.sbC.join(' ');S.sbAns=true;S.sbOk=ans===S.sbS.en;if(S.sbOk){S.gScore+=100;ok();}else{ng();}go()">확인</button>`}
+  </div>`;
+}
+
+const SORT_SENTENCES=[{en:'I study hard every day',kr:'나는 매일 열심히 공부한다',words:['I','study','hard','every','day']},{en:'She has a beautiful smile',kr:'그녀는 아름다운 미소를 가지고 있다',words:['She','has','a','beautiful','smile']},{en:'We learn new words together',kr:'우리는 함께 새 단어를 배운다',words:['We','learn','new','words','together']}];
+function rSSorting(){
+  if(!S.sbS||!S.sbS.words){const st=rnd(SORT_SENTENCES);S.sbS=st;S.sbP=shuf([...st.words]);S.sbC=[];S.sbAns=false;S.sbOk=false;speak(st.en);}
+  return ghdr('🔊 듣고 순서','')+`<div class="pad">
+    ${cbrow(S.sbOk?'완벽해! 🎉':S.sbAns?'다시 들어봐!':'들려주는 문장의 순서대로 탭해봐!',S.lid,S.sbOk?'happy':S.sbAns?'sad':'normal')}
+    <button onclick="speak('${S.sbS.en}')" style="background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;width:100%">🔊 다시 듣기</button>
+    <div style="min-height:48px;background:var(--bg-sub,#F9FAFB);border-radius:12px;padding:10px;display:flex;flex-wrap:wrap;gap:6px;border:2px dashed var(--border,#E5E7EB)">
+      ${S.sbC.map((w,i)=>`<button onclick="S.sbC.splice(${i},1);S.sbP.push(w);S.sbAns=false;S.sbOk=false;go()" style="background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">${w}</button>`).join('')}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${S.sbP.map((w,i)=>`<button onclick="S.sbC.push(S.sbP.splice(${i},1)[0]);go()" style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#E5E7EB);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">${w}</button>`).join('')}
+    </div>
+    ${S.sbAns?`<div style="font-size:13px;color:${S.sbOk?'#16A34A':'#DC2626'};font-weight:700;text-align:center">${S.sbOk?'✅ 정답!':'❌ 정답: '+S.sbS.en}</div>
+    <button class="btn bb" onclick="S.sbS=null;S.gIdx++;S.gDone=S.gIdx>=S.gWords.length;go()">다음</button>`:`
+    <button class="btn bb" onclick="const ans=S.sbC.join(' ');S.sbAns=true;S.sbOk=ans===S.sbS.en;if(S.sbOk){S.gScore+=100;ok();}else{ng();}go()">확인</button>`}
+  </div>`;
+}
+
+function rListen(){
+  const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
+  if(!S.gListened){speak(w.en);S.gListened=true;}
+  return ghdr('👂 듣고 완성',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+    ${cbrow(S.gAns?(S.gRes==='ok'?'정답! 🎉':'오답!'):'들려주는 단어를 완성해봐!',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
+    <div style="text-align:center;padding:20px">
+      <button onclick="speak('${w.en.replace(/'/g,"\\'")}');SFX.play('tap')" style="background:#1E5FA5;color:#fff;border:none;border-radius:50%;width:80px;height:80px;font-size:36px;cursor:pointer">🔊</button>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:8px">탭해서 다시 듣기</div>
+    </div>
+    <input id="li" value="${S.gInput}" oninput="S.gInput=this.value" onkeydown="if(event.key==='Enter')chkL('${w.en}')" placeholder="들은 단어 입력..." style="font-size:17px;font-family:monospace;font-weight:700;border:2px solid ${S.gRes==='ok'?'#16A34A':S.gRes==='ng'?'#DC2626':'var(--border,#BFDBFE)'}">
+    <button class="btn" onclick="chkL('${w.en}')" ${S.gAns?'disabled':''} style="background:#880E4F;color:#fff">확인</button>
+    ${S.gAns?`<div style="font-size:14px;color:${S.gRes==='ok'?'#16A34A':'#DC2626'};font-weight:700;text-align:center">${S.gRes==='ok'?'✅ 정답!':'❌ 정답: '+w.en}</div>`:''} 
+  </div>`;
+}
+function chkL(ok2){const v=(document.getElementById('li')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();}else{ng();}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';S.gListened=false;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
+
+// 게임센터 - 이전 세션에서 복구
+function rGameCenter(){
+  const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const curBookName = S.currentBook || '내 단어장';
+  const hw = curWords.length >= 2;
+  const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
+  const mainGames=[
+    {id:'flip',ic:'⚡',nm:'깜빡이',dc:'카드를 넘기며 빠르게 암기',bg:'linear-gradient(135deg,#1E5FA5,#2563EB)'},
+    {id:'quiz',ic:'🎯',nm:'객관식',dc:'4지선다로 뜻을 맞춰요',bg:'linear-gradient(135deg,#16A34A,#22C55E)'},
+    {id:'typing',ic:'✏️',nm:'받아쓰기',dc:'뜻 보고 단어를 입력해요',bg:'linear-gradient(135deg,#E65100,#F97316)'},
+  ];
+  const moreGames=[
+    {id:'fill',ic:'📝',nm:'빈칸 채우기'},{id:'match',ic:'⚡',nm:'스피드 매칭'},
+    {id:'wordle',ic:'🟩',nm:'워들'},{id:'chain',ic:'➡️',nm:'문장 이어가기'},
+    {id:'sentence',ic:'🔤',nm:'문장 구성'},{id:'listen',ic:'👂',nm:'듣고 완성'},
+    {id:'ssort',ic:'🔊',nm:'듣고 순서'},{id:'wordfind',ic:'🔍',nm:'단어 찾기'},
+  ];
+  const parts=[];
+  parts.push('<div class="pad">');
+  parts.push(cbrow('재미있는 게임으로 단어 정복! 🎮',S.lid,'happy'));
+
+  // 현재 단어장 표시
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:12px;border:1px solid var(--border,#E5E7EB);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">📖</span>
+    <div><div style="font-size:12px;color:var(--text3,#9CA3AF)">현재 단어장</div>
+    <div style="font-size:14px;font-weight:800">${curBookName} <span style="font-size:12px;font-weight:600;color:#1E5FA5">(${curWords.length}개)</span></div></div></div>
+    <button onclick="S.stab='books';go('mybooks')" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer">변경</button>
+  </div>`);
+
+  if(!hw){
+    parts.push(`<div style="background:#FFF7ED;border-radius:16px;border:1.5px solid #FDE68A;padding:14px;text-align:center;margin-bottom:12px">
+      <div style="font-size:13px;color:#D97706;font-weight:600">📚 "${curBookName}"에 단어가 2개 이상 있어야 게임을 시작할 수 있어요!</div>
+      <button class="btn bb" onclick="S.stab='add';go('mybooks','add')" style="margin-top:10px">단어 추가하러 가기</button>
+    </div>`);
+  }
+
+  if(srsToday>0){
+    parts.push(`<div style="background:#FFF8E1;border-radius:14px;padding:12px 16px;border:1.5px solid #FFE082;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-size:13px;color:#E65100;font-weight:700">📖 오늘 복습할 단어 ${srsToday}개</div>
+      <button onclick="startMode('srs')" style="background:#E65100;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">지금 복습</button>
+    </div>`);
+  }
+
+  parts.push('<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">');
+  mainGames.forEach(g=>{
+    parts.push(`<div onclick="${hw?`showGameSettings('${g.id}')`:'toast(\'단어를 먼저 추가해주세요!\')'}" style="background:${g.bg};border-radius:18px;padding:18px;cursor:${hw?'pointer':'default'};opacity:${hw?1:.5};display:flex;align-items:center;gap:14px">
+      <div style="font-size:40px">${g.ic}</div>
+      <div><div style="font-size:16px;font-weight:800;color:#fff">${g.nm}</div><div style="font-size:12px;color:rgba(255,255,255,.75)">${g.dc}</div></div>
+      <div style="margin-left:auto;font-size:22px;color:rgba(255,255,255,.6)">›</div>
+    </div>`);
+  });
+  parts.push('</div>');
+
+  parts.push(showWrongNoteBtn());
+
+  parts.push(`<div style="border-top:1.5px solid var(--border,#E5E7EB);padding-top:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">더 많은 게임</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${moreGames.map(g=>`<button onclick="${hw?`showGameSettings('${g.id}')`:'toast(\'단어를 먼저 추가해주세요!\')'}" style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#E5E7EB);border-radius:14px;padding:14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text1,#374151);text-align:center;font-family:inherit;opacity:${hw?1:.5}">
+        <div style="font-size:24px;margin-bottom:5px">${g.ic}</div>${g.nm}
+      </button>`).join('')}
+    </div>
+  </div>`);
+
+  parts.push(`<div style="border-top:1.5px solid var(--border,#E5E7EB);padding-top:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--text3,#9CA3AF);margin-bottom:10px">🎧 암기 모드</div>
+    <div style="display:flex;gap:8px">
+      ${[['🎤','쉐도잉',"startMode('shadow')",['#FDF2F8','#EC4899']],['🗣️','말하기',"startMode('speak')",['#FDF4FF','#7C3AED']],['📖','SRS',"startMode('srs')",['#FFF8E1','#E65100']],['😴','수면',"startMode('sleep')",['#F9FAFB','#6B7280']]].map(([ic,lb,fn,[bg,c]])=>`
+      <button onclick="${fn}" style="flex:1;background:${bg};border:1.5px solid ${c}33;border-radius:12px;padding:10px 6px;cursor:pointer;text-align:center">
+        <div style="font-size:22px;margin-bottom:3px">${ic}</div>
+        <div style="font-size:11px;font-weight:700;color:${c}">${lb}</div>
+      </button>`).join('')}
+    </div>
+  </div>`);
+
+  parts.push('</div>');
+  return parts.join('');
+}
+function rGames(){return rGameCenter();}
+
+// syncProfileToFirebase 누락 함수
+async function syncProfileToFirebase() {
+  try {
+    const user = firebase.auth().currentUser;
+    if(!user) return;
+    await firebase.firestore().collection('users').doc(user.uid).set({
+      name: S.name||'',
+      lid: S.lid||'egg',
+      xp: S.xp||0,
+      streak: getStreak().count||0,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, {merge:true});
+  } catch(e) {}
+}
+
+// startSysLearn - 시스템 학습 시작
+async function startSysLearn(type) {
+  const lvId = S.lid || 'egg';
+  let words = [];
+  try {
+    const doc = await firebase.firestore().collection('system_words').doc(lvId).get();
+    words = doc.exists ? (doc.data().words||[]) : [];
+  } catch(e) {}
+
+  if(!words.length) {
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:30px 20px">
+      <div style="font-size:48px;margin-bottom:12px">📭</div>
+      <div style="font-size:16px;font-weight:800;margin-bottom:8px">시스템 단어장이 비어있어요</div>
+      <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">관리자 페이지에서 레벨별 단어를 등록해주세요</div>
+      <button onclick="cm()" class="btn bb">확인</button>
+    </div></div>`;
+    return;
+  }
+
+  if(type==='newwords') {
+    const learned = JSON.parse(localStorage.getItem('wd-sys-learned-'+lvId)||'[]');
+    const newW = words.filter(w=>!learned.includes(w.en)).slice(0,5);
+    if(!newW.length){toast('이 레벨 단어를 모두 학습했어요! 🎉');return;}
+    S._flipWords = newW; S._flipIdx = 0; S._sysLvId = lvId;
+    S.flip = false; S.tab = 'mybooks'; S.stab = 'learn'; go();
+  } else if(type==='srsreview') {
+    showSRSMode();
+    setTimeout(()=>saveMission('review',true), 1000);
+  } else if(type==='quiz') {
+    const learned = JSON.parse(localStorage.getItem('wd-sys-learned-'+lvId)||'[]');
+    const quizW = words.filter(w=>learned.includes(w.en));
+    if(quizW.length < 4){toast('퀴즈를 위해 새 단어를 먼저 4개 이상 학습해주세요!');return;}
+    startGameW('quiz', pick(quizW, Math.min(5, quizW.length)));
+  }
+}
+
+async function startLevelUpTest() {
+  const lvId = S.lid || 'egg';
+  let words = [];
+  try {
+    const doc = await firebase.firestore().collection('system_words').doc(lvId).get();
+    words = doc.exists ? (doc.data().words||[]) : [];
+  } catch(e) {}
+  if(words.length < 4){toast('레벨업 테스트를 위한 단어가 부족해요!');return;}
+  const testW = pick(words, Math.min(10, words.length));
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">🏆</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:6px">레벨업 테스트</div>
+    <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">${testW.length}문제 · 80% 이상 정답 시 레벨업!</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm();window._levelUpTest=true;startGameW('quiz',JSON.parse(this.dataset.words))" data-words='${JSON.stringify(testW).replace(/'/g,"&#39;")}' style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">시작하기</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    </div>
+  </div></div>`;
+}
+
+
+
 </script>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Vocabug">
-<meta name="theme-color" content="#1E5FA5">
-<title>Vocabug</title>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icons/icon-152.png">
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden}
-body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(--bg,#FAF8F5);display:flex;justify-content:center;align-items:center}
-#app{width:100%;max-width:430px;height:100%;max-height:100dvh;background:var(--bg,#FAF8F5);display:flex;flex-direction:column;overflow:hidden}
-.hd{background:#1E5FA5;padding:calc(env(safe-area-inset-top,0px)+10px) 16px 12px;flex-shrink:0}
-.hd-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.logo{font-size:20px;font-weight:900;color:#fff;letter-spacing:1px}
-.lbadge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);cursor:pointer}
-.xpbar{height:6px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden}
-.xpfill{height:100%;background:#fff;border-radius:3px;transition:width .5s}
-.body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-.body::-webkit-scrollbar{display:none}
-.nav{background:#fff;border-top:1.5px solid #E5E7EB;display:flex;padding:7px 0 calc(env(safe-area-inset-bottom,0px)+5px);flex-shrink:0}
-.ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:none;background:transparent;cursor:pointer;padding:2px 0}
-.ni-ic{font-size:20px;line-height:1.2}
-.ni-lb{font-size:9px;font-weight:600;color:#9CA3AF}
-.ni-lb.on{color:#1E5FA5;font-weight:800}
-.dot{width:4px;height:4px;border-radius:50%;background:#1E5FA5}
-.pad{padding:16px;display:flex;flex-direction:column;gap:12px}
-.card{background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px}
-.btn{border:none;border-radius:14px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;width:100%;font-family:inherit;transition:all .15s}
-.btn:active{transform:scale(.97)}
-.bb{background:#1E5FA5;color:#fff}
-.bg{background:#16A34A;color:#fff}
-.bgr{background:#F3F4F6;color:#6B7280}
-.pb{height:7px;background:#E5E7EB;border-radius:4px;overflow:hidden}
-.pf{height:100%;border-radius:4px;transition:width .4s}
-.tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block}
-.stabs{background:#fff;border-bottom:1.5px solid #E5E7EB;display:flex;flex-shrink:0;overflow-x:auto}
-.stabs::-webkit-scrollbar{display:none}
-.st{flex:1;min-width:60px;display:flex;flex-direction:column;align-items:center;padding:9px 4px 7px;cursor:pointer;border-bottom:2.5px solid transparent;gap:2px}
-.st.on{border-bottom-color:#1E5FA5}
-.st-ic{font-size:16px}
-.st-lb{font-size:9px;font-weight:700;color:#9CA3AF}
-.st-lb.on{color:#1E5FA5}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.gc{background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;cursor:pointer;text-align:center;transition:transform .1s}
-.gc:active{transform:scale(.97)}
-.mbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end;justify-content:center}
-.modal{background:#fff;border-radius:24px 24px 0 0;padding:22px 20px;width:100%;max-width:430px;max-height:90vh;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom,0px)+22px)}
-.tw{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px)+82px);left:50%;transform:translateX(-50%);z-index:400;pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center}
-.toast{background:#1A1A2E;color:#fff;padding:10px 22px;border-radius:22px;font-size:13px;font-weight:700;white-space:nowrap;animation:pop .25s ease}
-@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-@keyframes wave-anim{0%,100%{height:6px}50%{height:20px}}
-.cbrow{display:flex;align-items:flex-end;gap:10px;margin-bottom:4px}
-.bubble{background:#fff;border-radius:18px 18px 18px 4px;padding:11px 14px;border:1.5px solid #DBEAFE;flex:1;font-size:13px;font-weight:600;color:#1e3a5f;line-height:1.6}
-.topt{background:#fff;border:2px solid #E5E7EB;border-radius:14px;padding:14px;cursor:pointer;font-size:14px;font-weight:600;color:#374151;transition:all .2s;text-align:center}
-.topt.ok{background:#F0FDF4;border-color:#16A34A;color:#16A34A}
-.topt.ng{background:#FFF1F2;border-color:#DC2626;color:#DC2626}
-.toggle{width:46px;height:26px;border-radius:13px;background:#D1D5DB;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;border:none}
-.toggle.on{background:#1E5FA5}
-.tk{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s}
-.toggle.on .tk{transform:translateX(20px)}
-.game-card{border-radius:20px;overflow:hidden;cursor:pointer;transition:transform .15s;box-shadow:0 4px 16px rgba(0,0,0,.1)}
-.game-card:active{transform:scale(.97)}
-.word-card{border-radius:24px;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;border:3px solid}
-.wave{display:flex;align-items:center;gap:3px;height:24px}
-.wave-bar{width:4px;border-radius:2px;animation:wave-anim 0.8s ease-in-out infinite}
-.wf-grid{display:inline-grid;gap:3px;background:#F3F4F6;padding:8px;border-radius:12px}
-.wf-cell{width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;background:#fff;border-radius:7px;cursor:pointer;font-family:monospace;border:1.5px solid #E5E7EB;transition:all .15s;user-select:none}
-.wf-cell.sel{background:#EFF6FF;border-color:#1E5FA5;color:#1E5FA5}
-.wf-cell.fnd{background:#DCFCE7;border-color:#86EFAC;color:#15803D}
-.letter-key{display:inline-flex;align-items:center;justify-content:center;width:32px;height:36px;background:#fff;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace;transition:all .15s}
-.letter-key:active{background:#EFF6FF;transform:scale(.95)}
-.letter-key.used{background:#F3F4F6;color:#9CA3AF;cursor:default}
-input,textarea{font-family:inherit;-webkit-appearance:none;border-radius:12px;border:1.5px solid #E5E7EB;padding:12px 14px;font-size:14px;width:100%;background:#fff}
-input:focus,textarea:focus{outline:none;border-color:#1E5FA5}
-.mode-card{border-radius:20px;padding:18px;cursor:pointer;transition:transform .1s;border:2px solid transparent;text-align:center}
-.mode-card:active{transform:scale(.97)}
-.survey-opt{background:#fff;border:2px solid #E5E7EB;border-radius:14px;padding:12px 14px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;transition:all .2s;text-align:left;width:100%;font-family:inherit}
-.survey-opt.sel{background:#EFF6FF;border-color:#1E5FA5;color:#1E5FA5}
-.wc{display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;font-family:monospace;text-transform:uppercase;border:2.5px solid #E5E7EB;border-radius:9px;transition:all .2s}
-/* ── 테마: 크림 라이트 (기본) ── */
-body, body.theme-light {
-  --bg:       #FAF8F5;
-  --bg-card:  #FFFFFF;
-  --bg-sub:   #F2F0EC;
-  --bg-input: #FFFFFF;
-  --bg-nav:   #FFFFFF;
-  --text1:    #1A1A2E;
-  --text2:    #4A5568;
-  --text3:    #9CA3AF;
-  --border:   #E8E4DE;
-  --border2:  #D1CCC4;
-  --btn-gray: #F2F0EC;
-  --btn-gray-t:#4A5568;
-  --shadow:   rgba(0,0,0,0.06);
-}
-body{background:var(--bg);color:var(--text1)}
-#app{background:var(--bg)!important}
-.body,.pad{background:var(--bg)!important}
-.card{background:var(--bg-card)!important;border-color:var(--border)!important}
-.nav{background:var(--bg-nav)!important;border-top-color:var(--border)!important}
-.stabs{background:var(--bg-sub)!important}
-.bubble{background:var(--bg-card)!important;color:var(--text1)!important;border-color:var(--border)!important}
-input,select,textarea{background:var(--bg-input)!important;border-color:var(--border)!important;color:var(--text1)!important}
-.bgr{background:var(--btn-gray)!important;color:var(--btn-gray-t)!important}
-.modal{background:var(--bg-card)!important}
-.mbg .modal{background:var(--bg-card)!important}
-
-/* ── 테마: 차콜 다크 ── */
-body.theme-dark {
-  --bg:       #1A1A1A;
-  --bg-card:  #242424;
-  --bg-sub:   #1F1F1F;
-  --bg-input: #2C2C2C;
-  --bg-nav:   #242424;
-  --text1:    #ECECEC;
-  --text2:    #A0AEC0;
-  --text3:    #64748B;
-  --border:   #333333;
-  --border2:  #444444;
-  --btn-gray: #2C2C2C;
-  --btn-gray-t:#A0AEC0;
-  --shadow:   rgba(0,0,0,0.4);
-}
-body.theme-dark{background:var(--bg)!important;color:var(--text1)!important}
-body.theme-dark #app{background:var(--bg)!important}
-body.theme-dark .hd{background:linear-gradient(135deg,#111,#1E3A5F)!important}
-body.theme-dark .body,body.theme-dark .pad{background:var(--bg)!important}
-body.theme-dark .card{background:var(--bg-card)!important;border-color:var(--border)!important;color:var(--text1)!important}
-body.theme-dark .nav{background:var(--bg-nav)!important;border-top-color:var(--border)!important}
-body.theme-dark .stabs{background:var(--bg-sub)!important}
-body.theme-dark .st{color:var(--text3)!important}
-body.theme-dark .st.on .st-lb{color:#60A5FA!important}
-body.theme-dark .bubble{background:var(--bg-card)!important;color:var(--text1)!important;border-color:var(--border)!important}
-body.theme-dark input,body.theme-dark select,body.theme-dark textarea{background:var(--bg-input)!important;border-color:var(--border)!important;color:var(--text1)!important}
-body.theme-dark .bgr{background:var(--btn-gray)!important;color:var(--btn-gray-t)!important}
-body.theme-dark .modal{background:var(--bg-card)!important;color:var(--text1)!important}
-body.theme-dark .mbg .modal{background:var(--bg-card)!important}
-body.theme-dark h2,body.theme-dark h3,body.theme-dark div{color:inherit}
-body.theme-dark .logo{color:#ECECEC!important}
-
-/* ── 폰트 크기 ── */
-body.fs-sm{font-size:13px!important}
-body.fs-md{font-size:15px!important}
-body.fs-lg{font-size:17px!important}
-</style>
-</head>
 <body>
 <div id="app">
   <div class="hd" id="hd" style="display:none">
@@ -3745,4 +4067,5 @@ body.fs-lg{font-size:17px!important}
 <script src="js/wordpacks.js"></script>
 <script src="js/features.js"></script>
 </body>
+</html>
 </html>

@@ -97,41 +97,148 @@ function downloadPack(packId) {
   if(!pack){toast('단어장을 찾을 수 없어요');return;}
   const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
   if(myPacks.has(packId)){toast('이미 추가된 단어장이에요');return;}
+
   const wordCnt = (pack.words||[]).length;
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div style="text-align:center;margin-bottom:16px">
-      <div style="font-size:48px;margin-bottom:8px">${pack.emoji}</div>
-      <div style="font-size:17px;font-weight:800">${pack.name}</div>
-      <div style="font-size:12px;color:#9CA3AF;margin-top:4px">${pack.cat} · ${wordCnt}개 단어</div>
+  const allBooks = [{name:'내 단어장', cnt:S.words.length}, ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))];
+
+  // 선택 상태 초기화
+  window._dlPackOpt = 'new'; // 'new' | 'existing'
+  window._dlPackBook = '내 단어장';
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:88vh;display:flex;flex-direction:column">
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border,#E5E7EB);flex-shrink:0;display:flex;align-items:center;gap:12px">
+      <span style="font-size:32px">${pack.emoji}</span>
+      <div>
+        <div style="font-size:16px;font-weight:800">${pack.name}</div>
+        <div style="font-size:12px;color:#9CA3AF">${pack.cat} · ${wordCnt}개 단어</div>
+      </div>
+      <button onclick="cm()" style="margin-left:auto;background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
     </div>
-    <div style="background:#EFF6FF;border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;color:#1E5FA5;line-height:1.7">
-      📚 "${pack.name}" 단어장이 내 단어장 목록에 추가돼요.<br>단어장 이름과 단어 ${wordCnt}개가 그대로 등록됩니다.
+    <div style="flex:1;overflow-y:auto;padding:16px 20px">
+
+      <!-- 추가 방식 선택 -->
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">📚 어떻게 추가할까요?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        <div id="dp-opt-new" onclick="dlPackSelectOpt('new')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid #1E5FA5;background:#EFF6FF;cursor:pointer">
+          <div style="width:18px;height:18px;border-radius:50%;background:#1E5FA5;flex-shrink:0"></div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#1E5FA5">✨ 새 단어장으로 추가</div>
+            <div style="font-size:11px;color:#6B7280">"${pack.name}" 이름으로 새 단어장 생성</div>
+          </div>
+        </div>
+        <div id="dp-opt-existing" onclick="dlPackSelectOpt('existing')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
+          <div style="width:18px;height:18px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0"></div>
+          <div>
+            <div style="font-size:13px;font-weight:700">📖 기존 단어장에 단어 추가</div>
+            <div style="font-size:11px;color:#6B7280">내가 만든 단어장에 단어를 합쳐요</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 기존 단어장 목록 (숨김) -->
+      <div id="dp-book-list" style="display:none">
+        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">추가할 단어장 선택</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${allBooks.map((b,i)=>{
+            const bEx = b.name==='내 단어장' ? new Set(S.words.map(w=>w.en.toLowerCase())) : new Set((S.books?.find(x=>x.name===b.name)?.words||[]).map(w=>w.en.toLowerCase()));
+            const addable = pack.words.filter(w=>!bEx.has(w.en.toLowerCase())).length;
+            return `<div onclick="dlPackSelectBook('${b.name.replace(/'/g,"\\'")}',this)" data-bname="${b.name.replace(/"/g,'&quot;')}"
+              style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="dp-radio" style="width:16px;height:16px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0"></div>
+                <span style="font-size:13px;font-weight:700">${b.name}</span>
+                <span style="font-size:11px;color:#9CA3AF">${b.cnt}개</span>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:${addable>0?'#1E5FA5':'#9CA3AF'}">+${addable}개</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
     </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="confirmDownloadPack('${packId}')" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">추가하기</button>
-      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    <div style="padding:12px 20px;border-top:1px solid var(--border,#E5E7EB);flex-shrink:0">
+      <button onclick="confirmDownloadPack('${packId}')" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">추가하기</button>
     </div>
   </div></div>`;
+}
+
+function dlPackSelectOpt(opt) {
+  window._dlPackOpt = opt;
+  const isNew = opt==='new';
+  const optNew = document.getElementById('dp-opt-new');
+  const optEx = document.getElementById('dp-opt-existing');
+  const bookList = document.getElementById('dp-book-list');
+  if(optNew) { optNew.style.border=isNew?'2px solid #1E5FA5':'2px solid var(--border,#E5E7EB)'; optNew.style.background=isNew?'#EFF6FF':'var(--bg-sub,#F9FAFB)'; optNew.querySelector('div').style.background=isNew?'#1E5FA5':'transparent'; optNew.querySelector('div').style.border=isNew?'':'2px solid #D1D5DB'; }
+  if(optEx) { optEx.style.border=isNew?'2px solid var(--border,#E5E7EB)':'2px solid #1E5FA5'; optEx.style.background=isNew?'var(--bg-sub,#F9FAFB)':'#EFF6FF'; optEx.querySelector('div').style.background=isNew?'transparent':'#1E5FA5'; optEx.querySelector('div').style.border=isNew?'2px solid #D1D5DB':''; }
+  if(bookList) bookList.style.display = isNew ? 'none' : 'block';
+}
+
+function dlPackSelectBook(name, el) {
+  window._dlPackBook = name;
+  document.querySelectorAll('[data-bname]').forEach(div=>{
+    div.style.border='1.5px solid var(--border,#E5E7EB)';
+    div.style.background='var(--bg-sub,#F9FAFB)';
+    const r=div.querySelector('.dp-radio');
+    if(r){r.style.background='';r.style.borderColor='#D1D5DB';}
+  });
+  if(el) {
+    el.style.border='1.5px solid #1E5FA5';
+    el.style.background='#EFF6FF';
+    const r=el.querySelector('.dp-radio');
+    if(r){r.style.background='#1E5FA5';r.style.borderColor='#1E5FA5';}
+  }
 }
 
 function confirmDownloadPack(packId) {
   const pack = WORD_PACKS.find(p=>p.id===packId);
   if(!pack) return;
-  if(!S.books) S.books = [];
-  let bookName = pack.name;
-  let cnt = 1;
-  while(S.books.find(b=>b.name===bookName) || bookName==='내 단어장') {
-    bookName = `${pack.name} (${++cnt})`;
+
+  const opt = window._dlPackOpt || 'new';
+
+  if(opt==='new') {
+    // 새 단어장 생성
+    if(!S.books) S.books = [];
+    let bookName = pack.name;
+    let cnt = 1;
+    while(S.books.find(b=>b.name===bookName) || bookName==='내 단어장') {
+      bookName = `${pack.name} (${++cnt})`;
+    }
+    S.books.push({name:bookName, words:[...(pack.words||[])], markMap:{}, srsMap:{}, learned:[]});
+    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+    myPacks.add(packId);
+    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+    sv(); cm();
+    toast(`✅ "${bookName}" 추가 완료! (${(pack.words||[]).length}개)`);
+    S.stab='books'; go('mybooks');
+
+  } else {
+    // 기존 단어장에 단어 추가
+    const targetName = window._dlPackBook || '내 단어장';
+    if(targetName==='내 단어장') {
+      const ex = new Set(S.words.map(w=>w.en.toLowerCase()));
+      const newW = pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
+      S.words.push(...newW);
+      const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+      myPacks.add(packId);
+      localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+      sv(); cm();
+      toast(`✅ "내 단어장"에 ${newW.length}개 추가!`);
+    } else {
+      const bk = (S.books||[]).find(b=>b.name===targetName);
+      if(!bk){toast('단어장을 찾을 수 없어요','err');return;}
+      const ex = new Set((bk.words||[]).map(w=>w.en.toLowerCase()));
+      const newW = pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
+      if(!bk.words) bk.words=[];
+      bk.words.push(...newW);
+      const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+      myPacks.add(packId);
+      localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
+      sv(); cm();
+      toast(`✅ "${targetName}"에 ${newW.length}개 추가!`);
+    }
+    S.stab='books'; go('mybooks');
   }
-  S.books.push({name:bookName, words:[...(pack.words||[])], markMap:{}, srsMap:{}, learned:[]});
-  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-  myPacks.add(packId);
-  localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-  sv(); cm();
-  toast(`✅ "${bookName}" 추가 완료! (${(pack.words||[]).length}개)`);
-  S.stab = 'books';
-  go('study');
 }
+
 
 
 // ── 발음 따라하기 ──
@@ -432,214 +539,6 @@ async function downloadDiaryImg(e) {
 }
 
 // ── 마켓 단어장 추가/미리보기 ──
-function downloadPack(packId) {
-  const pack = WORD_PACKS.find(p=>p.id===packId);
-  if(!pack){toast('단어장을 찾을 수 없어요');return;}
-
-  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-  if(myPacks.has(packId)){toast('이미 추가된 단어장이에요');return;}
-
-  // 단어 수 미리 계산
-  const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
-  const newWordsToMain = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
-  const totalWords = pack.words.length;
-
-  // 전체 단어장 목록
-  const allBooks = [
-    {name:'내 단어장', cnt: S.words.length},
-    ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))
-  ];
-
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:88vh;display:flex;flex-direction:column">
-    <!-- 헤더 -->
-    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="font-size:36px">${pack.emoji}</div>
-        <div>
-          <div style="font-size:16px;font-weight:800">${pack.name}</div>
-          <div style="font-size:12px;color:#9CA3AF">${pack.cat} · 총 ${totalWords}개 단어</div>
-        </div>
-      </div>
-    </div>
-
-    <div style="flex:1;overflow-y:auto;padding:16px 20px">
-
-      <!-- 추가 방법 선택 -->
-      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">📚 어떻게 추가할까요?</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-
-        <!-- 옵션 1: 기존 단어장에 추가 -->
-        <div id="opt-existing" onclick="selectAddOpt('existing')" style="border:2px solid #1E5FA5;border-radius:14px;padding:14px;cursor:pointer;background:#EFF6FF">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:20px;height:20px;border-radius:50%;background:#1E5FA5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <div style="width:8px;height:8px;border-radius:50%;background:#fff"></div>
-            </div>
-            <div>
-              <div style="font-size:13px;font-weight:700;color:#1E5FA5">📖 기존 단어장에 단어 추가</div>
-              <div style="font-size:11px;color:#6B7280;margin-top:2px">선택한 단어장에 단어들을 합쳐요</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 옵션 2: 새 단어장으로 추가 -->
-        <div id="opt-new" onclick="selectAddOpt('new')" style="border:2px solid #E5E7EB;border-radius:14px;padding:14px;cursor:pointer;background:#fff">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:20px;height:20px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0"></div>
-            <div>
-              <div style="font-size:13px;font-weight:700;color:#374151">✨ 새 단어장으로 만들기</div>
-              <div style="font-size:11px;color:#6B7280;margin-top:2px">"${pack.name}" 이름으로 새 단어장 생성</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 기존 단어장 선택 (기본 표시) -->
-      <div id="book-select-area">
-        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">추가할 단어장 선택</div>
-        <div style="display:flex;flex-direction:column;gap:6px" id="book-list">
-          ${allBooks.map(b=>{
-            const bExisting = b.name==='내 단어장'
-              ? existing
-              : new Set((S.books?.find(x=>x.name===b.name)?.words||[]).map(w=>w.en.toLowerCase()));
-            const addable = pack.words.filter(w=>!bExisting.has(w.en.toLowerCase())).length;
-            return `<div onclick="selectBook('${b.name.replace(/'/g,"\\'")}',this)" data-book="${b.name.replace(/"/g,'&quot;')}"
-              style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;border:1.5px solid #E5E7EB;background:#F9FAFB;cursor:pointer">
-              <div style="display:flex;align-items:center;gap:10px">
-                <div style="width:18px;height:18px;border-radius:50%;border:2px solid #D1D5DB" id="book-radio-${b.name.replace(/[^a-zA-Z가-힣]/g,'_')}"></div>
-                <div>
-                  <div style="font-size:13px;font-weight:700;color:#374151">${b.name}</div>
-                  <div style="font-size:11px;color:#9CA3AF">현재 ${b.cnt}개</div>
-                </div>
-              </div>
-              <div style="font-size:12px;font-weight:700;color:${addable>0?'#1E5FA5':'#9CA3AF'}">
-                +${addable}개
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-
-      <!-- 새 단어장 이름 (숨김) -->
-      <div id="new-book-area" style="display:none">
-        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">새 단어장 이름</div>
-        <input id="new-book-input" value="${pack.name}" style="font-size:14px;font-weight:700">
-        <div style="font-size:11px;color:#9CA3AF;margin-top:6px">${totalWords}개 단어로 새 단어장이 만들어져요</div>
-      </div>
-    </div>
-
-    <!-- 하단 버튼 -->
-    <div style="padding:12px 20px;border-top:1px solid #E5E7EB;flex-shrink:0">
-      <button onclick="confirmDownloadPack('${packId}')" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
-        ⬇️ 추가하기
-      </button>
-    </div>
-  </div></div>`;
-
-  // 기본 선택: 내 단어장
-  window._selectedBook = '내 단어장';
-  window._addOpt = 'existing';
-  selectBook('내 단어장', document.querySelector('[data-book="내 단어장"]'));
-}
-
-function selectAddOpt(opt) {
-  window._addOpt = opt;
-  const optExisting = document.getElementById('opt-existing');
-  const optNew = document.getElementById('opt-new');
-  const bookArea = document.getElementById('book-select-area');
-  const newArea = document.getElementById('new-book-area');
-
-  if(opt==='existing') {
-    if(optExisting) { optExisting.style.border='2px solid #1E5FA5'; optExisting.style.background='#EFF6FF'; optExisting.querySelector('div div').style.background='#1E5FA5'; }
-    if(optNew) { optNew.style.border='2px solid #E5E7EB'; optNew.style.background='#fff'; optNew.querySelector('div div').style.background='transparent'; optNew.querySelector('div div').style.border='2px solid #D1D5DB'; }
-    if(bookArea) bookArea.style.display='block';
-    if(newArea) newArea.style.display='none';
-  } else {
-    if(optNew) { optNew.style.border='2px solid #1E5FA5'; optNew.style.background='#EFF6FF'; }
-    if(optExisting) { optExisting.style.border='2px solid #E5E7EB'; optExisting.style.background='#fff'; }
-    if(bookArea) bookArea.style.display='none';
-    if(newArea) newArea.style.display='block';
-  }
-}
-
-function selectBook(name, el) {
-  window._selectedBook = name;
-  // 모든 라디오 초기화
-  document.querySelectorAll('#book-list > div').forEach(div=>{
-    div.style.border='1.5px solid #E5E7EB';
-    div.style.background='#F9FAFB';
-    const radio = div.querySelector('[id^="book-radio-"]');
-    if(radio){ radio.style.background=''; radio.style.border='2px solid #D1D5DB'; }
-  });
-  // 선택된 것 활성화
-  if(el) {
-    el.style.border='1.5px solid #1E5FA5';
-    el.style.background='#EFF6FF';
-    const radio = el.querySelector('[id^="book-radio-"]');
-    if(radio){ radio.style.background='#1E5FA5'; radio.style.border='2px solid #1E5FA5'; }
-  }
-}
-
-function confirmDownloadPack(packId) {
-  const pack = WORD_PACKS.find(p=>p.id===packId);
-  if(!pack) return;
-
-  const opt = window._addOpt || 'existing';
-
-  if(opt === 'new') {
-    // 새 단어장 생성
-    const newName = document.getElementById('new-book-input')?.value.trim() || pack.name;
-    if(!S.books) S.books = [];
-    if(S.books.find(b=>b.name===newName)) {
-      toast('이미 같은 이름의 단어장이 있어요','err');
-      return;
-    }
-    S.books.push({
-      name: newName,
-      words: [...pack.words],
-      markMap: {},
-      srsMap: {},
-      learned: []
-    });
-    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-    myPacks.add(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-    sv(); cm();
-    toast(`✅ "${newName}" 단어장 생성! (${pack.words.length}개)`);
-    addXP(pack.words.length);
-    go('market');
-    return;
-  }
-
-  // 기존 단어장에 추가
-  const targetBook = window._selectedBook || '내 단어장';
-
-  if(targetBook === '내 단어장') {
-    const existing = new Set(S.words.map(w=>w.en.toLowerCase()));
-    const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
-    S.words.push(...newWords);
-    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-    myPacks.add(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-    sv(); cm();
-    toast(`✅ "내 단어장"에 ${newWords.length}개 추가!`);
-    addXP(newWords.length);
-  } else {
-    const bk = S.books?.find(b=>b.name===targetBook);
-    if(!bk){ toast('단어장을 찾을 수 없어요','err'); return; }
-    const existing = new Set((bk.words||[]).map(w=>w.en.toLowerCase()));
-    const newWords = pack.words.filter(w=>!existing.has(w.en.toLowerCase()));
-    if(!bk.words) bk.words = [];
-    bk.words.push(...newWords);
-    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-    myPacks.add(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-    sv(); cm();
-    toast(`✅ "${targetBook}"에 ${newWords.length}개 추가!`);
-    addXP(newWords.length);
-  }
-  go('market');
-}
-
 function previewPack(packId) {
   const pack = WORD_PACKS.find(p=>p.id===packId);
   if(!pack) return;

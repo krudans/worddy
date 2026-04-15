@@ -186,6 +186,7 @@ label{font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:5
     <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>분석</div>
     <div class="ss">콘텐츠</div>
     <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어장 관리</div>
+    <div class="ni" onclick="T('sw')" id="ni-sw"><span class="ic">🎓</span>시스템 단어장</div>
     <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
     <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🦋</span>레벨 관리</div>
     <div class="ni" onclick="T('nt')" id="ni-nt"><span class="ic">📢</span>공지사항</div>
@@ -381,7 +382,7 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,sw:rSW,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -857,6 +858,414 @@ async function saveAG(wj){
     await db.collection('words').doc(selLv).set({list:mg,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     toast(`✅ ${added}개 저장 완료!`,'ok');cm();loadW(selLv);
   }catch(e){toast('저장 오류: '+e.message,'err');}
+}
+
+// ── 시스템 단어장 관리 ──
+const SYS_LEVELS = [
+  {id:'egg',   name:'알',          emoji:'🥚', desc:'기초 100단어 (초등 3~4학년)', color:'#F9A825'},
+  {id:'baby',  name:'아기 벌거지', emoji:'🐛', desc:'초등 300단어 (초등 5~6학년)', color:'#43A047'},
+  {id:'crown', name:'왕관 벌거지', emoji:'🍀', desc:'중등 500단어 (중학교)',        color:'#2E7D32'},
+  {id:'coco',  name:'번데기',      emoji:'🫘', desc:'수능 단어 (고등학교)',          color:'#5D4037'},
+  {id:'shine', name:'빛나는 번데기',emoji:'✨', desc:'토익 필수 단어',               color:'#E65100'},
+  {id:'small', name:'작은 나비',   emoji:'🦋', desc:'토플 AWL 단어',               color:'#880E4F'},
+  {id:'big',   name:'큰 나비',     emoji:'🦋', desc:'GRE 고급 단어',               color:'#6A1B9A'},
+  {id:'god',   name:'황금 나비',   emoji:'⚡', desc:'원어민급 고급 단어',            color:'#B71C1C'},
+];
+
+let selSWLevel = 'egg';
+let swWords = [];
+
+async function rSW() {
+  document.getElementById('main').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:22px;font-weight:900">🎓 시스템 단어장 관리</h2>
+      <div style="font-size:12px;color:#9CA3AF">Firebase: system_words 컬렉션</div>
+    </div>
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;min-height:600px">
+      <!-- 레벨 목록 -->
+      <div class="card" style="padding:10px">
+        <div class="ct" style="margin-bottom:10px">레벨 선택</div>
+        <div id="sw-level-list" style="display:flex;flex-direction:column;gap:4px">
+          ${SYS_LEVELS.map(l=>`
+          <div onclick="selectSWLevel('${l.id}')" id="swl-${l.id}" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;cursor:pointer;background:${selSWLevel===l.id?l.color+'22':'transparent'};border:1.5px solid ${selSWLevel===l.id?l.color:'transparent'}">
+            <span style="font-size:20px">${l.emoji}</span>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:${selSWLevel===l.id?l.color:'#374151'}">${l.name}</div>
+              <div id="swc-${l.id}" style="font-size:11px;color:#9CA3AF">로딩 중...</div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+      <!-- 단어 관리 영역 -->
+      <div id="sw-content">
+        <div style="color:#9CA3AF;text-align:center;padding:40px">레벨를 선택하세요</div>
+      </div>
+    </div>`;
+
+  // 각 레벨 단어 수 로드
+  SYS_LEVELS.forEach(async l => {
+    try {
+      const doc = await db.collection('system_words').doc(l.id).get();
+      const cnt = doc.exists ? (doc.data().words||[]).length : 0;
+      const el = document.getElementById('swc-'+l.id);
+      if(el) el.textContent = cnt+'개';
+    } catch(e) {}
+  });
+
+  // 기본 선택
+  selectSWLevel(selSWLevel);
+}
+
+async function selectSWLevel(lvId) {
+  selSWLevel = lvId;
+  // 레벨 하이라이트
+  SYS_LEVELS.forEach(l => {
+    const el = document.getElementById('swl-'+l.id);
+    if(!el) return;
+    el.style.background = l.id===lvId ? l.color+'22' : 'transparent';
+    el.style.border = '1.5px solid '+(l.id===lvId ? l.color : 'transparent');
+    el.querySelector('div div').style.color = l.id===lvId ? l.color : '#374151';
+  });
+
+  const lv = SYS_LEVELS.find(l=>l.id===lvId);
+  const cont = document.getElementById('sw-content');
+  if(!cont) return;
+  cont.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
+
+  try {
+    const doc = await db.collection('system_words').doc(lvId).get();
+    swWords = doc.exists ? (doc.data().words||[]) : [];
+  } catch(e) {
+    swWords = [];
+  }
+
+  renderSWContent(lv);
+}
+
+function renderSWContent(lv, swTab='list') {
+  const cont = document.getElementById('sw-content');
+  if(!cont) return;
+
+  cont.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:28px">${lv.emoji}</span>
+          <div>
+            <div style="font-size:16px;font-weight:800;color:${lv.color}">${lv.name}</div>
+            <div style="font-size:12px;color:#9CA3AF">${lv.desc} · ${swWords.length}개</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn bg" onclick="showSWAddWord('${lv.id}')">➕ 단어 추가</button>
+          <button class="btn bp" onclick="showSWBulkAdd('${lv.id}')">📋 대량 추가</button>
+          <button class="btn" style="background:#FDF4FF;color:#7C3AED;border:1.5px solid #E9D5FF" onclick="showSWAIGen('${lv.id}')">✨ AI 생성</button>
+          <button class="btn bgr" onclick="exportSWCSV('${lv.id}')">📥 CSV 내보내기</button>
+        </div>
+      </div>
+
+      <!-- 탭 -->
+      <div style="display:flex;border-bottom:1px solid #E5E7EB;margin-bottom:14px">
+        <div onclick="renderSWContent(SYS_LEVELS.find(l=>l.id==='${lv.id}'),'list')" style="padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;color:${swTab==='list'?lv.color:'#9CA3AF'};border-bottom:2px solid ${swTab==='list'?lv.color:'transparent'}">📋 단어 목록 (${swWords.length})</div>
+        <div onclick="renderSWContent(SYS_LEVELS.find(l=>l.id==='${lv.id}'),'dup')" style="padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;color:${swTab==='dup'?lv.color:'#9CA3AF'};border-bottom:2px solid ${swTab==='dup'?lv.color:'transparent'}">🔍 중복 필터</div>
+      </div>
+
+      ${swTab==='list' ? renderSWList(lv) : renderSWDup(lv)}
+    </div>`;
+}
+
+function renderSWList(lv) {
+  if(!swWords.length) return `
+    <div style="text-align:center;padding:40px;color:#9CA3AF">
+      <div style="font-size:36px;margin-bottom:8px">${lv.emoji}</div>
+      <div style="font-size:14px">아직 단어가 없어요</div>
+      <div style="font-size:12px;margin-top:4px">위 버튼으로 단어를 추가해주세요</div>
+    </div>`;
+
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <input placeholder="단어 검색..." id="sw-search" oninput="filterSWWords(this.value,'${lv.id}')" style="flex:1;font-size:13px">
+      <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){swWords=[];saveSWWords('${lv.id}');renderSWContent(SYS_LEVELS.find(l=>l.id==='${lv.id}'),'list')}">전체삭제</button>
+    </div>
+    <div class="tw">
+      <table>
+        <tr><th>#</th><th>영단어</th><th>뜻</th><th>발음</th><th>이모지</th><th>작업</th></tr>
+        ${swWords.map((w,i)=>`<tr>
+          <td style="color:#9CA3AF;font-size:12px">${i+1}</td>
+          <td><strong style="font-family:monospace">${w.en}</strong></td>
+          <td>${w.kr}</td>
+          <td style="font-size:11px;color:#9CA3AF">${w.ph||''}</td>
+          <td>${w.img||'📝'}</td>
+          <td>
+            <div style="display:flex;gap:4px">
+              <button class="btn bgr" style="font-size:11px;padding:3px 8px" onclick="editSWWord('${lv.id}',${i})">✏️</button>
+              <button class="btn br" style="font-size:11px;padding:3px 8px" onclick="deleteSWWord('${lv.id}',${i})">🗑</button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+function renderSWDup(lv) {
+  const enSet = new Set();
+  const dups = [];
+  swWords.forEach((w,i) => {
+    if(enSet.has(w.en.toLowerCase())) dups.push({w,i});
+    else enSet.add(w.en.toLowerCase());
+  });
+
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="background:#FEF2F2;border-radius:12px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:900;color:#DC2626">${dups.length}</div>
+        <div style="font-size:12px;color:#9CA3AF">내부 중복</div>
+      </div>
+      <div style="background:#F0FDF4;border-radius:12px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:900;color:#16A34A">${swWords.length-dups.length}</div>
+        <div style="font-size:12px;color:#9CA3AF">고유 단어</div>
+      </div>
+    </div>
+    ${dups.length>0 ? `
+      <div style="margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#DC2626;margin-bottom:8px">중복 단어 (${dups.length}개)</div>
+        ${dups.map(({w,i})=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:#FEF2F2;border-radius:8px;margin-bottom:4px">
+          <span style="font-size:13px;font-family:monospace">${w.en} - ${w.kr}</span>
+          <button onclick="deleteSWWord('${lv.id}',${i});renderSWContent(SYS_LEVELS.find(l=>l.id==='${lv.id}'),'dup')" class="btn br" style="font-size:11px;padding:3px 8px">삭제</button>
+        </div>`).join('')}
+        <button onclick="removeSWDups('${lv.id}')" class="btn br" style="width:100%;margin-top:6px;font-size:12px">🧹 중복 모두 제거</button>
+      </div>` : '<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A">✅ 중복 없음!</div>'}`;
+}
+
+function filterSWWords(v, lvId) {
+  document.querySelectorAll('.tw table tr:not(:first-child)').forEach(tr=>{
+    tr.style.display = tr.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function showSWAddWord(lvId) {
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">➕ 단어 추가 (${SYS_LEVELS.find(l=>l.id===lvId)?.name})</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg"><label>영단어 *</label><input id="sw-en" placeholder="apple"></div>
+      <div class="fg"><label>뜻 *</label><input id="sw-kr" placeholder="사과"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg"><label>발음기호</label><input id="sw-ph" placeholder="[ˈæpl]"></div>
+      <div class="fg"><label>이모지</label><input id="sw-img" placeholder="🍎"></div>
+    </div>
+    <div class="fg"><label>예문</label><input id="sw-ex" placeholder="I eat an apple."></div>
+    <div class="fg"><label>암기팁</label><input id="sw-tip" placeholder="에이플 = 사과"></div>
+    <button class="btn bp" onclick="aiSWFill()" style="width:100%;margin-bottom:10px">✨ AI 자동완성</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn bb" onclick="saveSWWord('${lvId}')" style="flex:1">추가</button>
+      <button class="btn bgr" onclick="cm()">취소</button>
+    </div>
+    <div id="sw-msg" style="margin-top:8px"></div>
+  </div></div>`;
+}
+
+async function aiSWFill() {
+  const en = document.getElementById('sw-en')?.value.trim();
+  if(!en){toast('영단어를 입력하세요','err');return;}
+  const msg = document.getElementById('sw-msg');
+  if(msg) msg.innerHTML='<div style="color:#9CA3AF;font-size:12px">AI 자동완성 중...</div>';
+  try {
+    const text = await callAI(`"${en}" 단어 정보를 JSON으로만: {"kr":"뜻","ph":"[발음기호]","ex":"예문","tip":"암기팁","img":"이모지"}`);
+    const p = JSON.parse(text);
+    if(p.kr) document.getElementById('sw-kr').value=p.kr;
+    if(p.ph) document.getElementById('sw-ph').value=p.ph;
+    if(p.ex) document.getElementById('sw-ex').value=p.ex;
+    if(p.tip) document.getElementById('sw-tip').value=p.tip;
+    if(p.img) document.getElementById('sw-img').value=p.img;
+    if(msg) msg.innerHTML='<div style="color:#16A34A;font-size:12px">✅ AI 자동완성!</div>';
+  } catch(e) {
+    if(msg) msg.innerHTML='<div style="color:#DC2626;font-size:12px">AI 실패. 직접 입력해주세요</div>';
+  }
+}
+
+async function saveSWWord(lvId) {
+  const en=document.getElementById('sw-en')?.value.trim();
+  const kr=document.getElementById('sw-kr')?.value.trim();
+  if(!en||!kr){toast('영단어와 뜻은 필수입니다','err');return;}
+  if(swWords.find(w=>w.en.toLowerCase()===en.toLowerCase())){toast('이미 있는 단어입니다','err');return;}
+  swWords.push({en,kr,ph:document.getElementById('sw-ph')?.value.trim()||'',ex:document.getElementById('sw-ex')?.value.trim()||en+'.',img:document.getElementById('sw-img')?.value.trim()||'📝',tip:document.getElementById('sw-tip')?.value.trim()||'',meanings:[kr]});
+  await saveSWWords(lvId);
+  toast(`✅ "${en}" 추가 완료!`,'ok');
+  cm();
+  renderSWContent(SYS_LEVELS.find(l=>l.id===lvId));
+  const cel=document.getElementById('swc-'+lvId);
+  if(cel) cel.textContent=swWords.length+'개';
+}
+
+function showSWBulkAdd(lvId) {
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">📋 대량 추가</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">한 줄에 하나씩 (영단어,뜻 또는 영단어,뜻,발음,예문,이모지)</div>
+    <textarea id="sw-bulk" placeholder="apple,사과&#10;book,책&#10;computer,컴퓨터" style="min-height:200px;resize:vertical;font-family:monospace;font-size:12px"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn bb" onclick="saveSWBulk('${lvId}')" style="flex:1">📥 추가</button>
+      <button class="btn bgr" onclick="cm()">취소</button>
+    </div>
+    <div id="sw-bulk-msg" style="margin-top:8px"></div>
+  </div></div>`;
+}
+
+async function saveSWBulk(lvId) {
+  const text=document.getElementById('sw-bulk')?.value.trim();
+  const msg=document.getElementById('sw-bulk-msg');
+  if(!text){toast('내용을 입력하세요','err');return;}
+  const lines=text.split('\n').filter(l=>l.trim());
+  let added=0, dup=0;
+  lines.forEach(line=>{
+    const p=line.split(',').map(s=>s.trim());
+    if(p.length<2||!p[0]||!p[1])return;
+    if(swWords.find(w=>w.en.toLowerCase()===p[0].toLowerCase())){dup++;return;}
+    swWords.push({en:p[0],kr:p[1],ph:p[2]||'',ex:p[3]||p[0]+'.',img:p[4]||'📝',tip:p[5]||'',meanings:[p[1]]});
+    added++;
+  });
+  await saveSWWords(lvId);
+  if(msg) msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
+  if(added>0){
+    const cel=document.getElementById('swc-'+lvId);
+    if(cel) cel.textContent=swWords.length+'개';
+    setTimeout(()=>{cm();renderSWContent(SYS_LEVELS.find(l=>l.id===lvId));},1000);
+  }
+}
+
+function showSWAIGen(lvId) {
+  const lv=SYS_LEVELS.find(l=>l.id===lvId);
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">✨ AI 단어 생성 (${lv?.name})</div>
+    <div class="fg"><label>생성 테마</label><input id="sw-ai-theme" placeholder="예: ${lv?.desc}에 맞는 단어" value="${lv?.desc}"></div>
+    <div class="fg"><label>생성 개수</label><input id="sw-ai-cnt" type="number" value="20" min="5" max="50"></div>
+    <button class="btn bp" onclick="genSWAI('${lvId}')" style="width:100%">✨ AI로 생성</button>
+    <div id="sw-ai-result" style="margin-top:12px"></div>
+  </div></div>`;
+}
+
+async function genSWAI(lvId) {
+  const th=document.getElementById('sw-ai-theme')?.value.trim();
+  const cnt=document.getElementById('sw-ai-cnt')?.value||20;
+  const re=document.getElementById('sw-ai-result');
+  if(!th){toast('테마를 입력하세요','err');return;}
+  if(re) re.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:16px">AI 생성 중... ⏳</div>';
+  try {
+    const existing=swWords.map(w=>w.en).slice(0,20).join(', ');
+    const text=await callAI(`영어 단어 ${cnt}개를 JSON 배열로만 반환. 순수 JSON만.
+테마: "${th}"
+${existing?'중복 금지: '+existing:''}
+형식: [{"en":"word","kr":"뜻","ph":"[발음기호]","ex":"예문","img":"이모지","tip":"암기팁"}]`, 3000);
+    const ws=JSON.parse(text);
+    const existSet=new Set(swWords.map(w=>w.en.toLowerCase()));
+    const newWs=ws.filter(w=>!existSet.has(w.en.toLowerCase()));
+    if(re) re.innerHTML=`
+      <div style="background:#F0FDF4;border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:#16A34A">✅ ${newWs.length}개 생성 (중복 ${ws.length-newWs.length}개 제외)</div>
+        <div style="font-size:12px;color:#374151;max-height:100px;overflow-y:auto;margin-top:6px">${newWs.slice(0,8).map(w=>`• ${w.en} - ${w.kr}`).join('<br>')}${newWs.length>8?`<br>... 외 ${newWs.length-8}개`:''}</div>
+      </div>
+      <button class="btn bg" style="width:100%" onclick="saveSWAI('${lvId}',${JSON.stringify(newWs).replace(/"/g,'&quot;')})">📥 저장</button>`;
+  } catch(e) {
+    if(re) re.innerHTML=`<div style="color:#DC2626;padding:10px;background:#FEF2F2;border-radius:8px;font-size:12px">❌ 생성 실패: ${e.message}</div>`;
+  }
+}
+
+async function saveSWAI(lvId, wsJson) {
+  const ws=typeof wsJson==='string'?JSON.parse(wsJson.replace(/&quot;/g,'"')):wsJson;
+  const existSet=new Set(swWords.map(w=>w.en.toLowerCase()));
+  ws.forEach(w=>{
+    if(!existSet.has(w.en.toLowerCase())) {
+      swWords.push({en:w.en,kr:w.kr,ph:w.ph||'',ex:w.ex||w.en+'.',img:w.img||'📝',tip:w.tip||'',meanings:[w.kr]});
+    }
+  });
+  await saveSWWords(lvId);
+  toast(`✅ ${ws.length}개 저장!`,'ok');
+  cm();
+  renderSWContent(SYS_LEVELS.find(l=>l.id===lvId));
+  const cel=document.getElementById('swc-'+lvId);
+  if(cel) cel.textContent=swWords.length+'개';
+}
+
+function editSWWord(lvId, idx) {
+  const w=swWords[idx];
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">✏️ 단어 수정</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg"><label>영단어</label><input id="esw-en" value="${w.en.replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>뜻</label><input id="esw-kr" value="${w.kr.replace(/"/g,'&quot;')}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg"><label>발음기호</label><input id="esw-ph" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>이모지</label><input id="esw-img" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
+    </div>
+    <div class="fg"><label>예문</label><input id="esw-ex" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
+    <div class="fg"><label>암기팁</label><input id="esw-tip" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bb" onclick="saveEditSWWord('${lvId}',${idx})" style="flex:1">저장</button>
+      <button class="btn bgr" onclick="cm()">취소</button>
+    </div>
+  </div></div>`;
+}
+
+async function saveEditSWWord(lvId, idx) {
+  swWords[idx]={
+    en:document.getElementById('esw-en').value.trim(),
+    kr:document.getElementById('esw-kr').value.trim(),
+    ph:document.getElementById('esw-ph').value.trim(),
+    ex:document.getElementById('esw-ex').value.trim(),
+    img:document.getElementById('esw-img').value.trim()||'📝',
+    tip:document.getElementById('esw-tip').value.trim(),
+    meanings:[document.getElementById('esw-kr').value.trim()]
+  };
+  await saveSWWords(lvId);
+  toast('✅ 수정 완료','ok');
+  cm();
+  renderSWContent(SYS_LEVELS.find(l=>l.id===lvId));
+}
+
+async function deleteSWWord(lvId, idx) {
+  swWords.splice(idx,1);
+  await saveSWWords(lvId);
+  renderSWContent(SYS_LEVELS.find(l=>l.id===lvId));
+  const cel=document.getElementById('swc-'+lvId);
+  if(cel) cel.textContent=swWords.length+'개';
+}
+
+async function removeSWDups(lvId) {
+  const seen=new Set();
+  swWords=swWords.filter(w=>{
+    const k=w.en.toLowerCase();
+    if(seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  await saveSWWords(lvId);
+  toast('✅ 중복 제거 완료','ok');
+  renderSWContent(SYS_LEVELS.find(l=>l.id===lvId),'dup');
+}
+
+async function saveSWWords(lvId) {
+  try {
+    await db.collection('system_words').doc(lvId).set({
+      words: swWords,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      level: lvId
+    });
+    return true;
+  } catch(e) {
+    toast('저장 실패: '+e.message,'err');
+    return false;
+  }
+}
+
+function exportSWCSV(lvId) {
+  if(!swWords.length){toast('단어가 없어요','err');return;}
+  const rows=['en,kr,ph,ex,img,tip'];
+  swWords.forEach(w=>rows.push([w.en,w.kr,w.ph||'',w.ex||'',w.img||'',w.tip||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
+  const blob=new Blob(['\uFEFF'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`system_${lvId}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('✅ CSV 내보내기 완료','ok');
 }
 
 // ── 마켓 팩 관리 ──

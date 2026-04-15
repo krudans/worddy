@@ -1560,12 +1560,22 @@ function showOnboarding() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'study',ic:'📖',lb:'학습'},{id:'game_center',ic:'🎮',lb:'게임'},{id:'market',ic:'🛒',lb:'마켓'},{id:'diary',ic:'✍️',lb:'일기'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[
+  {id:'home',     ic:'🏠', lb:'홈'},
+  {id:'mybooks',  ic:'📚', lb:'단어장'},
+  {id:'learn',    ic:'🎓', lb:'학습'},
+  {id:'game_center',ic:'🎮',lb:'게임'},
+  {id:'market',   ic:'🛒', lb:'마켓'},
+  {id:'diary',    ic:'✍️', lb:'일기'},
+  {id:'profile',  ic:'👤', lb:'프로필'},
+];
 
 function go(tab,sub) {
   if(tab&&tab!=='game'&&tab!=='ranking') {
-    // 학습 탭을 직접 클릭(sub 없이)하면 항상 단어장 선택 첫 화면으로
-    if(tab==='study' && !sub) S.stab='books';
+    // 단어장 탭 직접 클릭 → 항상 단어장 목록 첫 화면
+    if(tab==='mybooks' && !sub) S.stab='books';
+    // 기존 study → mybooks로 리다이렉트
+    if(tab==='study') tab='mybooks';
     S.tab=tab;
   }
   if(tab==='ranking') S.tab='ranking';
@@ -1573,11 +1583,14 @@ function go(tab,sub) {
   if(sub) S.stab=sub;
   const nav=document.getElementById('nav');
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,study:rStudy,game_center:rGameCenter,game:rGame,market:rMarket,diary:rDiary,profile:rProfile};
+  const map={home:rHome,mybooks:rMyBooks,learn:rLearnTab,game_center:rGameCenter,game:rGame,market:rMarket,diary:rDiary,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
-  if(S.tab==='study'&&S.stab==='learn') requestAnimationFrame(initFlashSwipe);
+  // game 탭일 때 nav 숨김 (게임헤더가 나가기 버튼 포함)
+  const navEl=document.getElementById('nav');
+  if(navEl) navEl.style.display = S.tab==='game' ? 'none' : '';
+  if(S.tab==='mybooks'&&S.stab==='learn') requestAnimationFrame(initFlashSwipe);
 }
 
 // ── 홈 ──
@@ -1609,12 +1622,12 @@ function rHome() {
   parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px">
     <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:12px">📊 오늘 현황</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-      <div style="text-align:center;padding:10px;background:${todayLog.words>0?'#F0FDF4':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('study','learn')">
+      <div style="text-align:center;padding:10px;background:${todayLog.words>0?'#F0FDF4':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('mybooks','learn')">
         <div style="font-size:20px">${todayLog.words>0?'✅':'📚'}</div>
         <div style="font-size:18px;font-weight:900;color:${todayLog.words>0?'#16A34A':'#9CA3AF'}">${todayLog.words}</div>
         <div style="font-size:10px;color:#9CA3AF">학습</div>
       </div>
-      <div style="text-align:center;padding:10px;background:${todayLog.quiz>0?'#EFF6FF':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('study','quiz3')">
+      <div style="text-align:center;padding:10px;background:${todayLog.quiz>0?'#EFF6FF':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('mybooks','quiz3')">
         <div style="font-size:20px">${todayLog.quiz>0?'✅':'🎯'}</div>
         <div style="font-size:18px;font-weight:900;color:${todayLog.quiz>0?'#1E5FA5':'#9CA3AF'}">${todayLog.quiz}</div>
         <div style="font-size:10px;color:#9CA3AF">퀴즈</div>
@@ -1626,23 +1639,23 @@ function rHome() {
       </div>
     </div>
     ${srsToday>0?`<div style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:12px;color:#E65100;font-weight:600;margin-top:10px;cursor:pointer" onclick="startMode('srs')">📖 오늘 복습할 단어 ${srsToday}개 → 지금 복습</div>`:''}
-    ${marked2>0?`<div style="background:#FDF2F8;border-radius:10px;padding:8px 12px;font-size:12px;color:#EC4899;font-weight:600;margin-top:6px;cursor:pointer" onclick="S.listMarkFilter=2;go('study','list')">🦋 헷갈리는 단어 ${marked2}개 → 집중 복습</div>`:''}
+    ${marked2>0?`<div style="background:#FDF2F8;border-radius:10px;padding:8px 12px;font-size:12px;color:#EC4899;font-weight:600;margin-top:6px;cursor:pointer" onclick="S.listMarkFilter=2;go('mybooks','list')">🦋 헷갈리는 단어 ${marked2}개 → 집중 복습</div>`:''}
   </div>`);
   // 핵심 학습 바로가기
   parts.push(`<div>
     <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">오늘 추천 학습 순서</div>
     <div style="display:flex;gap:8px">
-      <div onclick="go('study','learn')" style="flex:1;background:#EFF6FF;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #BFDBFE">
+      <div onclick="go('mybooks','learn')" style="flex:1;background:#EFF6FF;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #BFDBFE">
         <div style="font-size:28px;margin-bottom:4px">⚡</div>
         <div style="font-size:12px;font-weight:800;color:#1E5FA5">깜빡이</div>
         <div style="font-size:10px;color:#9CA3AF">1단계</div>
       </div>
-      <div onclick="S.gameId='quiz';S.gDone=false;go('game')" style="flex:1;background:#F0FDF4;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #86EFAC">
+      <div onclick="showGameSettings('quiz')" style="flex:1;background:#F0FDF4;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #86EFAC">
         <div style="font-size:28px;margin-bottom:4px">🎯</div>
         <div style="font-size:12px;font-weight:800;color:#16A34A">객관식</div>
         <div style="font-size:10px;color:#9CA3AF">2단계</div>
       </div>
-      <div onclick="S.gameId='typing';S.gDone=false;go('game')" style="flex:1;background:#FFF8E1;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #FFE082">
+      <div onclick="showGameSettings('typing')" style="flex:1;background:#FFF8E1;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #FFE082">
         <div style="font-size:28px;margin-bottom:4px">✏️</div>
         <div style="font-size:12px;font-weight:800;color:#E65100">받아쓰기</div>
         <div style="font-size:10px;color:#9CA3AF">3단계</div>
@@ -1721,7 +1734,7 @@ function rHome() {
     <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">바로가기</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
       ${[
-        {ic:'📚',lb:'단어 추가',fn:"go('study','add')"},
+        {ic:'📚',lb:'단어 추가',fn:"go('mybooks','add')"},
         {ic:'📖',lb:'SRS 복습',fn:"startMode('srs')"},
         {ic:'🎤',lb:'쉐도잉',fn:"startMode('shadow')"},
         {ic:'📅',lb:'캘린더',fn:'showCalendar()'},
@@ -1840,7 +1853,7 @@ function showBooksModal() {
 function switchBook(name) {
   if(name==='내 단어장'){
     S.currentBook='내 단어장'; S.idx=0; S.flip=false;
-    sv(); cm(); go('study');
+    sv(); cm(); go('mybooks');
     return;
   }
   const book = S.books.find(b=>b.name===name);
@@ -1854,7 +1867,7 @@ function switchBook(name) {
   S.learned=new Set(book.learned||[]);
   S.currentBook=name;
   S.idx=0; S.flip=false;
-  sv(); cm(); go('study');
+  sv(); cm(); go('mybooks');
   toast(`📚 "${name}"으로 전환!`);
 }
 
@@ -1876,7 +1889,8 @@ function createBook() {
   S.books.push({name,words:[],markMap:{},srsMap:{},learned:[]});
   sv();
   toast(`✅ "${name}" 단어장 생성!`);
-  showBooksModal();
+  cm();
+  go('mybooks','books'); // 단어장 목록 화면 갱신
 }
 
 function deleteBook(name) {
@@ -1897,30 +1911,24 @@ function showGoal() {
       <button id="tab-period" onclick="goalTab('period')" style="flex:1;padding:10px;border-radius:10px;background:#F3F4F6;color:#6B7280;border:none;font-size:13px;font-weight:700;cursor:pointer">📆 기간 선택</button>
     </div>
     <div id="goal-date-view">
-      <input type="date" id="gd" style="margin-bottom:10px" min="${today()}">
+      <input type="date" id="gd" style="margin-bottom:10px" min="${today()}" oninput="const diff=Math.ceil((new Date(this.value)-new Date())/86400000);const tgoal=diff>0?Math.ceil(S.words.length/diff):0;const calc=document.getElementById('goal-calc');if(diff>0){calc.style.display='block';calc.textContent='D-'+diff+' · 하루 목표 '+tgoal+'단어';}else{calc.style.display='none';}">
     </div>
     <div id="goal-period-view" style="display:none">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
         ${[7,14,30,60,90,180].map(d=>{const dt=new Date(Date.now()+d*86400000).toISOString().slice(0,10);
-          return `<button onclick="document.getElementById('gd').value='${dt}';goalTab('date')" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:#1E5FA5">${d}일</button>`;}).join('')}
+          return `<button onclick="document.getElementById('gd').value='${dt}';goalTab('date');document.getElementById('gd').dispatchEvent(new Event('input'))" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:#1E5FA5">${d}일</button>`;}).join('')}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <span style="font-size:13px;color:#6B7280">직접 입력:</span>
         <input id="custom-days" type="number" placeholder="45" style="width:80px;text-align:center" min="1" max="365">
         <span style="font-size:13px;color:#6B7280">일</span>
-        <button onclick="const d=+document.getElementById('custom-days').value;if(d>0){const dt=new Date(Date.now()+d*86400000).toISOString().slice(0,10);document.getElementById('gd').value=dt;goalTab('date');}" style="background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">적용</button>
+        <button onclick="const d=+document.getElementById('custom-days').value;if(d>0){const dt=new Date(Date.now()+d*86400000).toISOString().slice(0,10);document.getElementById('gd').value=dt;goalTab('date');document.getElementById('gd').dispatchEvent(new Event('input'));}" style="background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">적용</button>
       </div>
     </div>
     <div id="goal-calc" style="background:#F0FDF4;border-radius:12px;padding:10px;margin:10px 0;font-size:12px;color:#16A34A;display:none"></div>
     <button class="btn bb" onclick="svGoal()">목표 설정</button>
     <button class="btn bgr" onclick="cm()" style="margin-top:8px">닫기</button>
   </div></div>`;
-  document.getElementById('gd').addEventListener('change',e=>{
-    const diff=Math.ceil((new Date(e.target.value)-new Date())/86400000);
-    const tgoal=diff>0?Math.ceil(S.words.length/diff):0;
-    const calc=document.getElementById('goal-calc');
-    if(diff>0){calc.style.display='block';calc.textContent=`D-${diff} · 하루 목표 ${tgoal}단어`;}
-  });
 }
 function goalTab(t) {
   document.getElementById('goal-date-view').style.display=t==='date'?'block':'none';
@@ -1952,7 +1960,9 @@ function showLevelModal() {
 
 // ── 상황별 암기 모드 ──
 function startMode(type) {
-  if(!S.words.length){toast('단어가 없어요!');return;}
+  const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!curWords.length){toast('단어가 없어요!');return;}
+  // 현재 단어장 단어로 S.words 임시 교체 (모드 화면에서 사용)
   if(type==='stream') showStreamMode();
   else if(type==='audio') showAudioMode();
   else if(type==='sleep') showSleepMode();
@@ -2283,7 +2293,10 @@ function showSRSMode() {
     document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-size:13px;font-weight:800;color:#E65100">📖 SRS 복습</div>
-        <div style="font-size:12px;color:#9CA3AF">${qi+1}/${total}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:#9CA3AF">${qi+1}/${total}</span>
+          <button onclick="cm()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9CA3AF;line-height:1">×</button>
+        </div>
       </div>
       <div style="background:#E5E7EB;border-radius:4px;height:5px;overflow:hidden;margin-bottom:14px">
         <div style="height:100%;background:#E65100;border-radius:4px;width:${pct}%;transition:width .3s"></div>
@@ -2343,8 +2356,8 @@ function srsRate(en, days) {
   S.srsMap[en]=next; sv();
 }
 
-// ── 학습 탭 ──
-function rStudy() {
+// ── 단어장 탭 ──
+function rMyBooks() {
   // 단어장 선택 첫 화면
   if(!S.stab || S.stab==='books') return rStudyBooks();
   // 학습 방법 선택 화면
@@ -2353,7 +2366,7 @@ function rStudy() {
   // 상단 단어장 바 (학습 중)
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const booksBar = `<div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E5E7EB);padding:8px 16px;display:flex;align-items:center;gap:8px;overflow-x:auto;flex-shrink:0">
-    <div onclick="S.stab='mode';go('study','mode')" style="display:flex;align-items:center;gap:6px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:20px;padding:5px 12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
+    <div onclick="S.stab='mode';go('mybooks','mode')" style="display:flex;align-items:center;gap:6px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:20px;padding:5px 12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
       <span style="font-size:10px;color:#9CA3AF">‹</span>
       <span style="font-size:12px;font-weight:700;color:#1E5FA5">📚 ${S.currentBook||'내 단어장'}</span>
       <span style="font-size:10px;color:#9CA3AF">${curWords.length}개</span>
@@ -2361,7 +2374,7 @@ function rStudy() {
     <button onclick="showBooksModal()" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#6B7280);white-space:nowrap;flex-shrink:0">＋ 단어장 만들기</button>
   </div>`;
   const tabs=`<div class="stabs">${[['learn','📚','플래시카드'],['quiz3','🎯','퀴즈'],['modes','🎧','암기모드'],['add','➕','단어추가'],['list','📋','단어목록']].map(([id,ic,lb])=>
-    `<div class="st ${S.stab===id?'on':''}" onclick="go('study','${id}')"><span class="st-ic">${ic}</span><span class="st-lb ${S.stab===id?'on':''}">${lb}</span></div>`).join('')}</div>`;
+    `<div class="st ${S.stab===id?'on':''}" onclick="go('mybooks','${id}')"><span class="st-ic">${ic}</span><span class="st-lb ${S.stab===id?'on':''}">${lb}</span></div>`).join('')}</div>`;
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
@@ -2413,7 +2426,7 @@ function rStudyBooks() {
     </div>
     <div style="border-top:1px solid var(--border,#F3F4F6);display:flex">
       <button onclick="selectBookAndLearn('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer;border-right:1px solid var(--border,#F3F4F6)">📚 학습하기</button>
-      <button onclick="S.currentBook='내 단어장';S.stab='add';go('study','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
+      <button onclick="S.currentBook='내 단어장';S.stab='add';go('mybooks','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
     </div>
   </div>`);
 
@@ -2446,7 +2459,7 @@ function rStudyBooks() {
       </div>
       <div style="border-top:1px solid var(--border,#F3F4F6);display:flex">
         <button onclick="selectBookAndLearn('${safeName}')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#7C3AED;cursor:pointer;border-right:1px solid var(--border,#F3F4F6)">📚 학습하기</button>
-        <button onclick="switchBook('${safeName}');S.stab='add';go('study','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
+        <button onclick="switchBook('${safeName}');S.stab='add';go('mybooks','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
       </div>
     </div>`);
   });
@@ -2479,7 +2492,7 @@ function selectBookAndLearn(bookName) {
   }
   // 학습 방법 선택 화면으로
   S.stab = 'mode';
-  go('study','mode');
+  go('mybooks','mode');
 }
 
 function rStudyMode() {
@@ -2652,16 +2665,55 @@ function showGameSettings(gameId, tab) {
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   if(!curWords.length){toast('단어를 먼저 추가해주세요!');return;}
 
-  // 깜빡이는 설정 없이 바로 시작
+  // 깜빡이는 전용 설정 (간소화)
   if(gameId==='flip') {
-    S.words = curWords;
-    S.idx = 0; S.flip = false;
-    S.tab = 'study'; S.stab = 'learn'; go();
+    if(!S.gameSettings) S.gameSettings={count:10,markFilter:-1,autoNext:false,autoNextSec:2,autoRead:false,bookFilter:'내 단어장'};
+    const gs=S.gameSettings;
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="font-size:17px;font-weight:800">⚡ 깜빡이 설정</div>
+        <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
+      </div>
+      <div style="background:#EFF6FF;border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1E5FA5;line-height:1.7">
+        💡 카드를 좌우로 스와이프하거나 → 버튼으로 넘겨요.<br>탭하면 뜻이 보여요.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">카드 개수</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <button onclick="S.gameSettings.count=Math.max(5,S.gameSettings.count-5);showGameSettings('flip')" style="width:34px;height:34px;border-radius:50%;background:#F3F4F6;border:none;font-size:16px;cursor:pointer">−</button>
+            <div style="flex:1;text-align:center;font-size:20px;font-weight:900;color:#1E5FA5">${gs.count}개</div>
+            <button onclick="S.gameSettings.count=Math.min(${curWords.length},S.gameSettings.count+5);showGameSettings('flip')" style="width:34px;height:34px;border-radius:50%;background:#F3F4F6;border:none;font-size:16px;cursor:pointer">+</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#F9FAFB;border-radius:10px">
+          <div><div style="font-size:13px;font-weight:700">자동 넘기기</div><div style="font-size:11px;color:#9CA3AF">${gs.autoNextSec||2}초마다 자동으로 넘어가요</div></div>
+          <button onclick="S.gameSettings.autoNext=!S.gameSettings.autoNext;showGameSettings('flip')" class="toggle ${gs.autoNext?'on':''}"><div class="tk"></div></button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#F9FAFB;border-radius:10px">
+          <div><div style="font-size:13px;font-weight:700">🔊 자동 읽기</div><div style="font-size:11px;color:#9CA3AF">카드 넘길 때 단어를 읽어줘요</div></div>
+          <button onclick="S.gameSettings.autoRead=!S.gameSettings.autoRead;showGameSettings('flip')" class="toggle ${gs.autoRead?'on':''}"><div class="tk"></div></button>
+        </div>
+      </div>
+      <button onclick="cm();startFlip()" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;margin-top:16px">⚡ 시작하기</button>
+    </div></div>`;
     return;
   }
   const curTab = tab||S.gsTab||'range';
   S.gsTab = curTab;
   const gameName={flip:'깜빡이',quiz:'객관식',typing:'받아쓰기',fill:'빈칸 채우기',match:'스피드 매칭',wordle:'워들',chain:'문장 이어가기',sentence:'문장 구성',listen:'듣고 완성',ssort:'듣고 순서',wordfind:'단어 찾기'}[gameId]||gameId;
+  const gameDesc={
+    quiz:'4개 보기 중 맞는 뜻을 골라요',
+    typing:'뜻을 보고 영단어를 직접 입력해요',
+    fill:'예문의 빈칸에 들어갈 단어를 입력해요',
+    match:'단어와 뜻을 빠르게 짝 맞춰요',
+    wordle:'6번 안에 숨겨진 단어를 맞춰요. 초록=정확 노랑=위치틀림',
+    chain:'제시된 문장에 이어지는 내용을 영어로 써요 (4번)',
+    sentence:'흩어진 단어를 올바른 순서로 배치해요',
+    listen:'들려주는 단어의 빈칸을 채워요',
+    ssort:'들려주는 문장의 단어를 순서대로 탭해요',
+    wordfind:'격자에서 숨겨진 단어를 찾아 첫 글자부터 순서대로 탭해요',
+  }[gameId]||'';
   const curMM = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
   const marked1=Object.values(curMM).filter(v=>v===1).length;
   const marked2=Object.values(curMM).filter(v=>v===2).length;
@@ -2685,16 +2737,12 @@ function showGameSettings(gameId, tab) {
         <input type="range" min="5" max="${curWords.length}" step="5" value="${gs.count}" oninput="S.gameSettings.count=+this.value;showGameSettings('${gameId}','range')" style="width:100%;accent-color:#EC4899">
       </div>
       <div>
-        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">문제 범위 <span style="font-size:11px;color:#9CA3AF">여러 단어장을 선택하거나 특정 날짜를 선택할 수 있어요</span></div>
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">문제 범위 <span style="font-size:11px;color:#9CA3AF">단어장을 선택하세요</span></div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#F9FAFB;border-radius:12px;border:1.5px solid #E5E7EB;cursor:pointer" onclick="toast('전체 단어장 선택됨')">
-            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">📋</span><span style="font-size:13px;font-weight:600">모든 단어장</span></div>
-            <span style="font-size:16px;color:#9CA3AF">›</span>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#F9FAFB;border-radius:12px;border:1.5px solid #E5E7EB;cursor:pointer" onclick="toast('날짜 필터 준비 중이에요')">
-            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">📅</span><span style="font-size:13px;font-weight:600">모든 날짜</span></div>
-            <span style="font-size:16px;color:#9CA3AF">›</span>
-          </div>
+          ${[{name:'내 단어장',cnt:S.words.length}, ...(S.books||[]).map(b=>({name:b.name,cnt:(b.words||[]).length}))].map(b=>{
+            const isCur = (S.gameSettings.bookFilter||'내 단어장')===b.name;
+            return '<div onclick="S.gameSettings.bookFilter=\''+b.name.replace(/'/g,"\\'")+'\';showGameSettings(\''+gameId+'\',\'range\')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:'+(isCur?'#EFF6FF':'#F9FAFB')+';border-radius:10px;cursor:pointer;border:1.5px solid '+(isCur?'#1E5FA5':'#E5E7EB')+'"><div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border-radius:50%;border:2px solid '+(isCur?'#1E5FA5':'#D1D5DB')+';background:'+(isCur?'#1E5FA5':'#fff')+'"></div><span style="font-size:13px;font-weight:600">'+b.name+'</span></div><span style="font-size:12px;color:#9CA3AF">'+b.cnt+'개</span></div>';
+          }).join('')}
         </div>
       </div>
       <div>
@@ -2805,7 +2853,10 @@ function showGameSettings(gameId, tab) {
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:90vh;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0">
-      <div style="font-size:17px;font-weight:800">${gameName}</div>
+      <div>
+        <div style="font-size:17px;font-weight:800">${gameName}</div>
+        ${gameDesc?`<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${gameDesc}</div>`:''}
+      </div>
       <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
     </div>
     <div style="display:flex;border-bottom:1px solid #E5E7EB;flex-shrink:0">
@@ -2823,23 +2874,39 @@ function showGameSettings(gameId, tab) {
 function startGameWithSettings(gameId) {
   const gs = S.gameSettings||{count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false};
 
-  // 현재 선택된 단어장의 단어 사용
-  const curWords = getCurrentBookWords();
+  // bookFilter로 선택된 단어장 우선, 없으면 현재 단어장
+  let curWords, curMM;
+  if(gs.bookFilter && gs.bookFilter!=='내 단어장') {
+    const bk = (S.books||[]).find(b=>b.name===gs.bookFilter);
+    curWords = bk ? (bk.words||[]) : getCurrentBookWords();
+    curMM = bk ? (bk.markMap||{}) : getCurrentBookMarkMap();
+  } else {
+    curWords = getCurrentBookWords();
+    curMM = getCurrentBookMarkMap();
+  }
 
   if(!curWords.length) {
-    toast('현재 단어장에 단어가 없어요! 단어를 먼저 추가해주세요.');
+    toast('선택한 단어장에 단어가 없어요!');
     return;
   }
 
   let src = curWords;
   if(gs.markFilter>=0) {
-    src = curWords.filter(w=>{
-      const mm = getCurrentBookMarkMap();
-      return (mm[w.en]||0) === gs.markFilter;
-    });
+    src = curWords.filter(w=>(curMM[w.en]||0)===gs.markFilter);
   }
   if(!src.length) src = curWords;
   startGameW(gameId, pick(src, Math.min(gs.count, src.length)));
+}
+
+// 깜빡이 시작
+function startFlip() {
+  const gs = S.gameSettings||{count:10};
+  const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const src = pick(curWords, Math.min(gs.count, curWords.length));
+  S._flipWords = src;
+  S._flipIdx = 0;
+  S.flip = false;
+  S.tab = 'mybooks'; S.stab = 'learn'; go();
 }
 
 // 현재 선택된 단어장 단어 반환
@@ -2862,7 +2929,7 @@ function rLearn() {
   const words = S._flipWords || S.words;
   const idx = S._flipWords ? (S._flipIdx||0) : S.idx;
 
-  if(!words.length) return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('study','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
+  if(!words.length) return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('mybooks','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
   const w=words[idx%words.length], prog=(idx%words.length)+1, tot=words.length;
   const l=lv(S.lid);
   const mark=getMark(w.en);
@@ -2900,7 +2967,7 @@ function rLearn() {
       <button onclick="event.stopPropagation();const n=cycleMark('${w.en.replace(/'/g,"\\'")}');const inf=MARK_INFO[n];toast(inf.emoji+' '+inf.label+'!');SFX.play('tap');go();" style="width:44px;height:44px;border-radius:50%;background:${mInfo.bg};border:2px solid ${mInfo.color}44;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">${MARK_INFO[mark].emoji}</button>
       <button onclick="${S._flipWords?'S._flipIdx=Math.max(0,(S._flipIdx||0)-1)':'S.idx=Math.max(0,S.idx-1)'};S.flip=false;go()" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">←</button>
       <button onclick="startAutoPlay()" style="width:52px;height:52px;border-radius:50%;background:#1E5FA5;border:none;font-size:22px;cursor:pointer;color:#fff">▶</button>
-      <button onclick="${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;${S._flipWords?`if(S._flipIdx>=${words.length}){S._flipWords=null;S._flipIdx=0;S.stab='mode';go('study','mode');return;}`:''}go()" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">→</button>
+      <button onclick="${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;${S._flipWords?`if(S._flipIdx>=${words.length}){S._flipWords=null;S._flipIdx=0;S.stab='mode';go('mybooks','mode');return;}`:''}go()" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">→</button>
       <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${w.en}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">🔊</button>
     </div>
   </div>`;
@@ -3012,7 +3079,7 @@ function rAdd() {
       <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">📚 추가할 단어장 선택</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${allBooks.map(b=>`
-        <button onclick="switchBook('${b.name.replace(/'/g,"\\'")}');go('study','add')"
+        <button onclick="switchBook('${b.name.replace(/'/g,"\\'")}');go('mybooks','add')"
           style="padding:8px 14px;border-radius:20px;border:1.5px solid ${b.name===curBook?'#1E5FA5':'#E5E7EB'};background:${b.name===curBook?'#1E5FA5':'#fff'};font-size:12px;font-weight:700;cursor:pointer;color:${b.name===curBook?'#fff':'#6B7280'}">
           ${b.name} <span style="opacity:.7">${b.cnt}</span>
         </button>`).join('')}
@@ -3085,7 +3152,7 @@ async function extractFromText() {
   const inp = document.getElementById('url-extract-inp')?.value?.trim();
   if(!inp){toast('텍스트를 입력해주세요');return;}
   cm();
-  S.ai=true; go('study','add');
+  S.ai=true; go('mybooks','add');
   try {
     // URL이면 먼저 내용 가져오기 (CORS 우회 불가, 텍스트 직접 처리)
     const isUrl = inp.startsWith('http://') || inp.startsWith('https://');
@@ -3097,7 +3164,7 @@ async function extractFromText() {
     const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
     showExtracted(JSON.parse(txt));
   } catch(e) { toast('추출 실패. 텍스트를 직접 입력해주세요'); }
-  S.ai=false; go('study','add');
+  S.ai=false; go('mybooks','add');
 }
 
 function openNaverDict() {
@@ -3151,7 +3218,7 @@ function addW(){
 }
 
 async function handleFile(input){
-  S.ai=true;go('study','add');
+  S.ai=true;go('mybooks','add');
   try{
     const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
     const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type,data:b64}},{type:'text',text:'이미지에서 영어 단어들을 찾아 JSON 배열로만 반환. 형식: [{"en":"word","kr":"뜻"}]'}]}]})});
@@ -3159,18 +3226,18 @@ async function handleFile(input){
     const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
     showExtracted(JSON.parse(txt));
   }catch(e){toast('추출 실패. API 키가 필요해요.');}
-  S.ai=false;go('study','add');
+  S.ai=false;go('mybooks','add');
 }
 function showExtracted(words){
   let sel=new Set(words.map((_,i)=>i));
   const rl=()=>{const el=document.getElementById('ext-list');if(!el)return;el.innerHTML=words.map((w,i)=>`<div onclick="togW(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #F3F4F6;cursor:pointer"><div style="width:24px;height:24px;border-radius:50%;background:${sel.has(i)?'#16A34A':'#E5E7EB'};display:flex;align-items:center;justify-content:center;font-size:12px;color:${sel.has(i)?'#fff':'#9CA3AF'};flex-shrink:0">${sel.has(i)?'✓':''}</div><span style="font-weight:700;font-family:monospace;color:#1E5FA5">${w.en}</span><span style="color:#6B7280">${w.kr}</span></div>`).join('');};
   window.togW=i=>{sel.has(i)?sel.delete(i):sel.add(i);rl();};
-  window.svExt=()=>{const add=words.filter((_,i)=>sel.has(i));add.forEach(w=>{if(!S.words.find(x=>x.en===w.en))S.words.push({...w,ph:'',ex:w.en+'.',tip:w.en+' = '+w.kr,meanings:[w.kr],img:'📝'});});sv();cm();toast(`✅ ${add.length}개 추가!`);go('study','add');};
+  window.svExt=()=>{const add=words.filter((_,i)=>sel.has(i));add.forEach(w=>{if(!S.words.find(x=>x.en===w.en))S.words.push({...w,ph:'',ex:w.en+'.',tip:w.en+' = '+w.kr,meanings:[w.kr],img:'📝'});});sv();cm();toast(`✅ ${add.length}개 추가!`);go('mybooks','add');};
   document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:16px;font-weight:800">추출 단어 ${words.length}개</div></div><div id="ext-list" style="max-height:280px;overflow-y:auto"></div><button class="btn bg" onclick="svExt()" style="margin-top:12px">선택 단어 저장</button><button class="btn bgr" onclick="cm()" style="margin-top:8px">닫기</button></div></div>`;
   rl();
 }
 function blkModal(){document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:16px;font-weight:800;margin-bottom:8px">📋 여러 단어 붙여넣기</div><div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">한 줄에 하나, 쉼표나 = 로 구분</div><textarea id="bt" placeholder="apple, 사과&#10;book = 책" style="min-height:100px;resize:none;font-size:13px;margin-bottom:10px"></textarea><button class="btn bg" onclick="addBlk()">추가하기</button></div></div>`;}
-function addBlk(){const t=document.getElementById('bt')?.value||'';let cnt=0;t.split('\n').filter(l=>l.trim()).forEach(ln=>{const p=ln.split(/[,=\t]/);if(p.length>=2){const en=p[0].trim(),kr=p[1].trim();if(en&&kr&&!S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){S.words.push({en,kr,ph:'',ex:en+'.',tip:en+' = '+kr,meanings:[kr],img:'📝'});cnt++;}}});sv();cm();toast(`✅ ${cnt}개 추가!`);go('study','add');}
+function addBlk(){const t=document.getElementById('bt')?.value||'';let cnt=0;t.split('\n').filter(l=>l.trim()).forEach(ln=>{const p=ln.split(/[,=\t]/);if(p.length>=2){const en=p[0].trim(),kr=p[1].trim();if(en&&kr&&!S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){S.words.push({en,kr,ph:'',ex:en+'.',tip:en+' = '+kr,meanings:[kr],img:'📝'});cnt++;}}});sv();cm();toast(`✅ ${cnt}개 추가!`);go('mybooks','add');}
 function rList(){
   if(!S.words.length)return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}</div>`;
   const filterMark=S.listMarkFilter??-1;
@@ -3286,6 +3353,284 @@ async function aiEnrichWord(en) {
   } catch(e) { toast('AI 오류'); }
 }
 
+// ── 새 학습 탭 (두오링고 스타일) ──
+const SYS_LEVEL_INFO = {
+  egg:   {name:'알',          emoji:'🥚', color:'#F9A825', next:'baby'},
+  baby:  {name:'아기 벌거지', emoji:'🐛', color:'#43A047', next:'crown'},
+  crown: {name:'왕관 벌거지', emoji:'🍀', color:'#2E7D32', next:'coco'},
+  coco:  {name:'번데기',      emoji:'🫘', color:'#5D4037', next:'shine'},
+  shine: {name:'빛나는 번데기',emoji:'✨', color:'#E65100', next:'small'},
+  small: {name:'작은 나비',   emoji:'🦋', color:'#880E4F', next:'big'},
+  big:   {name:'큰 나비',     emoji:'🦋', color:'#6A1B9A', next:'god'},
+  god:   {name:'황금 나비',   emoji:'⚡', color:'#B71C1C', next:null},
+};
+const SYS_LEVEL_IDS = ['egg','baby','crown','coco','shine','small','big','god'];
+
+// 스트릭 관리
+function getStreak() {
+  const data = JSON.parse(localStorage.getItem('wd-streak')||'{"count":0,"lastDate":""}');
+  const today = new Date().toISOString().slice(0,10);
+  // 어제 했으면 스트릭 유지, 오늘 했으면 그대로, 그외 리셋
+  const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  if(data.lastDate===today) return data;
+  if(data.lastDate===yesterday) return {...data, todayDone:false};
+  return {count:0, lastDate:'', todayDone:false};
+}
+function markStreakToday() {
+  const today = new Date().toISOString().slice(0,10);
+  const data = getStreak();
+  if(data.lastDate===today) return; // 이미 오늘 완료
+  const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const newCount = data.lastDate===yesterday ? data.count+1 : 1;
+  localStorage.setItem('wd-streak', JSON.stringify({count:newCount, lastDate:today, todayDone:true}));
+}
+
+// 오늘의 미션 상태
+function getTodayMissions() {
+  const today = new Date().toISOString().slice(0,10);
+  const saved = JSON.parse(localStorage.getItem('wd-missions-'+today)||'{}');
+  return {
+    newWords: saved.newWords||0,    // 새 단어 학습 수
+    review:   saved.review||false,  // SRS 복습 완료
+    quiz:     saved.quiz||0,        // 퀴즈 정답 수
+  };
+}
+function saveMission(type, val) {
+  const today = new Date().toISOString().slice(0,10);
+  const data = getTodayMissions();
+  if(type==='newWords') data.newWords = Math.max(data.newWords, val);
+  if(type==='review') data.review = true;
+  if(type==='quiz') data.quiz = Math.max(data.quiz, val);
+  localStorage.setItem('wd-missions-'+today, JSON.stringify(data));
+  // 미션 1개 이상 완료 시 스트릭
+  if(data.newWords>0 || data.review || data.quiz>0) markStreakToday();
+}
+
+// 시스템 단어장 캐시
+let _sysWordsCache = {};
+async function loadSysWords(lvId) {
+  if(_sysWordsCache[lvId]) return _sysWordsCache[lvId];
+  try {
+    const doc = await firebase.firestore().collection('system_words').doc(lvId).get();
+    const words = doc.exists ? (doc.data().words||[]) : [];
+    _sysWordsCache[lvId] = words;
+    return words;
+  } catch(e) { return []; }
+}
+
+// 학습한 단어 목록 (localStorage)
+function getLearnedSysWords(lvId) {
+  return JSON.parse(localStorage.getItem('wd-sys-learned-'+lvId)||'[]');
+}
+function markSysWordLearned(lvId, en) {
+  const learned = getLearnedSysWords(lvId);
+  if(!learned.includes(en)) {
+    learned.push(en);
+    localStorage.setItem('wd-sys-learned-'+lvId, JSON.stringify(learned));
+  }
+}
+
+function rLearnTab() {
+  const lvId = S.lid || 'egg';
+  const lvInfo = SYS_LEVEL_INFO[lvId] || SYS_LEVEL_INFO.egg;
+  const streak = getStreak();
+  const missions = getTodayMissions();
+
+  // 미션 목표
+  const MISSION_GOALS = {newWords:5, quiz:5};
+  const m1done = missions.newWords >= MISSION_GOALS.newWords;
+  const m2done = missions.review;
+  const m3done = missions.quiz >= MISSION_GOALS.quiz;
+
+  // XP & 진도
+  const xp = S.xp || 0;
+  const nextXP = 1000;
+  const xpPct = Math.min(Math.round(xp/nextXP*100), 100);
+
+  let html = '<div style="display:flex;flex-direction:column;height:100%">';
+
+  // 상단 헤더
+  html += `<div style="background:linear-gradient(135deg,${lvInfo.color},${lvInfo.color}cc);padding:calc(env(safe-area-inset-top,0px)+12px) 16px 14px;flex-shrink:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:26px">${lvInfo.emoji}</span>
+        <div>
+          <div style="font-size:14px;font-weight:800;color:#fff">${lvInfo.name}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.7)">XP ${xp} / ${nextXP}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="text-align:center">
+          <div style="font-size:20px">🔥</div>
+          <div style="font-size:12px;font-weight:800;color:#fff">${streak.count}일</div>
+        </div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.25);border-radius:4px;height:6px">
+      <div style="height:100%;background:#fff;border-radius:4px;width:${xpPct}%;transition:width .5s"></div>
+    </div>
+  </div>`;
+
+  html += '<div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px">';
+
+  // 오늘의 미션
+  html += `<div style="background:var(--bg-card,#fff);border-radius:16px;border:1px solid var(--border,#E5E7EB);overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border,#E5E7EB);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:14px;font-weight:800">📅 오늘의 미션</div>
+      <div style="font-size:12px;color:#9CA3AF">${[m1done,m2done,m3done].filter(Boolean).length}/3 완료</div>
+    </div>`;
+
+  // 미션 1: 새 단어
+  html += `<div onclick="startSysLearn('newwords')" style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;border-bottom:1px solid var(--border,#F3F4F6);${m1done?'opacity:.7':''}">
+    <div style="width:42px;height:42px;border-radius:12px;background:${m1done?'#F0FDF4':'#EFF6FF'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${m1done?'✅':'📖'}</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700">새 단어 ${MISSION_GOALS.newWords}개 학습</div>
+      <div style="background:var(--border,#E5E7EB);border-radius:4px;height:4px;margin-top:6px">
+        <div style="height:100%;background:#1E5FA5;border-radius:4px;width:${Math.min(missions.newWords/MISSION_GOALS.newWords*100,100)}%;transition:width .3s"></div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:3px">${missions.newWords}/${MISSION_GOALS.newWords}개</div>
+    </div>
+    <span style="color:#9CA3AF">›</span>
+  </div>`;
+
+  // 미션 2: SRS 복습
+  html += `<div onclick="startSysLearn('srsreview')" style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;border-bottom:1px solid var(--border,#F3F4F6);${m2done?'opacity:.7':''}">
+    <div style="width:42px;height:42px;border-radius:12px;background:${m2done?'#F0FDF4':'#FFF8E1'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${m2done?'✅':'🔁'}</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700">SRS 복습</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:3px">${m2done?'완료':'망각곡선 기반 복습'}</div>
+    </div>
+    <span style="color:#9CA3AF">›</span>
+  </div>`;
+
+  // 미션 3: 레벨 퀴즈
+  html += `<div onclick="startSysLearn('quiz')" style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;${m3done?'opacity:.7':''}">
+    <div style="width:42px;height:42px;border-radius:12px;background:${m3done?'#F0FDF4':'#F0FDF4'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${m3done?'✅':'🎯'}</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700">레벨 퀴즈 ${MISSION_GOALS.quiz}문제</div>
+      <div style="background:var(--border,#E5E7EB);border-radius:4px;height:4px;margin-top:6px">
+        <div style="height:100%;background:#16A34A;border-radius:4px;width:${Math.min(missions.quiz/MISSION_GOALS.quiz*100,100)}%;transition:width .3s"></div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:3px">${missions.quiz}/${MISSION_GOALS.quiz}문제</div>
+    </div>
+    <span style="color:#9CA3AF">›</span>
+  </div>`;
+
+  html += '</div>';
+
+  // 레벨 커리큘럼
+  html += `<div style="background:var(--bg-card,#fff);border-radius:16px;border:1px solid var(--border,#E5E7EB);overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border,#E5E7EB)">
+      <div style="font-size:14px;font-weight:800">🗺️ 레벨 커리큘럼</div>
+    </div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px">`;
+
+  SYS_LEVEL_IDS.forEach((lid, i) => {
+    const info = SYS_LEVEL_INFO[lid];
+    const isCur = lid === lvId;
+    const isDone = SYS_LEVEL_IDS.indexOf(lvId) > i;
+    html += `<div onclick="${isCur?'toast(\\'현재 레벨이에요! 🎯\\')':isDone?`toast('${info.name} 완료! ✅')`:`toast('아직 잠금 레벨이에요 🔒')`}" 
+      style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:${isCur?info.color+'18':isDone?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${isCur?info.color:isDone?'#86EFAC':'var(--border,#E5E7EB)'};cursor:pointer">
+      <span style="font-size:24px;${!isCur&&!isDone?'filter:grayscale(1)':''}">${info.emoji}</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:${isCur?info.color:isDone?'#16A34A':'var(--text2,#6B7280)'}">${info.name}</div>
+      </div>
+      ${isCur?`<span style="background:${info.color};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">현재</span>`:isDone?'<span style="color:#16A34A;font-size:16px">✓</span>':'<span style="color:#9CA3AF;font-size:14px">🔒</span>'}
+    </div>`;
+  });
+
+  html += `</div></div>`;
+
+  // 레벨업 테스트 버튼
+  const nextLv = lvInfo.next;
+  if(nextLv) {
+    const nextInfo = SYS_LEVEL_INFO[nextLv];
+    html += `<div onclick="startLevelUpTest()" style="background:linear-gradient(135deg,${lvInfo.color},${nextInfo?.color||'#7C3AED'});border-radius:16px;padding:16px;cursor:pointer;display:flex;align-items:center;gap:12px">
+      <span style="font-size:28px">🏆</span>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:800;color:#fff">레벨업 테스트</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.7)">${lvInfo.name} → ${nextInfo?.name} 도전!</div>
+      </div>
+      <span style="color:rgba(255,255,255,.7);font-size:18px">›</span>
+    </div>`;
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+// 시스템 학습 시작
+async function startSysLearn(type) {
+  const lvId = S.lid || 'egg';
+  const words = await loadSysWords(lvId);
+
+  if(!words.length) {
+    // Firebase에 단어 없으면 안내
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:30px 20px">
+      <div style="font-size:48px;margin-bottom:12px">📭</div>
+      <div style="font-size:16px;font-weight:800;margin-bottom:8px">시스템 단어장이 비어있어요</div>
+      <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">관리자 페이지에서 레벨별 단어를 등록해주세요</div>
+      <button onclick="cm()" class="btn bb">확인</button>
+    </div></div>`;
+    return;
+  }
+
+  if(type==='newwords') {
+    // 아직 안 배운 단어 5개
+    const learned = getLearnedSysWords(lvId);
+    const newW = words.filter(w=>!learned.includes(w.en)).slice(0,5);
+    if(!newW.length) {
+      toast('이 레벨 단어를 모두 학습했어요! 🎉');
+      return;
+    }
+    // 플래시카드로
+    S._flipWords = newW;
+    S._flipIdx = 0;
+    S._sysLearnType = 'newwords';
+    S._sysLvId = lvId;
+    S.flip = false;
+    S.tab = 'mybooks'; S.stab = 'learn'; go();
+
+  } else if(type==='srsreview') {
+    showSRSMode();
+    // 완료 시 미션 저장
+    setTimeout(()=>saveMission('review',true), 1000);
+
+  } else if(type==='quiz') {
+    // 배운 단어 중에서 퀴즈 5문제
+    const learned = getLearnedSysWords(lvId);
+    const quizW = words.filter(w=>learned.includes(w.en));
+    if(quizW.length < 4) {
+      toast('퀴즈를 위해 새 단어를 먼저 4개 이상 학습해주세요!');
+      return;
+    }
+    startGameW('quiz', pick(quizW, Math.min(5, quizW.length)));
+  }
+}
+
+// 레벨업 테스트
+async function startLevelUpTest() {
+  const lvId = S.lid || 'egg';
+  const words = await loadSysWords(lvId);
+  if(words.length < 4) {
+    toast('레벨업 테스트를 위한 단어가 부족해요!');
+    return;
+  }
+  const testW = pick(words, Math.min(10, words.length));
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">🏆</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:6px">레벨업 테스트</div>
+    <div style="font-size:13px;color:#9CA3AF;margin-bottom:6px">${testW.length}문제 · 80% 이상 정답 시 레벨업!</div>
+    <div style="background:#FFF8E1;border-radius:12px;padding:12px;margin-bottom:16px;font-size:12px;color:#E65100">
+      ⚠️ 테스트 중에는 중간에 나가면 안돼요
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm();window._levelUpTest=true;startGameW('quiz',${JSON.stringify(testW).replace(/"/g,'&quot;')})" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">시작하기</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    </div>
+  </div></div>`;
+}
+
 // ── 게임 센터 ──
 const GCFG=[
   {id:'quiz',ic:'🎯',nm:'뜻 맞추기',dc:'4지선다',grad:'linear-gradient(135deg,#1E5FA5,#2563EB)'},
@@ -3336,12 +3681,12 @@ function rGameCenter(){
         <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">${curBookName} <span style="font-size:12px;font-weight:600;color:#1E5FA5">(${curWords.length}개)</span></div>
       </div>
     </div>
-    <button onclick="S.stab='books';go('study')" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#374151)">변경</button>
+    <button onclick="S.stab='books';go('mybooks')" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#374151)">변경</button>
   </div>`);
   if(!hw) {
     parts.push(`<div style="background:#FFF7ED;border-radius:16px;border:1.5px solid #FDE68A;padding:14px;text-align:center;margin-bottom:12px">
       <div style="font-size:13px;color:#D97706;font-weight:600">📚 "${curBookName}"에 단어가 2개 이상 있어야 게임을 시작할 수 있어요!</div>
-      <button class="btn bb" onclick="S.stab='add';go('study')" style="margin-top:10px">단어 추가하러 가기</button>
+      <button class="btn bb" onclick="S.stab='add';go('mybooks')" style="margin-top:10px">단어 추가하러 가기</button>
     </div>`);
   }
 
@@ -3425,7 +3770,7 @@ function startGameW(id, ws) {
     // S.words를 덮어쓰지 않고 gWords를 임시로 참조
     S._flipWords = S.gWords; // 임시 저장
     S._flipIdx = 0;
-    S.tab = 'study'; S.stab = 'learn'; go();
+    S.tab = 'mybooks'; S.stab = 'learn'; go();
     toast(`⚡ 깜빡이 시작! ${S.gWords.length}개 단어`);
     return;
   }
@@ -3483,7 +3828,7 @@ function rGameDone(){
       <div style="font-size:12px;color:#6B7280">맞은 단어 → 외운 단어, 틀린 단어 → 헷갈리는 단어로 자동 표시됐어요</div>
     </div>`:''}
     <div style="display:flex;gap:8px;width:100%;flex-wrap:wrap">
-      <button class="btn bgr" onclick="SFX.stopBG();go('study','quiz3')" style="flex:1">다른 게임</button>
+      <button class="btn bgr" onclick="SFX.stopBG();go('mybooks','quiz3')" style="flex:1">다른 게임</button>
       <button class="btn bb" onclick="SFX.stopBG();startGameW(S.gameId,null)" style="flex:1">다시 하기</button>
       ${S.gSavedGame&&S.gIdx<S.gWords.length?`<button onclick="SFX.stopBG();S.gDone=false;go('game')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:13px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;width:100%">▶ 이어하기 (${S.gIdx}/${S.gWords.length})</button>`:''}
     </div>
@@ -3491,12 +3836,13 @@ function rGameDone(){
 }
 
 const GGRADS={quiz:'linear-gradient(135deg,#1E5FA5,#2563EB)',fill:'linear-gradient(135deg,#D97706,#F59E0B)',wordfind:'linear-gradient(135deg,#16A34A,#22C55E)',chain:'linear-gradient(135deg,#7C3AED,#A855F7)',match:'linear-gradient(135deg,#0D9488,#14B8A6)',sentence:'linear-gradient(135deg,#E91E63,#F43F5E)',scramble:'linear-gradient(135deg,#EC4899,#F472B6)',wordle:'linear-gradient(135deg,#92400E,#D97706)',typing:'linear-gradient(135deg,#15803D,#16A34A)',wc:'linear-gradient(135deg,#0369A1,#0EA5E9)',ssort:'linear-gradient(135deg,#E65100,#F97316)',listen:'linear-gradient(135deg,#880E4F,#BE185D)'};
-function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;return `<div style="background:${grd};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><button onclick="SFX.stopBG();go('study','quiz3')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button><div style="font-size:14px;font-weight:800;color:#fff">${title}</div><div style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</div></div>`;}
+function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;return `<div style="background:${grd};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><button onclick="SFX.stopBG();go('mybooks','quiz3')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button><div style="font-size:14px;font-weight:800;color:#fff">${title}</div><div style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</div></div>`;}
 
 function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
-  const src=S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg);
-  const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
+  // 보기는 현재 게임 단어 또는 현재 단어장에서 생성
+  const pool = S.gWords.length>=4 ? S.gWords : (getCurrentBookWords().length>=4 ? getCurrentBookWords() : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  const cs=shuf([w,...pick(pool.filter(x=>x.en!==w.en),3)]);
   return ghdr('🎯 뜻 맞추기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'맞아! 🎉':'아쉬워! 💪'):'이 단어의 뜻은?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#1E5FA5"></div></div>
@@ -3520,8 +3866,8 @@ function ansQ(c,ok2){
 
 function rFill(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
-  const src=S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg);
-  const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
+  const pool = S.gWords.length>=4 ? S.gWords : (getCurrentBookWords().length>=4 ? getCurrentBookWords() : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  const cs=shuf([w,...pick(pool.filter(x=>x.en!==w.en),3)]);
   return ghdr('📝 빈칸 채우기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'완벽해! 🎉':'아쉬워! 💪'):'빈칸에 들어갈 단어는?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#D97706"></div></div>
@@ -3625,7 +3971,7 @@ function rSentence(){
       ${S.sbC.length?S.sbC.map((w,i)=>`<span onclick="${S.sbAns?'':'rmSB('+i+')'}" style="display:inline-block;padding:8px 14px;border-radius:12px;font-size:13px;font-weight:700;cursor:${S.sbAns?'default':'pointer'};border:2px solid;background:${S.sbAns?(S.sbOk?'#DCFCE7':'#FFF1F2'):'#EFF6FF'};border-color:${S.sbAns?(S.sbOk?'#86EFAC':'#FECDD3'):'#BFDBFE'};color:${S.sbAns?(S.sbOk?'#15803D':'#DC2626'):'#1E5FA5'}">${w}</span>`).join(''):`<span style="font-size:13px;color:#D1D5DB">아래 단어를 탭해서 문장 만들기</span>`}
     </div>
     ${S.sbAns?`<div style="background:${S.sbOk?'#F0FDF4':'#FFF1F2'};border:2px solid ${S.sbOk?'#86EFAC':'#FECDD3'};border-radius:14px;padding:14px"><div style="font-size:12px;font-weight:700;color:${S.sbOk?'#16A34A':'#DC2626'};margin-bottom:4px">${S.sbOk?'✅ 정답!':'❌ 정답은...'}</div><div style="font-size:14px;font-weight:700;color:#111">${s.en}</div></div>
-    <div style="display:flex;gap:8px"><button class="btn bgr" onclick="SFX.stopBG();go('study','quiz3')">게임 목록</button><button class="btn bb" onclick="nxtSB()">다음 →</button></div>`:
+    <div style="display:flex;gap:8px"><button class="btn bgr" onclick="SFX.stopBG();go('mybooks','quiz3')">게임 목록</button><button class="btn bb" onclick="nxtSB()">다음 →</button></div>`:
     `<div style="display:flex;flex-wrap:wrap;gap:7px">${S.sbP.map((w,i)=>{const used=S.sbC.filter(c=>c===w).length>=S.sbP.filter(p=>p===w).length;return `<span onclick="${used?'':'pickSB(\''+w+'\')'}" style="display:inline-block;padding:8px 14px;border-radius:12px;font-size:13px;font-weight:700;cursor:${used?'default':'pointer'};border:2px solid;background:${used?'#F3F4F6':'#EFF6FF'};border-color:${used?'#E5E7EB':'#BFDBFE'};color:${used?'#9CA3AF':'#1E5FA5'};opacity:${used?.5:1}">${w}</span>`;}).join('')}</div>
     <button class="btn bb" onclick="chkSB()" ${S.sbC.length<2?'disabled':''}>확인 ✓</button>`}
   </div>`;
@@ -3639,14 +3985,30 @@ function rChain(){
   const prompts=['And then...','Suddenly...','After that...','Finally...'];
   return ghdr('➡️ 문장 이어가기',`${S.chIdx}/4`)+`<div class="pad">
     ${cbrow(S.chDone?'멋진 이야기 완성! 🎉':rnd(['이야기를 이어봐! ✍️','창의적으로! 😊','영어로 도전! 💪']),S.lid,S.chDone?'happy':'normal')}
+    ${S.chIdx===0&&!S.chDone?`<div style="background:#FFF8E1;border-radius:12px;padding:10px 14px;font-size:12px;color:#E65100;margin-bottom:8px;line-height:1.7">
+      💡 <strong>게임 방법</strong><br>
+      제시된 문장에 이어지는 내용을 영어로 써주세요.<br>
+      4번 이어쓰면 하나의 이야기가 완성돼요!
+    </div>`:''}
     <div style="background:linear-gradient(135deg,#FDF4FF,#F3E8FF);border-radius:20px;padding:16px;border:2px solid #E9D5FF"><div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">📖 지금까지의 이야기</div><div style="font-size:14px;color:#111;line-height:1.9;white-space:pre-wrap">${S.chStory}</div></div>
-    ${S.chDone?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">${charSVG(S.lid,56,'happy')}<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">이야기 완성! 🎊</div><button class="btn bb" onclick="SFX.stopBG();go('study','quiz3')">다른 게임</button></div>`:
+    ${S.chDone?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">${charSVG(S.lid,56,'happy')}<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">이야기 완성! 🎊</div><button class="btn bb" onclick="SFX.stopBG();S.gDone=true;go()">완료</button></div>`:
     `<div style="background:#EFF6FF;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:700;color:#1E5FA5">${prompts[S.chIdx]||'마무리해봐!'}</div>
-    <textarea id="ci" style="min-height:80px;resize:none;line-height:1.7" placeholder="영어로 이어서..." oninput="S.chIn=this.value">${S.chIn}</textarea>
-    <button class="btn bb" onclick="svChain()" ${!S.chIn.trim()?'disabled':''}>이어가기 →</button>`}
+    <textarea id="ci" style="min-height:80px;resize:none;line-height:1.7" placeholder="영어로 이어서 쓰세요..." oninput="S.chIn=this.value">${S.chIn}</textarea>
+    <button class="btn bb" onclick="svChain()">이어가기 →</button>`}
   </div>`;
 }
-function svChain(){if(!S.chIn.trim())return;S.chStory+='\n'+S.chIn.trim();S.chIdx++;S.chIn='';S.gScore+=100;addXP(10);if(S.chIdx>=4)S.chDone=true;go();}
+function svChain(){
+  const input = document.getElementById('ci')?.value.trim() || S.chIn.trim();
+  if(!input){toast('내용을 입력해주세요!');return;}
+  S.chIn = input;
+  S.chStory+='\n'+input;
+  S.chIdx++;
+  S.chIn='';
+  S.gScore+=100;
+  addXP(10);
+  if(S.chIdx>=4) S.chDone=true;
+  go();
+}
 
 function buildWF(src){
   // 단어 수에 따라 그리드 크기 결정
@@ -4033,7 +4395,7 @@ function rProfile(){
     <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:10px">📊 단어 마크 현황</div>
     <div style="display:flex;gap:8px">
       ${[[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF','#F3F4F6'],[1,'외운',marked1,'#1E5FA5','#EFF6FF'],[2,'헷갈리는',marked2,'#EC4899','#FDF2F8']].map(([v,lb,cnt,col,bg])=>
-        `<div style="flex:1;text-align:center;background:${bg};border-radius:12px;padding:10px;cursor:pointer" onclick="S.listMarkFilter=${v};go('study','list')">
+        `<div style="flex:1;text-align:center;background:${bg};border-radius:12px;padding:10px;cursor:pointer" onclick="S.listMarkFilter=${v};go('mybooks','list')">
           <div style="font-size:18px;font-weight:900;color:${col}">${cnt}</div>
           <div style="font-size:10px;color:${col}">${lb}</div>
         </div>`).join('')}
@@ -4886,7 +5248,7 @@ function importCSV(input) {
         }
       }
     });
-    sv(); cm(); toast(`✅ ${cnt}개 단어 가져오기 완료!`); go('study','list');
+    sv(); cm(); toast(`✅ ${cnt}개 단어 가져오기 완료!`); go('mybooks','list');
   };
   reader.readAsText(file, 'UTF-8');
 }
@@ -4909,7 +5271,7 @@ function importJSON(input) {
       Object.assign(S.markMap, data.markMap||{});
       Object.assign(S.srsMap, data.srsMap||{});
       Object.assign(S.studyLog, data.studyLog||{});
-      sv(); cm(); toast(`✅ ${cnt}개 단어 복원 완료!`); go('study','list');
+      sv(); cm(); toast(`✅ ${cnt}개 단어 복원 완료!`); go('mybooks','list');
     } catch(err) { toast('파일을 읽을 수 없어요'); }
   };
   reader.readAsText(file);

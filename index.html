@@ -1560,24 +1560,129 @@ function showOnboarding() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'study',ic:'📖',lb:'학습'},{id:'game_center',ic:'🎮',lb:'게임'},{id:'market',ic:'🛒',lb:'마켓'},{id:'diary',ic:'✍️',lb:'일기'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'game_center',ic:'🎮',lb:'게임'},{id:'market',ic:'🛒',lb:'마켓'},{id:'diary',ic:'✍️',lb:'일기'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function go(tab,sub) {
   if(tab&&tab!=='game'&&tab!=='ranking') {
-    // 학습 탭을 직접 클릭(sub 없이)하면 항상 단어장 선택 첫 화면으로
     if(tab==='study' && !sub) S.stab='books';
+    if(tab==='mybooks' && !sub) S.stab='books';
     S.tab=tab;
   }
   if(tab==='ranking') S.tab='ranking';
   if(tab==='game') S.tab='game';
   if(sub) S.stab=sub;
   const nav=document.getElementById('nav');
+  nav.style.display=S.tab==='game'?'none':'flex';
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,study:rStudy,game_center:rGameCenter,game:rGame,market:rMarket,diary:rDiary,profile:rProfile};
+  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game_center:rGameCenter,game:rGame,market:rMarket,diary:rDiary,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
-  if(S.tab==='study'&&S.stab==='learn') requestAnimationFrame(initFlashSwipe);
+  if((S.tab==='mybooks'||S.tab==='study')&&S.stab==='learn') requestAnimationFrame(initFlashSwipe);
+}
+
+
+// ── 학습 탭 (두오링고 스타일) ──
+function rLearnTab() {
+  const t = today();
+  const lvInfo = lv(S.lid);
+  const curLvIdx = LEVELS.findIndex(l=>l.id===S.lid);
+  const nextLv = LEVELS[Math.min(curLvIdx+1, LEVELS.length-1)];
+  const xpPct = Math.min(100, Math.round((S.xp||0) / (nextLv?nextLv.xp:lvInfo.xp) * 100));
+  const srsDue = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
+  const todayLog = S.studyLog[t]||{words:0,quiz:0};
+  const diaryDone = (S.dList||[])[0]?.date===t;
+
+  // 오늘의 미션
+  const missions = [
+    {ic:'📖', lb:'새 단어 5개 학습', cur:Math.min(todayLog.words,5), tot:5, done:todayLog.words>=5, fn:"go('mybooks','learn')"},
+    {ic:'🔁', lb:'SRS 복습', cur:srsDue===0&&todayLog.words>0?1:0, tot:1, done:srsDue===0&&todayLog.words>0, fn:"startMode('srs')"},
+    {ic:'🎯', lb:'퀴즈 5문제', cur:Math.min(todayLog.quiz,5), tot:5, done:todayLog.quiz>=5, fn:"showGameSettings('quiz')"},
+  ];
+  const missionDoneCnt = missions.filter(m=>m.done).length;
+
+  let html = '<div class="pad" style="padding-bottom:24px">';
+
+  // 스트릭 + XP 헤더
+  html += `<div style="background:linear-gradient(135deg,#1E5FA5,#2563EB);border-radius:20px;padding:18px;color:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:28px">🔥</span>
+        <div>
+          <div style="font-size:22px;font-weight:900;line-height:1">${S.streak||1}일 연속</div>
+          <div style="font-size:11px;opacity:.7;margin-top:2px">스트릭 유지 중!</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:20px;font-weight:900">⚡ ${S.xp||0} XP</div>
+        <div style="font-size:11px;opacity:.7;margin-top:2px">${lvInfo.emoji} ${lvInfo.name}</div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+      <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .5s"></div>
+    </div>
+    <div style="font-size:11px;opacity:.6;margin-top:4px;text-align:right">${S.xp||0} / ${nextLv?nextLv.xp:lvInfo.xp} XP → ${nextLv&&nextLv.id!==S.lid?nextLv.name:'최고 레벨'}</div>
+  </div>`;
+
+  // 오늘의 미션
+  html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">📅 오늘의 미션</div>
+      <span style="font-size:12px;font-weight:700;color:#1E5FA5;background:#EFF6FF;padding:3px 10px;border-radius:20px">${missionDoneCnt}/3 완료</span>
+    </div>`;
+  missions.forEach((m,i)=>{
+    const pct = Math.round(m.cur/m.tot*100);
+    html += `<div onclick="${m.fn}" style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;background:${m.done?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};margin-bottom:${i<missions.length-1?'8px':'0'};cursor:pointer;border:1.5px solid ${m.done?'#86EFAC':'var(--border,#E5E7EB)'}">
+      <span style="font-size:22px;flex-shrink:0">${m.ic}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:${m.done?'#16A34A':'var(--text1,#111)'};margin-bottom:5px">${m.lb}</div>
+        <div style="background:${m.done?'#86EFAC':'var(--border,#E5E7EB)'};border-radius:4px;height:5px;overflow:hidden">
+          <div style="height:100%;background:${m.done?'#16A34A':'#1E5FA5'};border-radius:4px;width:${pct}%;transition:width .4s"></div>
+        </div>
+        <div style="font-size:10px;color:#9CA3AF;margin-top:3px">${m.cur}/${m.tot}</div>
+      </div>
+      <span style="font-size:16px">${m.done?'✅':'›'}</span>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // 레벨 커리큘럼
+  html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
+    <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🗺️ 레벨 커리큘럼</div>
+    <div style="display:flex;flex-direction:column;gap:6px">`;
+  const curriculum = [
+    {id:'egg',   emoji:'🥚', name:'알',          desc:'기초 100단어'},
+    {id:'baby',  emoji:'🐛', name:'아기벌거지',   desc:'초등 300단어'},
+    {id:'crown', emoji:'🍀', name:'왕관벌거지',   desc:'중등 500단어'},
+    {id:'coco',  emoji:'🫘', name:'번데기',       desc:'고등 수능'},
+    {id:'shine', emoji:'✨', name:'빛나는번데기', desc:'토익'},
+    {id:'small', emoji:'🦋', name:'작은나비',     desc:'토플'},
+    {id:'big',   emoji:'🦋', name:'큰나비',       desc:'GRE'},
+    {id:'god',   emoji:'⚡', name:'황금나비',     desc:'원어민급'},
+  ];
+  curriculum.forEach((lv2,i)=>{
+    const isCur = lv2.id===S.lid;
+    const isDone = i < curLvIdx;
+    html += `<div onclick="${isCur?`showLevelModal()`:''}\" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:${isCur?'#EFF6FF':isDone?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${isCur?'#1E5FA5':isDone?'#86EFAC':'var(--border,#E5E7EB)'};cursor:${isCur?'pointer':'default'}">
+      <span style="font-size:24px">${lv2.emoji}</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:${isCur?'#1E5FA5':isDone?'#16A34A':'var(--text2,#6B7280)'}">${lv2.name}${isCur?' ← 현재':''}</div>
+        <div style="font-size:11px;color:#9CA3AF">${lv2.desc}</div>
+      </div>
+      <span style="font-size:14px">${isDone?'✅':isCur?'▶':'🔒'}</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // 레벨업 테스트 버튼
+  html += `<div onclick="showTestIntro()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;text-align:center">
+    <div style="font-size:24px;margin-bottom:6px">🏆</div>
+    <div style="font-size:15px;font-weight:800;color:#fff">레벨업 테스트</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px">다음 레벨로 도전해보세요!</div>
+  </div>`;
+
+  html += '</div>';
+  return html;
 }
 
 // ── 홈 ──
@@ -1637,12 +1742,12 @@ function rHome() {
         <div style="font-size:12px;font-weight:800;color:#1E5FA5">깜빡이</div>
         <div style="font-size:10px;color:#9CA3AF">1단계</div>
       </div>
-      <div onclick="S.gameId='quiz';S.gDone=false;go('game')" style="flex:1;background:#F0FDF4;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #86EFAC">
+      <div onclick="showGameSettings('quiz')" style="flex:1;background:#F0FDF4;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #86EFAC">
         <div style="font-size:28px;margin-bottom:4px">🎯</div>
         <div style="font-size:12px;font-weight:800;color:#16A34A">객관식</div>
         <div style="font-size:10px;color:#9CA3AF">2단계</div>
       </div>
-      <div onclick="S.gameId='typing';S.gDone=false;go('game')" style="flex:1;background:#FFF8E1;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #FFE082">
+      <div onclick="showGameSettings('typing')" style="flex:1;background:#FFF8E1;border-radius:16px;padding:14px;text-align:center;cursor:pointer;border:1.5px solid #FFE082">
         <div style="font-size:28px;margin-bottom:4px">✏️</div>
         <div style="font-size:12px;font-weight:800;color:#E65100">받아쓰기</div>
         <div style="font-size:10px;color:#9CA3AF">3단계</div>
@@ -1897,7 +2002,7 @@ function showGoal() {
       <button id="tab-period" onclick="goalTab('period')" style="flex:1;padding:10px;border-radius:10px;background:#F3F4F6;color:#6B7280;border:none;font-size:13px;font-weight:700;cursor:pointer">📆 기간 선택</button>
     </div>
     <div id="goal-date-view">
-      <input type="date" id="gd" style="margin-bottom:10px" min="${today()}">
+      <input type="date" id="gd" style="margin-bottom:10px" min="${today()}" oninput="S._goalDate=this.value">
     </div>
     <div id="goal-period-view" style="display:none">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
@@ -1930,7 +2035,7 @@ function goalTab(t) {
   document.getElementById('tab-period').style.background=t==='period'?'#1E5FA5':'#F3F4F6';
   document.getElementById('tab-period').style.color=t==='period'?'#fff':'#6B7280';
 }
-function svGoal(){const d=document.getElementById('gd')?.value;if(!d){toast('날짜를 선택하세요');return;}S.goal=d;S.goalTotal=S.words.length;sv();cm();go('home');toast('목표 설정 완료!');}
+function svGoal(){const d=document.getElementById('gd')?.value||S._goalDate;if(!d){toast('날짜를 선택하세요');return;}S.goal=d;S.goalTotal=S.words.length;sv();cm();go('home');toast('목표 설정 완료!');}
 
 // ── 레벨 모달 ──
 function showLevelModal() {
@@ -3495,7 +3600,7 @@ function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;return `<div s
 
 function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
-  const src=S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg);
+  const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
   const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
   return ghdr('🎯 뜻 맞추기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'맞아! 🎉':'아쉬워! 💪'):'이 단어의 뜻은?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
@@ -3520,7 +3625,7 @@ function ansQ(c,ok2){
 
 function rFill(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
-  const src=S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg);
+  const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
   const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
   return ghdr('📝 빈칸 채우기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'완벽해! 🎉':'아쉬워! 💪'):'빈칸에 들어갈 단어는?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}

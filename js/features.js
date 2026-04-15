@@ -119,6 +119,7 @@ function confirmDownloadPack(packId) {
   localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
   sv(); cm();
   toast(`✅ "${bookName}" 추가 완료! (${(pack.words||[]).length}개)`);
+  S.stab = 'books';
   go('study');
 }
 

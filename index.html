@@ -1864,17 +1864,14 @@ function startLearnSession(mode) {
 }
 
 function showLearnAmountPicker(mode, remaining) {
-  // 전역 변수에 저장 (onclick 인라인에 JSON 넣지 않음)
   window._pickerRemaining = remaining;
   window._pickerMode = mode || 'random';
-  const total = remaining.length;
-  if(!S._learnTotalTarget) S._learnTotalTarget = total;
+  if(!S._learnTotalTarget) S._learnTotalTarget = remaining.length;
   _renderLearnAmountPicker();
 }
 
 function _renderLearnAmountPicker() {
   const remaining = window._pickerRemaining || [];
-  const mode = window._pickerMode || 'random';
   const total = remaining.length;
   const options = [
     {lb:'전체 (기본)', v: total},
@@ -1883,28 +1880,52 @@ function _renderLearnAmountPicker() {
     {lb:'100개',       v: Math.min(100, total)},
   ];
   const cur = S._learnTotalTarget || total;
+  const mr = document.getElementById('mr');
+  if(!mr) return;
 
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+  // innerHTML 대신 DOM으로 구성 (onclick 이벤트 안정성 확보)
+  const wrap = document.createElement('div');
+  wrap.className = 'mbg';
+  wrap.onclick = cm;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.onclick = e => e.stopPropagation();
+  modal.innerHTML = `
     <div style="font-size:17px;font-weight:800;margin-bottom:6px">📖 오늘 학습 분량</div>
     <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">남은 단어 ${total}개 중 오늘 학습할 분량을 선택하세요</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      ${options.map(opt=>{
-        const sel = cur === opt.v;
-        return `<div onclick="S._learnTotalTarget=${opt.v};_renderLearnAmountPicker()"
-          style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid ${sel?'#1E5FA5':'var(--border,#E5E7EB)'};background:${sel?'#EFF6FF':'var(--bg-sub,#F9FAFB)'};cursor:pointer">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:18px;height:18px;border-radius:50%;background:${sel?'#1E5FA5':'transparent'};border:2px solid ${sel?'#1E5FA5':'#D1D5DB'};flex-shrink:0"></div>
-            <span style="font-size:14px;font-weight:700;color:${sel?'#1E5FA5':'var(--text1,#374151)'}">${opt.lb}</span>
-          </div>
-          <span style="font-size:12px;font-weight:700;color:${sel?'#1E5FA5':'#9CA3AF'}">${opt.v}개</span>
-        </div>`;
-      }).join('')}
-    </div>
-    <button onclick="cm();_startLearnWithAmount(window._pickerMode)"
-      style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
-      🚀 학습 시작
-    </button>
-  </div></div>`;
+    <div id="picker-opts" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+    <button id="picker-start" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">🚀 학습 시작</button>
+  `;
+  wrap.appendChild(modal);
+  mr.innerHTML = '';
+  mr.appendChild(wrap);
+
+  // 옵션 버튼 동적 생성
+  const optsEl = document.getElementById('picker-opts');
+  options.forEach(opt => {
+    const div = document.createElement('div');
+    const sel = cur === opt.v;
+    div.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid ${sel?'#1E5FA5':'var(--border,#E5E7EB)'};background:${sel?'#EFF6FF':'var(--bg-sub,#F9FAFB)'};cursor:pointer`;
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:18px;height:18px;border-radius:50%;background:${sel?'#1E5FA5':'transparent'};border:2px solid ${sel?'#1E5FA5':'#D1D5DB'};flex-shrink:0"></div>
+        <span style="font-size:14px;font-weight:700;color:${sel?'#1E5FA5':'var(--text1,#374151)'}">${opt.lb}</span>
+      </div>
+      <span style="font-size:12px;font-weight:700;color:${sel?'#1E5FA5':'#9CA3AF'}">${opt.v}개</span>
+    `;
+    div.addEventListener('click', () => {
+      S._learnTotalTarget = opt.v;
+      _renderLearnAmountPicker();
+    });
+    optsEl.appendChild(div);
+  });
+
+  // 학습 시작 버튼
+  document.getElementById('picker-start').addEventListener('click', () => {
+    cm();
+    _startLearnWithAmount(window._pickerMode);
+  });
 }
 
 function _startLearnWithAmount(mode) {

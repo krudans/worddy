@@ -890,6 +890,9 @@ const MARK_INFO = [
   {label:'헷갈리는 단어',color:'#EC4899', bg:'#FDF2F8', emoji:'🦋', paw:'🦋'},
 ];
 function getMark(en) { return S.markMap[en]||0; }
+function getLearnedSysWords(lvId) {
+  return JSON.parse(localStorage.getItem('wd-sys-learned-'+lvId)||'[]').length;
+}
 function setMark(en, val) {
   S.markMap[en] = val;
   // 외운 단어 → learned에도 추가
@@ -1494,6 +1497,8 @@ function finishAdaptiveTest() {
 
 // ── 앱 시작 ──
 function startApp() {
+  // 시스템 단어 로드
+  loadSysWords(S.lid);
   document.getElementById('hd').style.display='';
   document.getElementById('nav').style.display='flex';
   updHD(); scheduleAlarms();
@@ -1591,11 +1596,15 @@ function rLearnTab() {
   const xpPct = Math.min(100, Math.round((S.xp||0) / (nextLv?nextLv.xp:lvInfo.xp) * 100));
   const srsDue = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const todayLog = S.studyLog[t]||{words:0,quiz:0};
-  const diaryDone = (S.dList||[])[0]?.date===t;
+
+  // 시스템 단어 진도
+  const sysLearned = getLearnedSysWords(S.lid);
+  const sysTotal = (S._sysWords||[]).length;
+  const sysPct = sysTotal>0 ? Math.round(sysLearned/sysTotal*100) : 0;
 
   // 오늘의 미션
   const missions = [
-    {ic:'📖', lb:'새 단어 5개 학습', cur:Math.min(todayLog.words,5), tot:5, done:todayLog.words>=5, fn:"go('mybooks','learn')"},
+    {ic:'📖', lb:'새 단어 5개 학습', cur:Math.min(todayLog.words,5), tot:5, done:todayLog.words>=5, fn:"startLearnSession()"},
     {ic:'🔁', lb:'SRS 복습', cur:srsDue===0&&todayLog.words>0?1:0, tot:1, done:srsDue===0&&todayLog.words>0, fn:"startMode('srs')"},
     {ic:'🎯', lb:'퀴즈 5문제', cur:Math.min(todayLog.quiz,5), tot:5, done:todayLog.quiz>=5, fn:"showGameSettings('quiz')"},
   ];
@@ -1603,7 +1612,7 @@ function rLearnTab() {
 
   let html = '<div class="pad" style="padding-bottom:24px">';
 
-  // 스트릭 + XP 헤더
+  // ── 스트릭 + XP 헤더 ──
   html += `<div style="background:linear-gradient(135deg,#1E5FA5,#2563EB);border-radius:20px;padding:18px;color:#fff">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:10px">
@@ -1624,7 +1633,7 @@ function rLearnTab() {
     <div style="font-size:11px;opacity:.6;margin-top:4px;text-align:right">${S.xp||0} / ${nextLv?nextLv.xp:lvInfo.xp} XP → ${nextLv&&nextLv.id!==S.lid?nextLv.name:'최고 레벨'}</div>
   </div>`;
 
-  // 오늘의 미션
+  // ── 오늘의 미션 ──
   html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">📅 오늘의 미션</div>
@@ -1646,24 +1655,75 @@ function rLearnTab() {
   });
   html += `</div>`;
 
-  // 레벨 커리큘럼
+  // ── 학습하기 ──
+  html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">📖 학습하기</div>
+      <span style="font-size:11px;color:#9CA3AF">${lvInfo.emoji} ${lvInfo.name} 단어</span>
+    </div>
+    ${sysTotal>0?`<div style="font-size:11px;color:#1E5FA5;margin-bottom:10px">진도 ${sysLearned}/${sysTotal}개 (${sysPct}%)</div>`:'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">시스템 단어 로딩 중...</div>'}
+    <button onclick="startLearnSession()" style="width:100%;background:linear-gradient(135deg,#1E5FA5,#2563EB);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px">
+      🚀 학습 시작하기
+    </button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button onclick="startLearnSession('random')" style="background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#7C3AED">🔀 랜덤</button>
+      <button onclick="startLearnSession('flip')" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#1E5FA5">🎴 깜빡이</button>
+      <button onclick="startLearnSession('quiz')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A">🎯 뜻 맞추기</button>
+      <button onclick="startLearnSession('fill')" style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#D97706">📝 빈칸 채우기</button>
+      <button onclick="startLearnSession('typing')" style="background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#EA580C">✏️ 받아쓰기</button>
+      <button onclick="startLearnSession('wc')" style="background:#F0FDFA;border:1.5px solid #99F6E4;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#0D9488">🔤 단어 맞추기</button>
+      <button onclick="startLearnSession('match')" style="background:#FFF1F2;border:1.5px solid #FECDD3;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#E11D48">⚡ 매칭</button>
+      <button onclick="startLearnSession('sentence')" style="background:#FDF2F8;border:1.5px solid #F5D0FE;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#A21CAF">📖 문장 구성 ⭐</button>
+      <button onclick="startLearnSession('chain')" style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#7C3AED">🔗 문장 이어가기 ⭐</button>
+      <button onclick="startLearnSession('listen')" style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#DC2626">🔊 듣고 완성 ⭐</button>
+      <button onclick="startLearnSession('wordfind')" style="background:#ECFDF5;border:1.5px solid #A7F3D0;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#059669">🔍 단어 찾기</button>
+      <button onclick="startLearnSession('wordle')" style="background:#F8FAFC;border:1.5px solid #CBD5E1;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#475569">🟩 워들</button>
+      <button onclick="startLearnSession('ssort')" style="background:#FFF8F1;border:1.5px solid #FED7AA;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#C2410C">📊 속도 정렬</button>
+    </div>
+  </div>`;
+
+  // ── 암기 모드 ──
+  html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
+    <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🧘 암기 모드</div>
+    <div style="display:flex;flex-direction:column;gap:8px">`;
+  const modes = [
+    {ic:'🚇', nm:'스트리밍',    dc:'이동 중 · 자동으로 넘어감',      fn:"startMode('stream')", c:'#1E5FA5', bg:'#EFF6FF'},
+    {ic:'🏃', nm:'오디오',      dc:'운동 중 · 화면 꺼져도 재생',      fn:"startMode('audio')",  c:'#16A34A', bg:'#F0FDF4'},
+    {ic:'🎤', nm:'쉐도잉',      dc:'예문 따라 말하기 · 발음 훈련',    fn:"startMode('shadow')", c:'#EC4899', bg:'#FDF2F8'},
+    {ic:'🗣️', nm:'말하기 퀴즈', dc:'뜻 보고 영어로 말하기',           fn:"startMode('speak')",  c:'#7C3AED', bg:'#FDF4FF'},
+    {ic:'😴', nm:'수면 모드',   dc:'자기 전 · 어둡게 자동종료',       fn:"startMode('sleep')",  c:'#6B7280', bg:'var(--bg-sub,#F9FAFB)'},
+    {ic:'📖', nm:'SRS 암기',    dc:'집중 공부 · SM-2 망각곡선',       fn:"startMode('srs')",    c:'#E65100', bg:'#FFF8E1'},
+  ];
+  modes.forEach(m=>{
+    html += `<div onclick="${m.fn}" style="display:flex;align-items:center;gap:14px;background:${m.bg};border-radius:14px;padding:14px;cursor:pointer" ontouchstart="this.style.opacity='.8'" ontouchend="this.style.opacity='1'">
+      <span style="font-size:28px">${m.ic}</span>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:800;color:${m.c}">${m.nm}</div>
+        <div style="font-size:11px;color:#6B7280;margin-top:2px">${m.dc}</div>
+      </div>
+      <span style="font-size:18px;color:${m.c};opacity:.5">›</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // ── 레벨 커리큘럼 ──
   html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
     <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🗺️ 레벨 커리큘럼</div>
     <div style="display:flex;flex-direction:column;gap:6px">`;
   const curriculum = [
-    {id:'egg',   emoji:'🥚', name:'알',          desc:'기초 100단어'},
-    {id:'baby',  emoji:'🐛', name:'아기벌거지',   desc:'초등 300단어'},
-    {id:'crown', emoji:'🍀', name:'왕관벌거지',   desc:'중등 500단어'},
-    {id:'coco',  emoji:'🫘', name:'번데기',       desc:'고등 수능'},
-    {id:'shine', emoji:'✨', name:'빛나는번데기', desc:'토익'},
-    {id:'small', emoji:'🦋', name:'작은나비',     desc:'토플'},
-    {id:'big',   emoji:'🦋', name:'큰나비',       desc:'GRE'},
-    {id:'god',   emoji:'⚡', name:'황금나비',     desc:'원어민급'},
+    {id:'egg',   emoji:'🥚', name:'알',           desc:'기초 100단어'},
+    {id:'baby',  emoji:'🐛', name:'아기벌거지',    desc:'초등 300단어'},
+    {id:'crown', emoji:'🍀', name:'왕관벌거지',    desc:'중등 500단어'},
+    {id:'coco',  emoji:'🫘', name:'번데기',        desc:'고등 수능'},
+    {id:'shine', emoji:'✨', name:'빛나는번데기',  desc:'토익'},
+    {id:'small', emoji:'🦋', name:'작은나비',      desc:'토플'},
+    {id:'big',   emoji:'🦋', name:'큰나비',        desc:'GRE'},
+    {id:'god',   emoji:'⚡', name:'황금나비',      desc:'원어민급'},
   ];
   curriculum.forEach((lv2,i)=>{
     const isCur = lv2.id===S.lid;
     const isDone = i < curLvIdx;
-    html += `<div onclick="${isCur?`showLevelModal()`:''}\" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:${isCur?'#EFF6FF':isDone?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${isCur?'#1E5FA5':isDone?'#86EFAC':'var(--border,#E5E7EB)'};cursor:${isCur?'pointer':'default'}">
+    html += `<div onclick="${isCur?'showLevelModal()':''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:${isCur?'#EFF6FF':isDone?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${isCur?'#1E5FA5':isDone?'#86EFAC':'var(--border,#E5E7EB)'};cursor:${isCur?'pointer':'default'}">
       <span style="font-size:24px">${lv2.emoji}</span>
       <div style="flex:1">
         <div style="font-size:13px;font-weight:700;color:${isCur?'#1E5FA5':isDone?'#16A34A':'var(--text2,#6B7280)'}">${lv2.name}${isCur?' ← 현재':''}</div>
@@ -1674,15 +1734,245 @@ function rLearnTab() {
   });
   html += `</div></div>`;
 
-  // 레벨업 테스트 버튼
-  html += `<div onclick="showTestIntro()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;text-align:center">
+  // ── 레벨업 테스트 ──
+  html += `<div onclick="showLevelUpTest()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;text-align:center">
     <div style="font-size:24px;margin-bottom:6px">🏆</div>
     <div style="font-size:15px;font-weight:800;color:#fff">레벨업 테스트</div>
-    <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px">다음 레벨로 도전해보세요!</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px">현재 레벨 단어로 테스트 · 통과하면 다음 레벨!</div>
   </div>`;
 
   html += '</div>';
   return html;
+}
+
+
+
+// ── 학습 세션 (학습 탭) ──
+const LEARN_GAMES = ['flip','quiz','fill','typing','wc','match','sentence','chain','listen','wordfind','wordle','ssort'];
+
+function startLearnSession(mode) {
+  const words = S._sysWords || [];
+  if(words.length === 0) {
+    toast('시스템 단어를 로딩 중이에요. 잠시 후 다시 시도해주세요.');
+    loadSysWords(S.lid, ()=>startLearnSession(mode));
+    return;
+  }
+  const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
+  const remaining = words.filter(w=>!learnedSet.has(w.en));
+
+  if(remaining.length === 0) {
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+      <div style="font-size:48px;margin-bottom:12px">🎉</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:8px">모든 단어 학습 완료!</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:20px">레벨업 테스트에 도전해보세요!</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="cm();showLevelUpTest()" style="flex:2;background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🏆 레벨업 테스트</button>
+        <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button>
+      </div>
+    </div></div>`;
+    return;
+  }
+
+  const sessionWords = shuf(remaining.slice(0, 5));
+  let gameId;
+  if(!mode || mode==='random') {
+    const lastGame = S._lastLearnGame || '';
+    const available = LEARN_GAMES.filter(g=>g!==lastGame);
+    gameId = available[Math.floor(Math.random()*available.length)];
+  } else {
+    gameId = mode;
+  }
+  S._lastLearnGame = gameId;
+  S._learnMode = mode || 'random';
+  S._learnSessionWords = sessionWords;
+  S._learnResultMap = {};
+  S._inLearnSession = true;
+  startGameW(gameId, sessionWords);
+}
+
+function loadSysWords(lvId, callback) {
+  if(typeof db === 'undefined') {
+    S._sysWords = DEFAULT_WORDS[lvId] || DEFAULT_WORDS.egg || [];
+    if(callback) callback();
+    return;
+  }
+  const tryLoad = (withOrder) => {
+    let q = db.collection('system_words').where('level','==',lvId);
+    if(withOrder) q = q.orderBy('order','asc');
+    return q.get().then(snap=>{
+      S._sysWords = snap.docs.map(d=>({...d.data(), id:d.id}));
+      if(S._sysWords.length===0) S._sysWords = DEFAULT_WORDS[lvId]||DEFAULT_WORDS.egg||[];
+      if(callback) callback();
+    });
+  };
+  tryLoad(true).catch(()=>tryLoad(false).catch(()=>{
+    S._sysWords = DEFAULT_WORDS[lvId]||DEFAULT_WORDS.egg||[];
+    if(callback) callback();
+  }));
+}
+
+function finishLearnSession(resultMap) {
+  if(!S._inLearnSession) return;
+  S._inLearnSession = false;
+  const sessionWords = S._learnSessionWords || [];
+  const wrong = sessionWords.filter(w=>resultMap[w.en]===false);
+  const correct = sessionWords.filter(w=>resultMap[w.en]!==false);
+
+  if(correct.length > 0) {
+    const key = 'wd-sys-learned-'+S.lid;
+    const learned = new Set(JSON.parse(localStorage.getItem(key)||'[]'));
+    correct.forEach(w=>learned.add(w.en));
+    localStorage.setItem(key, JSON.stringify([...learned]));
+  }
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:18px;font-weight:800;margin-bottom:16px;text-align:center">📊 학습 결과</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:#F0FDF4;border-radius:14px;padding:16px;text-align:center;border:1.5px solid #86EFAC">
+        <div style="font-size:32px;font-weight:900;color:#16A34A">${correct.length}</div>
+        <div style="font-size:12px;color:#16A34A;font-weight:700;margin-top:4px">✅ 맞음</div>
+      </div>
+      <div style="background:${wrong.length>0?'#FEF2F2':'#F9FAFB'};border-radius:14px;padding:16px;text-align:center;border:1.5px solid ${wrong.length>0?'#FECACA':'#E5E7EB'}">
+        <div style="font-size:32px;font-weight:900;color:${wrong.length>0?'#DC2626':'#9CA3AF'}">${wrong.length}</div>
+        <div style="font-size:12px;color:${wrong.length>0?'#DC2626':'#9CA3AF'};font-weight:700;margin-top:4px">❌ 틀림</div>
+      </div>
+    </div>
+    ${wrong.length>0?`
+    <div style="background:#FEF2F2;border-radius:12px;padding:12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:#DC2626;margin-bottom:8px">❌ 틀린 단어</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${wrong.map(w=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border-radius:8px">
+          <span>${w.img||'📝'}</span>
+          <span style="font-size:13px;font-weight:700;font-family:monospace">${w.en}</span>
+          <span style="font-size:12px;color:#6B7280">= ${w.kr}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm();reLearnWords(${JSON.stringify(wrong).replace(/"/g,'&quot;')})" style="flex:2;background:#DC2626;color:#fff;border:none;border-radius:12px;padding:13px;font-size:13px;font-weight:700;cursor:pointer">🔄 틀린 것 다시 학습</button>
+      <button onclick="cm();checkLearnComplete()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:13px;font-weight:700;cursor:pointer">건너뛰기</button>
+    </div>` : `
+    <button onclick="cm();checkLearnComplete()" style="width:100%;background:#16A34A;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer">✅ 완료! 다음으로</button>`}
+  </div></div>`;
+
+  addXP(correct.length * 3);
+  logStudy('words');
+  sv();
+}
+
+function reLearnWords(words) {
+  if(!words||words.length===0){checkLearnComplete();return;}
+  S._learnSessionWords = words;
+  S._inLearnSession = true;
+  const gameId = S._learnMode==='random'
+    ? LEARN_GAMES[Math.floor(Math.random()*LEARN_GAMES.length)]
+    : (S._learnMode||'quiz');
+  S._lastLearnGame = gameId;
+  startGameW(gameId, words);
+}
+
+function checkLearnComplete() {
+  const words = S._sysWords || [];
+  const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
+  const remaining = words.filter(w=>!learnedSet.has(w.en));
+
+  if(remaining.length === 0) {
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+      <div style="font-size:56px;margin-bottom:12px">🎊</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:8px">모든 단어 학습 완료!</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:20px">${words.length}개 단어를 모두 마쳤어요!</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="cm();showLevelUpTest()" style="flex:2;background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🏆 레벨업 테스트</button>
+        <button onclick="cm();go('learn')" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button>
+      </div>
+    </div></div>`;
+  } else {
+    startLearnSession(S._learnMode||'random');
+  }
+}
+
+function showLevelUpTest() {
+  const words = S._sysWords || DEFAULT_WORDS[S.lid] || [];
+  if(words.length===0){toast('시스템 단어가 없어요');return;}
+  const passRate = S._levelTestPassRate || 100;
+  const lvInfo = lv(S.lid);
+  const curLvIdx = LEVELS.findIndex(l=>l.id===S.lid);
+  const nextLv = LEVELS[Math.min(curLvIdx+1, LEVELS.length-1)];
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:48px;margin-bottom:8px">🏆</div>
+      <div style="font-size:18px;font-weight:800">레벨업 테스트</div>
+      <div style="font-size:13px;color:#9CA3AF;margin-top:4px">${lvInfo.emoji} ${lvInfo.name} → ${nextLv?.emoji||'⚡'} ${nextLv?.name||'최고 레벨'}</div>
+    </div>
+    <div style="background:#F5F3FF;border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;color:#7C3AED;line-height:1.7">
+      📝 총 ${words.length}개 중 랜덤 20개 출제<br>
+      🎯 통과 기준: <strong>${passRate}%</strong> 이상<br>
+      ✅ 통과 시 다음 레벨 승급!
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--text1,#374151);margin-bottom:6px">통과 기준 설정</div>
+      <div style="display:flex;gap:6px">
+        ${[70,80,90,100].map(r=>`<button onclick="S._levelTestPassRate=${r};showLevelUpTest()" style="flex:1;padding:8px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:${passRate===r?'#7C3AED':'#F3F4F6'};color:${passRate===r?'#fff':'#374151'}">${r}%</button>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm();startLevelTest()" style="flex:2;background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer">🚀 테스트 시작</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    </div>
+  </div></div>`;
+}
+
+function startLevelTest() {
+  const words = S._sysWords || DEFAULT_WORDS[S.lid] || [];
+  const testWords = shuf([...words]).slice(0, Math.min(20, words.length));
+  S._levelTestWords = testWords;
+  S._inLevelTest = true;
+  startGameW('quiz', testWords);
+}
+
+function finishLevelTest(resultMap) {
+  if(!S._inLevelTest) return;
+  S._inLevelTest = false;
+  const testWords = S._levelTestWords || [];
+  const correct = testWords.filter(w=>resultMap[w.en]!==false).length;
+  const total = testWords.length;
+  const pct = total>0 ? Math.round(correct/total*100) : 0;
+  const passRate = S._levelTestPassRate || 100;
+  const passed = pct >= passRate;
+  const curLvIdx = LEVELS.findIndex(l=>l.id===S.lid);
+  const nextLv = LEVELS[Math.min(curLvIdx+1, LEVELS.length-1)];
+  const lvInfo = lv(S.lid);
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:56px;margin-bottom:12px">${passed?'🎉':'😢'}</div>
+    <div style="font-size:22px;font-weight:900;margin-bottom:6px;color:${passed?'#16A34A':'#DC2626'}">${passed?'통과!':'아쉽게도 탈락...'}</div>
+    <div style="font-size:32px;font-weight:900;color:${passed?'#16A34A':'#DC2626'};margin-bottom:4px">${pct}%</div>
+    <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">${correct}/${total}개 정답 (기준: ${passRate}%)</div>
+    ${passed?`
+    <div style="background:#F0FDF4;border-radius:14px;padding:16px;margin-bottom:16px;text-align:center">
+      <div style="font-size:14px;font-weight:700;color:#16A34A">${lvInfo.emoji} ${lvInfo.name}</div>
+      <div style="font-size:20px;margin:8px 0">↓</div>
+      <div style="font-size:14px;font-weight:700;color:#1E5FA5">${nextLv?.emoji||'⚡'} ${nextLv?.name||'최고 레벨'} 승급!</div>
+    </div>
+    <button onclick="cm();doLevelUp()" style="width:100%;background:#16A34A;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px">🎊 레벨업!</button>`:`
+    <div style="background:#FEF2F2;border-radius:14px;padding:14px;margin-bottom:16px;font-size:13px;color:#DC2626">${passRate-pct}% 부족해요. 다시 학습하고 도전하세요!</div>
+    <button onclick="cm();startLearnSession('random')" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">📖 다시 학습하기</button>`}
+    <button onclick="cm();go('learn')" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer">학습 탭으로</button>
+  </div></div>`;
+}
+
+function doLevelUp() {
+  const curLvIdx = LEVELS.findIndex(l=>l.id===S.lid);
+  const nextLv = LEVELS[Math.min(curLvIdx+1, LEVELS.length-1)];
+  if(!nextLv||nextLv.id===S.lid){toast('이미 최고 레벨이에요!');return;}
+  S.lid = nextLv.id;
+  S._sysWords = null;
+  addXP(500);
+  sv();
+  toast(`🎊 ${nextLv.name} 레벨로 승급!`);
+  loadSysWords(S.lid, ()=>go('learn'));
+  go('learn');
 }
 
 // ── 홈 ──
@@ -3544,6 +3834,18 @@ function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wo
 function rGameDone(){
   SFX.stopBG();
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
+  // 학습 세션 결과 처리
+  if(S._inLearnSession && S.gResultMap) {
+    const rm = {...S.gResultMap};
+    setTimeout(()=>finishLearnSession(rm), 300);
+    S._inLearnSession = false;
+  }
+  // 레벨 테스트 결과 처리
+  if(S._inLevelTest && S.gResultMap) {
+    const rm = {...S.gResultMap};
+    setTimeout(()=>finishLevelTest(rm), 300);
+    S._inLevelTest = false;
+  }
   const tot=Math.max(S.gWords.length,1);
   const right=Math.round(S.gScore/100);
   const pct=Math.round(right/tot*100);

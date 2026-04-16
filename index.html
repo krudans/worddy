@@ -1888,46 +1888,42 @@ function _renderLearnAmountPicker() {
     document.getElementById('app').appendChild(mr);
   }
 
-  // innerHTML 대신 DOM으로 구성 (onclick 이벤트 안정성 확보)
-  const wrap = document.createElement('div');
-  wrap.className = 'mbg';
-  wrap.onclick = cm;
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.onclick = e => e.stopPropagation();
-  modal.innerHTML = `
-    <div style="font-size:17px;font-weight:800;margin-bottom:6px">📖 오늘 학습 분량</div>
-    <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">남은 단어 ${total}개 중 오늘 학습할 분량을 선택하세요</div>
-    <div id="picker-opts" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-    <button id="picker-start" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">🚀 학습 시작</button>
-  `;
-  wrap.appendChild(modal);
-  mr.innerHTML = '';
-  mr.appendChild(wrap);
-
-  // 옵션 버튼 동적 생성
-  const optsEl = document.getElementById('picker-opts');
-  options.forEach(opt => {
-    const div = document.createElement('div');
+  // 모달 전체를 한번에 구성 후 이벤트 바인딩
+  const optsHtml = options.map((opt,i) => {
     const sel = cur === opt.v;
-    div.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid ${sel?'#1E5FA5':'var(--border,#E5E7EB)'};background:${sel?'#EFF6FF':'var(--bg-sub,#F9FAFB)'};cursor:pointer`;
-    div.innerHTML = `
+    return `<div data-picker-idx="${i}" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid ${sel?'#1E5FA5':'var(--border,#E5E7EB)'};background:${sel?'#EFF6FF':'var(--bg-sub,#F9FAFB)'};cursor:pointer">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:18px;height:18px;border-radius:50%;background:${sel?'#1E5FA5':'transparent'};border:2px solid ${sel?'#1E5FA5':'#D1D5DB'};flex-shrink:0"></div>
         <span style="font-size:14px;font-weight:700;color:${sel?'#1E5FA5':'var(--text1,#374151)'}">${opt.lb}</span>
       </div>
       <span style="font-size:12px;font-weight:700;color:${sel?'#1E5FA5':'#9CA3AF'}">${opt.v}개</span>
-    `;
-    div.addEventListener('click', () => {
+    </div>`;
+  }).join('');
+
+  mr.innerHTML = `<div class="mbg" id="picker-bg"><div class="modal" id="picker-modal">
+    <div style="font-size:17px;font-weight:800;margin-bottom:6px">📖 오늘 학습 분량</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">남은 단어 ${total}개 중 오늘 학습할 분량을 선택하세요</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">${optsHtml}</div>
+    <button id="picker-start" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">🚀 학습 시작</button>
+  </div></div>`;
+
+  // 배경 클릭 닫기
+  document.getElementById('picker-bg').onclick = cm;
+  document.getElementById('picker-modal').onclick = e => e.stopPropagation();
+
+  // 옵션 클릭 이벤트 - 이미 DOM에 있으므로 바로 바인딩 가능
+  options.forEach((opt, i) => {
+    const el = mr.querySelector(`[data-picker-idx="${i}"]`);
+    if(el) el.addEventListener('click', e => {
+      e.stopPropagation();
       S._learnTotalTarget = opt.v;
       _renderLearnAmountPicker();
     });
-    optsEl.appendChild(div);
   });
 
   // 학습 시작 버튼
-  document.getElementById('picker-start').addEventListener('click', () => {
+  document.getElementById('picker-start').addEventListener('click', e => {
+    e.stopPropagation();
     cm();
     _startLearnWithAmount(window._pickerMode);
   });
@@ -2021,7 +2017,12 @@ function finishLearnSession(resultMap) {
   // 진행률 업데이트
   S._learnDoneCount = (S._learnDoneCount||0) + correct.length;
 
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+  // 학습 탭으로 전환 후 결과 모달 표시
+  S.tab = 'learn';
+  go('learn');
+  const mrEl = document.getElementById('mr');
+  if(!mrEl) return;
+  mrEl.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:18px;font-weight:800;margin-bottom:16px;text-align:center">📊 학습 결과</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <div style="background:#F0FDF4;border-radius:14px;padding:16px;text-align:center;border:1.5px solid #86EFAC">
@@ -2147,7 +2148,11 @@ function finishLevelTest(resultMap) {
   const nextLv = LEVELS[Math.min(curLvIdx+1, LEVELS.length-1)];
   const lvInfo = lv(S.lid);
 
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+  S.tab = 'learn';
+  go('learn');
+  const mrLv = document.getElementById('mr');
+  if(!mrLv) return;
+  mrLv.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
     <div style="font-size:56px;margin-bottom:12px">${passed?'🎉':'😢'}</div>
     <div style="font-size:22px;font-weight:900;margin-bottom:6px;color:${passed?'#16A34A':'#DC2626'}">${passed?'통과!':'아쉽게도 탈락...'}</div>
     <div style="font-size:32px;font-weight:900;color:${passed?'#16A34A':'#DC2626'};margin-bottom:4px">${pct}%</div>
@@ -4052,7 +4057,6 @@ function startGameW(id, ws) {
 function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rTyping,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
 
 function rGameDoneUI() {
-  // 학습세션/레벨테스트 결과가 처리되는 동안 보여주는 간단한 화면
   return `<div class="pad" style="align-items:center;text-align:center;gap:16px;padding-top:60px">
     <div style="font-size:56px;margin-bottom:12px">⏳</div>
     <div style="font-size:16px;font-weight:700;color:var(--text1,#111)">결과 분석 중...</div>
@@ -4063,19 +4067,21 @@ function rGameDone(){
   SFX.stopBG();
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
   // 학습 탭 레벨업 테스트 결과 처리 (우선)
-  if(S._inLevelTest && S.gResultMap) {
-    const rm = {...S.gResultMap};
+  if(S._inLevelTest) {
+    const rm = {...(S.gResultMap||{})};
     S._inLevelTest = false;
     S._inLearnSession = false;
-    setTimeout(()=>finishLevelTest(rm), 300);
-    return rGameDoneUI();
+    S.tab = 'learn'; S.gDone = false;
+    finishLevelTest(rm);
+    return '';
   }
   // 학습 세션 결과 처리
-  if(S._inLearnSession && S.gResultMap) {
-    const rm = {...S.gResultMap};
+  if(S._inLearnSession) {
+    const rm = {...(S.gResultMap||{})};
     S._inLearnSession = false;
-    setTimeout(()=>finishLearnSession(rm), 300);
-    return rGameDoneUI();
+    S.tab = 'learn'; S.gDone = false;
+    finishLearnSession(rm);
+    return '';
   }
   const tot=Math.max(S.gWords.length,1);
   const right=Math.round(S.gScore/100);
@@ -4158,8 +4164,9 @@ function ghdr(title,prog){
 function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
   const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
-  S._gCs=cs; // 보기 배열 저장
+  // gAns=true면 기존 보기 배열 재사용 (ansQIdx 호출 후 go()시 shuf 방지)
+  const cs = S.gAns && S._gCs && S._gCs.length ? S._gCs : shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
+  if(!S.gAns) S._gCs=cs;
   return ghdr('🎯 뜻 맞추기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'맞아! 🎉':'아쉬워! 💪'):'이 단어의 뜻은?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#1E5FA5"></div></div>
@@ -4191,11 +4198,22 @@ function ansQIdx(ci, wIdx) {
   S._gLastAns = ci;
   const isOk = chosen.en === w.en;
   S.gAns=true; S.gRes=isOk?'ok':'ng';
-  if(isOk){S.gScore+=100;ok();S.gResultMap[w.en]=true;}
-  else{ng();S.gResultMap[w.en]=false;}
+  if(isOk){
+    S.gScore+=100; ok();
+    S.gResultMap[w.en]=true;
+  } else {
+    ng();
+    // 틀렸을 때: 내가 고른 단어를 false, 정답은 따로 표시만
+    S.gResultMap[w.en]=false;
+  }
   logStudy('quiz'); go();
   const delay = S.gameSettings?.autoNext ? 600 : 900;
-  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+  setTimeout(()=>{
+    S.gIdx++; S.gAns=false; S.gRes=null;
+    S._gLastAns=null; S._gCs=null; // cs 초기화
+    if(S.gIdx>=S.gWords.length) S.gDone=true;
+    go();
+  }, delay);
 }
 
 function rFill(){

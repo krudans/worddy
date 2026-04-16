@@ -1831,12 +1831,13 @@ function rLearnTab() {
 const LEARN_GAMES = ['flip','quiz','fill','typing','wc','match','sentence','chain','listen','wordfind','wordle','ssort'];
 
 function startLearnSession(mode) {
-  const words = S._sysWords || [];
-  if(words.length === 0) {
-    toast('시스템 단어를 로딩 중이에요. 잠시 후 다시 시도해주세요.');
-    loadSysWords(S.lid, ()=>startLearnSession(mode));
-    return;
+  // 시스템 단어 없으면 DEFAULT_WORDS 폴백 후 즉시 진행
+  if(!S._sysWords || S._sysWords.length === 0) {
+    S._sysWords = DEFAULT_WORDS[S.lid] || DEFAULT_WORDS.egg || [];
+    // Firebase 로드도 병렬로 시도
+    loadSysWords(S.lid, null);
   }
+  const words = S._sysWords;
   const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
   const remaining = words.filter(w=>!learnedSet.has(w.en));
 
@@ -1880,8 +1881,12 @@ function _renderLearnAmountPicker() {
     {lb:'100개',       v: Math.min(100, total)},
   ];
   const cur = S._learnTotalTarget || total;
-  const mr = document.getElementById('mr');
-  if(!mr) return;
+  let mr = document.getElementById('mr');
+  if(!mr) {
+    mr = document.createElement('div');
+    mr.id = 'mr';
+    document.getElementById('app').appendChild(mr);
+  }
 
   // innerHTML 대신 DOM으로 구성 (onclick 이벤트 안정성 확보)
   const wrap = document.createElement('div');
@@ -1994,7 +1999,8 @@ function loadSysWords(lvId, callback) {
     });
   };
   tryLoad(true).catch(()=>tryLoad(false).catch(()=>{
-    S._sysWords = DEFAULT_WORDS[lvId]||DEFAULT_WORDS.egg||[];
+    if(!S._sysWords || S._sysWords.length===0)
+      S._sysWords = DEFAULT_WORDS[lvId]||DEFAULT_WORDS.egg||[];
     if(callback) callback();
   }));
 }
@@ -4153,6 +4159,7 @@ function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
   const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
   const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
+  S._gCs=cs; // 보기 배열 저장
   return ghdr('🎯 뜻 맞추기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'맞아! 🎉':'아쉬워! 💪'):'이 단어의 뜻은?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#1E5FA5"></div></div>
@@ -4161,7 +4168,7 @@ function rQ4(){
       <div style="font-size:28px;font-weight:900;color:#1E5FA5;font-family:monospace">${w.en}</div>
       <div style="font-size:13px;color:#64748B;margin-top:4px">${w.ph||''}</div>
     </div>
-    <div class="g2">${cs.map(c=>{let bg='#fff',col='#111',bd='#E5E7EB';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${c.kr}</button>`;}).join('')}
+    <div class="g2">${cs.map((ch,ci)=>{let bg='var(--bg-card,#fff)',col='var(--text1,#111)',bd='var(--border,#E5E7EB)';if(S.gAns){if(ch.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'&&S._gLastAns===ci){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQIdx('+ci+','+S.gIdx+')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${ch.kr}</button>`;}).join('')}
     </div>
   </div>`;
 }
@@ -4171,7 +4178,24 @@ function ansQ(c,ok2){
   else{ng();S.gResultMap[ok2]=false;}
   logStudy('quiz'); go();
   const delay = S.gameSettings?.autoNext ? 600 : 900;
-  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+}
+
+function ansQIdx(ci, wIdx) {
+  // 보기 인덱스로 정답 판별 (특수문자/공백 escape 문제 없음)
+  const cs = S._gCs;
+  const w = S.gWords[wIdx];
+  if(!cs||!w) return;
+  const chosen = cs[ci];
+  if(!chosen) return;
+  S._gLastAns = ci;
+  const isOk = chosen.en === w.en;
+  S.gAns=true; S.gRes=isOk?'ok':'ng';
+  if(isOk){S.gScore+=100;ok();S.gResultMap[w.en]=true;}
+  else{ng();S.gResultMap[w.en]=false;}
+  logStudy('quiz'); go();
+  const delay = S.gameSettings?.autoNext ? 600 : 900;
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
 
 function rFill(){

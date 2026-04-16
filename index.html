@@ -729,7 +729,7 @@ const S = {
   wcWord:null, wcLetters:[], wcGuessed:new Set(), wcWrong:0,
   chStory:'', chIdx:0, chIn:'', chDone:false,
   // 일기
-  dText:'', dTr:'', dMood:'😊', dHelp:'', dSaved:false, dList:[], dView:null,
+  dText:'', dTr:'', dMood:'😊', dHelp:'', dSaved:false, dList:[], dView:null, dPhotos:[],
   dReadId:null, dWriteDate:null, dCalYear:null, dCalMonth:null,
   // 설정
   ai:false, nEn:'', nKr:'', nImg:'📝',
@@ -1864,29 +1864,43 @@ function startLearnSession(mode) {
 }
 
 function showLearnAmountPicker(mode, remaining) {
+  // 전역 변수에 저장 (onclick 인라인에 JSON 넣지 않음)
+  window._pickerRemaining = remaining;
+  window._pickerMode = mode || 'random';
   const total = remaining.length;
-  const options = ['전체', '30개', '50개', '100개'];
-  const values = [total, 30, 50, 100];
+  if(!S._learnTotalTarget) S._learnTotalTarget = total;
+  _renderLearnAmountPicker();
+}
+
+function _renderLearnAmountPicker() {
+  const remaining = window._pickerRemaining || [];
+  const mode = window._pickerMode || 'random';
+  const total = remaining.length;
+  const options = [
+    {lb:'전체 (기본)', v: total},
+    {lb:'30개',        v: Math.min(30, total)},
+    {lb:'50개',        v: Math.min(50, total)},
+    {lb:'100개',       v: Math.min(100, total)},
+  ];
   const cur = S._learnTotalTarget || total;
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:17px;font-weight:800;margin-bottom:6px">📖 오늘 학습 분량</div>
     <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">남은 단어 ${total}개 중 오늘 학습할 분량을 선택하세요</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      ${options.map((lb,i)=>{
-        const v = Math.min(values[i], total);
-        const sel = cur===v;
-        return `<div onclick="S._learnTotalTarget=${v};showLearnAmountPicker('${mode||'random'}',${JSON.stringify(remaining).replace(/"/g,'&quot;')})" 
+      ${options.map(opt=>{
+        const sel = cur === opt.v;
+        return `<div onclick="S._learnTotalTarget=${opt.v};_renderLearnAmountPicker()"
           style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid ${sel?'#1E5FA5':'var(--border,#E5E7EB)'};background:${sel?'#EFF6FF':'var(--bg-sub,#F9FAFB)'};cursor:pointer">
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:18px;height:18px;border-radius:50%;background:${sel?'#1E5FA5':'transparent'};border:2px solid ${sel?'#1E5FA5':'#D1D5DB'};flex-shrink:0"></div>
-            <span style="font-size:14px;font-weight:700;color:${sel?'#1E5FA5':'var(--text1,#374151)'}">${lb}</span>
+            <span style="font-size:14px;font-weight:700;color:${sel?'#1E5FA5':'var(--text1,#374151)'}">${opt.lb}</span>
           </div>
-          <span style="font-size:12px;color:#9CA3AF">${v}개</span>
+          <span style="font-size:12px;font-weight:700;color:${sel?'#1E5FA5':'#9CA3AF'}">${opt.v}개</span>
         </div>`;
       }).join('')}
     </div>
-    <button onclick="cm();_startLearnWithAmount('${mode||'random'}')" 
+    <button onclick="cm();_startLearnWithAmount(window._pickerMode)"
       style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
       🚀 학습 시작
     </button>
@@ -1898,10 +1912,21 @@ function _startLearnWithAmount(mode) {
   const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
   const remaining = words.filter(w=>!learnedSet.has(w.en));
   const target = S._learnTotalTarget || remaining.length;
-  // 오늘 세션 단어: remaining에서 target개 고정
   S._learnSessionPool = remaining.slice(0, target);
   S._learnDoneCount = 0;
   S._learnSessionStarted = true;
+  // 암기 모드 요청인 경우 (_mode_ 접두사)
+  if(mode && mode.startsWith('_mode_')) {
+    const modeType = mode.replace('_mode_','');
+    S._learnModeWords = S._learnSessionPool;
+    if(modeType==='stream') showStreamMode();
+    else if(modeType==='audio') showAudioMode();
+    else if(modeType==='sleep') showSleepMode();
+    else if(modeType==='srs') showSRSMode();
+    else if(modeType==='shadow') showShadowMode();
+    else if(modeType==='speak') showSpeakQuiz();
+    return;
+  }
   _doLearnSession(mode, S._learnSessionPool);
 }
 
@@ -2498,7 +2523,24 @@ function showLevelModal() {
 
 // ── 상황별 암기 모드 ──
 function startMode(type) {
-  if(!S.words.length){toast('단어가 없어요!');return;}
+  // 학습 탭에서 호출 시 시스템 단어 기반으로
+  if(S.tab==='learn') {
+    const sysWords = S._sysWords || DEFAULT_WORDS[S.lid] || [];
+    if(sysWords.length === 0) { toast('시스템 단어가 없어요!'); return; }
+    // 분량 선택이 안 됐으면 먼저 선택
+    if(!S._learnSessionStarted) {
+      const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
+      const remaining = sysWords.filter(w=>!learnedSet.has(w.en));
+      window._pickerMode = '_mode_'+type;
+      showLearnAmountPicker('_mode_'+type, remaining);
+      return;
+    }
+    // 이미 분량 선택됨 → 시스템 단어로 모드 실행
+    const pool = S._learnSessionPool || sysWords;
+    S._learnModeWords = pool;
+  } else {
+    S._learnModeWords = null;
+  }
   if(type==='stream') showStreamMode();
   else if(type==='audio') showAudioMode();
   else if(type==='sleep') showSleepMode();
@@ -2512,7 +2554,7 @@ function showStreamMode() {
   if(window._streamTimer) { clearInterval(window._streamTimer); window._streamTimer=null; }
 
   let idx=0, speed=3000;
-  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const words = (S._learnModeWords && S._learnModeWords.length) ? S._learnModeWords : (getCurrentBookWords ? getCurrentBookWords() : S.words);
 
   const render=()=>{
     const el=document.getElementById('mode-word');
@@ -4289,14 +4331,90 @@ function rWF(){
   const foundCells=new Set(S.wfWords.filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));
   const all=S.wfFound.size>=S.wfWords.length;
   if(all&&!S.gDone){S.gDone=true;S.gScore=S.wfFound.size*100;setTimeout(()=>go(),300);}
+  const selCount=S.wfSel.length;
+  // 현재 선택 중인 단어 길이 힌트
+  const hint = selCount>0
+    ? `<div style="text-align:center;font-size:12px;font-weight:700;color:#1E5FA5;margin-bottom:6px">📌 ${selCount}글자 선택 중 · 마지막 글자까지 탭하세요</div>`
+    : `<div style="text-align:center;font-size:12px;color:#9CA3AF;margin-bottom:6px">💡 단어의 첫 글자부터 끝 글자까지 순서대로 탭하세요</div>`;
   return ghdr('🔍 단어 찾기',`${S.wfFound.size}/${S.wfWords.length}`)+`<div class="pad">
     ${cbrow(all?'모두 찾았어! 🎉':'격자에서 단어를 찾아봐! 🔍',S.lid,all?'happy':'normal')}
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${S.wfWords.map(w=>{const ww=S.gWords.find(x=>x.en.toUpperCase()===w.word);return `<span style="padding:5px 11px;border-radius:20px;font-size:12px;font-weight:700;font-family:monospace;background:${S.wfFound.has(w.word)?'#DCFCE7':'#F3F4F6'};color:${S.wfFound.has(w.word)?'#16A34A':'#374151'};text-decoration:${S.wfFound.has(w.word)?'line-through':'none'}">${ww?.img||'📝'} ${w.word}</span>`;}).join('')}</div>
-    <div style="display:flex;justify-content:center;overflow-x:auto"><div class="wf-grid" style="grid-template-columns:repeat(${sz},1fr)">${S.wfGrid.map((row,r)=>row.map((cell,c)=>{const k=`${r},${c}`;const isSel=S.wfSel.includes(k);const isFnd=foundCells.has(k);return `<div class="wf-cell ${isFnd?'fnd':isSel?'sel':''}" onclick="selWF(${r},${c})">${cell}</div>`;}).join('')).join('')}</div></div>
-    ${S.wfSel.length?`<button class="btn bgr" onclick="S.wfSel=[];go()" style="font-size:13px">선택 취소</button>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">${S.wfWords.map(w=>{
+      const ww=S.gWords.find(x=>x.en.toUpperCase()===w.word);
+      const found=S.wfFound.has(w.word);
+      return `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:monospace;background:${found?'#DCFCE7':'#F3F4F6'};color:${found?'#16A34A':'#374151'};text-decoration:${found?'line-through':'none'};border:1.5px solid ${found?'#86EFAC':'#E5E7EB'}">${ww?.img||'📝'} ${w.word}${found?' ✅':''}</span>`;
+    }).join('')}</div>
+    ${hint}
+    <div style="display:flex;justify-content:center;overflow-x:auto">
+      <div class="wf-grid" style="grid-template-columns:repeat(${sz},1fr)">
+        ${S.wfGrid.map((row,r)=>row.map((cell,cc)=>{
+          const k=`${r},${cc}`;
+          const isSel=S.wfSel.includes(k);
+          const isFnd=foundCells.has(k);
+          return `<div class="wf-cell ${isFnd?'fnd':isSel?'sel':''}" onclick="selWF(${r},${cc})"
+            style="${isSel?'background:#1E5FA5!important;color:#fff!important;transform:scale(1.15);box-shadow:0 2px 8px rgba(30,95,165,.4);':''}${isFnd?'background:#DCFCE7!important;color:#16A34A!important;font-weight:900;':''}">
+            ${cell}
+          </div>`;
+        }).join('')).join('')}
+      </div>
+    </div>
+    ${selCount>0?`<div style="display:flex;gap:8px;margin-top:6px">
+      <button class="btn bgr" onclick="S.wfSel=[];go()" style="flex:1;font-size:13px">✕ 선택 취소</button>
+      <button class="btn bb" onclick="wfCheckSel()" style="flex:1;font-size:13px">✅ 확인</button>
+    </div>`:''}
   </div>`;
 }
-function selWF(r,c){const k=`${r},${c}`;const foundCells=new Set(S.wfWords.filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));if(foundCells.has(k))return;if(S.wfSel.includes(k)){S.wfSel=S.wfSel.filter(x=>x!==k);}else{S.wfSel.push(k);}S.wfWords.forEach(wd=>{if(S.wfFound.has(wd.word))return;const m=wd.cells.every(c2=>S.wfSel.includes(c2))&&S.wfSel.every(c2=>wd.cells.includes(c2));if(m){S.wfFound.add(wd.word);S.wfSel=[];ok();toast('✅ "'+wd.word+'"!');}});go();}
+
+function wfCheckSel(){
+  // 선택한 셀이 단어와 일치하는지 확인
+  let found=false;
+  S.wfWords.forEach(wd=>{
+    if(S.wfFound.has(wd.word))return;
+    const m=wd.cells.every(c2=>S.wfSel.includes(c2))&&S.wfSel.every(c2=>wd.cells.includes(c2));
+    if(m){
+      S.wfFound.add(wd.word);
+      S.wfSel=[];
+      ok();
+      vib([50,30,50]);
+      const wordInfo=S.gWords.find(x=>x.en.toUpperCase()===wd.word);
+      toast('✅ '+wd.word+(wordInfo?' = '+wordInfo.kr:'')+'!');
+      S.gResultMap[wd.word.toLowerCase()]=true;
+      found=true;
+    }
+  });
+  if(!found){
+    toast('❌ 단어를 찾지 못했어요. 다시 시도해보세요!');
+    vib([100,50,100]);
+    S.wfSel=[];
+  }
+  go();
+}
+
+function selWF(r,c){
+  const k=`${r},${c}`;
+  const foundCells=new Set(S.wfWords.filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));
+  if(foundCells.has(k))return;
+  // 이미 선택된 셀 클릭하면 해제
+  if(S.wfSel.includes(k)){
+    S.wfSel=S.wfSel.filter(x=>x!==k);
+  } else {
+    S.wfSel.push(k);
+    // 선택하자마자 단어 일치 자동 체크
+    S.wfWords.forEach(wd=>{
+      if(S.wfFound.has(wd.word))return;
+      const m=wd.cells.every(c2=>S.wfSel.includes(c2))&&S.wfSel.every(c2=>wd.cells.includes(c2));
+      if(m){
+        S.wfFound.add(wd.word);
+        S.wfSel=[];
+        ok();
+        vib([50,30,50]);
+        const wordInfo=S.gWords.find(x=>x.en.toUpperCase()===wd.word);
+        toast('✅ '+wd.word+(wordInfo?' = '+wordInfo.kr:'')+'!');
+        S.gResultMap[wd.word.toLowerCase()]=true;
+      }
+    });
+  }
+  go();
+}
 
 function scoreW(g,t){const r=Array(t.length).fill('absent'),tA=[...t],gA=[...g];gA.forEach((c,i)=>{if(c===tA[i]){r[i]='correct';tA[i]=gA[i]=null;}});gA.forEach((c,i)=>{if(!c)return;const j=tA.indexOf(c);if(j>-1){r[i]='present';tA[j]=null;}});return r;}
 function rWordle(){
@@ -4511,6 +4629,28 @@ function rDiaryWrite() {
     });
     parts.push('</div></div>');
   }
+  // 사진 첨부 영역
+  const photoHtml = (() => {
+    let h = '<div style="background:var(--bg-card,#fff);border-radius:14px;border:1.5px solid var(--border,#E5E7EB);padding:12px;margin-bottom:0">';
+    h += '<div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">📷 오늘의 사진 (최대 3장)</div>';
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    (S.dPhotos||[]).forEach((photo,i)=>{
+      h += '<div style="position:relative;width:80px;height:80px;border-radius:10px;overflow:hidden;flex-shrink:0">';
+      h += '<img src="'+photo+'" style="width:100%;height:100%;object-fit:cover">';
+      h += '<button onclick="S.dPhotos.splice('+i+',1);go()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:12px;cursor:pointer;line-height:1">×</button>';
+      h += '</div>';
+    });
+    if((S.dPhotos||[]).length<3){
+      h += '<label style="width:80px;height:80px;border-radius:10px;border:2px dashed var(--border,#E5E7EB);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:#9CA3AF;background:var(--bg-sub,#F9FAFB)">';
+      h += '<span style="font-size:24px">📷</span>';
+      h += '<span style="font-size:10px;font-weight:700;margin-top:2px">사진 추가</span>';
+      h += '<input type="file" accept="image/*" style="display:none" onchange="addDiaryPhoto(this)">';
+      h += '</label>';
+    }
+    h += '</div></div>';
+    return h;
+  })();
+  parts.push(photoHtml);
   parts.push('<textarea id="dt" placeholder="한국어 또는 영어로 오늘 하루를 써보세요..." style="min-height:120px;resize:none;line-height:1.7" oninput="S.dText=this.value">'+(S.dText||'')+'</textarea>');
   parts.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">');
   parts.push('<button class="btn bb" onclick="trDiary()" '+(S.ai?'disabled':'')+' style="font-size:13px">'+(S.ai?'번역 중...':'🌐 번역')+'</button>');
@@ -4519,7 +4659,7 @@ function rDiaryWrite() {
   if(S.dTr) parts.push('<div style="background:#F0FDF4;border-radius:14px;border:1.5px solid #86EFAC;padding:14px"><div style="font-size:11px;font-weight:700;color:#16A34A;margin-bottom:6px">✅ AI 번역</div><div style="font-size:13px;color:#14532D;line-height:1.8">'+S.dTr+'</div></div>');
   if(S.dHelp) parts.push('<div style="background:#FDF4FF;border-radius:14px;border:1.5px solid #E9D5FF;padding:14px"><div style="font-size:12px;font-weight:800;color:#7C3AED;margin-bottom:10px">✨ AI 문법 코치</div><div style="font-size:13px;color:#4C1D95;line-height:1.9;white-space:pre-wrap">'+S.dHelp+'</div></div>');
   if(S.dSaved){
-    parts.push('<div style="background:#F0FDF4;border-radius:16px;border:1.5px solid #86EFAC;text-align:center;padding:18px">'+charSVG(S.lid,50,'happy')+'<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">저장 완료! 🎉</div><button class="btn bb" onclick="S.dText=\'\';S.dTr=\'\';S.dHelp=\'\';S.dMood=\'😊\';S.dSaved=false;go()">새 일기 쓰기</button></div>');
+    parts.push('<div style="background:#F0FDF4;border-radius:16px;border:1.5px solid #86EFAC;text-align:center;padding:18px">'+charSVG(S.lid,50,'happy')+'<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">저장 완료! 🎉</div><button class="btn bb" onclick="S.dText=\'\';S.dTr=\'\';S.dHelp=\'\';S.dMood=\'😊\';S.dPhotos=[];S.dSaved=false;go()">새 일기 쓰기</button></div>');
   } else {
     parts.push('<button class="btn bg" onclick="svDiary()">💾 일기 저장</button>');
   }
@@ -4551,9 +4691,9 @@ async function dHelpFn(){
 
 function svDiary(){
   if(!S.dText.trim()&&!S.dTr.trim()){toast('일기를 써주세요');return;}
-  S.dList.unshift({date:today(),mood:S.dMood,kr:S.dText,en:S.dTr,help:S.dHelp,id:Date.now()});
+  S.dList.unshift({date:today(),mood:S.dMood,kr:S.dText,en:S.dTr,help:S.dHelp,photos:S.dPhotos||[],id:Date.now()});
   if(S.dList.length>100) S.dList.pop();
-  S.dSaved=true; addXP(10); sv(); go();
+  S.dSaved=true; S.dPhotos=[]; addXP(10); sv(); go();
 }
 
 function rDiaryList(){
@@ -4577,6 +4717,7 @@ function vwDiary(id){
       <div style="font-size:16px;font-weight:800">${e.date} ${e.mood}</div>
       <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
     </div>
+    ${e.photos&&e.photos.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${e.photos.map(p=>`<img src="${p}" style="width:100px;height:100px;object-fit:cover;border-radius:10px">`).join('')}</div>`:''}
     ${e.kr?`<div style="font-size:14px;color:#374151;line-height:1.8;margin-bottom:12px">${e.kr}</div>`:''}
     ${e.en?`<div style="background:#F0FDF4;border-radius:12px;padding:14px;margin-bottom:10px">
       <div style="font-size:11px;font-weight:700;color:#16A34A;margin-bottom:6px">✅ 영어 번역</div>
@@ -4592,6 +4733,37 @@ function vwDiary(id){
     </div>
     <button class="btn bgr" onclick="cm()" style="margin-top:10px">닫기</button>
   </div></div>`;
+}
+
+
+// ── 일기 사진 첨부 ──
+function addDiaryPhoto(input) {
+  const file = input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')) { toast('이미지 파일만 선택해주세요'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // Canvas로 리사이즈 (최대 600px, 품질 0.7)
+      const MAX = 600;
+      let w = img.width, h = img.height;
+      if(w > MAX || h > MAX) {
+        if(w > h) { h = Math.round(h * MAX/w); w = MAX; }
+        else { w = Math.round(w * MAX/h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.7);
+      if(!S.dPhotos) S.dPhotos = [];
+      if(S.dPhotos.length >= 3) { toast('사진은 최대 3장까지 첨부할 수 있어요'); return; }
+      S.dPhotos.push(compressed);
+      go();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 // ── 프로필 탭 ──

@@ -93,62 +93,45 @@ function removePack(packId) {
 }
 
 function downloadPack(packId) {
-  const pack = WORD_PACKS.find(p=>p.id===packId);
+  const pack=WORD_PACKS.find(p=>p.id===packId);
   if(!pack){toast('단어장을 찾을 수 없어요');return;}
-  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+  const myPacks=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
   if(myPacks.has(packId)){toast('이미 추가된 단어장이에요');return;}
-
-  const wordCnt = (pack.words||[]).length;
-  // 전체 단어장 목록 (내 단어장 + 내가 만든 단어장)
-  const allBooks = [
-    {name:'내 단어장', cnt:S.words.length},
-    ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))
-  ];
-
-  // 선택 상태 초기화
-  window._dpMode = 'new';
-  window._dpBook = '내 단어장';
-
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:88vh;display:flex;flex-direction:column">
+  const wordCnt=(pack.words||[]).length;
+  const allBooks=[{name:'내 단어장',cnt:S.words.length},...(S.books||[]).map(b=>({name:b.name,cnt:(b.words||[]).length}))];
+  window._dpPackId=packId; window._dpMode='new'; window._dpBook='내 단어장';
+  const mr=document.getElementById('mr'); if(!mr)return;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:88vh;display:flex;flex-direction:column">
     <div style="padding:14px 20px;border-bottom:1px solid var(--border,#E5E7EB);flex-shrink:0;display:flex;align-items:center;gap:12px">
       <span style="font-size:32px">${pack.emoji}</span>
-      <div>
-        <div style="font-size:16px;font-weight:800">${pack.name}</div>
-        <div style="font-size:12px;color:#9CA3AF">${pack.cat} · ${wordCnt}개 단어</div>
-      </div>
+      <div><div style="font-size:16px;font-weight:800">${pack.name}</div>
+        <div style="font-size:12px;color:#9CA3AF">${pack.cat} · ${wordCnt}개</div></div>
       <button onclick="cm()" style="margin-left:auto;background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
     </div>
     <div style="flex:1;overflow-y:auto;padding:16px 20px">
-      <div style="font-size:13px;font-weight:700;color:var(--text1,#374151);margin-bottom:10px">📚 어떻게 추가할까요?</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">📚 어떻게 추가할까요?</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-        <div id="dp-new" onclick="dpSelectMode('new')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid #1E5FA5;background:#EFF6FF;cursor:pointer">
+        <div id="dp-new" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid #1E5FA5;background:#EFF6FF;cursor:pointer">
           <div style="width:18px;height:18px;border-radius:50%;background:#1E5FA5;flex-shrink:0"></div>
-          <div>
-            <div style="font-size:13px;font-weight:700;color:#1E5FA5">✨ 새 단어장으로 추가 (기본)</div>
-            <div style="font-size:11px;color:#6B7280;margin-top:2px">"${pack.name}" 이름으로 새 단어장 생성</div>
-          </div>
+          <div><div style="font-size:13px;font-weight:700;color:#1E5FA5">✨ 새 단어장으로 추가 (기본)</div>
+            <div style="font-size:11px;color:#6B7280">"${pack.name}" 이름으로 새 단어장 생성</div></div>
         </div>
-        <div id="dp-existing" onclick="dpSelectMode('existing')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
+        <div id="dp-existing" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
           <div style="width:18px;height:18px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0"></div>
-          <div>
-            <div style="font-size:13px;font-weight:700;color:var(--text1,#374151)">📖 기존 단어장에 단어 추가</div>
-            <div style="font-size:11px;color:#6B7280;margin-top:2px">내가 만든 단어장에 단어를 합쳐요</div>
-          </div>
+          <div><div style="font-size:13px;font-weight:700">📖 기존 단어장에 단어 추가</div>
+            <div style="font-size:11px;color:#6B7280">내가 만든 단어장에 합쳐요</div></div>
         </div>
       </div>
       <div id="dp-booklist" style="display:none">
-        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">추가할 단어장 선택</div>
+        <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">단어장 선택</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${allBooks.map(b=>{
-            const ex = b.name==='내 단어장'
-              ? new Set(S.words.map(w=>w.en.toLowerCase()))
-              : new Set((S.books?.find(x=>x.name===b.name)?.words||[]).map(w=>w.en.toLowerCase()));
-            const addable = pack.words.filter(w=>!ex.has(w.en.toLowerCase())).length;
-            return `<div onclick="dpSelectBook('${b.name.replace(/'/g,"\'")}',this)" data-bname="${b.name.replace(/"/g,'&quot;')}"
-              style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
+            const ex=b.name==='내 단어장'?new Set(S.words.map(w=>w.en.toLowerCase())):new Set((S.books?.find(x=>x.name===b.name)?.words||[]).map(w=>w.en.toLowerCase()));
+            const addable=pack.words.filter(w=>!ex.has(w.en.toLowerCase())).length;
+            return `<div data-bname="${b.name.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-sub,#F9FAFB);cursor:pointer">
               <div style="display:flex;align-items:center;gap:8px">
                 <div class="dp-radio" style="width:16px;height:16px;border-radius:50%;border:2px solid #D1D5DB;flex-shrink:0"></div>
-                <span style="font-size:13px;font-weight:700;color:var(--text1,#374151)">${b.name}</span>
+                <span style="font-size:13px;font-weight:700">${b.name}</span>
                 <span style="font-size:11px;color:#9CA3AF">${b.cnt}개</span>
               </div>
               <span style="font-size:12px;font-weight:700;color:${addable>0?'#1E5FA5':'#9CA3AF'}">+${addable}개</span>
@@ -158,88 +141,60 @@ function downloadPack(packId) {
       </div>
     </div>
     <div style="padding:12px 20px;border-top:1px solid var(--border,#E5E7EB);flex-shrink:0">
-      <button onclick="confirmDownloadPack('${packId}')" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">추가하기</button>
+      <button id="dp-confirm" style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">추가하기</button>
     </div>
   </div></div>`;
+
+  document.getElementById('dp-new').addEventListener('click',()=>dpSelectMode('new'));
+  document.getElementById('dp-existing').addEventListener('click',()=>dpSelectMode('existing'));
+  document.querySelectorAll('[data-bname]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      window._dpBook=el.dataset.bname;
+      document.querySelectorAll('[data-bname]').forEach(e=>{e.style.border='1.5px solid var(--border,#E5E7EB)';e.style.background='var(--bg-sub,#F9FAFB)';e.querySelector('.dp-radio').style.background='';});
+      el.style.border='1.5px solid #1E5FA5'; el.style.background='#EFF6FF';
+      el.querySelector('.dp-radio').style.background='#1E5FA5';
+    });
+  });
+  document.getElementById('dp-confirm').addEventListener('click',()=>confirmDownloadPack(window._dpPackId));
 }
 
 function dpSelectMode(mode) {
-  window._dpMode = mode;
-  const isNew = mode==='new';
-  const elNew = document.getElementById('dp-new');
-  const elEx = document.getElementById('dp-existing');
-  const elList = document.getElementById('dp-booklist');
-  if(elNew) {
-    elNew.style.border = isNew ? '2px solid #1E5FA5' : '2px solid var(--border,#E5E7EB)';
-    elNew.style.background = isNew ? '#EFF6FF' : 'var(--bg-sub,#F9FAFB)';
-    elNew.querySelector('div').style.background = isNew ? '#1E5FA5' : 'transparent';
-    elNew.querySelector('div').style.border = isNew ? '' : '2px solid #D1D5DB';
-  }
-  if(elEx) {
-    elEx.style.border = isNew ? '2px solid var(--border,#E5E7EB)' : '2px solid #1E5FA5';
-    elEx.style.background = isNew ? 'var(--bg-sub,#F9FAFB)' : '#EFF6FF';
-    elEx.querySelector('div').style.background = isNew ? 'transparent' : '#1E5FA5';
-    elEx.querySelector('div').style.border = isNew ? '2px solid #D1D5DB' : '';
-  }
-  if(elList) elList.style.display = isNew ? 'none' : 'block';
-}
-
-function dpSelectBook(name, el) {
-  window._dpBook = name;
-  document.querySelectorAll('[data-bname]').forEach(div=>{
-    div.style.border = '1.5px solid var(--border,#E5E7EB)';
-    div.style.background = 'var(--bg-sub,#F9FAFB)';
-    const r = div.querySelector('.dp-radio');
-    if(r){r.style.background=''; r.style.borderColor='#D1D5DB';}
-  });
-  if(el) {
-    el.style.border = '1.5px solid #1E5FA5';
-    el.style.background = '#EFF6FF';
-    const r = el.querySelector('.dp-radio');
-    if(r){r.style.background='#1E5FA5'; r.style.borderColor='#1E5FA5';}
-  }
+  window._dpMode=mode;
+  const isNew=mode==='new';
+  const elNew=document.getElementById('dp-new'), elEx=document.getElementById('dp-existing'), elList=document.getElementById('dp-booklist');
+  if(elNew){elNew.style.border=isNew?'2px solid #1E5FA5':'2px solid var(--border,#E5E7EB)';elNew.style.background=isNew?'#EFF6FF':'var(--bg-sub,#F9FAFB)';elNew.querySelector('div').style.background=isNew?'#1E5FA5':'transparent';elNew.querySelector('div').style.border=isNew?'':'2px solid #D1D5DB';}
+  if(elEx){elEx.style.border=isNew?'2px solid var(--border,#E5E7EB)':'2px solid #1E5FA5';elEx.style.background=isNew?'var(--bg-sub,#F9FAFB)':'#EFF6FF';elEx.querySelector('div').style.background=isNew?'transparent':'#1E5FA5';elEx.querySelector('div').style.border=isNew?'2px solid #D1D5DB':'';}
+  if(elList) elList.style.display=isNew?'none':'block';
 }
 
 function confirmDownloadPack(packId) {
-  const pack = WORD_PACKS.find(p=>p.id===packId);
-  if(!pack) return;
-  const mode = window._dpMode || 'new';
-
+  const pack=WORD_PACKS.find(p=>p.id===packId); if(!pack)return;
+  const mode=window._dpMode||'new';
   if(mode==='new') {
-    if(!S.books) S.books=[];
-    let bookName = pack.name;
-    let cnt = 1;
-    while(S.books.find(b=>b.name===bookName) || bookName==='내 단어장') {
-      bookName = `${pack.name} (${++cnt})`;
-    }
-    S.books.push({name:bookName, words:[...(pack.words||[])], markMap:{}, srsMap:{}, learned:[]});
-    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-    myPacks.add(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-    sv(); cm();
-    toast(`✅ "${bookName}" 추가 완료! (${(pack.words||[]).length}개)`);
-    S.stab='books'; go('mybooks');
-
+    if(!S.books)S.books=[];
+    let bookName=pack.name, cnt=1;
+    while(S.books.find(b=>b.name===bookName)||bookName==='내 단어장') bookName=`${pack.name} (${++cnt})`;
+    S.books.push({name:bookName,words:[...(pack.words||[])],markMap:{},srsMap:{},learned:[]});
+    const mp=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]')); mp.add(packId);
+    localStorage.setItem('wd-my-packs',JSON.stringify([...mp]));
+    sv();cm();toast(`✅ "${bookName}" 추가 완료!`);S.stab='books';go('mybooks');
   } else {
-    const targetName = window._dpBook || '내 단어장';
-    if(targetName==='내 단어장') {
-      const ex = new Set(S.words.map(w=>w.en.toLowerCase()));
-      const newW = pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
+    const target=window._dpBook||'내 단어장';
+    if(target==='내 단어장'){
+      const ex=new Set(S.words.map(w=>w.en.toLowerCase()));
+      const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
       S.words.push(...newW);
     } else {
-      const bk = (S.books||[]).find(b=>b.name===targetName);
-      if(!bk){toast('단어장을 찾을 수 없어요','err');return;}
-      if(!bk.words) bk.words=[];
-      const ex = new Set(bk.words.map(w=>w.en.toLowerCase()));
-      const newW = pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
+      const bk=(S.books||[]).find(b=>b.name===target);
+      if(!bk){toast('단어장을 찾을 수 없어요');return;}
+      if(!bk.words)bk.words=[];
+      const ex=new Set(bk.words.map(w=>w.en.toLowerCase()));
+      const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
       bk.words.push(...newW);
     }
-    const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-    myPacks.add(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-    sv(); cm();
-    toast(`✅ "${targetName}"에 단어 추가 완료!`);
-    S.stab='books'; go('mybooks');
+    const mp=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]')); mp.add(packId);
+    localStorage.setItem('wd-my-packs',JSON.stringify([...mp]));
+    sv();cm();toast(`✅ "${target}"에 단어 추가 완료!`);S.stab='books';go('mybooks');
   }
 }
 

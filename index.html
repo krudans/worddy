@@ -889,6 +889,47 @@ const MARK_INFO = [
   {label:'외운 단어',    color:'#1E5FA5', bg:'#EFF6FF', emoji:'🐛', paw:'🐛'},
   {label:'헷갈리는 단어',color:'#EC4899', bg:'#FDF2F8', emoji:'🦋', paw:'🦋'},
 ];
+
+// ── 문장 구성 게임용 문장 생성 ──
+function buildSentenceFromWords(wordList) {
+  // 현재 단어장에서 예문이 있는 단어 중 랜덤 선택
+  const candidates = (wordList||S.gWords||[]).filter(w=>w.ex && w.ex.trim().length>3);
+  let chosen = candidates.length>0 ? rnd(candidates) : null;
+
+  if(chosen) {
+    // 예문을 단어 단위로 분리
+    const sentence = chosen.ex.replace(/[.,!?;:]/g,'').trim();
+    const words = sentence.split(/\s+/).filter(w=>w.length>0);
+    if(words.length >= 3) {
+      // 오답 단어: 현재 단어장에서 랜덤 단어들
+      const wrongPool = (wordList||S.gWords||[])
+        .filter(w=>w.en!==chosen.en)
+        .map(w=>w.en.split(/\s+/)[0])
+        .filter(w=>!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()))
+        .slice(0,3);
+      S.sbS = {kr: chosen.kr + ' (예문)', en: sentence, words};
+      S.sbP = shuf([...words, ...wrongPool].slice(0, words.length+2));
+      S.sbC = [];
+      S.sbAns = false;
+      S.sbOk = false;
+      return;
+    }
+  }
+
+  // 예문 없으면 기본 문장 폴백
+  const fallback = [
+    {kr:'나는 매일 공부한다', en:'I study every day', words:['I','study','every','day'], wrong:['she','playing','yesterday']},
+    {kr:'그녀는 행복하다', en:'She is happy', words:['She','is','happy'], wrong:['He','are','sad']},
+    {kr:'우리는 영어를 배운다', en:'We learn English', words:['We','learn','English'], wrong:['They','teach','Korean']},
+  ];
+  const st = rnd(fallback);
+  S.sbS = st;
+  S.sbP = shuf([...st.words, ...st.wrong.slice(0,2)]);
+  S.sbC = [];
+  S.sbAns = false;
+  S.sbOk = false;
+}
+
 function getMark(en) { return S.markMap[en]||0; }
 function getLearnedSysWords(lvId) {
   return JSON.parse(localStorage.getItem('wd-sys-learned-'+lvId)||'[]').length;
@@ -1683,14 +1724,26 @@ function rLearnTab() {
   html += `</div>`;
 
   // ── 학습하기 ──
+  const learnDone = S._learnDoneCount||0;
+  const learnTarget = S._learnTotalTarget||0;
+  const learnPct = learnTarget>0 ? Math.min(100, Math.round(learnDone/learnTarget*100)) : 0;
   html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">📖 학습하기</div>
       <span style="font-size:11px;color:#9CA3AF">${lvInfo.emoji} ${lvInfo.name} 단어</span>
     </div>
-    ${sysTotal>0?`<div style="font-size:11px;color:#1E5FA5;margin-bottom:10px">진도 ${sysLearned}/${sysTotal}개 (${sysPct}%)</div>`:'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">시스템 단어 로딩 중...</div>'}
+    ${sysTotal>0?`<div style="font-size:11px;color:#1E5FA5;margin-bottom:8px">전체 진도 ${sysLearned}/${sysTotal}개 (${sysPct}%)</div>`:'<div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">시스템 단어 로딩 중...</div>'}
+    ${learnTarget>0?`<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:4px">
+        <span style="color:#1E5FA5">오늘 학습 진행률</span>
+        <span style="color:#1E5FA5">${learnDone}/${learnTarget}개 (${learnPct}%)</span>
+      </div>
+      <div style="background:var(--border,#E5E7EB);border-radius:6px;height:8px;overflow:hidden">
+        <div style="height:100%;background:linear-gradient(90deg,#1E5FA5,#2563EB);border-radius:6px;width:${learnPct}%;transition:width .5s"></div>
+      </div>
+    </div>`:''}
     <button onclick="startLearnSession()" style="width:100%;background:linear-gradient(135deg,#1E5FA5,#2563EB);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px">
-      🚀 학습 시작하기
+      ${learnTarget>0&&learnDone<learnTarget?'▶ 학습 계속하기':'🚀 학습 시작하기'}
     </button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <button onclick="startLearnSession('random')" style="background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:#7C3AED">🔀 랜덤</button>
@@ -1800,6 +1853,68 @@ function startLearnSession(mode) {
     return;
   }
 
+  // 처음 시작이면 분량 선택 화면 표시 (이어하기는 건너뜀)
+  if(!S._learnSessionStarted) {
+    showLearnAmountPicker(mode, remaining);
+    return;
+  }
+
+  // 이미 세션 중 → 다음 5개 진행
+  _doLearnSession(mode, remaining);
+}
+
+function showLearnAmountPicker(mode, remaining) {
+  const total = remaining.length;
+  const options = ['전체', '30개', '50개', '100개'];
+  const values = [total, 30, 50, 100];
+  const cur = S._learnTotalTarget || total;
+
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:800;margin-bottom:6px">📖 오늘 학습 분량</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">남은 단어 ${total}개 중 오늘 학습할 분량을 선택하세요</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${options.map((lb,i)=>{
+        const v = Math.min(values[i], total);
+        const sel = cur===v;
+        return `<div onclick="S._learnTotalTarget=${v};showLearnAmountPicker('${mode||'random'}',${JSON.stringify(remaining).replace(/"/g,'&quot;')})" 
+          style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid ${sel?'#1E5FA5':'var(--border,#E5E7EB)'};background:${sel?'#EFF6FF':'var(--bg-sub,#F9FAFB)'};cursor:pointer">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:18px;height:18px;border-radius:50%;background:${sel?'#1E5FA5':'transparent'};border:2px solid ${sel?'#1E5FA5':'#D1D5DB'};flex-shrink:0"></div>
+            <span style="font-size:14px;font-weight:700;color:${sel?'#1E5FA5':'var(--text1,#374151)'}">${lb}</span>
+          </div>
+          <span style="font-size:12px;color:#9CA3AF">${v}개</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <button onclick="cm();_startLearnWithAmount('${mode||'random'}')" 
+      style="width:100%;background:#1E5FA5;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
+      🚀 학습 시작
+    </button>
+  </div></div>`;
+}
+
+function _startLearnWithAmount(mode) {
+  const words = S._sysWords || [];
+  const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
+  const remaining = words.filter(w=>!learnedSet.has(w.en));
+  const target = S._learnTotalTarget || remaining.length;
+  // 오늘 세션 단어: remaining에서 target개 고정
+  S._learnSessionPool = remaining.slice(0, target);
+  S._learnDoneCount = 0;
+  S._learnSessionStarted = true;
+  _doLearnSession(mode, S._learnSessionPool);
+}
+
+function _doLearnSession(mode, pool) {
+  const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
+  const remaining = (pool || S._learnSessionPool || []).filter(w=>!learnedSet.has(w.en));
+
+  if(remaining.length === 0) {
+    S._learnSessionStarted = false;
+    checkLearnComplete();
+    return;
+  }
+
   const sessionWords = shuf(remaining.slice(0, 5));
   let gameId;
   if(!mode || mode==='random') {
@@ -1851,6 +1966,8 @@ function finishLearnSession(resultMap) {
     correct.forEach(w=>learned.add(w.en));
     localStorage.setItem(key, JSON.stringify([...learned]));
   }
+  // 진행률 업데이트
+  S._learnDoneCount = (S._learnDoneCount||0) + correct.length;
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:18px;font-weight:800;margin-bottom:16px;text-align:center">📊 학습 결과</div>
@@ -1895,13 +2012,16 @@ function reLearnWords(words) {
     ? LEARN_GAMES[Math.floor(Math.random()*LEARN_GAMES.length)]
     : (S._learnMode||'quiz');
   S._lastLearnGame = gameId;
+  S._learnResultMap = {};
   startGameW(gameId, words);
 }
 
 function checkLearnComplete() {
-  const words = S._sysWords || [];
+  const pool = S._learnSessionPool || S._sysWords || [];
   const learnedSet = new Set(JSON.parse(localStorage.getItem('wd-sys-learned-'+S.lid)||'[]'));
-  const remaining = words.filter(w=>!learnedSet.has(w.en));
+  const remaining = pool.filter(w=>!learnedSet.has(w.en));
+  const words = S._sysWords || [];
+  const allDone = words.filter(w=>!learnedSet.has(w.en)).length === 0;
 
   if(remaining.length === 0) {
     document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
@@ -3843,7 +3963,7 @@ function startGameW(id, ws) {
   if(id==='wordle'){const pool=src.filter(w=>w.en.length>=4&&w.en.length<=7);S.wWord=pool.length?rnd(pool):src[0];S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
   if(id==='wordfind'){buildWF(src);}
   if(id==='wc'){const pool=src.filter(w=>w.en.length>=3);S.wcWord=pool.length?rnd(pool):src[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
-  if(id==='sentence'||id==='ssort'){const sts=[{kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing','yesterday']},{kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are','sad']},{kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach','Korean']}];S.sbS=rnd(sts);S.sbP=shuf([...S.sbS.words,...S.sbS.wrong.slice(0,2)]);S.sbC=[];S.sbAns=false;S.sbOk=false;if(id==='ssort')speak(S.sbS.en);}
+  if(id==='sentence'||id==='ssort'){ buildSentenceFromWords(ws||S.gWords); if(id==='ssort')speak(S.sbS.en); }
   if(id==='chain'){S.chStory=rnd(['Yesterday I went to the park.','One morning a bird sang outside.','My best friend called me last night.']);S.chIdx=0;S.chIn='';S.chDone=false;}
 
   // 깜빡이(flip)는 학습 탭 플래시카드 모드로 이동
@@ -3940,7 +4060,31 @@ function rGameDone(){
 }
 
 const GGRADS={quiz:'linear-gradient(135deg,#1E5FA5,#2563EB)',fill:'linear-gradient(135deg,#D97706,#F59E0B)',wordfind:'linear-gradient(135deg,#16A34A,#22C55E)',chain:'linear-gradient(135deg,#7C3AED,#A855F7)',match:'linear-gradient(135deg,#0D9488,#14B8A6)',sentence:'linear-gradient(135deg,#E91E63,#F43F5E)',scramble:'linear-gradient(135deg,#EC4899,#F472B6)',wordle:'linear-gradient(135deg,#92400E,#D97706)',typing:'linear-gradient(135deg,#15803D,#16A34A)',wc:'linear-gradient(135deg,#0369A1,#0EA5E9)',ssort:'linear-gradient(135deg,#E65100,#F97316)',listen:'linear-gradient(135deg,#880E4F,#BE185D)'};
-function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;return `<div style="background:${grd};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><button onclick="SFX.stopBG();go('study','quiz3')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button><div style="font-size:14px;font-weight:800;color:#fff">${title}</div><div style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</div></div>`;}
+function ghdr(title,prog){
+  const grd=GGRADS[S.gameId]||GGRADS.quiz;
+  const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;
+  const wrong=Object.values(S.gResultMap||{}).filter(v=>v===false).length;
+  const scoreBar = (right>0||wrong>0)
+    ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700">
+        <span style="color:#86EFAC">✅${right}</span>
+        <span style="color:#FECACA">❌${wrong}</span>
+       </div>`
+    : `<div style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</div>`;
+  // 학습 세션 진행률 바
+  const progressBar = S._inLearnSession && S._learnTotalTarget>0
+    ? `<div style="background:rgba(255,255,255,.2);height:3px;margin-top:6px;border-radius:2px;overflow:hidden">
+        <div style="height:100%;background:rgba(255,255,255,.8);border-radius:2px;width:${Math.round(S._learnDoneCount/S._learnTotalTarget*100)}%;transition:width .4s"></div>
+       </div>`
+    : '';
+  return `<div style="background:${grd};flex-shrink:0">
+    <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+      <button onclick="SFX.stopBG();go('mybooks','quiz3')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button>
+      <div style="font-size:14px;font-weight:800;color:#fff">${title}</div>
+      ${scoreBar}
+    </div>
+    ${progressBar}
+  </div>`;
+}
 
 function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
@@ -4082,7 +4226,7 @@ function rSentence(){
 function pickSB(w){SFX.play('tap');vib(20);S.sbC.push(w);go();}
 function rmSB(i){S.sbC.splice(i,1);go();}
 function chkSB(){const ans=S.sbC.join(' ');const ok2=ans.toLowerCase()===S.sbS.en.toLowerCase();S.sbAns=true;S.sbOk=ok2;if(ok2){S.gScore+=100;ok();}else ng();go();}
-function nxtSB(){const sts=[{kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing','yesterday']},{kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are','sad']},{kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach','Korean']}];S.sbS=rnd(sts);S.sbP=shuf([...S.sbS.words,...S.sbS.wrong.slice(0,2)]);S.sbC=[];S.sbAns=false;S.sbOk=false;go();}
+function nxtSB(){ buildSentenceFromWords(S.gWords); go(); }
 
 function rChain(){
   const prompts=['And then...','Suddenly...','After that...','Finally...'];

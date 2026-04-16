@@ -1612,7 +1612,18 @@ function rLearnTab() {
 
   let html = '<div class="pad" style="padding-bottom:24px">';
 
-  // ── 스트릭 + XP 헤더 ──
+  // ── 스트릭 + XP 헤더 + 주간 달력 ──
+  const WEEK_DAYS = ['월','화','수','목','금','토','일'];
+  const weekCells = WEEK_DAYS.map((d,i)=>{
+    const day = new Date();
+    const diff = (day.getDay()||7) - 1; // 월요일 기준
+    day.setDate(day.getDate() - diff + i);
+    const ds = day.toISOString().slice(0,10);
+    const isToday = ds === t;
+    const log2 = S.studyLog[ds]||{words:0,quiz:0};
+    const done2 = log2.words>0 || log2.quiz>0;
+    return {d, ds, isToday, done:done2, date:day.getDate()};
+  });
   html += `<div style="background:linear-gradient(135deg,#1E5FA5,#2563EB);border-radius:20px;padding:18px;color:#fff">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:10px">
@@ -1627,10 +1638,26 @@ function rLearnTab() {
         <div style="font-size:11px;opacity:.7;margin-top:2px">${lvInfo.emoji} ${lvInfo.name}</div>
       </div>
     </div>
-    <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+    <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden;margin-bottom:4px">
       <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .5s"></div>
     </div>
-    <div style="font-size:11px;opacity:.6;margin-top:4px;text-align:right">${S.xp||0} / ${nextLv?nextLv.xp:lvInfo.xp} XP → ${nextLv&&nextLv.id!==S.lid?nextLv.name:'최고 레벨'}</div>
+    <div style="font-size:11px;opacity:.6;margin-bottom:12px;text-align:right">${S.xp||0} / ${nextLv?nextLv.xp:lvInfo.xp} XP → ${nextLv&&nextLv.id!==S.lid?nextLv.name:'최고 레벨'}</div>
+    <div style="background:rgba(255,255,255,.12);border-radius:12px;padding:10px 8px">
+      <div style="display:flex;justify-content:space-around;margin-bottom:6px">
+        ${weekCells.map(w=>`<div style="font-size:10px;font-weight:700;opacity:.7;text-align:center;width:32px">${w.d}</div>`).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-around">
+        ${weekCells.map(w=>`<div style="width:32px;height:32px;border-radius:50%;
+          background:${w.done?'rgba(255,255,255,.9)':w.isToday?'rgba(255,255,255,.2)':'transparent'};
+          border:${w.isToday&&!w.done?'2px solid rgba(255,255,255,.7)':'2px solid transparent'};
+          display:flex;align-items:center;justify-content:center;flex-direction:column">
+          <span style="font-size:${w.done?'14px':'11px'};font-weight:800;
+            color:${w.done?'#1E5FA5':w.isToday?'#fff':'rgba(255,255,255,.5)'}">
+            ${w.done?'✓':w.date}
+          </span>
+        </div>`).join('')}
+      </div>
+    </div>
   </div>`;
 
   // ── 오늘의 미션 ──
@@ -1924,10 +1951,14 @@ function showLevelUpTest() {
 }
 
 function startLevelTest() {
+  // 학습 탭 레벨업 테스트 - 현재 레벨 시스템 단어 사용 (로그인 적응형 테스트와 별개)
   const words = S._sysWords || DEFAULT_WORDS[S.lid] || [];
+  if(words.length === 0) { toast('시스템 단어가 없어요'); return; }
   const testWords = shuf([...words]).slice(0, Math.min(20, words.length));
   S._levelTestWords = testWords;
   S._inLevelTest = true;
+  S._inLearnSession = false; // 학습세션과 충돌 방지
+  // 뜻 맞추기로 테스트 (시스템 단어 기반)
   startGameW('quiz', testWords);
 }
 
@@ -3831,20 +3862,31 @@ function startGameW(id, ws) {
 
 function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rTyping,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
 
+function rGameDoneUI() {
+  // 학습세션/레벨테스트 결과가 처리되는 동안 보여주는 간단한 화면
+  return `<div class="pad" style="align-items:center;text-align:center;gap:16px;padding-top:60px">
+    <div style="font-size:56px;margin-bottom:12px">⏳</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text1,#111)">결과 분석 중...</div>
+  </div>`;
+}
+
 function rGameDone(){
   SFX.stopBG();
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
+  // 학습 탭 레벨업 테스트 결과 처리 (우선)
+  if(S._inLevelTest && S.gResultMap) {
+    const rm = {...S.gResultMap};
+    S._inLevelTest = false;
+    S._inLearnSession = false;
+    setTimeout(()=>finishLevelTest(rm), 300);
+    return rGameDoneUI();
+  }
   // 학습 세션 결과 처리
   if(S._inLearnSession && S.gResultMap) {
     const rm = {...S.gResultMap};
-    setTimeout(()=>finishLearnSession(rm), 300);
     S._inLearnSession = false;
-  }
-  // 레벨 테스트 결과 처리
-  if(S._inLevelTest && S.gResultMap) {
-    const rm = {...S.gResultMap};
-    setTimeout(()=>finishLevelTest(rm), 300);
-    S._inLevelTest = false;
+    setTimeout(()=>finishLearnSession(rm), 300);
+    return rGameDoneUI();
   }
   const tot=Math.max(S.gWords.length,1);
   const right=Math.round(S.gScore/100);

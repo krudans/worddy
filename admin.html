@@ -75,6 +75,70 @@ function swDeleteWord(id) {
     .then(()=>rSW()).catch(e=>alert('오류: '+e.message));
 }
 
+
+function rMarketAdmin() {
+  const body = document.getElementById('market-body');
+  if(!body) return;
+  if(typeof db==='undefined'){body.innerHTML='<div style="padding:20px;color:#9CA3AF">Firebase 연결 필요</div>';return;}
+  body.innerHTML='<div style="padding:20px;text-align:center">로딩 중...</div>';
+  db.collection('word_packs').orderBy('createdAt','desc').get()
+    .then(snap=>{
+      const packs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      let h=`<div style="padding:16px">
+        <button onclick="showAddPackForm()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px">+ 새 단어팩 추가</button>
+        <div id="pack-add-form" style="display:none;background:#EFF6FF;border-radius:14px;padding:16px;margin-bottom:16px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <input id="pk-id" placeholder="팩 ID (영문)" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
+            <input id="pk-name" placeholder="팩 이름" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
+            <input id="pk-emoji" placeholder="이모지" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
+            <input id="pk-cat" placeholder="카테고리" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
+          </div>
+          <textarea id="pk-words" placeholder='단어 JSON: [{"en":"apple","kr":"사과","img":"🍎"}]' style="width:100%;height:100px;padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:12px;resize:none;box-sizing:border-box;margin-bottom:8px"></textarea>
+          <div style="display:flex;gap:8px">
+            <button onclick="saveNewPack()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer">저장</button>
+            <button onclick="document.getElementById('pack-add-form').style.display='none'" style="flex:1;background:#F3F4F6;border:none;border-radius:8px;padding:8px;font-size:13px;cursor:pointer">취소</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">`;
+      packs.forEach(p=>{
+        h+=`<div style="background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #E5E7EB;display:flex;align-items:center;gap:10px">
+          <span style="font-size:28px">${p.emoji||'📦'}</span>
+          <div style="flex:1"><div style="font-size:14px;font-weight:700">${p.name}</div>
+            <div style="font-size:12px;color:#6B7280">${p.cat||''} · ${(p.words||[]).length}개</div></div>
+          <button onclick="deleteMarketPack('${p.id}')" style="background:#FEF2F2;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#DC2626;cursor:pointer">삭제</button>
+        </div>`;
+      });
+      if(!packs.length) h+='<div style="text-align:center;padding:30px;color:#9CA3AF">등록된 단어팩이 없어요</div>';
+      h+=`</div></div>`;
+      body.innerHTML=h;
+    }).catch(e=>{body.innerHTML='<div style="padding:20px;color:#DC2626">오류: '+e.message+'</div>';});
+}
+
+function showAddPackForm() {
+  const f=document.getElementById('pack-add-form');
+  if(f) f.style.display=f.style.display==='none'?'block':'none';
+}
+
+function saveNewPack() {
+  const id=document.getElementById('pk-id')?.value?.trim();
+  const name=document.getElementById('pk-name')?.value?.trim();
+  const emoji=document.getElementById('pk-emoji')?.value?.trim()||'📦';
+  const cat=document.getElementById('pk-cat')?.value?.trim()||'기타';
+  const wordsRaw=document.getElementById('pk-words')?.value?.trim();
+  if(!id||!name){alert('ID와 이름은 필수입니다');return;}
+  let words=[];
+  try{words=JSON.parse(wordsRaw||'[]');}catch(e){alert('단어 JSON 형식 오류');return;}
+  db.collection('word_packs').doc(id).set({id,name,emoji,cat,words,createdAt:new Date()})
+    .then(()=>{alert('✅ 저장 완료!');rMarketAdmin();})
+    .catch(e=>alert('오류: '+e.message));
+}
+
+function deleteMarketPack(id) {
+  if(!confirm('삭제할까요?'))return;
+  db.collection('word_packs').doc(id).delete()
+    .then(()=>rMarketAdmin()).catch(e=>alert('오류: '+e.message));
+}
+
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>

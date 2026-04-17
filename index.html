@@ -889,6 +889,119 @@ const MARK_INFO = [
   {label:'외운 단어',    color:'#1E5FA5', bg:'#EFF6FF', emoji:'🐛', paw:'🐛'},
   {label:'헷갈리는 단어',color:'#EC4899', bg:'#FDF2F8', emoji:'🦋', paw:'🦋'},
 ];
+
+function buildSentenceFromWords(wordList) {
+  const candidates=(wordList||S.gWords||[]).filter(w=>w.ex&&w.ex.trim().length>3);
+  let chosen=candidates.length>0?rnd(candidates):null;
+  if(chosen){
+    const sentence=chosen.ex.replace(/[.,!?;:]/g,'').trim();
+    const words=sentence.split(/\s+/).filter(w=>w.length>0);
+    if(words.length>=3){
+      const wrongPool=(wordList||S.gWords||[])
+        .filter(w=>w.en!==chosen.en)
+        .map(w=>w.en.split(/\s+/)[0])
+        .filter(w=>!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()))
+        .slice(0,3);
+      S.sbS={kr:chosen.kr+'(예문)',en:sentence,words};
+      S.sbP=shuf([...words,...wrongPool].slice(0,words.length+2));
+      S.sbC=[];S.sbAns=false;S.sbOk=false;return;
+    }
+  }
+  const fallback=[
+    {kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing']},
+    {kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are']},
+    {kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach']},
+  ];
+  const st=rnd(fallback);
+  S.sbS=st;S.sbP=shuf([...st.words,...st.wrong]);S.sbC=[];S.sbAns=false;S.sbOk=false;
+}
+
+// ── 성향 파악 + 캐릭터 색상 ──
+const PET_COLORS = {
+  blue:   {main:'#3B82F6', light:'#EFF6FF', name:'파랑'},
+  red:    {main:'#EF4444', light:'#FEF2F2', name:'빨강'},
+  purple: {main:'#8B5CF6', light:'#F5F3FF', name:'보라'},
+  green:  {main:'#22C55E', light:'#F0FDF4', name:'초록'},
+  yellow: {main:'#EAB308', light:'#FEFCE8', name:'노랑'},
+};
+
+function showPersonalityQ() {
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  mr.innerHTML = `<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:40px;margin-bottom:8px">🐛</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:6px">나만의 벌거지를 만들어요!</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">성향에 맞는 색상의 벌거지가 태어납니다</div>
+    <div style="font-size:14px;font-weight:700;margin-bottom:12px">공부 스타일은?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+      <div onclick="setPetColor('blue');showPersonalityDone()" style="background:#EFF6FF;border:2px solid #3B82F6;border-radius:14px;padding:14px;cursor:pointer">
+        <div style="font-size:24px">📚</div><div style="font-size:13px;font-weight:700;color:#2563EB;margin-top:4px">꼼꼼하게</div></div>
+      <div onclick="setPetColor('red');showPersonalityDone()" style="background:#FEF2F2;border:2px solid #EF4444;border-radius:14px;padding:14px;cursor:pointer">
+        <div style="font-size:24px">⚡</div><div style="font-size:13px;font-weight:700;color:#DC2626;margin-top:4px">빠르게</div></div>
+      <div onclick="setPetColor('purple');showPersonalityDone()" style="background:#F5F3FF;border:2px solid #8B5CF6;border-radius:14px;padding:14px;cursor:pointer">
+        <div style="font-size:24px">🎮</div><div style="font-size:13px;font-weight:700;color:#7C3AED;margin-top:4px">게임처럼</div></div>
+      <div onclick="setPetColor('green');showPersonalityDone()" style="background:#F0FDF4;border:2px solid #22C55E;border-radius:14px;padding:14px;cursor:pointer">
+        <div style="font-size:24px">🎵</div><div style="font-size:13px;font-weight:700;color:#16A34A;margin-top:4px">반복듣기</div></div>
+    </div>
+    <div onclick="setPetColor('yellow');showPersonalityDone()" style="background:#FEFCE8;border:2px solid #EAB308;border-radius:14px;padding:14px;cursor:pointer;margin-bottom:4px">
+      <div style="font-size:24px">🎲</div><div style="font-size:13px;font-weight:700;color:#CA8A04;margin-top:4px">그날그날 기분대로</div></div>
+  </div></div>`;
+}
+
+function setPetColor(colorKey) {
+  S._petColor = colorKey;
+  localStorage.setItem('wd-pet-color', colorKey);
+  sv();
+}
+
+function getPetColor() {
+  return S._petColor || localStorage.getItem('wd-pet-color') || 'green';
+}
+
+function showPersonalityDone() {
+  const col = PET_COLORS[getPetColor()];
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:56px;margin-bottom:8px">🐛</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:6px">${col.name}빛 벌거지 탄생!</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">게임 탭에서 내 벌거지를 만나보세요!</div>
+    <button onclick="cm()" class="btn bb">시작하기!</button>
+  </div></div>`;
+}
+
+
+// ── 단어장 공유 ──
+function shareWordBook(bookName) {
+  const words=bookName==='내 단어장'?S.words:((S.books||[]).find(b=>b.name===bookName)?.words||[]);
+  if(!words.length){toast('단어가 없어요');return;}
+  const data=JSON.stringify({name:bookName,words:words.slice(0,200)});
+  const encoded=btoa(unescape(encodeURIComponent(data)));
+  const url=location.origin+location.pathname+'?share='+encoded;
+  if(navigator.share){navigator.share({title:'Vocabug - '+bookName,text:bookName+' 단어장 ('+words.length+'개)',url});}
+  else{navigator.clipboard?.writeText(url).then(()=>toast('링크 복사 완료!')).catch(()=>toast('복사됨'));}
+}
+
+function checkSharedWordBook() {
+  const shared=new URLSearchParams(location.search).get('share');
+  if(!shared)return;
+  try{
+    const data=JSON.parse(decodeURIComponent(escape(atob(shared))));
+    if(!data.name||!data.words)return;
+    const mr=document.getElementById('mr'); if(!mr)return;
+    const safeData=JSON.stringify(data).replace(/"/g,'&quot;');
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:17px;font-weight:800;margin-bottom:6px">📚 단어장 공유됨</div><div style="font-size:13px;color:#6B7280;margin-bottom:16px">"'+data.name+'" ('+data.words.length+'개 단어)</div><div style="display:flex;gap:8px"><button onclick="importSharedBook(this)" data-book="'+safeData+'" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">📥 내 단어장에 추가</button><button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button></div></div></div>';
+  }catch(e){}
+}
+
+function importSharedBook(btn) {
+  const data=JSON.parse(btn.dataset.book.replace(/&quot;/g,'"'));
+  if(!S.books)S.books=[];
+  let name=data.name,cnt=1;
+  while(S.books.find(b=>b.name===name)||name==='내 단어장')name=data.name+'('+( ++cnt)+')';
+  S.books.push({name,words:data.words,markMap:{},srsMap:{},learned:[]});
+  sv();cm();toast('✅ "'+name+'" 추가 완료! ('+data.words.length+'개)');go('mybooks');
+}
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -1495,6 +1608,10 @@ function finishAdaptiveTest() {
 // ── 앱 시작 ──
 function startApp() {
   loadSysWords(S.lid);
+  setTimeout(checkSharedWordBook, 500);
+  if(!localStorage.getItem('wd-pet-color')) {
+    setTimeout(showPersonalityQ, 800);
+  }
   document.getElementById('hd').style.display='';
   document.getElementById('nav').style.display='flex';
   updHD(); scheduleAlarms();
@@ -2062,23 +2179,20 @@ const BUTTERFLY_LIST = [
 function getPetState() {
   const today = new Date().toISOString().slice(0,10);
   const log = S.studyLog||{};
-  // 마지막 학습일로부터 며칠 지났는지
   const dates = Object.keys(log).sort().reverse();
   const lastStudy = dates[0];
   let daysSince = 0;
-  if(lastStudy) {
-    const diff = new Date(today) - new Date(lastStudy);
-    daysSince = Math.floor(diff / (1000*60*60*24));
-  } else {
-    daysSince = 99;
-  }
-  const todayDone = log[today]?.words>0 || log[today]?.quiz>0;
-  if(todayDone) return {emoji:'😄',mood:'"오늘도 같이 공부했어! 최고야!"',bg1:'#16A34A',bg2:'#15803D'};
-  if(daysSince===0) return {emoji:'😊',mood:'"오늘 아직 안 했어~ 같이 하자!"',bg1:'#1E5FA5',bg2:'#2563EB'};
-  if(daysSince===1) return {emoji:'😐',mood:'"어제부터 안 왔네... 보고 싶었어"',bg1:'#6B7280',bg2:'#4B5563'};
-  if(daysSince===2) return {emoji:'😢',mood:'"배고파... 게임 하나만 해줘..."',bg1:'#D97706',bg2:'#B45309'};
-  if(daysSince===3) return {emoji:'😤',mood:'"흥! 며칠이나 안 온 거야!!"',bg1:'#DC2626',bg2:'#B91C1C'};
-  return {emoji:'💀',mood:'"...나 죽어가고 있어..."',bg1:'#374151',bg2:'#1F2937'};
+  if(lastStudy){const diff=new Date(today)-new Date(lastStudy);daysSince=Math.floor(diff/(1000*60*60*24));}
+  else{daysSince=99;}
+  const todayDone = log[today]?.words>0||log[today]?.quiz>0;
+  const col = PET_COLORS[getPetColor()]||PET_COLORS.green;
+  // 상태별 색상: 행복=성향색, 우울/괴팍=어두운색
+  if(todayDone) return {emoji:'😄',mood:'"오늘도 같이 공부했어! 최고야!"',bg1:col.main,bg2:col.main,color:col.main};
+  if(daysSince===0) return {emoji:'😊',mood:'"오늘 아직 안 했어~ 같이 하자!"',bg1:col.main,bg2:col.main,color:col.main};
+  if(daysSince===1) return {emoji:'😐',mood:'"어제부터 안 왔네... 보고 싶었어"',bg1:'#6B7280',bg2:'#4B5563',color:'#6B7280'};
+  if(daysSince===2) return {emoji:'😢',mood:'"배고파... 게임 하나만 해줘..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
+  if(daysSince===3) return {emoji:'😤',mood:'"흥! 며칠이나 안 온 거야!!"',bg1:'#DC2626',bg2:'#B91C1C',color:'#DC2626'};
+  return {emoji:'💀',mood:'"...나 죽어가고 있어..."',bg1:'#374151',bg2:'#1F2937',color:'#374151'};
 }
 
 function getNextEvolution() {
@@ -2510,11 +2624,8 @@ function showLevelModal() {
 function startMode(type) {
   if(!S.words.length){toast('단어가 없어요!');return;}
   if(type==='stream') showStreamMode();
-  else if(type==='audio') showAudioMode();
-  else if(type==='sleep') showSleepMode();
   else if(type==='srs') showSRSMode();
   else if(type==='shadow') showShadowMode();
-  else if(type==='speak') showSpeakQuiz();
 }
 
 function showStreamMode() {
@@ -2970,6 +3081,7 @@ function rStudyBooks() {
     <div style="border-top:1px solid var(--border,#F3F4F6);display:flex">
       <button onclick="selectBookAndLearn('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer;border-right:1px solid var(--border,#F3F4F6)">📚 학습하기</button>
       <button onclick="S.currentBook='내 단어장';S.stab='add';go('mybooks','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
+      <button onclick="shareWordBook('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer">🔗 공유</button>
     </div>
   </div>`);
 
@@ -3531,26 +3643,7 @@ function rModes() {
   </div>`;
 }
 
-function rGStudy() {
-  const l=lv(S.lid);
-  const gs=[
-    {id:'quiz',ic:'🎯',nm:'뜻 맞추기',dc:'단어→뜻 4지선다',c:l.color,bg:l.bg},
-    {id:'fill',ic:'📝',nm:'빈칸 채우기',dc:'예문 빈칸',c:'#D97706',bg:'#FFFBEB'},
-    {id:'chain',ic:'➡️',nm:'문장 이어가기',dc:'스토리',c:'#7C3AED',bg:'#FDF4FF'},
-    {id:'match',ic:'⚡',nm:'스피드 매칭',dc:'짝 맞추기',c:'#0D9488',bg:'#F0FDFA'},
-    {id:'sentence',ic:'🔤',nm:'문장 구성',dc:'단어 순서',c:'#E91E63',bg:'#FCE4EC'},
-    {id:'typing',ic:'✏️',nm:'문장 완성',dc:'직접 입력',c:'#16A34A',bg:'#F0FDF4'},
-    {id:'ssort',ic:'🔊',nm:'듣고 순서',dc:'음성→순서',c:'#E65100',bg:'#FFF8E1'},
-    {id:'listen',ic:'👂',nm:'듣고 완성',dc:'음성→입력',c:'#880E4F',bg:'#FCE4EC'},
-  ];
-  return `<div class="pad">${cbrow(`${l.name} 단어로 복습! 골라봐! 🎮`,S.lid,'happy')}
-    <div style="background:#EFF6FF;border-radius:12px;padding:10px 14px;font-size:12px;color:#1E5FA5;font-weight:600;margin-bottom:4px">📌 현재 레벨 단어로만 출제 · 학습 진행률에 반영됩니다</div>
-    <div class="g2">${gs.map(g=>`<div class="gc" onclick="startSGame('${g.id}')" style="background:${g.bg};border-color:${g.c}33">
-      <div style="font-size:36px;margin-bottom:6px">${g.ic}</div>
-      <div style="font-size:13px;font-weight:800;color:${g.c};margin-bottom:3px">${g.nm}</div>
-      <div style="font-size:11px;color:#9CA3AF">${g.dc}</div>
-    </div>`).join('')}</div></div>`;
-}
+
 function startSGame(id){startGameW(id,S.words.length>=2?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));}
 
 function rAdd() {
@@ -3973,7 +4066,7 @@ function startGameW(id, ws) {
   if(id==='wordle'){const pool=src.filter(w=>w.en.length>=4&&w.en.length<=7);S.wWord=pool.length?rnd(pool):src[0];S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
   if(id==='wordfind'){buildWF(src);}
   if(id==='wc'){const pool=src.filter(w=>w.en.length>=3);S.wcWord=pool.length?rnd(pool):src[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
-  if(id==='sentence'||id==='ssort'){const sts=[{kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing','yesterday']},{kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are','sad']},{kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach','Korean']}];S.sbS=rnd(sts);S.sbP=shuf([...S.sbS.words,...S.sbS.wrong.slice(0,2)]);S.sbC=[];S.sbAns=false;S.sbOk=false;if(id==='ssort')speak(S.sbS.en);}
+  if(id==='sentence'||id==='ssort'){buildSentenceFromWords(ws||S.gWords);if(id==='ssort')speak(S.sbS.en);}
   if(id==='chain'){S.chStory=rnd(['Yesterday I went to the park.','One morning a bird sang outside.','My best friend called me last night.']);S.chIdx=0;S.chIn='';S.chDone=false;}
 
   // 깜빡이(flip)는 학습 탭 플래시카드 모드로 이동
@@ -4225,7 +4318,7 @@ function rSentence(){
 function pickSB(w){SFX.play('tap');vib(20);S.sbC.push(w);go();}
 function rmSB(i){S.sbC.splice(i,1);go();}
 function chkSB(){const ans=S.sbC.join(' ');const ok2=ans.toLowerCase()===S.sbS.en.toLowerCase();S.sbAns=true;S.sbOk=ok2;if(ok2){S.gScore+=100;ok();}else ng();go();}
-function nxtSB(){const sts=[{kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing','yesterday']},{kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are','sad']},{kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach','Korean']}];S.sbS=rnd(sts);S.sbP=shuf([...S.sbS.words,...S.sbS.wrong.slice(0,2)]);S.sbC=[];S.sbAns=false;S.sbOk=false;go();}
+function nxtSB(){buildSentenceFromWords(S.gWords);go();}
 
 function rChain(){
   const prompts=['And then...','Suddenly...','After that...','Finally...'];

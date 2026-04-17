@@ -2348,6 +2348,7 @@ function go(tab,sub) {
     // 학습 탭을 직접 클릭(sub 없이)하면 항상 단어장 선택 첫 화면으로
     if(tab==='study'&&!sub) S.stab='books';
     if(tab==='mybooks'&&!sub) S.stab='books';
+    if(tab==='butterfly'&&!sub) S.stab=null;
     S.tab=tab;
   }
   if(tab==='ranking') S.tab='ranking';
@@ -3902,6 +3903,7 @@ function showSRSMode() {
   const renderSRS=()=>{
     if(qi>=total){
       SFX.play('levelup'); vib([100,50,200]);
+      const srsXp=Math.round(correct*8+(correct/total*50));addXP(srsXp,true);checkXpUsable();
       document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal" style="text-align:center">
         ${charSVG(S.lid,60,'happy')}
         <div style="font-size:18px;font-weight:900;color:#111;margin:12px 0 6px">SRS 완료! 🎉</div>
@@ -4209,7 +4211,7 @@ S.stab=\'add\';go(\'study\',\'add\')" style="background:#16A34A;color:#fff;borde
   html += '</div></div>';
 
   // 게임
-  html += '<div onclick="go(\'game_center\')" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">';
+  html += '<div onclick="go(\'butterfly\')" style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E5E7EB);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">';
   html += '<span style="font-size:24px">🎮</span>';
   html += '<div style="flex:1"><div style="font-size:13px;font-weight:700">게임으로 학습하기</div>';
   html += '<div style="font-size:11px;color:var(--text3,#9CA3AF)">객관식·받아쓰기·워들 등 다양한 게임</div></div>';
@@ -5056,7 +5058,7 @@ function startGameW(id, ws) {
     return;
   }
 
-  // game_center 탭에서 실행해도 game 탭으로 전환
+  // 나비 탭으로 전환
   S.tab='butterfly'; S.stab=null; go();
 }
 
@@ -5126,6 +5128,8 @@ function rGameDone(){
   const right=Math.round(S.gScore/100);
   const pct=Math.round(right/tot*100);
   const hp=pct>=70;
+  const _gXpMap={quiz:30,fill:25,typing:35,match:20,sentence:40,listen:35,wordfind:25,wordle:50,wc:25,chain:30};
+  const _gXp=(_gXpMap[S.gameId]||20)+(pct>=100?10:pct>=80?5:0);
   if(hp){SFX.play('levelup');vib([100,50,100,50,200]);}else{SFX.play('wrong');vib([100,100,200]);}
   const lvInfo=lv(S.lid);
   const msg=pct>=100?['완벽해! 천재다! 🏆',lvInfo.id,'happy']:
@@ -5498,211 +5502,6 @@ function rListen(){
 }
 
 // ── 일기 탭 ──
-function rDiary() {
-  if(S.dView==='write') return rDiaryWrite();
-  if(S.dView==='read') return rDiaryRead();
-  // 기본: 달력 화면
-  return rDiaryCalendar();
-}
-
-function rDiaryCalendar() {
-  const now = new Date();
-  // 항상 현재 달로 초기화 (null이면)
-  if(S.dCalYear===null||S.dCalYear===undefined) S.dCalYear=now.getFullYear();
-  if(S.dCalMonth===null||S.dCalMonth===undefined) S.dCalMonth=now.getMonth();
-  const calYear = S.dCalYear;
-  const calMonth = S.dCalMonth;
-  const todayStr = today();
-
-  // 해당 월 일기 날짜 세트
-  const diaryDates = new Set(S.dList.map(d=>d.date));
-
-  // 달력 계산
-  const firstDay = new Date(calYear, calMonth, 1).getDay();
-  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
-  const monthName = `${calYear}년 ${calMonth+1}월`;
-
-  // 이번 달 통계
-  const monthDiaries = S.dList.filter(d=>{
-    const dm = new Date(d.date);
-    return dm.getFullYear()===calYear && dm.getMonth()===calMonth;
-  });
-  const moodCount = {};
-  monthDiaries.forEach(d=>{ moodCount[d.mood]=(moodCount[d.mood]||0)+1; });
-  const topMoods = Object.entries(moodCount).sort((a,b)=>b[1]-a[1]).slice(0,3);
-
-  const parts = [];
-  parts.push('<div style="display:flex;flex-direction:column;height:100%">');
-
-  // 헤더
-  parts.push(`<div style="background:#fff;border-bottom:1.5px solid #E5E7EB;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-    <button onclick="S.dCalMonth=${calMonth===0?11:calMonth-1};if(${calMonth===0})S.dCalYear=${calYear-1};go()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#374151;padding:4px 8px">‹</button>
-    <div style="font-size:17px;font-weight:900;color:#111">${monthName}</div>
-    <button onclick="S.dCalMonth=${calMonth===11?0:calMonth+1};if(${calMonth===11})S.dCalYear=${calYear+1};go()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#374151;padding:4px 8px">›</button>
-  </div>`);
-
-  parts.push('<div style="flex:1;overflow-y:auto;padding:14px">');
-
-  // 달력
-  parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px;margin-bottom:14px">`);
-
-  // 요일 헤더
-  parts.push('<div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:8px">');
-  ['일','월','화','수','목','금','토'].forEach((d,i)=>{
-    const c = i===0?'#DC2626':i===6?'#1E5FA5':'#9CA3AF';
-    parts.push(`<div style="text-align:center;font-size:12px;font-weight:700;color:${c};padding:4px 0">${d}</div>`);
-  });
-  parts.push('</div>');
-
-  // 날짜 그리드
-  parts.push('<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">');
-
-  // 빈 칸
-  for(let i=0;i<firstDay;i++) parts.push('<div></div>');
-
-  for(let d=1;d<=daysInMonth;d++) {
-    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isToday = dateStr===todayStr;
-    const hasDiary = diaryDates.has(dateStr);
-    const isFuture = dateStr>todayStr;
-    const diary = hasDiary ? S.dList.find(x=>x.date===dateStr) : null;
-    const dayOfWeek = (firstDay+d-1)%7;
-    const textColor = isFuture?'#D1D5DB':dayOfWeek===0?'#DC2626':dayOfWeek===6?'#1E5FA5':'#374151';
-
-    parts.push(`<div onclick="${isFuture?'':hasDiary?`S.dView='read';S.dReadId=${diary?.id};go()`:`S.dView='write';S.dWriteDate='${dateStr}';go()`}" style="position:relative;display:flex;flex-direction:column;align-items:center;padding:4px 2px;cursor:${isFuture?'default':'pointer'};border-radius:10px;${isToday?'background:#EFF6FF;border:1.5px solid #1E5FA5':''}" ontouchstart="${isFuture?'':'this.style.background=\'#F3F4F6\''}" ontouchend="${isFuture?'':'this.style.background=\''+(isToday?'#EFF6FF':'')+"'"}">
-      <div style="font-size:13px;font-weight:${isToday?'900':'500'};color:${isToday?'#1E5FA5':textColor}">${d}</div>
-      ${hasDiary?`<div style="font-size:11px;line-height:1">${diary?.mood||'📝'}</div>`:`<div style="width:5px;height:5px;border-radius:50%;background:${isFuture?'transparent':'#E5E7EB'};margin-top:2px"></div>`}
-    </div>`);
-  }
-  parts.push('</div></div>');
-
-  // 범례
-  parts.push(`<div style="display:flex;gap:12px;font-size:11px;color:#9CA3AF;margin-bottom:14px;padding:0 4px">
-    <div style="display:flex;align-items:center;gap:4px"><div style="width:14px;height:14px;border-radius:4px;background:#EFF6FF;border:1.5px solid #1E5FA5"></div>오늘</div>
-    <div style="display:flex;align-items:center;gap:4px"><span>😊</span>일기 쓴 날</div>
-    <div style="display:flex;align-items:center;gap:4px"><div style="width:5px;height:5px;border-radius:50%;background:#E5E7EB"></div>안 쓴 날</div>
-  </div>`);
-
-  // 이번 달 통계
-  if(monthDiaries.length > 0) {
-    parts.push(`<div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;margin-bottom:14px">
-      <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:10px">📊 ${calMonth+1}월 기록</div>
-      <div style="display:flex;gap:12px;align-items:center">
-        <div style="text-align:center;background:#EFF6FF;border-radius:12px;padding:10px 16px">
-          <div style="font-size:22px;font-weight:900;color:#1E5FA5">${monthDiaries.length}</div>
-          <div style="font-size:11px;color:#9CA3AF">작성일</div>
-        </div>
-        <div style="flex:1">
-          <div style="font-size:12px;color:#6B7280;margin-bottom:6px">기분 분포</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${topMoods.map(([mood,cnt])=>`<div style="display:flex;align-items:center;gap:4px"><span style="font-size:16px">${mood}</span><span style="font-size:12px;font-weight:700;color:#374151">${cnt}회</span></div>`).join('')}
-          </div>
-        </div>
-      </div>
-    </div>`);
-  }
-
-  // 오늘 일기 쓰기 버튼
-  const todayDiary = S.dList.find(d=>d.date===todayStr);
-  parts.push(`<button onclick="S.dView='write';S.dWriteDate='${todayStr}';go()" class="btn bb" style="width:100%;padding:15px;font-size:15px">
-    ${todayDiary?'📖 오늘 일기 수정하기':'✏️ 오늘 일기 쓰기'}
-  </button>`);
-
-  parts.push('</div></div>');
-  return parts.join('');
-}
-function rDiaryRead() {
-  const e = S.dList.find(d=>d.id===S.dReadId);
-  if(!e){ S.dView=null; go(); return ''; }
-  const parts=[];
-  parts.push('<div class="pad">');
-  parts.push(`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <button onclick="S.dView=null;go()" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;color:#374151">← 달력</button>
-    <div style="font-size:16px;font-weight:800;color:#111">${e.date} ${e.mood}</div>
-  </div>`);
-  if(e.kr) parts.push(`<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:14px;font-size:14px;color:#374151;line-height:1.8;margin-bottom:10px">${e.kr}</div>`);
-  if(e.en) parts.push(`<div style="background:#F0FDF4;border-radius:14px;border:1.5px solid #86EFAC;padding:14px;margin-bottom:10px">
-    <div style="font-size:11px;font-weight:700;color:#16A34A;margin-bottom:6px">✅ 영어 번역</div>
-    <div style="font-size:13px;color:#14532D;line-height:1.8">${e.en}</div>
-  </div>`);
-  if(e.help) parts.push(`<div style="background:#FDF4FF;border-radius:14px;border:1.5px solid #E9D5FF;padding:14px;margin-bottom:10px">
-    <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:6px">✨ AI 문법 코치</div>
-    <div style="font-size:12px;color:#4C1D95;line-height:1.8;white-space:pre-wrap">${e.help}</div>
-  </div>`);
-  parts.push(`<div style="display:flex;gap:8px">
-    <button onclick="S.dView='write';S.dWriteDate='${e.date}';S.dText='${(e.kr||'').replace(/'/g,"\'")}';S.dTr='${(e.en||'').replace(/'/g,"\'")}';go()" style="flex:1;background:#EFF6FF;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#1E5FA5">✏️ 수정</button>
-    <button onclick="if(confirm('삭제?')){S.dList=S.dList.filter(d=>d.id!==S.dReadId);sv();S.dView=null;go();}" style="flex:1;background:#FFF1F2;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#DC2626">🗑️ 삭제</button>
-  </div>`);
-  parts.push('</div>');
-  return parts.join('');
-}
-
-
-function rDiaryWrite() {
-  const tw=S.words.slice(0,8);
-  const parts=[];
-  parts.push('<div class="pad">');
-  parts.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">');
-  parts.push(cbrow('오늘 하루를 영어로 기록해봐! 🌸',S.lid));
-  parts.push('<button onclick="S.dView=\'list\';go()" style="background:#F3F4F6;border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#6B7280;flex-shrink:0">일기 목록</button>');
-  parts.push('</div>');
-  parts.push('<div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:12px"><div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">오늘 기분</div><div style="display:flex;gap:6px">');
-  ['😊','😐','😔','🥰','😤','😴'].forEach(m=>{
-    parts.push('<button onclick="S.dMood=\''+m+'\';go()" style="font-size:24px;background:'+(S.dMood===m?'#EFF6FF':'transparent')+';border:2px solid '+(S.dMood===m?'#1E5FA5':'transparent')+';border-radius:10px;padding:4px 6px;cursor:pointer">'+m+'</button>');
-  });
-  parts.push('</div></div>');
-  if(tw.length){
-    parts.push('<div><div style="font-size:12px;color:#9CA3AF;margin-bottom:6px;font-weight:600">오늘 단어 탭하면 삽입 ↓</div><div style="display:flex;gap:5px;flex-wrap:wrap">');
-    tw.forEach(w=>{
-      const used=(S.dTr||S.dText).toLowerCase().includes(w.en.toLowerCase());
-      parts.push('<button onclick="S.dText=(S.dText+\' \'+\''+w.en+'\').trim();go()" style="padding:5px 11px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;background:'+(used?'#DCFCE7':'#F3F4F6')+';color:'+(used?'#16A34A':'#374151')+';border:1.5px solid '+(used?'#86EFAC':'#E5E7EB')+'">'+(used?'✓ ':'')+w.en+'</button>');
-    });
-    parts.push('</div></div>');
-  }
-  // 사진 영역
-  let _ph='<div style="background:var(--bg-card,#fff);border-radius:14px;border:1.5px solid var(--border,#E5E7EB);padding:12px"><div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">📷 오늘의 사진 (최대 3장)</div><div style="display:flex;gap:8px;flex-wrap:wrap">';
-  (S.dPhotos||[]).forEach((p,i)=>{_ph+='<div style="position:relative;width:80px;height:80px;border-radius:10px;overflow:hidden;flex-shrink:0"><img src="'+p+'" style="width:100%;height:100%;object-fit:cover"><button onclick="S.dPhotos.splice('+i+',1);go()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:12px;cursor:pointer">×</button></div>';});
-  if((S.dPhotos||[]).length<3)_ph+='<label style="width:80px;height:80px;border-radius:10px;border:2px dashed var(--border,#E5E7EB);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:#9CA3AF"><span style="font-size:24px">📷</span><span style="font-size:10px;font-weight:700">사진 추가</span><input type="file" accept="image/*" style="display:none" onchange="addDiaryPhoto(this)"></label>';
-  _ph+='</div></div>';
-  parts.push(_ph);
-  parts.push('<textarea id="dt" placeholder="한국어 또는 영어로 오늘 하루를 써보세요..." style="min-height:120px;resize:none;line-height:1.7" oninput="S.dText=this.value">'+(S.dText||'')+'</textarea>');
-  parts.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">');
-  parts.push('<button class="btn bb" onclick="trDiary()" '+(S.ai?'disabled':'')+' style="font-size:13px">'+(S.ai?'번역 중...':'🌐 번역')+'</button>');
-  parts.push('<button onclick="dHelpFn()" '+(S.ai?'disabled':'')+' style="background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:14px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#7C3AED">'+(S.ai?'분석 중...':'✨ AI 코치')+'</button>');
-  parts.push('</div>');
-  if(S.dTr) parts.push('<div style="background:#F0FDF4;border-radius:14px;border:1.5px solid #86EFAC;padding:14px"><div style="font-size:11px;font-weight:700;color:#16A34A;margin-bottom:6px">✅ AI 번역</div><div style="font-size:13px;color:#14532D;line-height:1.8">'+S.dTr+'</div></div>');
-  if(S.dHelp) parts.push('<div style="background:#FDF4FF;border-radius:14px;border:1.5px solid #E9D5FF;padding:14px"><div style="font-size:12px;font-weight:800;color:#7C3AED;margin-bottom:10px">✨ AI 문법 코치</div><div style="font-size:13px;color:#4C1D95;line-height:1.9;white-space:pre-wrap">'+S.dHelp+'</div></div>');
-  if(S.dSaved){
-    parts.push('<div style="background:#F0FDF4;border-radius:16px;border:1.5px solid #86EFAC;text-align:center;padding:18px">'+charSVG(S.lid,50,'happy')+'<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">저장 완료! 🎉</div><button class="btn bb" onclick="S.dText=\'\';S.dTr=\'\';S.dHelp=\'\';S.dMood=\'😊\';S.dPhotos=[];S.dSaved=false;go()">새 일기 쓰기</button></div>');
-  } else {
-    parts.push('<button class="btn bg" onclick="svDiary()">💾 일기 저장</button>');
-  }
-  parts.push('</div>');
-  return parts.join('');
-}
-
-async function trDiary(){
-  if(!S.dText.trim()){toast('일기를 먼저 써주세요');return;}
-  S.ai=true; go();
-  const ws=S.words.slice(0,8).map(w=>w.en).join(', ');
-  try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,messages:[{role:'user',content:'한국어 일기를 자연스러운 영어로 번역. 가능하면 이 단어 포함: '+ws+'. 번역만 출력.\n"'+S.dText+'"'}]})});
-    const d=await r.json(); S.dTr=d.content?.[0]?.text?.trim()||'';
-  }catch(e){toast('AI 오류. API 키가 필요해요.');}
-  S.ai=false; go();
-}
-
-async function dHelpFn(){
-  const text=(S.dTr||S.dText).trim();
-  if(!text){toast('일기를 먼저 써주세요');return;}
-  S.ai=true; go();
-  try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:'영어 일기 문법 코치. 아래 형식으로 한국어 답변:\n1. 교정된 문장: (틀린 부분 고친 전체 문장)\n2. 문법 오류: (각 오류를 "❌ 원문 → ✅ 교정" 형식)\n3. 더 자연스러운 표현: (2~3가지 제안)\n4. 칭찬: (잘한 점 한 줄)\n\n텍스트: "'+text+'"'}]})});
-    const d=await r.json(); S.dHelp=d.content?.[0]?.text?.trim()||'';
-  }catch(e){toast('AI 오류.');}
-  S.ai=false; go();
-}
-
 function svDiary(){
   if(!S.dText.trim()&&!S.dTr.trim()){toast('일기를 써주세요');return;}
   S.dList.unshift({date:today(),mood:S.dMood,kr:S.dText,en:S.dTr,help:S.dHelp,photos:S.dPhotos||[],id:Date.now()});
@@ -5710,20 +5509,6 @@ function svDiary(){
   S.dSaved=true; S.dPhotos=[]; addXP(10); sv(); go();
 }
 
-function rDiaryList(){
-  const parts=[];
-  parts.push('<div class="pad">');
-  parts.push('<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:16px;font-weight:800;color:#111">📖 일기 목록</div><button onclick="S.dView=null;go()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer">✏️ 새 일기</button></div>');
-  if(!S.dList.length){
-    parts.push('<div class="card" style="text-align:center;padding:30px">'+charSVG(S.lid,50)+'<div style="font-size:14px;color:#9CA3AF;margin-top:10px">아직 일기가 없어요</div></div>');
-  } else {
-    S.dList.forEach(e=>{
-      parts.push('<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:13px;font-weight:700;color:#374151" onclick="vwDiary('+e.id+');return false">'+e.date+' '+e.mood+'</div><div style="display:flex;gap:6px"><button onclick="shareDiary('+JSON.stringify(e).replace(/"/g,"'")+');" style="background:#EFF6FF;border:none;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#1E5FA5">📤공유</button><button onclick="if(confirm(\'삭제?\')){S.dList=S.dList.filter(d=>d.id!=='+e.id+');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:16px;cursor:pointer">×</button></div></div><div style="font-size:13px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="vwDiary('+e.id+')">'+(e.kr||e.en||'(내용 없음)')+'</div></div>');
-    });
-  }
-  parts.push('</div>');
-  return parts.join('');
-}
 function vwDiary(id){
   const e=S.dList.find(d=>d.id===id); if(!e) return;
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:88vh;overflow-y:auto">

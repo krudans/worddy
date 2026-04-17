@@ -1718,9 +1718,9 @@ function go(tab,sub) {
     </div>`;
   }
   const nav=document.getElementById('nav');
-  nav.style.display=S.tab==='game'?'none':'flex';
+  nav.style.display=(S.tab==='game'&&!S.gDone)?'none':'flex';
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:rGameTab,profile:rProfile};
+  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:S.gDone===false&&S.gameId?rGame:rGameTab,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
@@ -1732,159 +1732,93 @@ function go(tab,sub) {
 const LEARN_GAMES=['flip','quiz','fill','typing','wc','match','sentence','chain','listen','wordfind','wordle','ssort'];
 
 function rLearnTab() {
-  const t=today(), lvInfo=lv(S.lid);
-  const curLvIdx=LEVELS.findIndex(l=>l.id===S.lid);
-  const nextLv=LEVELS[Math.min(curLvIdx+1,LEVELS.length-1)];
-  const xpPct=Math.min(100,Math.round((S.xp||0)/(nextLv?nextLv.xp:lvInfo.xp)*100));
-  const srsDue=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
-  const todayLog=S.studyLog[t]||{words:0,quiz:0};
-  const sysLearned=getLearnedSysWords(S.lid);
-  const sysTotal=(S._sysWords||[]).length;
-  const sysPct=sysTotal>0?Math.round(sysLearned/sysTotal*100):0;
-  const learnDone=S._learnDoneCount||0, learnTarget=S._learnTotalTarget||0;
-  const learnPct=learnTarget>0?Math.min(100,Math.round(learnDone/learnTarget*100)):0;
+  const l=lv(S.lid);
+  const sysWords=S._sysWords||[];
+  const learned=getLearnedSysWords(S.lid);
+  const pct=sysWords.length?Math.round(learned/sysWords.length*100):0;
+  const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
+  const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
 
-  // 주간 달력
-  const WD=['월','화','수','목','금','토','일'];
-  const weekCells=WD.map((d,i)=>{
-    const day=new Date(); const diff=(day.getDay()||7)-1;
-    day.setDate(day.getDate()-diff+i);
-    const ds=day.toISOString().slice(0,10);
-    const log2=S.studyLog[ds]||{words:0,quiz:0};
-    return {d,ds,isToday:ds===t,done:log2.words>0||log2.quiz>0,date:day.getDate()};
-  });
+  let html=`<div class="pad" style="padding-bottom:24px">`;
 
-  const missions=[
-    {ic:'📖',lb:'새 단어 5개',cur:Math.min(todayLog.words,5),tot:5,done:todayLog.words>=5,fn:"startLearnSession()"},
-    {ic:'🔁',lb:'SRS 복습',cur:srsDue===0&&todayLog.words>0?1:0,tot:1,done:srsDue===0&&todayLog.words>0,fn:"startMode('srs')"},
-    {ic:'🎯',lb:'퀴즈 5문제',cur:Math.min(todayLog.quiz,5),tot:5,done:todayLog.quiz>=5,fn:"showGameSettings('quiz')"},
-  ];
-  const mDone=missions.filter(m=>m.done).length;
-
-  let html='<div class="pad" style="padding-bottom:24px">';
-
-  // 스트릭+XP+달력
-  html+=`<div style="background:linear-gradient(135deg,#1E5FA5,#2563EB);border-radius:20px;padding:18px;color:#fff">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px"><span style="font-size:28px">🔥</span>
-        <div><div style="font-size:22px;font-weight:900;line-height:1">${S.streak||1}일 연속</div>
-          <div style="font-size:11px;opacity:.7">스트릭 유지 중!</div></div></div>
-      <div style="text-align:right"><div style="font-size:20px;font-weight:900">⚡ ${S.xp||0} XP</div>
-        <div style="font-size:11px;opacity:.7">${lvInfo.emoji} ${lvInfo.name}</div></div>
+  // ── 상단: 레벨 + 진행 ──
+  html+=`<div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:18px;color:#fff">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-size:12px;opacity:.8;margin-bottom:2px">현재 레벨</div>
+        <div style="font-size:18px;font-weight:900">${l.emoji} ${l.name}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;opacity:.8;margin-bottom:2px">단어 학습</div>
+        <div style="font-size:18px;font-weight:900">${learned}/${sysWords.length}</div>
+      </div>
     </div>
-    <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden;margin-bottom:4px">
-      <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .5s"></div></div>
-    <div style="font-size:11px;opacity:.6;margin-bottom:12px;text-align:right">${S.xp||0}/${nextLv?nextLv.xp:lvInfo.xp} XP</div>
-    <div style="background:rgba(255,255,255,.12);border-radius:12px;padding:10px 8px">
-      <div style="display:flex;justify-content:space-around;margin-bottom:6px">
-        ${weekCells.map(w=>`<div style="font-size:10px;font-weight:700;opacity:.7;text-align:center;width:32px">${w.d}</div>`).join('')}
-      </div>
-      <div style="display:flex;justify-content:space-around">
-        ${weekCells.map(w=>`<div style="width:32px;height:32px;border-radius:50%;background:${w.done?'rgba(255,255,255,.9)':w.isToday?'rgba(255,255,255,.2)':'transparent'};border:${w.isToday&&!w.done?'2px solid rgba(255,255,255,.7)':'2px solid transparent'};display:flex;align-items:center;justify-content:center">
-          <span style="font-size:${w.done?'14px':'11px'};font-weight:800;color:${w.done?'#1E5FA5':w.isToday?'#fff':'rgba(255,255,255,.5)'}">${w.done?'✓':w.date}</span>
-        </div>`).join('')}
-      </div>
+    <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+      <div style="height:100%;background:#fff;border-radius:6px;width:${pct}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-top:4px">
+      <span>${pct}% 완료</span>
+      <span>${pct>=100?'레벨업 테스트 가능! 🎉':'남은 단어: '+(sysWords.length-learned)+'개'}</span>
     </div>
   </div>`;
 
-  // 미션
-  html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">📅 오늘의 미션</div>
-      <span style="font-size:12px;font-weight:700;color:#1E5FA5;background:#EFF6FF;padding:3px 10px;border-radius:20px">${mDone}/3</span>
-    </div>`;
-  missions.forEach((m,i)=>{
-    const pct=Math.round(m.cur/m.tot*100);
-    html+=`<div onclick="${m.fn}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:${m.done?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};margin-bottom:${i<2?'8px':'0'};cursor:pointer;border:1.5px solid ${m.done?'#86EFAC':'var(--border,#E5E7EB)'}">
-      <span style="font-size:20px">${m.ic}</span>
-      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:${m.done?'#16A34A':'var(--text1,#111)'};margin-bottom:4px">${m.lb}</div>
-        <div style="background:${m.done?'#86EFAC':'var(--border,#E5E7EB)'};border-radius:4px;height:4px;overflow:hidden">
-          <div style="height:100%;background:${m.done?'#16A34A':'#1E5FA5'};border-radius:4px;width:${pct}%"></div></div>
-        <div style="font-size:10px;color:#9CA3AF;margin-top:2px">${m.cur}/${m.tot}</div></div>
-      <span style="font-size:14px">${m.done?'✅':'›'}</span></div>`;
-  });
-  html+=`</div>`;
-
-  // 학습하기
-  html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">📖 학습하기</div>
-      <span style="font-size:11px;color:#9CA3AF">${lvInfo.emoji} ${lvInfo.name}</span></div>
-    ${sysTotal>0?`<div style="font-size:11px;color:#1E5FA5;margin-bottom:8px">전체진도 ${sysLearned}/${sysTotal}개 (${sysPct}%)</div>`:''}
-    ${learnTarget>0?`<div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:4px">
-        <span style="color:#1E5FA5">오늘 학습</span><span style="color:#1E5FA5">${learnDone}/${learnTarget}개 (${learnPct}%)</span></div>
-      <div style="background:var(--border,#E5E7EB);border-radius:6px;height:8px;overflow:hidden">
-        <div style="height:100%;background:#1E5FA5;border-radius:6px;width:${learnPct}%;transition:width .5s"></div></div>
+  // ── 학습 시작 버튼 ──
+  html+=`<div style="display:flex;gap:8px">
+    <div onclick="startLearnSession('new')" style="flex:2;background:var(--bg-card,#fff);border-radius:16px;border:1.5px solid var(--border,#E5E7EB);padding:16px;cursor:pointer;text-align:center">
+      <div style="font-size:32px;margin-bottom:6px">📖</div>
+      <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">새 단어 학습</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:2px">단계별 시스템 단어</div>
+    </div>
+    ${srsToday>0?`<div onclick="startMode('srs')" style="flex:1;background:#FFF8E1;border-radius:16px;border:1.5px solid #FFE082;padding:16px;cursor:pointer;text-align:center">
+      <div style="font-size:32px;margin-bottom:6px">🔁</div>
+      <div style="font-size:14px;font-weight:800;color:#E65100">복습</div>
+      <div style="font-size:11px;color:#E65100;margin-top:2px">${srsToday}개</div>
     </div>`:''}
-    <button onclick="startLearnSession()" style="width:100%;background:linear-gradient(135deg,#1E5FA5,#2563EB);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px">
-      ${learnTarget>0&&learnDone<learnTarget?'▶ 학습 계속하기':'🚀 학습 시작하기'}</button>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <button onclick="startLearnSession('random')" style="background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#7C3AED">🔀 랜덤</button>
-      <button onclick="startLearnSession('flip')" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#1E5FA5">🎴 깜빡이</button>
-      <button onclick="startLearnSession('quiz')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#16A34A">🎯 뜻 맞추기</button>
-      <button onclick="startLearnSession('fill')" style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#D97706">📝 빈칸채우기</button>
-      <button onclick="startLearnSession('typing')" style="background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#EA580C">✏️ 받아쓰기</button>
-      <button onclick="startLearnSession('match')" style="background:#F0FDFA;border:1.5px solid #99F6E4;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#0D9488">⚡ 매칭</button>
-      <button onclick="startLearnSession('sentence')" style="background:#FDF2F8;border:1.5px solid #F5D0FE;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#A21CAF">📖 문장구성 ⭐</button>
-      <button onclick="startLearnSession('chain')" style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#7C3AED">🔗 이어가기 ⭐</button>
-      <button onclick="startLearnSession('listen')" style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#DC2626">🔊 듣고완성 ⭐</button>
-      <button onclick="startLearnSession('wordfind')" style="background:#ECFDF5;border:1.5px solid #A7F3D0;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#059669">🔍 단어찾기</button>
-      <button onclick="startLearnSession('wordle')" style="background:#F8FAFC;border:1.5px solid #CBD5E1;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#475569">🟩 워들</button>
-      <button onclick="startLearnSession('ssort')" style="background:#FFF8F1;border:1.5px solid #FED7AA;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;color:#C2410C">📊 속도정렬</button>
+  </div>`;
+
+  // ── 레벨업 테스트 ──
+  if(pct>=80){
+    html+=`<div onclick="${pct>=100?'showLevelUpTest()':'showLevelUpTest()'}" style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:16px;border:2px solid #FFE082;padding:16px;cursor:pointer;text-align:center">
+      <div style="font-size:13px;font-weight:800;color:#E65100;margin-bottom:4px">🎯 레벨업 테스트 ${pct>=100?'가능!':'('+pct+'% 달성)'}</div>
+      <div style="font-size:11px;color:#B45309">80% 이상 학습 시 도전 가능 · 통과하면 다음 레벨!</div>
+    </div>`;
+  }
+
+  // ── 암기 모드 3종 ──
+  html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📚 암기 모드</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${[
+        {ic:'🚇',nm:'스트리밍',dc:'이동 중에 · 자동으로 넘어감',fn:"startMode('stream')",c:'#1E5FA5',bg:'#EFF6FF'},
+        {ic:'🎤',nm:'쉐도잉',dc:'예문 따라 읽기 · 발음 훈련',fn:"startMode('shadow')",c:'#EC4899',bg:'#FDF2F8'},
+        {ic:'📖',nm:'SRS 복습',dc:'집중 공부 · 망각곡선 기반',fn:"startMode('srs')",c:'#E65100',bg:'#FFF8E1'},
+      ].map(m=>`<div onclick="${m.fn}" style="background:${m.bg};border-radius:14px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">
+        <span style="font-size:28px">${m.ic}</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;color:${m.c}">${m.nm}</div>
+          <div style="font-size:11px;color:#6B7280">${m.dc}</div>
+        </div>
+        <span style="font-size:18px;color:${m.c};opacity:.5">›</span>
+      </div>`).join('')}
     </div>
   </div>`;
 
-  // 암기모드
-  html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
-    <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🧘 암기 모드</div>
-    <div style="display:flex;flex-direction:column;gap:8px">`;
-  [{ic:'🚇',nm:'스트리밍',dc:'이동 중·자동',fn:"startMode('stream')",c:'#1E5FA5',bg:'#EFF6FF'},
-   {ic:'🏃',nm:'오디오',dc:'운동 중·음성',fn:"startMode('audio')",c:'#16A34A',bg:'#F0FDF4'},
-   {ic:'🎤',nm:'쉐도잉',dc:'따라 말하기',fn:"startMode('shadow')",c:'#EC4899',bg:'#FDF2F8'},
-   {ic:'🗣️',nm:'말하기퀴즈',dc:'영어로 말하기',fn:"startMode('speak')",c:'#7C3AED',bg:'#FDF4FF'},
-   {ic:'😴',nm:'수면모드',dc:'자기 전·어둡게',fn:"startMode('sleep')",c:'#6B7280',bg:'var(--bg-sub,#F9FAFB)'},
-   {ic:'📖',nm:'SRS 암기',dc:'망각곡선 복습',fn:"startMode('srs')",c:'#E65100',bg:'#FFF8E1'},
-  ].forEach(m=>{
-    html+=`<div onclick="${m.fn}" style="display:flex;align-items:center;gap:14px;background:${m.bg};border-radius:14px;padding:14px;cursor:pointer">
-      <span style="font-size:28px">${m.ic}</span>
-      <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${m.c}">${m.nm}</div>
-        <div style="font-size:11px;color:#6B7280">${m.dc}</div></div>
-      <span style="font-size:18px;color:${m.c};opacity:.5">›</span></div>`;
-  });
-  html+=`</div></div>`;
-
-  // 커리큘럼
-  const curriculum=[
-    {id:'egg',emoji:'🥚',name:'알',desc:'기초 100단어'},
-    {id:'baby',emoji:'🐛',name:'아기벌거지',desc:'초등 300단어'},
-    {id:'crown',emoji:'🍀',name:'왕관벌거지',desc:'중등 500단어'},
-    {id:'coco',emoji:'🫘',name:'번데기',desc:'고등 수능'},
-    {id:'shine',emoji:'✨',name:'빛나는번데기',desc:'토익'},
-    {id:'small',emoji:'🦋',name:'작은나비',desc:'토플'},
-    {id:'big',emoji:'🦋',name:'큰나비',desc:'GRE'},
-    {id:'god',emoji:'⚡',name:'황금나비',desc:'원어민급'},
+  // ── 오늘의 미션 ──
+  const todayLog=S.studyLog[today()]||{words:0,quiz:0};
+  const missions=[
+    {ic:'📚',lb:'단어 10개 학습',done:todayLog.words>=10,fn:"startLearnSession('new')"},
+    {ic:'🎯',lb:'퀴즈 5문제',done:todayLog.quiz>=5,fn:"showGameSettings('quiz')"},
+    {ic:'🎮',lb:'게임 1회 완료',done:Object.keys(S.bestScores||{}).length>0,fn:"go('game')"},
   ];
-  html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
-    <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🗺️ 레벨 커리큘럼</div>
-    <div style="display:flex;flex-direction:column;gap:6px">`;
-  curriculum.forEach((lv2,i)=>{
-    const isCur=lv2.id===S.lid, isDone=i<curLvIdx;
-    html+=`<div onclick="${isCur?'showLevelModal()':''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:${isCur?'#EFF6FF':isDone?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${isCur?'#1E5FA5':isDone?'#86EFAC':'var(--border,#E5E7EB)'};cursor:${isCur?'pointer':'default'}">
-      <span style="font-size:22px">${lv2.emoji}</span>
-      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:${isCur?'#1E5FA5':isDone?'#16A34A':'var(--text2,#6B7280)'}">${lv2.name}${isCur?' ← 현재':''}</div>
-        <div style="font-size:11px;color:#9CA3AF">${lv2.desc}</div></div>
-      <span style="font-size:13px">${isDone?'✅':isCur?'▶':'🔒'}</span></div>`;
-  });
-  html+=`</div></div>`;
+  html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📅 오늘의 미션</div>
+    ${missions.map(m=>`<div onclick="${m.done?'':m.fn}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:${m.done?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};margin-bottom:6px;cursor:${m.done?'default':'pointer'}">
+      <span style="font-size:20px">${m.done?'✅':m.ic}</span>
+      <span style="font-size:13px;font-weight:700;color:${m.done?'#16A34A':'var(--text1,#111)'};text-decoration:${m.done?'line-through':'none'}">${m.lb}</span>
+    </div>`).join('')}
+  </div>`;
 
-  // 레벨업 테스트
-  html+=`<div onclick="showLevelUpTest()" style="background:linear-gradient(135deg,#7C3AED,#A855F7);border-radius:18px;padding:16px;cursor:pointer;text-align:center">
-    <div style="font-size:24px;margin-bottom:6px">🏆</div>
-    <div style="font-size:15px;font-weight:800;color:#fff">레벨업 테스트</div>
-    <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px">현재 레벨 단어로 테스트·통과하면 다음 레벨!</div></div>`;
-
-  html+='</div>';
+  html+=`</div>`;
   return html;
 }
 
@@ -2201,12 +2135,12 @@ function getPetState() {
   const todayDone = log[today]?.words>0||log[today]?.quiz>0;
   const col = PET_COLORS[getPetColor()]||PET_COLORS.green;
   // 상태별 색상: 행복=성향색, 우울/괴팍=어두운색
-  if(todayDone) return {emoji:'😄',mood:'"오늘도 같이 공부했어! 최고야!"',bg1:col.main,bg2:col.main,color:col.main};
-  if(daysSince===0) return {emoji:'😊',mood:'"오늘 아직 안 했어~ 같이 하자!"',bg1:col.main,bg2:col.main,color:col.main};
-  if(daysSince===1) return {emoji:'😐',mood:'"어제부터 안 왔네... 보고 싶었어"',bg1:'#6B7280',bg2:'#4B5563',color:'#6B7280'};
-  if(daysSince===2) return {emoji:'😢',mood:'"배고파... 게임 하나만 해줘..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
-  if(daysSince===3) return {emoji:'😤',mood:'"흥! 며칠이나 안 온 거야!!"',bg1:'#DC2626',bg2:'#B91C1C',color:'#DC2626'};
-  return {emoji:'💀',mood:'"...나 죽어가고 있어..."',bg1:'#374151',bg2:'#1F2937',color:'#374151'};
+  if(todayDone) return {emoji:'😄',mood:'"오늘도 열심히 했어! 나 좀 더 자란 것 같아! 🐛"',bg1:col.main,bg2:col.main,color:col.main};
+  if(daysSince===0) return {emoji:'😊',mood:'"오늘 아직 공부 안 했지? 같이 해보자!"',bg1:col.main,bg2:col.main,color:col.main};
+  if(daysSince===1) return {emoji:'😐',mood:'"어제도 안 왔잖아... 나 혼자 있었어"',bg1:'#6B7280',bg2:'#4B5563',color:'#6B7280'};
+  if(daysSince===2) return {emoji:'😢',mood:'"이틀이나 공부 안 하면 나 점점 작아져..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
+  if(daysSince===3) return {emoji:'😤',mood:'"3일이나 혼자였어. 진짜 삐졌어."',bg1:'#DC2626',bg2:'#B91C1C',color:'#DC2626'};
+  return {emoji:'💀',mood:'"...기억나? 나 여기 있어..."',bg1:'#374151',bg2:'#1F2937',color:'#374151'};
 }
 
 function getNextEvolution() {
@@ -2268,6 +2202,29 @@ function showButterflyRoll(butterfly) {
 function rHome() {
   const l=lv(S.lid), tot=S.words.length, done=S.learned.size;
   const todayWord = getTodayWord();
+  const pet = getPetState();
+  const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
+  const curLvIdx = LEVELS.findIndex(lx=>lx.id===S.lid);
+  const nextLv = LEVELS[Math.min(curLvIdx+1,LEVELS.length-1)];
+  const xpPct = nextLv&&nextLv.xp ? Math.min(100,Math.round((S.xp||0)/nextLv.xp*100)) : 100;
+  const sysLearned = getLearnedSysWords(S.lid);
+  const sysTotal = (S._sysWords||[]).length;
+  // 성장 관련 말풍선 멘트 (레벨/단어수 반영)
+  const growthMsgs = {
+    happy: [`"단어 ${sysLearned}개 배웠어! 나 점점 커지고 있어! 🐛"`,
+            `"오늘도 열심히 했어! 나 좀 더 자란 것 같아!"`,
+            `"${l.name}이 된 게 믿기지 않아. 같이 더 성장하자!"`],
+    normal: [`"오늘 아직 공부 안 했지? 같이 해보자!"`,
+             `"단어 ${sysTotal-sysLearned}개가 기다리고 있어. 오늘 조금만 더!"`],
+    sad1:   ['"어제도 안 왔잖아... 나 혼자 있었어"'],
+    sad2:   ['"이틀이나 공부 안 하면 나 점점 작아져..."'],
+    angry:  ['"3일이나 혼자였어. 진짜 삐졌어."'],
+    danger: ['"...기억나? 나 여기 있어..."'],
+  };
+  const stateKey = pet.emoji==='😄'||pet.emoji==='😊' ? (pet.emoji==='😄'?'happy':'normal') :
+    pet.emoji==='😐'?'sad1':pet.emoji==='😢'?'sad2':pet.emoji==='😤'?'angry':'danger';
+  const msgs = growthMsgs[stateKey]||growthMsgs.normal;
+  const bubbleMsg = msgs[Math.floor(Math.random()*msgs.length)];
   const pct=tot?Math.round(done/tot*100):0;
   const t=today();
   const todayLog=S.studyLog[t]||{words:0,quiz:0};
@@ -2278,16 +2235,33 @@ function rHome() {
   const todayMsg=todayLog.words>0?charMsg('studyStart'):charMsg('noStudyToday');
   const parts=[];
   parts.push(`<div class="pad" style="padding-bottom:20px">`);
-  parts.push(cbrow(todayMsg,S.lid));
-  // 누적 단어 카운터
-  parts.push(`<div style="background:#1E5FA5;border-radius:20px;padding:20px;color:#fff;text-align:center">
-    <div style="font-size:12px;opacity:.7;margin-bottom:4px">지금까지 외운 단어</div>
-    <div style="font-size:48px;font-weight:900;line-height:1">${marked1}</div>
-    <div style="font-size:14px;opacity:.8;margin-bottom:12px">개 🐾</div>
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-      <span style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">🔥 ${S.streak}일 연속</span>
-      <span style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${l.emoji} ${l.name}</span>
-      ${S.attendCount>0?`<span style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">📅 ${S.attendCount}일 출석</span>`:''}
+  // ── 홈 상단: 캐릭터 + 말풍선 + 성장게이지 ──
+  parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;color:#fff;position:relative;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <div style="flex-shrink:0" onclick="go('game')">
+        ${charSVG(S.lid,72,stateKey==='happy'?'happy':stateKey==='angry'||stateKey==='danger'?'sad':'normal')}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:12px;color:rgba(255,255,255,.75);margin-bottom:4px">${l.emoji} ${l.name} · ⚡${S.xp||0} XP</div>
+        <div style="background:rgba(255,255,255,.15);border-radius:14px;padding:10px 14px;position:relative">
+          <div style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-right:8px solid rgba(255,255,255,.15)"></div>
+          <div style="font-size:13px;font-weight:700;color:#fff;line-height:1.5">${bubbleMsg}</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.8);margin-bottom:5px">
+        <span>다음 진화까지</span>
+        <span>${nextLv&&nextLv.id!==S.lid?nextLv.emoji+' '+nextLv.name:'✨ 최고 레벨'} · ${100-xpPct}% 남음</span>
+      </div>
+      <div style="background:rgba(255,255,255,.25);border-radius:8px;height:10px;overflow:hidden">
+        <div style="height:100%;background:#fff;border-radius:8px;width:${xpPct}%;transition:width .8s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.7);margin-top:4px">
+        <span>🔥 ${S.streak||0}일 연속</span>
+        <span>📚 단어 ${sysLearned}/${sysTotal||'?'}개</span>
+        <span>⚡ ${S.xp||0} XP</span>
+      </div>
     </div>
   </div>`);
   // 오늘 현황
@@ -4797,33 +4771,110 @@ function addDiaryPhoto(input) {
 }
 function rProfile(){
   const l=lv(S.lid);
+  const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
+  const pet=getPetState();
   const marked1=Object.values(S.markMap).filter(v=>v===1).length;
   const marked2=Object.values(S.markMap).filter(v=>v===2).length;
+  const myB=getMyButterflies();
+  const curLvIdx=LEVELS.findIndex(lx=>lx.id===S.lid);
+  const nextLv=LEVELS[Math.min(curLvIdx+1,LEVELS.length-1)];
+  const xpPct=nextLv&&nextLv.xp?Math.min(100,Math.round((S.xp||0)/nextLv.xp*100)):100;
+  const sysLearned=getLearnedSysWords(S.lid);
   const parts=[];
-  parts.push('<div class="pad">');
-  // 캐릭터 + 프로필
-  parts.push(`<div style="text-align:center;padding:16px 0">
-    <div style="margin-bottom:12px">${charSVG(S.lid,80,'happy')}</div>
-    <div style="font-size:22px;font-weight:900;color:#111;margin-bottom:4px">${S.nick}</div>
-    <div style="display:inline-block;background:${l.bg};color:${l.color};border-radius:20px;padding:6px 16px;font-size:13px;font-weight:700">${l.emoji} ${l.name} · ${l.desc}</div>
-    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
-      <div style="text-align:center;background:#EFF6FF;border-radius:12px;padding:8px 14px">
-        <div style="font-size:20px;font-weight:900;color:#1E5FA5">${S.streak}</div>
-        <div style="font-size:10px;color:#9CA3AF">연속 학습</div>
+  parts.push('<div class="pad" style="padding-bottom:24px">');
+
+  // ── 상단: 캐릭터 + 이름 + 레벨 (성향 색상 배경) ──
+  parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;text-align:center;color:#fff">
+    <div style="margin-bottom:10px" onclick="go('game')">${charSVG(S.lid,80,'happy')}</div>
+    <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick}</div>
+    <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name} · ${l.desc}</div>
+    <div style="display:flex;gap:8px;justify-content:center">
+      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:900">🔥 ${S.streak||0}</div>
+        <div style="font-size:10px;opacity:.8">연속 학습</div>
       </div>
-      <div style="text-align:center;background:#FDF4FF;border-radius:12px;padding:8px 14px">
-        <div style="font-size:20px;font-weight:900;color:#7C3AED">${S.attendCount}</div>
-        <div style="font-size:10px;color:#9CA3AF">총 출석</div>
+      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:900">📅 ${S.attendCount||0}</div>
+        <div style="font-size:10px;opacity:.8">총 출석</div>
       </div>
-      <div style="text-align:center;background:#F0FDF4;border-radius:12px;padding:8px 14px">
-        <div style="font-size:20px;font-weight:900;color:#16A34A">${marked1}</div>
-        <div style="font-size:10px;color:#9CA3AF">외운 단어</div>
+      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:900">📚 ${marked1}</div>
+        <div style="font-size:10px;opacity:.8">외운 단어</div>
+      </div>
+      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:900">⚡ ${S.xp||0}</div>
+        <div style="font-size:10px;opacity:.8">XP</div>
       </div>
     </div>
   </div>`);
-  // 단어 마크 통계
-  parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px">
-    <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:10px">📊 단어 마크 현황</div>
+
+  // ── 진화 게이지 ──
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🐛 성장 단계</div>
+      <div style="font-size:12px;color:#6B7280">다음: ${nextLv&&nextLv.id!==S.lid?nextLv.emoji+' '+nextLv.name:'✨ 최고 레벨'}</div>
+    </div>
+    <div style="background:#F3F4F6;border-radius:8px;height:10px;overflow:hidden;margin-bottom:6px">
+      <div style="height:100%;background:${petCol.main};border-radius:8px;width:${xpPct}%;transition:width .8s"></div>
+    </div>
+    <div style="display:flex;justify-content:space-around;margin-top:10px">
+      ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=S.xp?1:.3}">
+        <div style="font-size:${lx.id===S.lid?'22px':'14px'}">${lx.emoji}</div>
+        <div style="font-size:8px;color:${lx.id===S.lid?petCol.main:'#D1D5DB'};font-weight:${lx.id===S.lid?'800':'400'}">${lx.name.split(' ')[0]}</div>
+      </div>`).join('')}
+    </div>
+  </div>`);
+
+  // ── 성향 / 벌거지 색상 ──
+  const colKey=getPetColor();
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🎨 내 벌거지 색상</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+      ${Object.entries(PET_COLORS).map(([k,v])=>`<div onclick="setPetColor('${k}');go()" style="text-align:center;padding:8px;border-radius:12px;background:${v.light};border:2px solid ${k===colKey?v.main:'transparent'};cursor:pointer">
+        <div style="width:24px;height:24px;border-radius:50%;background:${v.main};margin:0 auto 4px"></div>
+        <div style="font-size:10px;font-weight:700;color:${v.main}">${v.name}</div>
+      </div>`).join('')}
+    </div>
+  </div>`);
+
+  // ── 반려나비 도감 ──
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🦋 반려나비 도감</div>
+      <span style="font-size:12px;font-weight:700;color:#7C3AED;background:#F5F3FF;padding:3px 10px;border-radius:20px">${myB.length}/15</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+      ${BUTTERFLY_LIST.map(b=>{
+        const owned=myB.includes(b.id);
+        return `<div style="text-align:center;padding:6px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${owned?b.color:'var(--border,#E5E7EB)'}">
+          <div style="font-size:20px;filter:${owned?'none':'grayscale(1) opacity(.3)'}">🦋</div>
+          <div style="font-size:8px;font-weight:700;color:${owned?b.color:'#9CA3AF'}">${owned?b.name:'???'}</div>
+          ${owned?`<div style="font-size:8px;color:${b.color}">${b.rare}</div>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`);
+
+  // ── 악세사리 ──
+  const acc=[
+    {ic:'👑',nm:'왕관',cond:'7일 연속',done:(S.streak||0)>=7},
+    {ic:'✨',nm:'별빛',cond:'30일 연속',done:(S.streak||0)>=30},
+    {ic:'🌟',nm:'후광',cond:'100일 연속',done:(S.streak||0)>=100},
+  ];
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🎀 악세사리</div>
+    <div style="display:flex;gap:8px">
+      ${acc.map(a=>`<div style="flex:1;text-align:center;padding:12px;border-radius:14px;background:${a.done?'#FEF9C3':'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${a.done?'#D97706':'var(--border,#E5E7EB)'}">
+        <div style="font-size:28px;filter:${a.done?'none':'grayscale(1) opacity(.3)'}">${a.ic}</div>
+        <div style="font-size:11px;font-weight:700;color:${a.done?'#D97706':'#9CA3AF'}">${a.nm}</div>
+        <div style="font-size:9px;color:#9CA3AF">${a.cond}</div>
+      </div>`).join('')}
+    </div>
+  </div>`);
+
+  // ── 단어 마크 현황 ──
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📊 단어 현황</div>
     <div style="display:flex;gap:8px">
       ${[[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF','#F3F4F6'],[1,'외운',marked1,'#1E5FA5','#EFF6FF'],[2,'헷갈리는',marked2,'#EC4899','#FDF2F8']].map(([v,lb,cnt,col,bg])=>
         `<div style="flex:1;text-align:center;background:${bg};border-radius:12px;padding:10px;cursor:pointer" onclick="S.listMarkFilter=${v};go('mybooks','list')">
@@ -4832,99 +4883,24 @@ function rProfile(){
         </div>`).join('')}
     </div>
   </div>`);
-  // 캐릭터 커스터마이징
-  parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px">
-    <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:12px">🐛 캐릭터 설정</div>
-    <div style="font-size:12px;color:#6B7280;margin-bottom:8px;font-weight:600">성격</div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">
-      ${['다정한','엄격한','재밌는','조용한'].map(p=>`<button onclick="S.charPersonality='${p}';sv();go()" style="padding:10px;border-radius:12px;border:2px solid ${S.charPersonality===p?'#1E5FA5':'#E5E7EB'};background:${S.charPersonality===p?'#EFF6FF':'#fff'};font-size:13px;font-weight:700;cursor:pointer;color:${S.charPersonality===p?'#1E5FA5':'#374151'}">${p}</button>`).join('')}
-    </div>
-    <div style="background:#F8F9FA;border-radius:12px;padding:10px;font-size:12px;color:#374151;font-style:italic">"${charMsg('studyStart')}"</div>
-  </div>`);
-  // 성장 단계
-  parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px">
-    <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:12px">🦋 성장 단계</div>
-    <div style="display:flex;justify-content:space-around">
-      ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=S.xp?1:.3}">
-        <div style="font-size:${lx.id===S.lid?'24px':'16px'}">${lx.emoji}</div>
-        <div style="font-size:9px;color:${lx.id===S.lid?lx.color:'#D1D5DB'};font-weight:${lx.id===S.lid?'800':'400'}">${lx.name.split(' ')[0]}</div>
-      </div>`).join('')}
+
+  // ── 설정 ──
+  parts.push(`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">⚙️ 설정</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <input id="cnk" placeholder="닉네임 변경" value="${S.nick}" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border,#E5E7EB);font-size:13px">
+        <button onclick="const v=document.getElementById('cnk')?.value.trim();if(v){S.nick=v;sv();toast('닉네임 변경!');go();}" style="background:${petCol.main};color:#fff;border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer">변경</button>
+      </div>
     </div>
   </div>`);
-  // 학습 스타일
-  if(S.studyStyle){
-    parts.push(`<div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:18px;padding:14px">
-      <div style="font-size:12px;color:#1E5FA5;font-weight:700;margin-bottom:4px">나의 학습 스타일</div>
-      <div style="font-size:15px;font-weight:800;color:#1E5FA5">📌 ${S.studyStyle}</div>
-      <button onclick="S.surveyDone=false;S.surveyAns=[];sv();showSurvey()" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;margin-top:6px">다시 설문하기</button>
-    </div>`);
-  }
-  // 알람 설정
-  parts.push('<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px"><div style="font-size:13px;font-weight:800;color:#111;margin-bottom:12px">🔔 알람 설정</div>');
-  [['alStudy','📖','공부 알람'],['alDiary','✍️','일기 알람'],['alGoal','🎯','목표 미달성'],['alStreak','🔥','연속학습 위기']].forEach(([k,ic,nm])=>{
-    const cfg=S[k];
-    parts.push(`<div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #F3F4F6">
-      <span style="font-size:18px">${ic}</span>
-      <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#111">${nm}</div>
-      <div style="font-size:11px;color:#9CA3AF">${p2(cfg.h)}:${p2(cfg.m)}</div></div>
-      <button onclick="showAlarmEdit('${k}')" style="background:#EFF6FF;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#1E5FA5;margin-right:6px">시간</button>
-      <button class="toggle ${cfg.on?'on':''}" onclick="S.${k}.on=!S.${k}.on;sv();scheduleAlarms();go()"><div class="tk"></div></button>
-    </div>`);
-  });
-  parts.push('<button onclick="reqNotif()" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:#1E5FA5;width:100%;margin-top:10px">🔔 알림 권한 허용</button>');
-  parts.push('</div>');
-  // 목표
-  parts.push('<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px"><div style="font-size:13px;font-weight:800;color:#111;margin-bottom:10px">🎯 목표 날짜</div>');
-  if(S.goal){
-    const diff=Math.ceil((new Date(S.goal)-new Date())/86400000);
-    parts.push(`<div style="font-size:13px;color:#374151;margin-bottom:8px">목표일: <strong style="color:#1E5FA5">${S.goal}</strong> (D-${Math.max(0,diff)})</div>`);
-    parts.push('<div style="display:flex;gap:8px"><button onclick="showGoal()" style="flex:1;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;color:#1E5FA5">수정</button><button onclick="S.goal=null;sv();go()" style="flex:1;background:#FFF1F2;border:1.5px solid #FECDD3;border-radius:10px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;color:#DC2626">삭제</button></div>');
-  } else {
-    parts.push('<button onclick="showGoal()" class="btn bb">목표 날짜 설정하기</button>');
-  }
-  parts.push('</div>');
-  // 닉네임 변경
-  parts.push(`<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px">
-    <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:10px">✏️ 닉네임 변경</div>
-    <div style="display:flex;gap:8px">
-      <input id="cnk" placeholder="새 닉네임" value="${S.nick}" style="flex:1">
-      <button onclick="const v=document.getElementById('cnk')?.value.trim();if(v){S.nick=v;sv();toast('닉네임 변경!');go();}" style="background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:13px;font-weight:700;cursor:pointer">변경</button>
-    </div>
-  </div>`);
+
   parts.push('<button class="btn" onclick="showTestIntro(true)" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📝 레벨 재테스트</button>');
-  parts.push('<button class="btn" onclick="showAppSettings()" style="background:#EFF6FF;color:#1E5FA5;border:1.5px solid #BFDBFE">⚙️ 앱 설정</button>');
-  parts.push('<button class="btn" onclick="showFriends()" style="background:#FDF4FF;color:#7C3AED;border:1.5px solid #E9D5FF">👥 친구 · 콕 찌르기</button>');
   parts.push('<button class="btn" onclick="showDataBackup()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #86EFAC">💾 데이터 백업 / 복원</button>');
-  // 반려나비 도감
-  const myB = getMyButterflies();
-  parts.push('<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">');
-  parts.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:14px;font-weight:800;color:var(--text1,#111)">🦋 반려나비 도감</div><span style="font-size:12px;font-weight:700;color:#7C3AED">'+myB.length+'/15</span></div>');
-  parts.push('<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">');
-  BUTTERFLY_LIST.forEach(b=>{
-    const owned=myB.includes(b.id);
-    parts.push('<div style="text-align:center;padding:6px;border-radius:10px;background:'+(owned?b.bg:'var(--bg-sub,#F9FAFB)')+';border:1.5px solid '+(owned?b.color:'var(--border,#E5E7EB)')+'"><div style="font-size:20px;filter:'+(owned?'none':'grayscale(1) opacity(.3)')+'">🦋</div><div style="font-size:8px;font-weight:700;color:'+(owned?b.color:'#9CA3AF')+'">'+( owned?b.name:'???')+'</div></div>');
-  });
-  parts.push('</div></div>');
-
-  // 악세사리
-  const acc=[
-    {id:'crown', ic:'👑', nm:'왕관', cond:'7일 연속', done:(S.streak||0)>=7},
-    {id:'star',  ic:'✨', nm:'별빛',  cond:'30일 연속', done:(S.streak||0)>=30},
-    {id:'halo',  ic:'🌟', nm:'후광',  cond:'100일 연속', done:(S.streak||0)>=100},
-  ];
-  parts.push('<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">');
-  parts.push('<div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🎀 악세사리</div>');
-  parts.push('<div style="display:flex;gap:8px">');
-  acc.forEach(a=>{
-    parts.push('<div style="flex:1;text-align:center;padding:12px;border-radius:14px;background:'+(a.done?'#FEF9C3':'var(--bg-sub,#F9FAFB)')+';border:1.5px solid '+(a.done?'#D97706':'var(--border,#E5E7EB)')+'"><div style="font-size:28px;filter:'+(a.done?'none':'grayscale(1) opacity(.3)')+'">'+a.ic+'</div><div style="font-size:11px;font-weight:700;color:'+(a.done?'#D97706':'#9CA3AF')+'">'+a.nm+'</div><div style="font-size:9px;color:#9CA3AF">'+a.cond+'</div></div>');
-  });
-  parts.push('</div></div>');
-
   parts.push('<button class="btn bgr" onclick="showLogoutMenu()">로그아웃 / 초기화</button>');
   parts.push('</div>');
   return parts.join('');
 }
-// ── 이미지 선택 ──
 function showImgPicker() {
   const emojis = [
     '📝','🌟','💡','🔥','❤️','🎯','⚡','🌈','🏆','🎨',

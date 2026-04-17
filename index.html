@@ -1574,6 +1574,9 @@ function rPetCare() {
     <button onclick="addToCollectionConfirm({})" style="width:100%;background:var(--bg-card,#fff);color:#7C3AED;border:1.5px solid #7C3AED;border-radius:14px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">
       📥 지금 모습을 도감에 담기
     </button>
+    <button onclick="S.stab=null;go('butterfly')" style="width:100%;background:none;border:none;color:#9CA3AF;font-size:13px;cursor:pointer;padding:8px">
+      ← 나비 탭으로
+    </button>
   </div>`;
 }
 
@@ -1826,7 +1829,12 @@ function updStreak() {
   S._petFull = Math.max(0, (S._petFull||0)-1);
   S._petHappy = Math.max(0, (S._petHappy||0)-1);
   const yd=new Date(Date.now()-86400000).toISOString().slice(0,10);
-  if(S.lastDate===yd) S.streak++; else S.streak=1;
+  if(S.lastDate===yd) {
+    S.streak++;
+    if(S.streak===7) { setTimeout(()=>{toast('🔥 7일 연속! XP x1.5 보너스!'); vib([100,50,200]);},500); }
+    else if(S.streak===30) { setTimeout(()=>{toast('👑 30일 연속! XP x2.0 보너스!'); vib([100,50,100,50,300]);},500); }
+    else if(S.streak===3) { setTimeout(()=>{toast('⭐ 3일 연속! XP x1.2 보너스!'); vib(100);},500); }
+  } else S.streak=1;
   S.lastDate=td; sv();
 }
 
@@ -2352,7 +2360,7 @@ function go(tab,sub) {
     const lvI=lv(S.lid);
     hdrEl.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:100%">
       <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.5px">Butterfly Word</div>
-      <div onclick="go('game')" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border-radius:20px;padding:4px 12px;cursor:pointer">
+      <div onclick="go('butterfly')" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border-radius:20px;padding:4px 12px;cursor:pointer">
         <span style="font-size:18px">${pet.emoji}</span>
         <span style="font-size:12px;font-weight:700;color:#fff">${lvI.name}</span>
       </div>
@@ -2455,7 +2463,7 @@ function rLearnTab() {
   const missions=[
     {ic:'📚',lb:'단어 10개 학습',done:todayLog.words>=10,fn:"startLearnSession('new')"},
     {ic:'🎯',lb:'퀴즈 5문제',done:todayLog.quiz>=5,fn:"showGameSettings('quiz')"},
-    {ic:'🎮',lb:'게임 1회 완료',done:Object.keys(S.bestScores||{}).length>0,fn:"go('game')"},
+    {ic:'🎮',lb:'게임 1회 완료',done:Object.keys(S.bestScores||{}).length>0,fn:"go('butterfly')"},
   ];
   html+=`<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
     <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📅 오늘의 미션</div>
@@ -2584,7 +2592,15 @@ function finishLearnSession(resultMap) {
     localStorage.setItem(key,JSON.stringify([...learned]));
     S._learnDoneCount=(S._learnDoneCount||0)+correct.length;
   }
-  addXP(correct.length*3); logStudy('words'); sv();
+  // 정답률 기반 XP
+  const total2 = sw.length||1;
+  const pct2 = Math.round(correct.length/total2*100);
+  let xpAmt = 10;
+  if(pct2>=100) xpAmt=120;
+  else if(pct2>=90) xpAmt=80;
+  else if(pct2>=80) xpAmt=50;
+  else if(pct2>=60) xpAmt=30;
+  addXP(xpAmt); checkXpUsable(); logStudy('words'); sv();
   const mr=document.getElementById('mr');
   if(!mr) return;
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
@@ -3112,7 +3128,7 @@ function showButterflyRoll(butterfly) {
     </div>
     <div style="display:flex;gap:8px">
       <button onclick="showButterflyDetail('${butterfly.id}')" style="flex:1;background:${butterfly.color||'#7C3AED'};color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">상세 보기</button>
-      <button onclick="cm();go('game')" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">도감 확인</button>
+      <button onclick="cm();go('butterfly')" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">도감 확인</button>
     </div>
   </div></div>`;
 }
@@ -3156,7 +3172,7 @@ function rHome() {
   parts.push(`<div class="pad" style="padding-bottom:20px">`);
   // XP 사용 가능 배너
   if((S.xp||0)>=50) {
-    parts.push(`<div id="xp-banner" onclick="go('game')" style="background:linear-gradient(135deg,#7C3AED,#5B21B6);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer">
+    parts.push(`<div id="xp-banner" onclick="go('butterfly')" style="background:linear-gradient(135deg,#7C3AED,#5B21B6);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer">
       <div style="font-size:24px;animation:float-happy 2s ease-in-out infinite;display:inline-block">🦋</div>
       <div style="flex:1">
         <div style="font-size:13px;font-weight:800;color:#fff">⚡ XP ${S.xp}개 사용 가능!</div>
@@ -3169,7 +3185,7 @@ function rHome() {
   // ── 홈 상단: 캐릭터 + 말풍선 + 성장게이지 ──
   parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;color:#fff;position:relative;overflow:hidden">
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-      <div style="flex-shrink:0" onclick="go('game')">
+      <div style="flex-shrink:0" onclick="go('butterfly')">
         ${charSVGAnimated(S.lid,72,stateKey==='happy'?'happy':stateKey==='angry'||stateKey==='danger'?'sad':'normal')}
       </div>
       <div style="flex:1">
@@ -3189,9 +3205,9 @@ function rHome() {
         <div style="height:100%;background:#fff;border-radius:8px;width:${xpPct}%;transition:width .8s"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.7);margin-top:4px">
-        <span>🔥 ${S.streak||0}일 연속</span>
-        <span>📚 단어 ${sysLearned}/${sysTotal||'?'}개</span>
-        <span>⚡ ${S.xp||0} XP</span>
+        <span>🔥 ${S.streak||0}일 연속${(S.streak||0)>=30?' 👑':(S.streak||0)>=7?' ⭐':''}</span>
+        <span id="streakBadge">📚 ${sysLearned}/${sysTotal||'?'}개</span>
+        <span>⚡ ${S.xp||0} XP · <span style="color:#FDE68A;font-weight:800">x${getStreakBonus().toFixed(1)}</span></span>
       </div>
     </div>
   </div>`);
@@ -3209,7 +3225,7 @@ function rHome() {
         <div style="font-size:18px;font-weight:900;color:${todayLog.quiz>0?'#1E5FA5':'#9CA3AF'}">${todayLog.quiz}</div>
         <div style="font-size:10px;color:#9CA3AF">퀴즈</div>
       </div>
-      <div style="text-align:center;padding:10px;background:${Object.keys(S.bestScores||{}).length>0?'#FDF4FF':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('game')">
+      <div style="text-align:center;padding:10px;background:${Object.keys(S.bestScores||{}).length>0?'#FDF4FF':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('butterfly')">
         <div style="font-size:20px">🎮</div>
         <div style="font-size:18px;font-weight:900;color:#7C3AED">${Object.keys(S.bestScores||{}).length}</div>
         <div style="font-size:10px;color:#9CA3AF">게임기록</div>
@@ -3956,6 +3972,7 @@ function rStudy() {
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
+  if(S.stab==='market') return rMarket();
   if(S.stab==='add')   return booksBar+tabs+rAdd();
   if(S.stab==='list')  return booksBar+tabs+rList();
   return booksBar+tabs+rList();
@@ -4006,6 +4023,7 @@ function rStudyBooks() {
       <button onclick="selectBookAndLearn('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer;border-right:1px solid var(--border,#F3F4F6)">📚 학습하기</button>
       <button onclick="S.currentBook='내 단어장';S.stab='add';go('mybooks','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
       <button onclick="shareWordBook('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer">🔗 공유</button>
+      <button onclick="S.stab='market';go('mybooks','market')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#7C3AED;cursor:pointer">🛒 마켓</button>
     </div>
   </div>`);
 
@@ -5731,7 +5749,7 @@ function rProfile(){
 
   // ── 상단: 캐릭터 + 이름 + 레벨 (성향 색상 배경) ──
   parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;text-align:center;color:#fff">
-    <div style="margin-bottom:10px" onclick="go('game')">${charSVGAnimated(S.lid,80,'happy')}</div>
+    <div style="margin-bottom:10px" onclick="go('butterfly')">${charSVGAnimated(S.lid,80,'happy')}</div>
     <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick}</div>
     <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name} · ${l.desc}</div>
     <div style="display:flex;gap:8px;justify-content:center">

@@ -1217,14 +1217,14 @@ function useXP(cost, type) {
   sv();
   if(type==='먹이주기') {
     S._petFull = Math.min(10, (S._petFull||0)+3);
-    sv(); go();
+    sv(); go('butterfly','petcare');
     toast('🍎 맛있게 먹었어! 통통해졌어요');
-    vib(50);
+    vib([50,30,80]);
   } else if(type==='놀아주기') {
     S._petHappy = Math.min(10, (S._petHappy||0)+3);
-    sv(); go();
+    sv(); go('butterfly','petcare');
     toast('🎮 신나게 놀았어! 기분이 좋아졌어요');
-    vib(50);
+    vib([50,30,50]);
   } else if(type==='레벨업') {
     // 번데기→나비 진화 시 나비 뽑기
     const butterfly = rollButterfly();
@@ -1404,6 +1404,226 @@ function downloadButterflyCard(bId) {
   a.href = canvas.toDataURL('image/png');
   a.click();
   toast('카드 저장됨! 🦋');
+}
+
+// ── 도감 수집 시스템 ──
+const MAX_COLLECTION = 15;
+
+function getMyCollection() {
+  return JSON.parse(localStorage.getItem('bw-collection')||'[]');
+}
+
+function saveCollection(col) {
+  localStorage.setItem('bw-collection', JSON.stringify(col));
+}
+
+function addToCollectionConfirm(petData) {
+  // 현재 캐릭터 상태 캡처
+  const data = {
+    id: 'col_'+Date.now(),
+    lid: S.lid,
+    level: lv(S.lid).name,
+    emoji: lv(S.lid).emoji,
+    petColor: getPetColor(),
+    petFull: S._petFull||0,
+    petHappy: S._petHappy||0,
+    addedAt: new Date().toISOString().slice(0,10),
+    ...petData
+  };
+  const mr=document.getElementById('mr');
+  if(!mr)return;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:10px;animation:float 3s ease-in-out infinite;display:inline-block">${data.emoji}</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:6px">도감에 담을까요?</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:4px">${data.level} · ${lv(S.lid).desc}</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:20px">${data.addedAt}</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmAddToCollection(${JSON.stringify(data).replace(/"/g,'&quot;')})" style="flex:2;background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">📥 담기</button>
+      <button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+    </div>
+  </div></div>`;
+}
+
+function confirmAddToCollection(btn) {
+  let data;
+  try { data = typeof btn==='string'?JSON.parse(btn):JSON.parse(btn.getAttribute?btn.getAttribute('data-col'):btn); }
+  catch(e) { data = btn; }
+  const col = getMyCollection();
+  if(col.length >= MAX_COLLECTION) {
+    showReplaceCollection(data);
+    return;
+  }
+  col.push(data);
+  saveCollection(col);
+  cm();
+  toast('✅ 도감에 담겼어요! ('+col.length+'/'+MAX_COLLECTION+')');
+  vib(100);
+  go();
+}
+
+function showReplaceCollection(newData) {
+  const col = getMyCollection();
+  const mr=document.getElementById('mr');
+  if(!mr)return;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:800;margin-bottom:6px;text-align:center">도감이 가득 찼어요!</div>
+    <div style="font-size:12px;color:#6B7280;margin-bottom:14px;text-align:center">뺄 캐릭터를 선택해주세요 (${MAX_COLLECTION}/${MAX_COLLECTION})</div>
+    <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+      ${col.map((item,idx)=>`<div onclick="replaceCollection(${idx},this)" data-new="${JSON.stringify(newData).replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:#F9FAFB;border:1.5px solid #E5E7EB;cursor:pointer">
+        <span style="font-size:28px">${item.emoji||'🥚'}</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700">${item.level||item.lid||'알'}</div>
+          <div style="font-size:11px;color:#9CA3AF">${item.addedAt||''}</div>
+        </div>
+        <span style="font-size:11px;color:#DC2626;font-weight:700">빼기</span>
+      </div>`).join('')}
+    </div>
+    <button onclick="cm()" class="btn bgr">취소</button>
+  </div></div>`;
+}
+
+function replaceCollection(removeIdx, btn) {
+  const newDataStr = btn.closest('[data-new]')?.getAttribute('data-new') || btn.getAttribute('data-new');
+  if(!newDataStr) return;
+  let newData;
+  try { newData = JSON.parse(newDataStr.replace(/&quot;/g,'"')); } catch(e) { return; }
+  const col = getMyCollection();
+  col.splice(removeIdx, 1, newData);
+  saveCollection(col);
+  cm();
+  toast('✅ 도감이 업데이트됐어요!');
+  vib(100);
+  go();
+}
+
+// ── 캐릭터 돌보기 화면 ──
+function rPetCare() {
+  const pet = getPetState();
+  const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
+  const full = S._petFull||0;
+  const happy = S._petHappy||0;
+  const lvInfo = lv(S.lid);
+  const nextEvol = getNextEvolution();
+  const xpPct = nextEvol&&nextEvol.xp ? Math.min(100,Math.round((S.xp||0)/nextEvol.xp*100)) : 100;
+
+  return `<div class="pad" style="padding-bottom:24px">
+    <!-- 캐릭터 메인 카드 -->
+    <div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:24px;text-align:center;color:#fff">
+      <div style="font-size:12px;opacity:.8;margin-bottom:8px">내 벌거지 · ${lvInfo.emoji} ${lvInfo.name}</div>
+      <div style="margin-bottom:12px">${charSVGAnimated(S.lid,90,pet.emoji==='😄'||pet.emoji==='😊'?'happy':pet.emoji==='😤'?'angry':pet.emoji==='💀'?'danger':pet.emoji==='😢'?'sad':'normal')}</div>
+      <div style="background:rgba(255,255,255,.15);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;margin-bottom:14px">${pet.mood}</div>
+      <!-- 수치 바 -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>🍎 배부름</span><span>${full}/10</span></div>
+          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+            <div style="height:100%;background:#fff;border-radius:6px;width:${full*10}%;transition:width .5s"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>🎮 기분</span><span>${happy}/10</span></div>
+          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+            <div style="height:100%;background:#FDE68A;border-radius:6px;width:${happy*10}%;transition:width .5s"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>⬆️ 진화</span><span>${xpPct}%</span></div>
+          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+            <div style="height:100%;background:#A78BFA;border-radius:6px;width:${xpPct}%;transition:width .5s"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- XP 보유 표시 -->
+    <div style="background:var(--bg-card,#fff);border-radius:16px;border:1.5px solid var(--border,#E5E7EB);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:14px;font-weight:800;color:var(--text1,#111)">보유 XP</span>
+      <span style="font-size:20px;font-weight:900;color:#7C3AED">⚡ ${S.xp||0}</span>
+    </div>
+
+    <!-- 돌보기 버튼 -->
+    <div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+      <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🐛 돌보기</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${[[30,'🍎','먹이주기','통통해져요','#16A34A','#F0FDF4'],[20,'🎮','놀아주기','기분 좋아져요','#2563EB','#EFF6FF']].map(([cost,ic,nm,dc,col,bg])=>`
+          <div onclick="useXP(${cost},'${nm}')" style="background:${bg};border-radius:14px;padding:14px;cursor:pointer;opacity:${(S.xp||0)>=cost?1:0.4};border:1.5px solid ${col}22;text-align:center">
+            <div style="font-size:32px;margin-bottom:6px">${ic}</div>
+            <div style="font-size:13px;font-weight:800;color:${col}">${nm}</div>
+            <div style="font-size:11px;color:#6B7280">${dc}</div>
+            <div style="font-size:11px;font-weight:700;color:${col};margin-top:4px">XP ${cost}</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <div onclick="${xpPct>=100?'useXP(100,\'레벨업\')':'toast(\'XP를 더 모아야해!\')'}"
+          style="background:${xpPct>=100?'#F5F3FF':'#F9FAFB'};border-radius:14px;padding:14px;cursor:pointer;opacity:${xpPct>=100?1:0.5};border:1.5px solid ${xpPct>=100?'#7C3AED22':'#E5E7EB'};text-align:center">
+          <div style="font-size:32px;margin-bottom:6px">⬆️</div>
+          <div style="font-size:13px;font-weight:800;color:#7C3AED">레벨업!</div>
+          <div style="font-size:11px;color:#6B7280">${xpPct>=100?'진화 준비 완료!':'XP '+( nextEvol?nextEvol.xp-( S.xp||0):0)+'개 더 필요'}</div>
+          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-top:4px">XP 100</div>
+        </div>
+        <div onclick="useXP(50,'장식품')" style="background:#FFFBEB;border-radius:14px;padding:14px;cursor:pointer;opacity:${(S.xp||0)>=50?1:0.4};border:1.5px solid #D97706;text-align:center">
+          <div style="font-size:32px;margin-bottom:6px">🎀</div>
+          <div style="font-size:13px;font-weight:800;color:#D97706">장식품</div>
+          <div style="font-size:11px;color:#6B7280">악세사리 구매</div>
+          <div style="font-size:11px;font-weight:700;color:#D97706;margin-top:4px">XP 50</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 도감에 담기 버튼 -->
+    <button onclick="addToCollectionConfirm({})" style="width:100%;background:var(--bg-card,#fff);color:#7C3AED;border:1.5px solid #7C3AED;border-radius:14px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">
+      📥 지금 모습을 도감에 담기
+    </button>
+  </div>`;
+}
+
+function showCollectionDetail(colId) {
+  const col = getMyCollection();
+  const item = col.find(x=>x.id===colId);
+  if(!item) return;
+  const petColData = PET_COLORS[item.petColor]||PET_COLORS.green;
+  const mr=document.getElementById('mr');
+  if(!mr) return;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:56px;margin-bottom:8px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">${item.emoji||'🥚'}</div>
+    <div style="font-size:18px;font-weight:900;margin-bottom:4px">${item.level||'알'}</div>
+    <div style="font-size:12px;color:#6B7280;margin-bottom:4px">${item.addedAt||''} 수집</div>
+    <div style="display:flex;gap:8px;margin:12px 0">
+      <div style="flex:1;background:#F9FAFB;border-radius:10px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:#9CA3AF">배부름</div>
+        <div style="font-size:14px;font-weight:700">${item.petFull||0}/10</div>
+      </div>
+      <div style="flex:1;background:#F9FAFB;border-radius:10px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:#9CA3AF">기분</div>
+        <div style="font-size:14px;font-weight:700">${item.petHappy||0}/10</div>
+      </div>
+      <div style="flex:1;background:${petColData.light};border-radius:10px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:#9CA3AF">색상</div>
+        <div style="font-size:14px;font-weight:700;color:${petColData.main}">${petColData.name}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="shareCollectionCard('${colId}')" style="flex:1;background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">📤 공유</button>
+      <button onclick="removeFromCollection('${colId}')" style="flex:1;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">🗑️ 빼기</button>
+    </div>
+    <button onclick="cm()" class="btn bgr" style="margin-top:8px">닫기</button>
+  </div></div>`;
+}
+
+function removeFromCollection(colId) {
+  if(!confirm('도감에서 빼시겠어요?')) return;
+  const col = getMyCollection().filter(x=>x.id!==colId);
+  saveCollection(col);
+  cm(); toast('도감에서 뺐어요'); go();
+}
+
+function shareCollectionCard(colId) {
+  const col = getMyCollection();
+  const item = col.find(x=>x.id===colId);
+  if(!item) return;
+  const text = '🦋 Butterfly Word\n내 벌거지: '+( item.level||'알')+'\n수집일: '+(item.addedAt||'')+' \n\n#ButterflyWord #나비보호';
+  if(navigator.share) navigator.share({title:'내 벌거지',text});
+  else navigator.clipboard?.writeText(text).then(()=>toast('복사됨!'));
 }
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
@@ -1602,6 +1822,9 @@ function addXP(n, silent=false) {
 }
 function updStreak() {
   const td=today(); if(S.lastDate===td) return;
+  // 매일 배부름/기분 감소
+  S._petFull = Math.max(0, (S._petFull||0)-1);
+  S._petHappy = Math.max(0, (S._petHappy||0)-1);
   const yd=new Date(Date.now()-86400000).toISOString().slice(0,10);
   if(S.lastDate===yd) S.streak++; else S.streak=1;
   S.lastDate=td; sv();
@@ -2110,7 +2333,7 @@ function showOnboarding() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'game',ic:'🎮',lb:'게임'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🦋',lb:'나비'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function go(tab,sub) {
   if(tab&&tab!=='game'&&tab!=='ranking') {
@@ -2138,13 +2361,13 @@ function go(tab,sub) {
   const nav=document.getElementById('nav');
   // nav 표시 제어
   // 게임 실행 중에만 nav 숨김 (게임탭 메뉴화면은 nav 보임)
-  const inGame = S.tab==='game' && S.gameId && S.gDone===false && S._gameRunning===true;
+  const inGame = (S.tab==='game'||S.tab==='butterfly') && S.gameId && S.gDone===false && S._gameRunning===true;
   nav.style.display = inGame ? 'none' : 'flex';
   // hd 복원
   const hdEl = document.getElementById('hd');
   if(hdEl && hdEl.style.display==='none') hdEl.style.display='';
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rGameTab,profile:rProfile};
+  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,butterfly:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rGameTab,game:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rGameTab,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
@@ -2450,18 +2673,52 @@ function _doLevelUp() {
   if(!nextLv||nextLv.id===S.lid){toast('이미 최고 레벨!');return;}
   S.lid=nextLv.id; S._sysWords=null; S._learnSessionStarted=false;
   S._learnTotalTarget=0; S._learnDoneCount=0;
-  addXP(500); sv();
+  addXP(500, true); sv();
   loadSysWords(S.lid, null);
-  // 나비 뽑기 연출
-  const butterfly=rollButterfly();
-  cm();
-  showButterflyRoll(butterfly);
+  // 레벨업 화면 이펙트
+  showLevelUpFlash(()=>{
+    const butterfly=rollButterfly(S.xp||0);
+    cm();
+    showButterflyRoll(butterfly);
+  });
+}
+
+function showLevelUpFlash(cb) {
+  // 진동
+  vib([100,50,100,50,200,100,400]);
+  // SFX
+  SFX.play('levelup');
+  // 빛 이펙트 오버레이
+  const el=document.createElement('div');
+  el.id='levelup-flash';
+  el.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,0);z-index:9998;pointer-events:none;transition:background .15s';
+  document.body.appendChild(el);
+  // 파티클 생성
+  for(let i=0;i<12;i++){
+    const p=document.createElement('div');
+    const angle=Math.random()*360;
+    const dist=80+Math.random()*120;
+    const size=6+Math.random()*10;
+    const colors=['#FDE68A','#A78BFA','#6EE7B7','#FCA5A5','#93C5FD','#FCD34D'];
+    p.style.cssText=`position:fixed;left:50%;top:50%;width:${size}px;height:${size}px;border-radius:50%;background:${colors[i%colors.length]};z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .6s ease-out;opacity:1`;
+    document.body.appendChild(p);
+    setTimeout(()=>{
+      p.style.transform=`translate(calc(-50% + ${Math.cos(angle*Math.PI/180)*dist}px),calc(-50% + ${Math.sin(angle*Math.PI/180)*dist}px))`;
+      p.style.opacity='0';
+    },50);
+    setTimeout(()=>p.remove(),700);
+  }
+  setTimeout(()=>{el.style.background='rgba(255,255,255,0.85)';},50);
+  setTimeout(()=>{el.style.background='rgba(255,255,255,0)';},300);
+  setTimeout(()=>{el.remove();if(cb)cb();},600);
 }
 
 // ── 게임 탭 (벌거지 + 게임 + 나비도감) ──
 function rGameTab() {
   // 최초 방문 시 소개 (1회만)
   if(!localStorage.getItem('bw-intro-seen')) setTimeout(showGameIntro, 300);
+  // 서브탭: 돌보기 화면
+  if(S.stab==='petcare') return rPetCare();
   // 벌거지 상태 계산
   const pet = getPetState();
   const lvInfo = lv(S.lid);
@@ -2482,6 +2739,16 @@ function rGameTab() {
       </div>
       <div style="font-size:12px;color:rgba(255,255,255,.9);font-weight:700">${S.xp||0} / ${nextEvol?nextEvol.xp:'MAX'} XP</div>
     </div>
+  </div>`;
+
+  // ── 돌보기 바로가기 버튼 ──
+  html += `<div onclick="S.stab='petcare';go('butterfly')" style="background:linear-gradient(135deg,${pet.bg1},${pet.bg2||pet.bg1}cc);border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer">
+    <div style="font-size:36px;animation:${pet.emoji==='😄'?'float-happy':'float'} 3s ease-in-out infinite;display:inline-block">${pet.emoji}</div>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:800;color:#fff">${lvInfo.name} · ⚡${S.xp||0} XP</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${pet.mood.replace(/"/g,'')}</div>
+    </div>
+    <div style="background:rgba(255,255,255,.2);border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;color:#fff">돌보기 ›</div>
   </div>`;
 
   // ── XP 사용 버튼 ──
@@ -2525,24 +2792,36 @@ function rGameTab() {
   });
   html += `</div></div>`;
 
-  // ── 반려나비 도감 ──
+  // ── 반려나비 도감 (나비 + 캐릭터 수집) ──
   const butterflies = getMyButterflies();
-  const total = 15;
+  const myCol = getMyCollection();
   html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">🦋 반려나비 도감</div>
-      <span style="font-size:12px;font-weight:700;color:#7C3AED;background:#F5F3FF;padding:3px 10px;border-radius:20px">${butterflies.length}/${total} 수집</span>
+      <span style="font-size:12px;font-weight:700;color:#7C3AED;background:#F5F3FF;padding:3px 10px;border-radius:20px">${butterflies.length}/30 · 캐릭터 ${myCol.length}/${MAX_COLLECTION}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
-      ${BUTTERFLY_LIST.map((b,i) => {
+    <!-- 나비 수집 그리드 -->
+    <div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px">수집한 나비</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px">
+      ${BUTTERFLY_LIST.map((b) => {
         const owned = butterflies.includes(b.id);
-        return `<div style="text-align:center;padding:8px;border-radius:12px;background:${owned?b.bg:'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${owned?b.color:'var(--border,#E5E7EB)'}">
-          <div style="font-size:24px;filter:${owned?'none':'grayscale(1) opacity(.3)'}">${b.emoji}</div>
-          <div style="font-size:9px;font-weight:700;color:${owned?b.color:'#9CA3AF'};margin-top:2px">${owned?b.name:'???'}</div>
-          ${owned?`<div style="font-size:9px;color:${b.color}">${b.rare}</div>`:''}
+        return `<div onclick="${owned?'showButterflyDetail(\''+b.id+'\')':''}" style="text-align:center;padding:6px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${owned?b.color:'var(--border,#E5E7EB)'};cursor:${owned?'pointer':'default'}">
+          <div style="font-size:20px;filter:${owned?'none':'grayscale(1) opacity(.3)'}">🦋</div>
+          <div style="font-size:8px;font-weight:700;color:${owned?b.color:'#9CA3AF'}">${owned?b.name:'???'}</div>
+          ${owned?`<div style="font-size:8px;color:${b.color}">${b.rare}</div>`:''}
         </div>`;
       }).join('')}
     </div>
+    <!-- 캐릭터 수집 -->
+    ${myCol.length>0?`<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px">수집한 캐릭터 (${myCol.length}/${MAX_COLLECTION})</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+      ${myCol.map(item=>`<div onclick="showCollectionDetail('${item.id}')" style="text-align:center;padding:6px;border-radius:10px;background:var(--bg-sub,#F9FAFB);border:1.5px solid var(--border,#E5E7EB);cursor:pointer">
+        <div style="font-size:20px;animation:float 3s ease-in-out infinite;display:inline-block">${item.emoji||'🥚'}</div>
+        <div style="font-size:8px;font-weight:700;color:#7C3AED">${item.level||'알'}</div>
+        <div style="font-size:8px;color:#9CA3AF">${item.addedAt||''}</div>
+      </div>`).join('')}
+      ${Array(Math.max(0,MAX_COLLECTION-myCol.length)).fill(0).map(()=>`<div style="text-align:center;padding:6px;border-radius:10px;background:var(--bg-sub,#F9FAFB);border:1.5px dashed var(--border,#E5E7EB)"><div style="font-size:20px;opacity:.2">+</div></div>`).join('')}
+    </div>`:'<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:12px">아직 담긴 캐릭터가 없어요<br>돌보기 화면에서 담아주세요!</div>'}
   </div>`;
 
   // 나비 보호 메시지
@@ -2755,9 +3034,13 @@ function getPetState() {
   else{daysSince=99;}
   const todayDone = log[today]?.words>0||log[today]?.quiz>0;
   const col = PET_COLORS[getPetColor()]||PET_COLORS.green;
-  // 상태별 색상: 행복=성향색, 우울/괴팍=어두운색
-  if(todayDone) return {emoji:'😄',mood:'"오늘도 열심히 했어! 나 좀 더 자란 것 같아! 🐛"',bg1:col.main,bg2:col.main,color:col.main};
-  if(daysSince===0) return {emoji:'😊',mood:'"오늘 아직 공부 안 했지? 같이 해보자!"',bg1:col.main,bg2:col.main,color:col.main};
+  const full = S._petFull||0;
+  const happy = S._petHappy||0;
+  // 수치가 낮으면 상태 악화
+  const lowStats = full<=2 || happy<=2;
+  if(todayDone && !lowStats) return {emoji:'😄',mood:'"오늘도 열심히 했어! 나 좀 더 자란 것 같아! 🐛"',bg1:col.main,bg2:col.main,color:col.main};
+  if(daysSince===0 && !lowStats) return {emoji:'😊',mood:'"오늘 아직 공부 안 했지? 같이 해보자!"',bg1:col.main,bg2:col.main,color:col.main};
+  if(full<=2 && happy<=2) return {emoji:'😢',mood:'"배고프고 심심해... 나 좀 돌봐줘..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
   if(daysSince===1) return {emoji:'😐',mood:'"어제도 안 왔잖아... 나 혼자 있었어"',bg1:'#6B7280',bg2:'#4B5563',color:'#6B7280'};
   if(daysSince===2) return {emoji:'😢',mood:'"이틀이나 공부 안 하면 나 점점 작아져..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
   if(daysSince===3) return {emoji:'😤',mood:'"3일이나 혼자였어. 진짜 삐졌어."',bg1:'#DC2626',bg2:'#B91C1C',color:'#DC2626'};
@@ -4694,7 +4977,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=S.tab||'home'; S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput='';
+  S._prevTab=(S.tab==='butterfly'||S.tab==='game')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput='';
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -4721,7 +5004,7 @@ function startGameW(id, ws) {
   }
 
   // game_center 탭에서 실행해도 game 탭으로 전환
-  S.tab='game'; S.stab=null; go();
+  S.tab='butterfly'; S.stab=null; go();
 }
 
 function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rTyping,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
@@ -4830,7 +5113,7 @@ function rGameDone(){
       <div style="font-size:12px;color:#6B7280">맞은 단어 → 외운 단어, 틀린 단어 → 헷갈리는 단어로 자동 표시됐어요</div>
     </div>`:''}
     <div style="display:flex;gap:8px;width:100%;flex-wrap:wrap">
-      <button class="btn bgr" onclick="SFX.stopBG();S._gameRunning=false;S.gDone=true;go(S._prevTab||'mybooks')" style="flex:1">다른 게임</button>
+      <button class="btn bgr" onclick="SFX.stopBG();S._gameRunning=false;S.gDone=true;go(S._prevTab||'butterfly')" style="flex:1">다른 게임</button>
       <button class="btn bb" onclick="SFX.stopBG();startGameW(S.gameId,null)" style="flex:1">다시 하기</button>
       ${S.gSavedGame&&S.gIdx<S.gWords.length?`<button onclick="SFX.stopBG();S.gDone=false;go('game')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:13px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;width:100%">▶ 이어하기 (${S.gIdx}/${S.gWords.length})</button>`:''}
     </div>

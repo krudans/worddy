@@ -5,15 +5,68 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Vocabug">
+<meta name="apple-mobile-web-app-title" content="Butterfly Word">
 <meta name="theme-color" content="#1E5FA5">
-<title>Vocabug</title>
+<title>Butterfly Word</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-152.png">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
+
+/* 캐릭터 미세 움직임 */
+@keyframes float {
+  0%,100% { transform: translateY(0px) rotate(0deg); }
+  33%      { transform: translateY(-5px) rotate(0.5deg); }
+  66%      { transform: translateY(-3px) rotate(-0.5deg); }
+}
+@keyframes float-sad {
+  0%,100% { transform: translateY(0px) rotate(-1deg) scale(0.98); }
+  50%      { transform: translateY(-2px) rotate(1deg) scale(0.97); }
+}
+@keyframes float-angry {
+  0%,100% { transform: translateY(0px) rotate(0deg); }
+  20%      { transform: translateY(-1px) rotate(1.5deg); }
+  40%      { transform: translateY(1px) rotate(-1.5deg); }
+  60%      { transform: translateY(-1px) rotate(1deg); }
+  80%      { transform: translateY(0px) rotate(-1deg); }
+}
+@keyframes float-happy {
+  0%,100% { transform: translateY(0px) scale(1) rotate(0deg); }
+  25%      { transform: translateY(-7px) scale(1.02) rotate(1deg); }
+  50%      { transform: translateY(-5px) scale(1.01) rotate(-0.5deg); }
+  75%      { transform: translateY(-8px) scale(1.02) rotate(0.5deg); }
+}
+@keyframes float-danger {
+  0%,100% { transform: translateY(0px) scale(0.96) rotate(-1deg); }
+  50%      { transform: translateY(2px) scale(0.95) rotate(1deg); }
+}
+@keyframes wiggle {
+  0%,100% { transform: rotate(0deg); }
+  25%      { transform: rotate(-2deg); }
+  75%      { transform: rotate(2deg); }
+}
+@keyframes breathe {
+  0%,100% { transform: scale(1); }
+  50%      { transform: scale(1.025); }
+}
+@keyframes antenna-wave {
+  0%,100% { transform: rotate(0deg); transform-origin: bottom center; }
+  50%      { transform: rotate(3deg); transform-origin: bottom center; }
+}
+@keyframes tail-wag {
+  0%,100% { transform: rotate(0deg); }
+  33%      { transform: rotate(2deg); }
+  66%      { transform: rotate(-2deg); }
+}
+.char-float        { animation: float 3.5s ease-in-out infinite; }
+.char-float-happy  { animation: float-happy 2.8s ease-in-out infinite; }
+.char-float-sad    { animation: float-sad 5s ease-in-out infinite; }
+.char-float-angry  { animation: float-angry 1.6s ease-in-out infinite; }
+.char-float-danger { animation: float-danger 6s ease-in-out infinite; }
+.char-wiggle       { animation: wiggle 2.5s ease-in-out infinite; }
+.char-breathe      { animation: breathe 4s ease-in-out infinite; }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;width:100%;overflow:hidden;margin:0;padding:0}
 body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(--bg,#FAF8F5);display:flex;justify-content:center;align-items:flex-start}
@@ -158,7 +211,7 @@ body.fs-lg{font-size:17px!important}
 <div id="app">
   <div class="hd" id="hd" style="display:none">
     <div class="hd-row">
-      <div class="logo">Vocabug</div>
+      <div class="logo">Butterfly Word</div>
       <div style="display:flex;align-items:center;gap:8px">
         <button id="poke-btn" onclick="showFriends()" style="display:none;background:rgba(255,255,255,.2);border:none;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;position:relative">👉 <span id="poke-cnt">0</span></button>
         <div class="lbadge" id="lbadge" onclick="showLevelModal()">🥚 알</div>
@@ -785,6 +838,9 @@ function checkAttend() {
 }
 
 function logStudy(type) {
+  // XP 지급
+  if(type==='words') { addXP(5, true); checkXpUsable(); }
+  else if(type==='quiz') { addXP(2, true); }
   // type: 'words' or 'quiz'
   const t = today();
   if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0};
@@ -1016,6 +1072,339 @@ function getTodayWord() {
   localStorage.setItem(key, JSON.stringify(word));
   return word;
 }
+
+// ── XP 획득 시스템 ──
+const GAME_XP = {
+  quiz:     {base:10, perfect:20},
+  fill:     {base:10, perfect:20},
+  typing:   {base:15, perfect:25},
+  listen:   {base:15, perfect:25},
+  match:    {base:10, perfect:20},
+  sentence: {base:20, perfect:35},
+  wordfind: {base:10, perfect:20},
+  wordle:   {base:30, perfect:60},
+  chain:    {base:15, perfect:25},
+  wc:       {base:10, perfect:20},
+  ssort:    {base:15, perfect:25},
+};
+
+function saveGameScore(score) {
+  if(!S.bestScores) S.bestScores={};
+  const gid = S.gameId;
+  if(!gid) return;
+  // 최고 점수 저장
+  if(!S.bestScores[gid] || score > S.bestScores[gid]) {
+    S.bestScores[gid] = score;
+  }
+  // XP 계산
+  const xpTable = GAME_XP[gid] || {base:10, perfect:20};
+  const words = (S.gWords||[]).length || 1;
+  const right = Math.round(score/100);
+  const pct = Math.round(right/words*100);
+  let xpGain = xpTable.base;
+  if(pct===100) xpGain = xpTable.perfect;
+  else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
+  // 연속 보너스
+  const streak = S.streak||0;
+  let mult = streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0;
+  xpGain = Math.round(xpGain * mult);
+  if(xpGain>0) {
+    earnXP(xpGain, '게임 완료');
+  }
+  sv();
+}
+
+// XP 획득 (표시 포함)
+function earnXP(amount, reason) {
+  if(!amount || amount<=0) return;
+  S.petXP = (S.petXP||0) + amount;
+  sv();
+  // XP 획득 토스트
+  toast('⚡ +'+amount+' XP 획득!');
+}
+
+// 단어 학습 시 XP (기존 addXP 확장)
+function earnWordXP() {
+  earnXP(5, '단어 학습');
+}
+
+// 테스트 결과 XP
+function earnTestXP(pct) {
+  let xp = 0;
+  if(pct===100) xp=120;
+  else if(pct>=90) xp=80;
+  else if(pct>=80) xp=50;
+  else if(pct>=60) xp=30;
+  const streak=S.streak||0;
+  const mult=streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0;
+  xp = Math.round(xp*mult);
+  if(xp>0) earnXP(xp, '테스트 통과');
+}
+
+function charSVGAnimated(lid, size=60, mood='normal') {
+  const cls = mood==='happy'?'char-float-happy':
+               mood==='danger'?'char-float-danger':
+               mood==='sad'?'char-float-sad':
+               mood==='angry'?'char-float-angry':
+               mood==='normal'?'char-breathe':'char-float';
+  return '<div class="'+cls+'" style="display:inline-block;will-change:transform">'+charSVG(lid,size,mood)+'</div>';
+}
+
+function showGameIntro() {
+  if(localStorage.getItem('bw-intro-seen')) return;
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  let step = 0;
+  const steps = [
+    {
+      char: 'egg', mood: 'happy',
+      title: 'Butterfly Word에 오신 걸 환영해요!',
+      sub: '단어를 외울수록 나비가 자라는 앱이에요 🦋',
+      desc: '영어 단어를 학습하고 테스트를 통과하면\n경험치(XP)를 얻을 수 있어요.',
+      btn: '다음 →'
+    },
+    {
+      char: 'caterpillar', mood: 'normal',
+      title: '내 벌거지를 키워요 🐛',
+      sub: '처음엔 알에서 시작해 나비로 진화해요',
+      desc: '획득한 XP로\n🍎 먹이주기 · 🎮 놀아주기 · ⬆️ 레벨업\n을 할 수 있어요.',
+      btn: '다음 →'
+    },
+    {
+      char: 'pupa', mood: 'normal',
+      title: '번데기에서 나비가 탄생해요 🫘',
+      sub: '레벨업 순간 랜덤으로 나비 종류가 결정돼요',
+      desc: '지구상 실존하는 나비 30종 중\n어떤 나비가 나올지는 아무도 몰라요!\n희귀한 나비일수록 XP가 많이 필요해요.',
+      btn: '다음 →'
+    },
+    {
+      char: 'butterfly', mood: 'happy',
+      title: '반려나비 도감을 채워요 🦋',
+      sub: '나온 나비는 도감에 담아 수집할 수 있어요',
+      desc: '나비 카드를 친구에게 공유하거나\n저장할 수 있어요. 자랑해보세요! 📲\n\n🌿 나비를 사랑하고 보호해요',
+      btn: '시작하기!'
+    },
+  ];
+  const render = () => {
+    const s = steps[step];
+    const charEmoji = step===0?'🥚':step===1?'🐛':step===2?'🫘':'🦋';
+    mr.innerHTML = `<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px 20px">
+      <div style="display:flex;justify-content:center;gap:8px;margin-bottom:16px">
+        ${steps.map((_,i)=>`<div style="width:${i===step?20:8}px;height:8px;border-radius:4px;background:${i===step?'#7C3AED':'#E5E7EB'};transition:all .3s"></div>`).join('')}
+      </div>
+      <div style="font-size:64px;margin-bottom:12px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">${charEmoji}</div>
+      <div style="font-size:18px;font-weight:900;color:#111;margin-bottom:6px;line-height:1.4">${s.title}</div>
+      <div style="font-size:13px;color:#7C3AED;font-weight:700;margin-bottom:12px">${s.sub}</div>
+      <div style="background:#F9FAFB;border-radius:14px;padding:14px;font-size:13px;color:#374151;line-height:1.9;white-space:pre-line;margin-bottom:20px">${s.desc}</div>
+      <button onclick="(${step}<${steps.length-1}?(window._introStep=(window._introStep||0)+1,showGameIntroStep()):(localStorage.setItem('bw-intro-seen','1'),cm()))" 
+        style="width:100%;background:#7C3AED;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;cursor:pointer">${s.btn}</button>
+      ${step>0?`<button onclick="window._introStep--;showGameIntroStep()" style="background:none;border:none;color:#9CA3AF;font-size:13px;cursor:pointer;margin-top:8px;width:100%">← 이전</button>`:''}
+      <button onclick="localStorage.setItem('bw-intro-seen','1');cm()" style="background:none;border:none;color:#D1D5DB;font-size:12px;cursor:pointer;margin-top:4px">건너뛰기</button>
+    </div></div>`;
+  };
+  window._introStep = 0;
+  window.showGameIntroStep = () => {
+    step = window._introStep||0;
+    render();
+  };
+  render();
+}
+
+
+function useXP(cost, type) {
+  if((S.xp||0) < cost) { toast('XP가 부족해요! 게임을 더 해주세요 🎮'); return; }
+  S.xp -= cost;
+  sv();
+  if(type==='먹이주기') {
+    S._petFull = Math.min(10, (S._petFull||0)+3);
+    sv(); go();
+    toast('🍎 맛있게 먹었어! 통통해졌어요');
+    vib(50);
+  } else if(type==='놀아주기') {
+    S._petHappy = Math.min(10, (S._petHappy||0)+3);
+    sv(); go();
+    toast('🎮 신나게 놀았어! 기분이 좋아졌어요');
+    vib(50);
+  } else if(type==='레벨업') {
+    // 번데기→나비 진화 시 나비 뽑기
+    const butterfly = rollButterfly();
+    cm();
+    showButterflyRoll(butterfly);
+    vib([200,100,200,100,400]);
+    SFX.play('levelup');
+  } else if(type==='장식품') {
+    showAccessoryShop();
+  }
+}
+
+function showAccessoryShop() {
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  const acc = [
+    {id:'crown', ic:'👑', nm:'왕관', desc:'7일 연속 달성', xp:100, done:(S.streak||0)>=7},
+    {id:'star',  ic:'✨', nm:'별빛', desc:'30일 연속 달성', xp:200, done:(S.streak||0)>=30},
+    {id:'halo',  ic:'🌟', nm:'후광', desc:'100일 연속 달성', xp:300, done:(S.streak||0)>=100},
+    {id:'ribbon',ic:'🎀', nm:'리본', desc:'즉시 구매 가능', xp:50, done:S._acc?.includes('ribbon')},
+    {id:'glasses',ic:'👓',nm:'안경', desc:'즉시 구매 가능', xp:80, done:S._acc?.includes('glasses')},
+  ];
+  mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:800;margin-bottom:14px">🎀 장식품 상점</div>
+    <div style="font-size:12px;color:#7C3AED;font-weight:700;margin-bottom:12px">보유 XP: ${S.xp||0}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${acc.map(a=>`<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;background:${a.done?'#F0FDF4':'#F9FAFB'};border:1.5px solid ${a.done?'#86EFAC':'#E5E7EB'}">
+        <span style="font-size:28px">${a.ic}</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">${a.nm}</div><div style="font-size:11px;color:#6B7280">${a.desc}</div></div>
+        <div style="text-align:right">
+          ${a.done?'<span style="font-size:11px;color:#16A34A;font-weight:700">✅ 보유</span>':
+            `<button onclick="buyAccessory('${a.id}',${a.xp})" style="background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">${a.xp} XP</button>`}
+        </div>
+      </div>`).join('')}
+    </div>
+    <button onclick="cm()" class="btn bgr">닫기</button>
+  </div></div>`;
+}
+
+function buyAccessory(id, cost) {
+  if((S.xp||0)<cost){toast('XP 부족!');return;}
+  S.xp -= cost;
+  if(!S._acc) S._acc=[];
+  if(!S._acc.includes(id)) S._acc.push(id);
+  sv(); cm(); toast('🎉 '+id+' 획득!'); vib([100,50,200]);
+}
+
+function showButterflyDetail(bId) {
+  const b = BUTTERFLY_LIST.find(x=>x.id===bId);
+  if(!b) return;
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  const statusColor = b.status==='멸종'?'#DC2626':b.status==='멸종위기'||b.status==='멸종위기1급'?'#D97706':'#16A34A';
+  mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;overflow:hidden;border-radius:20px">
+    <div style="background:${b.bg};padding:24px;text-align:center;border-bottom:1.5px solid #E5E7EB">
+      <div style="font-size:56px;margin-bottom:8px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">🦋</div>
+      <div style="font-size:18px;font-weight:900;color:#111;margin-bottom:2px">${b.name}</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:4px">${b.en}</div>
+      <div style="font-size:11px;color:#9CA3AF;font-style:italic">${b.sci}</div>
+      <div style="margin-top:8px"><span style="background:${b.color};color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700">${b.rare}</span></div>
+    </div>
+    <div style="padding:16px;max-height:300px;overflow-y:auto">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div style="background:#F9FAFB;border-radius:10px;padding:8px">
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">크기</div>
+          <div style="font-size:12px;font-weight:700;color:#374151">${b.size||'-'}</div>
+        </div>
+        <div style="background:#F9FAFB;border-radius:10px;padding:8px">
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">서식지</div>
+          <div style="font-size:12px;font-weight:700;color:#374151">${b.habitat||'-'}</div>
+        </div>
+        <div style="background:#F9FAFB;border-radius:10px;padding:8px">
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">현황</div>
+          <div style="font-size:12px;font-weight:700;color:${statusColor}">${b.status||'-'}</div>
+        </div>
+        <div style="background:#F9FAFB;border-radius:10px;padding:8px">
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">희소점수</div>
+          <div style="font-size:12px;font-weight:700;color:#7C3AED">${b.score}점</div>
+        </div>
+      </div>
+      <div style="background:#F0F9FF;border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#0284C7;margin-bottom:6px">✨ 특징</div>
+        <div style="font-size:12px;color:#374151;line-height:1.7">${b.feature||''}</div>
+      </div>
+      <div style="background:#FDF4FF;border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:6px">📖 이야기</div>
+        <div style="font-size:12px;color:#374151;line-height:1.7">${b.story||''}</div>
+      </div>
+      <div style="background:#F0FDF4;border-radius:12px;padding:12px;margin-bottom:14px;border-left:3px solid #16A34A">
+        <div style="font-size:11px;font-weight:700;color:#16A34A;margin-bottom:4px">🌿 나비를 사랑하고 보호해요</div>
+        <div style="font-size:11px;color:#374151;line-height:1.7">${b.protect||''}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="shareButterflyCard('${b.id}')" style="flex:1;background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">📤 공유하기</button>
+        <button onclick="downloadButterflyCard('${b.id}')" style="flex:1;background:#1565C0;color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">💾 저장하기</button>
+      </div>
+    </div>
+  </div></div>`;
+}
+
+function shareButterflyCard(bId) {
+  const b = BUTTERFLY_LIST.find(x=>x.id===bId);
+  if(!b) return;
+  const text = `🦋 ${b.name} (${b.en})
+${b.rare} · ${b.score}점
+
+"${b.story}"
+
+🌿 ${b.protect}
+
+#ButterflyWord #나비보호`;
+  if(navigator.share) {
+    navigator.share({title:'Butterfly Word - '+b.name, text});
+  } else {
+    navigator.clipboard?.writeText(text).then(()=>toast('카드 텍스트 복사됨!'));
+  }
+}
+
+function downloadButterflyCard(bId) {
+  const b = BUTTERFLY_LIST.find(x=>x.id===bId);
+  if(!b) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = 400; canvas.height = 560;
+  const ctx = canvas.getContext('2d');
+  // 배경
+  ctx.fillStyle = b.bg || '#F9FAFB';
+  ctx.roundRect(0,0,400,560,20);
+  ctx.fill();
+  // 헤더 색상 배경
+  ctx.fillStyle = b.color || '#7C3AED';
+  ctx.roundRect(0,0,400,200,20);
+  ctx.fill();
+  ctx.fillRect(0,180,400,20);
+  // 나비 이모지
+  ctx.font = '80px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('🦋', 200, 120);
+  // 이름
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText(b.name, 200, 165);
+  ctx.font = '14px sans-serif';
+  ctx.fillText(b.en, 200, 188);
+  // 정보
+  ctx.fillStyle = '#374151';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(b.rare + ' · ' + b.score + '점', 20, 230);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#6B7280';
+  ctx.fillText('서식지: ' + (b.habitat||'-'), 20, 255);
+  ctx.fillText('상태: ' + (b.status||'-'), 20, 275);
+  // 이야기
+  ctx.fillStyle = '#374151';
+  ctx.font = '12px sans-serif';
+  const words = (b.story||'').split(' ');
+  let line='', y=310;
+  words.forEach(w=>{
+    const test=line+w+' ';
+    if(ctx.measureText(test).width>360&&line){
+      ctx.fillText(line,20,y); line=w+' '; y+=18;
+    } else line=test;
+  });
+  if(line) ctx.fillText(line,20,y);
+  // 보호 메시지
+  ctx.fillStyle = '#16A34A';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('🌿 ' + (b.protect||'').slice(0,50), 20, 460);
+  // 앱 이름
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Butterfly Word', 200, 540);
+  // 다운로드
+  const a = document.createElement('a');
+  a.download = 'butterfly-' + b.id + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+  toast('카드 저장됨! 🦋');
+}
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -1164,8 +1553,37 @@ function updHD() {
       }).catch(()=>{});
   }
 }
-function addXP(n) {
-  S.xp=Math.min(100,S.xp+n); updHD();
+
+function getStreakBonus() {
+  const s = S.streak||0;
+  if(s>=30) return 2.0;
+  if(s>=7)  return 1.5;
+  if(s>=3)  return 1.2;
+  return 1.0;
+}
+
+function showXpGain(xp, hasBonus=false) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:60px;right:16px;background:#7C3AED;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;z-index:9999;animation:pop .3s ease';
+  el.textContent = '+' + xp + ' XP' + (hasBonus ? ' 🔥' : '');
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1800);
+}
+
+function checkXpUsable() {
+  // XP 50 이상이면 사용 가능 배너 표시
+  if((S.xp||0) >= 50) {
+    const banner = document.getElementById('xp-banner');
+    if(banner) banner.style.display='flex';
+  }
+}
+function addXP(n, silent=false) {
+  const bonus = getStreakBonus();
+  const actual = Math.round(n * bonus);
+  S.xp = (S.xp||0) + actual;
+  sv(); if(!silent) updHD();
+  // XP 획득 토스트 (게임 중이 아닐 때만)
+  if(!silent && actual>0) showXpGain(actual, bonus>1);
   const ni=LEVELS.findIndex(l=>l.id===S.lid), next=LEVELS[ni+1];
   if(next&&S.xp>=next.min) {
     S.lid=next.id; S.xp=next.min;
@@ -1273,7 +1691,7 @@ function showLogin() {
     // 인앱 브라우저면 외부 브라우저로 열기 안내
     document.getElementById('body').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:32px 24px;gap:16px;background:linear-gradient(160deg,#EFF6FF,#F5F7FF)">
       <div style="animation:bounce 2s infinite">${charSVG('egg',100)}</div>
-      <div style="font-size:28px;font-weight:900;color:#1E5FA5">Vocabug</div>
+      <div style="font-size:28px;font-weight:900;color:#1E5FA5">Butterfly Word</div>
       <div style="background:#FFF8E1;border:1.5px solid #FFE082;border-radius:16px;padding:16px;text-align:center;width:100%">
         <div style="font-size:16px;font-weight:800;color:#E65100;margin-bottom:8px">⚠️ 브라우저를 바꿔주세요</div>
         <div style="font-size:13px;color:#6B7280;line-height:1.8">카카오톡 내부 브라우저에서는<br>Google 로그인이 차단돼요<br><br><strong>아래 방법으로 열어주세요!</strong></div>
@@ -1295,7 +1713,7 @@ function showLogin() {
 
   document.getElementById('body').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px 20px;gap:14px;background:#F8F9FA;overflow-y:auto">
     <div style="animation:bounce 2s infinite">${charSVG('egg',80)}</div>
-    <div style="font-size:28px;font-weight:900;color:#1E5FA5;letter-spacing:1px">Vocabug</div>
+    <div style="font-size:28px;font-weight:900;color:#1E5FA5;letter-spacing:1px">Butterfly Word</div>
     <div style="font-size:13px;color:#6B7280;text-align:center;line-height:1.8">🥚알에서 ⚡황금 나비로 성장해요!</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
       <span style="background:#EFF6FF;color:#1E5FA5;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700">🚫 광고 없음</span>
@@ -1710,7 +2128,7 @@ function go(tab,sub) {
     const pet=getPetState();
     const lvI=lv(S.lid);
     hdrEl.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:100%">
-      <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.5px">Vocabug</div>
+      <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.5px">Butterfly Word</div>
       <div onclick="go('game')" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border-radius:20px;padding:4px 12px;cursor:pointer">
         <span style="font-size:18px">${pet.emoji}</span>
         <span style="font-size:12px;font-weight:700;color:#fff">${lvI.name}</span>
@@ -1719,13 +2137,14 @@ function go(tab,sub) {
   }
   const nav=document.getElementById('nav');
   // nav 표시 제어
-  const inGame = S.tab==='game' && !S.gDone && !!S.gameId;
+  // 게임 실행 중에만 nav 숨김 (게임탭 메뉴화면은 nav 보임)
+  const inGame = S.tab==='game' && S.gameId && S.gDone===false && S._gameRunning===true;
   nav.style.display = inGame ? 'none' : 'flex';
-  // hd(헤더) 복원도 함께
+  // hd 복원
   const hdEl = document.getElementById('hd');
   if(hdEl && hdEl.style.display==='none') hdEl.style.display='';
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:S.gDone===false&&S.gameId?rGame:rGameTab,profile:rProfile};
+  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rGameTab,profile:rProfile};
   const body=document.getElementById('body');
   body.innerHTML=(map[S.tab]||rHome)();
   body.scrollTop=0;
@@ -2041,6 +2460,8 @@ function _doLevelUp() {
 
 // ── 게임 탭 (벌거지 + 게임 + 나비도감) ──
 function rGameTab() {
+  // 최초 방문 시 소개 (1회만)
+  if(!localStorage.getItem('bw-intro-seen')) setTimeout(showGameIntro, 300);
   // 벌거지 상태 계산
   const pet = getPetState();
   const lvInfo = lv(S.lid);
@@ -2062,6 +2483,25 @@ function rGameTab() {
       <div style="font-size:12px;color:rgba(255,255,255,.9);font-weight:700">${S.xp||0} / ${nextEvol?nextEvol.xp:'MAX'} XP</div>
     </div>
   </div>`;
+
+  // ── XP 사용 버튼 ──
+  if((S.xp||0)>0) {
+    html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">⚡ XP 사용하기</div>
+        <span style="font-size:13px;font-weight:900;color:#7C3AED">${S.xp||0} XP 보유</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${[[30,'🍎','먹이주기','통통해져요','#16A34A','#F0FDF4'],[20,'🎮','놀아주기','기분 좋아져요','#2563EB','#EFF6FF'],[100,'⬆️','레벨업','다음 단계로!','#7C3AED','#F5F3FF'],[50,'🎀','장식품','악세사리 구매','#D97706','#FFFBEB']].map(([cost,ic,nm,dc,col,bg])=>`
+          <div onclick="useXP(${cost},'${nm}')" style="background:${bg};border-radius:14px;padding:12px;cursor:pointer;opacity:${(S.xp||0)>=cost?1:0.4};border:1.5px solid ${col}22">
+            <div style="font-size:22px;margin-bottom:4px">${ic}</div>
+            <div style="font-size:12px;font-weight:800;color:${col}">${nm}</div>
+            <div style="font-size:10px;color:#6B7280">${dc}</div>
+            <div style="font-size:10px;font-weight:700;color:${col};margin-top:4px">XP ${cost}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
 
   // ── 게임 목록 ──
   html += `<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">
@@ -2105,27 +2545,203 @@ function rGameTab() {
     </div>
   </div>`;
 
+  // 나비 보호 메시지
+  const pMsgs = ['전 세계 나비의 30%가 멸종위기에 처해 있어요 🌿', '나비를 보호하는 가장 좋은 방법은 꽃을 심는 것이에요 🌸', '도시 개발로 매년 수많은 나비들이 서식지를 잃고 있어요', '나비는 생태계 건강의 지표예요. 나비가 사라지면 생태계도 무너져요', '정원에 토종 꽃을 심어 나비들의 쉼터를 만들어주세요 🌺', '농약 사용을 줄이면 나비를 지킬 수 있어요 🌱', '기후변화로 나비의 이주 시기와 경로가 변하고 있어요'];
+  const pMsg = pMsgs[new Date().getDate() % pMsgs.length];
+  html += `<div style="background:#F0FDF4;border-radius:14px;border-left:3px solid #16A34A;padding:12px 14px;display:flex;gap:8px;align-items:center">
+    <span style="font-size:18px">🌿</span>
+    <div>
+      <div style="font-size:11px;font-weight:700;color:#16A34A;margin-bottom:2px">나비를 사랑하고 보호해요</div>
+      <div style="font-size:11px;color:#374151">${pMsg}</div>
+    </div>
+  </div>`;
+
   html += '</div>';
   return html;
 }
 
 // 반려나비 목록 (15종)
 const BUTTERFLY_LIST = [
-  {id:'b01',emoji:'🦋',name:'하늘 나비',rare:'⭐',color:'#6B7280',bg:'#F9FAFB'},
-  {id:'b02',emoji:'🦋',name:'파랑 나비',rare:'⭐',color:'#2563EB',bg:'#EFF6FF'},
-  {id:'b03',emoji:'🦋',name:'초록 나비',rare:'⭐',color:'#16A34A',bg:'#F0FDF4'},
-  {id:'b04',emoji:'🦋',name:'노랑 나비',rare:'⭐',color:'#D97706',bg:'#FFFBEB'},
-  {id:'b05',emoji:'🦋',name:'분홍 나비',rare:'⭐',color:'#EC4899',bg:'#FDF2F8'},
-  {id:'b06',emoji:'🦋',name:'별무늬 나비',rare:'⭐⭐',color:'#7C3AED',bg:'#F5F3FF'},
-  {id:'b07',emoji:'🦋',name:'불꽃 나비',rare:'⭐⭐',color:'#EA580C',bg:'#FFF7ED'},
-  {id:'b08',emoji:'🦋',name:'바다 나비',rare:'⭐⭐',color:'#0284C7',bg:'#E0F2FE'},
-  {id:'b09',emoji:'🦋',name:'벚꽃 나비',rare:'⭐⭐',color:'#BE185D',bg:'#FDF2F8'},
-  {id:'b10',emoji:'🦋',name:'무지개 나비',rare:'⭐⭐',color:'#7C3AED',bg:'#F5F3FF'},
-  {id:'b11',emoji:'🦋',name:'다이아 나비',rare:'⭐⭐⭐',color:'#0EA5E9',bg:'#F0F9FF'},
-  {id:'b12',emoji:'🦋',name:'용 나비',rare:'⭐⭐⭐',color:'#DC2626',bg:'#FEF2F2'},
-  {id:'b13',emoji:'🦋',name:'은하수 나비',rare:'⭐⭐⭐',color:'#4338CA',bg:'#EEF2FF'},
-  {id:'b14',emoji:'🦋',name:'황금왕관 나비',rare:'⭐⭐⭐⭐',color:'#D97706',bg:'#FFFBEB'},
-  {id:'b15',emoji:'🦋',name:'전설의 나비',rare:'⭐⭐⭐⭐',color:'#7C3AED',bg:'#F5F3FF'},
+  {id:'b01',name:'제르세스 블루',en:'Xerces Blue',sci:'Glaucopsyche xerces',
+   rare:'⭐⭐⭐⭐',score:100,color:'#7BA8D4',bg:'#EFF6FF',
+   size:'2.5cm',habitat:'미국 샌프란시스코',status:'멸종',
+   feature:'은청색 날개, 흰 테두리선',
+   story:'1941년 마지막 개체 채집 후 영원히 사라진 미국 최초 멸종 나비. 도시 개발로 서식지가 파괴되었어.',
+   protect:'이 나비는 이제 박물관에만 존재해요. 도시 개발이 생태계를 얼마나 위협하는지 보여줘요.'},
+  {id:'b02',name:'알렉산드라 비단제비나비',en:"Queen Alexandra's Birdwing",sci:'Ornithoptera alexandrae',
+   rare:'⭐⭐⭐⭐',score:95,color:'#2D7A5C',bg:'#F0FDF4',
+   size:'30cm',habitat:'파푸아뉴기니',status:'멸종위기',
+   feature:'세계 최대 나비, 청록/갈색',
+   story:'화산 폭발 속에서도 살아남은 정글의 여왕. 현재 밀거래꾼들의 표적이 되어 국제적 보호를 받고 있어.',
+   protect:'세계 최대 나비예요. 서식지 보호와 불법 거래 근절이 시급해요.'},
+  {id:'b03',name:'팔로스베르데스 블루',en:'Palos Verdes Blue',sci:'Glaucopsyche lygdamus palosverdesensis',
+   rare:'⭐⭐⭐⭐',score:94,color:'#5C8AB8',bg:'#EFF6FF',
+   size:'2cm',habitat:'미국 캘리포니아',status:'멸종위기',
+   feature:'동전보다 작은 초소형 은청색',
+   story:'멸종된 줄 알았다가 1994년 기적적으로 재발견! 현재 철조망과 전문가 24시간 감시로 보호 중.',
+   protect:'살아있는 보석이라 불려요. 서식지에 철조망을 치고 24시간 감시할 만큼 귀한 나비예요.'},
+  {id:'b04',name:'상제나비',en:'Parnassius bremeri',sci:'Parnassius bremeri',
+   rare:'⭐⭐⭐',score:92,color:'#374151',bg:'#F9FAFB',
+   size:'7cm',habitat:'유라시아(한국)',status:'멸종위기1급',
+   feature:'흰 날개, 검은 혈관 수묵화 무늬',
+   story:'한국에서 절멸했다 극소수 재발견! 흰 날개의 검은 혈관은 동양 수묵화 같은 아름다움을 가졌어.',
+   protect:'한국 멸종위기 야생생물 1급이에요. 우리 숲의 건강성을 증명하는 소중한 생명이에요.'},
+  {id:'b05',name:'붉은점모시나비',en:'Clouded Apollo',sci:'Parnassius mnemosyne',
+   rare:'⭐⭐⭐',score:90,color:'#DC2626',bg:'#FEF2F2',
+   size:'7.5cm',habitat:'한국 고산지',status:'멸종위기',
+   feature:'반투명 날개, 선명한 붉은 점',
+   story:'빙하기의 유물! 영하 기온도 견디는 강인함. 지구온난화로 산 정상으로 쫓겨나고 있는 기후위기의 증인.',
+   protect:'기후위기의 산증인이에요. 지구 온도가 오를수록 이 나비의 서식지는 점점 줄어들어요.'},
+  {id:'b06',name:'블루 몰포',en:'Blue Morpho',sci:'Morpho peleides',
+   rare:'⭐⭐⭐',score:85,color:'#1565C0',bg:'#EFF6FF',
+   size:'15cm',habitat:'중남미 아마존',status:'생존',
+   feature:'메탈릭 블루, 실제 파란 색소 없음',
+   story:'날개에 파란 색소가 없어! 빛의 굴절로 눈부신 광택을 내는 자연의 마법. 위협받으면 날개를 접어 갈색 위장색으로 순식간에 사라져.',
+   protect:'아마존 열대우림이 사라지면 이 나비도 사라져요. 열대림 보호가 절실해요.'},
+  {id:'b07',name:'쌍꼬리부전나비',en:'Double-tailed Blue',sci:'Cigaritis syama',
+   rare:'⭐⭐⭐',score:84,color:'#6B7280',bg:'#F9FAFB',
+   size:'3.5cm',habitat:'한국 소나무숲',status:'멸종위기',
+   feature:'뒷날개 두 개의 가느다란 꼬리',
+   story:'개미와 공생하는 전략가! 애벌레가 개미에게 달콤한 액체를 주고, 개미는 천적으로부터 보호해줘. 성충이 되면 개미와 인연을 끊고 소나무 위로 비상!',
+   protect:'한국 소나무숲의 터줏대감이에요. 소나무숲 보호가 이 나비를 지키는 길이에요.'},
+  {id:'b08',name:'부엉이나비',en:'Owl Butterfly',sci:'Caligo eurilochus',
+   rare:'⭐⭐⭐',score:82,color:'#6D4C41',bg:'#FFF8E1',
+   size:'16cm',habitat:'아마존 정글',status:'생존',
+   feature:'뒷날개 거대한 부엉이 눈무늬',
+   story:'날개의 거대한 눈 무늬로 부엉이 얼굴을 완벽하게 흉내내! 도마뱀을 공포에 빠뜨리는 심리전의 달인.',
+   protect:'자연이 만든 최고의 위장술사예요. 아마존 생태계의 균형을 지키는 소중한 존재예요.'},
+  {id:'b09',name:'나뭇잎나비',en:'Dead Leaf Butterfly',sci:'Kallima inachus',
+   rare:'⭐⭐⭐',score:80,color:'#E65100',bg:'#FFF3E0',
+   size:'8.5cm',habitat:'동남아시아',status:'생존',
+   feature:'접으면 완벽한 마른 잎, 오렌지+파랑',
+   story:'날개를 접으면 마른 낙엽! 팡이 핀 자국까지 정교하게 재현. 날개를 펴면 찬란한 오렌지+파랑으로 반전 매력 폭발!',
+   protect:'자연계 최고의 위장술사예요. 열대우림의 다양성이 있어야 이 나비가 살아갈 수 있어요.'},
+  {id:'b10',name:'모나크 (왕나비)',en:'Monarch Butterfly',sci:'Danaus plexippus',
+   rare:'⭐⭐',score:78,color:'#E65100',bg:'#FFF3E0',
+   size:'10cm',habitat:'북미 대륙',status:'이주성',
+   feature:'주황/검정맥/흰점, 4000km 이주',
+   story:'매년 4,000km 대륙 이동의 주인공! 조상이 갔던 길을 한 번도 본 적 없으면서 유전자의 기억만으로 정확히 찾아가는 기적.',
+   protect:'기후변화로 이주 경로가 흔들리고 있어요. 서식지 보호와 기후 행동이 필요해요.'},
+  {id:'b11',name:'공작나비',en:'Peacock Butterfly',sci:'Aglais io',
+   rare:'⭐⭐',score:75,color:'#8B1A1A',bg:'#FEF2F2',
+   size:'6.5cm',habitat:'유라시아',status:'생존',
+   feature:'4개의 화려한 공작 눈무늬',
+   story:'위협받으면 날개를 활짝 펴 눈무늬를 보이는 동시에 날개를 비벼 소리까지 내! 시각+청각 동시 기만술.',
+   protect:'유라시아 전역에 서식하는 아름다운 나비예요. 꽃밭을 가꾸면 이 나비를 만날 수 있어요.'},
+  {id:'b12',name:'오색나비',en:'Oriental Great Purple Emperor',sci:'Sasakia charonda',
+   rare:'⭐⭐',score:73,color:'#6A1B9A',bg:'#F5F3FF',
+   size:'8.5cm',habitat:'한국/일본',status:'생존',
+   feature:'보라/청색, 각도따라 5가지 색',
+   story:'빛의 각도에 따라 보라에서 진한 청색까지 5가지 색 아우라! 꽃보다 참나무 수액을 좋아하는 개성파.',
+   protect:'한국과 일본의 숲을 대표하는 나비예요. 참나무 숲 보호가 이 나비를 지켜요.'},
+  {id:'b13',name:'대왕나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
+   rare:'⭐⭐',score:71,color:'#4E342E',bg:'#FFF8E1',
+   size:'9.5cm',habitat:'동아시아 산지',status:'생존',
+   feature:'흑갈색, 한국 네발나비 중 최대',
+   story:'한국 네발나비 중 최대 크기의 지배자! 영역 본능이 어찌나 강한지 작은 새에게도 겁 없이 달려들어 몸싸움을 벌여.',
+   protect:'강인한 생명력으로 우리 숲을 지키는 존재예요. 산림 보호가 이 나비의 서식지를 지켜요.'},
+  {id:'b14',name:'유리창나비',en:'Window Butterfly',sci:'Dilipa fenestra',
+   rare:'⭐⭐',score:69,color:'#5D4037',bg:'#FFF8E1',
+   size:'5.5cm',habitat:'동아시아',status:'생존',
+   feature:'날개 끝이 유리처럼 투명함',
+   story:'날개 끝에 비늘이 없어 유리창처럼 투명하게 속이 비쳐 보여! 숲속에서 날개가 없는 듯한 착시로 포식자를 혼란에 빠뜨리는 닌자.',
+   protect:'독특한 투명 날개를 가진 희귀한 나비예요. 동아시아 숲의 보물이에요.'},
+  {id:'b15',name:'청띠신선나비',en:'Blue Admiral',sci:'Kaniska canace',
+   rare:'⭐⭐',score:65,color:'#1565C0',bg:'#EFF6FF',
+   size:'7cm',habitat:'동아시아',status:'생존',
+   feature:'검정+선명한 푸른 띠',
+   story:'검은 상복에 푸른 리본 같은 우아한 외모! 하지만 꽃보다 썩은 과일과 동물의 배설물을 찾아다니는 반전 미식가.',
+   protect:'생태계의 청소부 역할을 하는 고마운 나비예요. 다양한 생태계가 이 나비를 살려요.'},
+  {id:'b16',name:'홍점알락나비',en:'Red Spot Butterfly',sci:'Hestina assimilis',
+   rare:'⭐⭐',score:59,color:'#DC2626',bg:'#FEF2F2',
+   size:'8cm',habitat:'한국/중국',status:'생존',
+   feature:'흰색+검정줄, 뒷날개 끝 붉은 반점',
+   story:'애벌레 시절엔 나무껍질 같은 모습으로 위장, 성충이 되면 화려하고 우아한 모습으로 반전! 생물학적 변신의 경이로움.',
+   protect:'변신의 달인이에요. 건강한 숲이 있어야 이 나비가 아름답게 날아오를 수 있어요.'},
+  {id:'b17',name:'은줄팔랑나비',en:'Silver-striped Skipper',sci:'Lobocla bifasciata',
+   rare:'⭐⭐',score:55,color:'#A0785A',bg:'#FFF8E1',
+   size:'3.5cm',habitat:'한국 산지',status:'생존',
+   feature:'아랫면 선명한 은색 세로줄',
+   story:'날개 뒷면의 선명한 은색 줄무늬가 예술적! 숲속에서 은색 광채가 번쩍하며 사라지는 신비로운 광경.',
+   protect:'한국 산지의 보물이에요. 빠른 비행 속도로 눈앞에서 사라지는 신비로운 나비예요.'},
+  {id:'b18',name:'청띠제비나비',en:'Common Bluebottle',sci:'Graphium sarpedon',
+   rare:'⭐',score:50,color:'#00796B',bg:'#E0F2F1',
+   size:'9cm',habitat:'아시아 온대',status:'생존',
+   feature:'검정+에메랄드 청록 띠',
+   story:'검은 날개 중앙을 가로지르는 에메랄드 띠가 일품! 여름철 해변에 수백 마리가 모여 집단으로 물을 마시는 장관.',
+   protect:'여름 숲이 선사하는 최고의 선물이에요. 청정 계곡과 숲이 있어야 볼 수 있어요.'},
+  {id:'b19',name:'산제비나비',en:"Maack's Swallowtail",sci:'Papilio maackii',
+   rare:'⭐',score:45,color:'#26A69A',bg:'#E0F2F1',
+   size:'청록 광택, 뒷날개 붉은 반달',habitat:'동아시아 산지',status:'생존',
+   feature:'청록 금속 광택, 붉은 반달 무늬',
+   story:'물가에 수십 마리의 산제비나비가 내려앉아 검은 보석처럼 반짝이는 모습은 보는 이의 넋을 놓게 만들어.',
+   protect:'오염되지 않은 청정 자연이 선사하는 최고의 선물이에요.'},
+  {id:'b20',name:'호랑나비',en:'Asian Swallowtail',sci:'Papilio xuthus',
+   rare:'⭐',score:40,color:'#F9A825',bg:'#FFF8E1',
+   size:'10cm',habitat:'동아시아',status:'생존',
+   feature:'노란+검정 호랑이 무늬',
+   story:'나비의 대명사! 당당한 날갯짓과 화려한 무늬는 예로부터 선조들의 민화와 공예품 속 영혼의 상징으로 귀하게 대접받았어.',
+   protect:'우리 민족이 가장 사랑하는 나비예요. 꽃이 있는 곳에 호랑나비가 찾아와요.'},
+  {id:'b21',name:'배추흰나비',en:'Small White',sci:'Pieris rapae',
+   rare:'⭐',score:30,color:'#9E9E9E',bg:'#F9FAFB',
+   size:'6cm',habitat:'전 세계',status:'생존',
+   feature:'유백색, 둥글고 부드러운 날개',
+   story:'인류 역사상 나비를 처음 가르쳐준 선생님! 아이들이 처음으로 채집망을 들고 쫓아가는 순수한 추억의 주인공.',
+   protect:'가장 친근한 나비지만 꽃가루를 옮겨주는 소중한 공로자예요. 꽃밭을 지켜주세요.'},
+  {id:'b22',name:'노랑나비',en:'Eastern Pale Clouded Yellow',sci:'Colias erate',
+   rare:'⭐',score:20,color:'#F9A825',bg:'#FFFDE7',
+   size:'5.5cm',habitat:'전 세계',status:'생존',
+   feature:'밝은 노란색, 봄을 알리는 날개',
+   story:'봄의 전령! 밝은 노란 날개로 들판을 누비며 생명의 활기를 전하는 모습은 누구에게나 미소를 짓게 만들어.',
+   protect:'봄의 상징이에요. 초원과 꽃밭이 사라지면 이 노란 날개도 볼 수 없게 돼요.'},
+  {id:'b23',name:'네발나비',en:'Yellow Comma',sci:'Polygonia c-aureum',
+   rare:'⭐',score:10,color:'#E65100',bg:'#FFF3E0',
+   size:'5.5cm',habitat:'한국 전역',status:'생존',
+   feature:'황갈색, 앞다리 퇴화해 4개로 걸음',
+   story:'앞다리 두 개가 퇴화해 4개로만 걷는 독특한 진화! 성충으로 추운 겨울을 견디며 한겨울에도 햇볕을 쬐는 지혜로운 나비.',
+   protect:'한국 어디서나 만날 수 있는 우리 주변의 나비예요. 도시 숲과 공원을 지켜주세요.'},
+  {id:'b24',name:'왕오색나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
+   rare:'⭐⭐',score:72,color:'#4A148C',bg:'#F3E5F5',
+   size:'대형',habitat:'동아시아',status:'생존',
+   feature:'보라/청색 대형, 화려한 광택',
+   story:'왕이라는 이름처럼 당당하고 화려한 보라빛 대형 나비. 숲의 상층부에서 군주처럼 자신의 영역을 지배해.',
+   protect:'숲의 왕이에요. 오래된 숲과 참나무가 있어야 이 나비가 살아갈 수 있어요.'},
+  {id:'b25',name:'긴꼬리제비나비',en:'Red Helen',sci:'Papilio helenus',
+   rare:'⭐⭐',score:60,color:'#212121',bg:'#F5F5F5',
+   size:'검정+흰점, 긴 꼬리',habitat:'동아시아',status:'생존',
+   feature:'검정 날개, 흰 점열, 긴 꼬리',
+   story:'길고 우아한 꼬리가 돋보이는 제비나비의 귀공자. 검정 날개 위 흰 점들이 밤하늘의 별처럼 빛나.',
+   protect:'아름다운 꼬리를 가진 나비예요. 남쪽 숲과 제주도에서 만날 수 있어요.'},
+  {id:'b26',name:'제비나비',en:'Spangle',sci:'Papilio protenor',
+   rare:'⭐',score:48,color:'#212121',bg:'#F5F5F5',
+   size:'검정 날개',habitat:'동아시아',status:'생존',
+   feature:'순수 검정 날개, 청록 광택',
+   story:'검정 날개에 은은한 청록 광택이 도는 세련된 나비. 아랫날개의 붉은 반점이 포인트야.',
+   protect:'우리 주변 숲에서 볼 수 있는 아름다운 나비예요.'},
+  {id:'b27',name:'남방제비나비',en:'Great Mormon',sci:'Papilio memnon',
+   rare:'⭐',score:43,color:'#1A237E',bg:'#E8EAF6',
+   size:'검정+파란 광택',habitat:'동아시아',status:'생존',
+   feature:'검정 날개, 강렬한 파란 광택',
+   story:'검정 날개에 강렬한 파란 광택이 도는 남방의 귀족. 붉은 반점이 포인트야.',
+   protect:'따뜻한 남쪽 지방에 사는 나비예요. 기후변화로 북쪽으로 서식지가 확장되고 있어요.'},
+  {id:'b28',name:'애호랑나비',en:"Puzillo's Swallowtail",sci:'Luehdorfia puziloi',
+   rare:'⭐',score:35,color:'#F9A825',bg:'#FFFDE7',
+   size:'노란+검정, 호랑나비보다 작음',habitat:'한국',status:'생존',
+   feature:'노란+검정, 봄에 가장 먼저 나타남',
+   story:'한국 봄의 전령! 가장 먼저 나타나는 봄나비로 산속에서 짝짓기 춤을 추는 모습이 아름다워.',
+   protect:'봄의 첫 손님이에요. 산벚꽃과 현호색이 있어야 이 나비를 만날 수 있어요.'},
+  {id:'b29',name:'큰줄흰나비',en:'Large Striped White',sci:'Pieris melete',
+   rare:'⭐',score:25,color:'#9E9E9E',bg:'#F9FAFB',
+   size:'흰색+검은 줄',habitat:'동아시아',status:'생존',
+   feature:'흰색 날개에 굵은 검은 줄',
+   story:'배추흰나비보다 크고 검은 줄이 선명한 사촌 나비. 산속 청정 지역에서 주로 볼 수 있어.',
+   protect:'청정 산지 환경을 좋아하는 나비예요. 깨끗한 자연을 지켜주세요.'},
+  {id:'b30',name:'긴은줄표범나비',en:'Silver-washed Fritillary',sci:'Argynnis paphia',
+   rare:'⭐',score:22,color:'#E65100',bg:'#FFF3E0',
+   size:'주황+검정 점',habitat:'유라시아',status:'생존',
+   feature:'주황 날개, 은색 줄무늬',
+   story:'주황 날개에 검정 점박이 무늬가 표범처럼 화려해. 날개 뒷면의 은색 줄이 반짝반짝!',
+   protect:'유라시아 숲속의 표범이에요. 꽃이 피는 산지 초원을 보호해주세요.'},
 ];
 
 // 벌거지 상태 계산
@@ -2157,17 +2773,17 @@ function getMyButterflies() {
   return JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
 }
 
-function rollButterfly() {
-  // 보유하지 않은 나비 중 랜덤 뽑기
+function rollButterfly(bonusXp=0) {
   const owned = getMyButterflies();
   const available = BUTTERFLY_LIST.filter(b=>!owned.includes(b.id));
   if(available.length===0) return null;
 
-  // 희귀도별 가중치
+  // 점수 기반 가중치 (높은 XP로 레벨업할수록 희귀 나비 확률 UP)
+  const rarityBoost = bonusXp>=200?3:bonusXp>=100?1.5:1;
   const weights = available.map(b=>{
-    if(b.rare==='⭐⭐⭐⭐') return 3;
-    if(b.rare==='⭐⭐⭐')  return 12;
-    if(b.rare==='⭐⭐')    return 35;
+    if(b.score>=80) return Math.round(3*rarityBoost);
+    if(b.score>=65) return Math.round(12*rarityBoost);
+    if(b.score>=40) return 35;
     return 50;
   });
   const total = weights.reduce((a,b)=>a+b,0);
@@ -2177,29 +2793,44 @@ function rollButterfly() {
     rand -= weights[i];
     if(rand<=0){chosen=available[i];break;}
   }
-  // 저장
   owned.push(chosen.id);
   localStorage.setItem('wd-butterflies', JSON.stringify(owned));
   return chosen;
 }
 
 function showButterflyRoll(butterfly) {
+  const mr=document.getElementById('mr');
+  if(!mr) return;
   if(!butterfly) {
-    const mr=document.getElementById('mr');
-    if(mr) mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
-      <div style="font-size:48px;margin-bottom:12px">🎊</div>
+    mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+      <div style="font-size:56px;margin-bottom:12px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">🎊</div>
       <div style="font-size:18px;font-weight:800;margin-bottom:8px">모든 나비를 수집했어요!</div>
-      <button onclick="cm()" class="btn bb" style="margin-top:12px">닫기</button>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:16px">30종 완전 수집 달성! 🏆</div>
+      <button onclick="cm()" class="btn bb">닫기</button>
     </div></div>`;
     return;
   }
-  const mr=document.getElementById('mr');
-  if(mr) mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
-    <div style="font-size:13px;color:#9CA3AF;margin-bottom:8px">새로운 반려나비 탄생!</div>
-    <div style="font-size:80px;margin-bottom:8px">${butterfly.emoji}</div>
-    <div style="font-size:20px;font-weight:900;margin-bottom:4px">${butterfly.name}</div>
-    <div style="font-size:14px;color:#7C3AED;margin-bottom:16px">${butterfly.rare} ${butterfly.rare==='⭐⭐⭐⭐'?'전설!':butterfly.rare==='⭐⭐⭐'?'영웅!':butterfly.rare==='⭐⭐'?'희귀!':'일반'}</div>
-    <button onclick="cm();go('game')" class="btn bb" style="margin-top:4px">도감에서 확인</button>
+  const rareLabel = butterfly.rare==='⭐⭐⭐⭐'?'전설':butterfly.rare==='⭐⭐⭐'?'영웅':butterfly.rare==='⭐⭐'?'희귀':'일반';
+  const rareBg = butterfly.rare==='⭐⭐⭐⭐'?'#FEF3C7':butterfly.rare==='⭐⭐⭐'?'#F5F3FF':butterfly.rare==='⭐⭐'?'#EFF6FF':'#F9FAFB';
+  const rareCol = butterfly.rare==='⭐⭐⭐⭐'?'#D97706':butterfly.rare==='⭐⭐⭐'?'#7C3AED':butterfly.rare==='⭐⭐'?'#2563EB':'#6B7280';
+  // 레벨업 효과
+  vib([100,50,100,50,200,100,300]);
+  mr.innerHTML=`<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px 20px">
+    <div style="font-size:13px;color:#9CA3AF;margin-bottom:6px">✨ 새로운 반려나비 탄생!</div>
+    <div style="font-size:80px;margin-bottom:8px;animation:float-happy 2s ease-in-out infinite;display:inline-block">🦋</div>
+    <div style="font-size:22px;font-weight:900;color:#111;margin-bottom:4px">${butterfly.name}</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:8px;font-style:italic">${butterfly.en}</div>
+    <div style="display:inline-block;background:${rareBg};color:${rareCol};border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:12px">
+      ${butterfly.rare} ${rareLabel}급 · ${butterfly.score}점
+    </div>
+    <div style="background:#F0FDF4;border-radius:12px;padding:10px 14px;font-size:12px;color:#374151;line-height:1.7;margin-bottom:16px;text-align:left">
+      <div style="font-weight:700;color:#16A34A;margin-bottom:4px">🌿 나비를 사랑하고 보호해요</div>
+      ${butterfly.protect||''}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="showButterflyDetail('${butterfly.id}')" style="flex:1;background:${butterfly.color||'#7C3AED'};color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">상세 보기</button>
+      <button onclick="cm();go('game')" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">도감 확인</button>
+    </div>
   </div></div>`;
 }
 
@@ -2240,11 +2871,23 @@ function rHome() {
   const todayMsg=todayLog.words>0?charMsg('studyStart'):charMsg('noStudyToday');
   const parts=[];
   parts.push(`<div class="pad" style="padding-bottom:20px">`);
+  // XP 사용 가능 배너
+  if((S.xp||0)>=50) {
+    parts.push(`<div id="xp-banner" onclick="go('game')" style="background:linear-gradient(135deg,#7C3AED,#5B21B6);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer">
+      <div style="font-size:24px;animation:float-happy 2s ease-in-out infinite;display:inline-block">🦋</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:800;color:#fff">⚡ XP ${S.xp}개 사용 가능!</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.8)">게임 탭에서 벌거지를 돌봐주세요</div>
+      </div>
+      <div style="color:white;font-size:18px;opacity:.7">›</div>
+    </div>`);
+  }
+
   // ── 홈 상단: 캐릭터 + 말풍선 + 성장게이지 ──
   parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;color:#fff;position:relative;overflow:hidden">
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
       <div style="flex-shrink:0" onclick="go('game')">
-        ${charSVG(S.lid,72,stateKey==='happy'?'happy':stateKey==='angry'||stateKey==='danger'?'sad':'normal')}
+        ${charSVGAnimated(S.lid,72,stateKey==='happy'?'happy':stateKey==='angry'||stateKey==='danger'?'sad':'normal')}
       </div>
       <div style="flex:1">
         <div style="font-size:12px;color:rgba(255,255,255,.75);margin-bottom:4px">${l.emoji} ${l.name} · ⚡${S.xp||0} XP</div>
@@ -2288,6 +2931,10 @@ function rHome() {
         <div style="font-size:18px;font-weight:900;color:#7C3AED">${Object.keys(S.bestScores||{}).length}</div>
         <div style="font-size:10px;color:#9CA3AF">게임기록</div>
       </div>
+    </div>
+    <div style="background:#F0FDF4;border-radius:12px;padding:10px 14px;font-size:11px;color:#16A34A;font-weight:600;display:flex;align-items:center;gap:8px;margin-top:4px">
+      <span>🌿</span>
+      <span>${['전 세계 나비의 30%가 멸종위기에 처해 있어요 🌿','나비를 보호하는 가장 좋은 방법은 꽃을 심는 것이에요 🌸','도시 개발로 매년 수많은 나비들이 서식지를 잃고 있어요','나비는 생태계 건강의 지표예요. 나비가 사라지면 생태계도 무너져요','정원에 토종 꽃을 심어 나비들의 쉼터를 만들어주세요 🌺','농약 사용을 줄이면 나비를 지킬 수 있어요 🌱','기후변화로 나비의 이주 시기와 경로가 변하고 있어요'][new Date().getDate()%7]}</span>
     </div>
     ${srsToday>0?`<div style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:12px;color:#E65100;font-weight:600;margin-top:10px;cursor:pointer" onclick="startMode('srs')">📖 오늘 복습할 단어 ${srsToday}개 → 지금 복습</div>`:''}
     ${marked2>0?`<div style="background:#FDF2F8;border-radius:10px;padding:8px 12px;font-size:12px;color:#EC4899;font-weight:600;margin-top:6px;cursor:pointer" onclick="S.listMarkFilter=2;go('mybooks','list')">🦋 헷갈리는 단어 ${marked2}개 → 집중 복습</div>`:''}
@@ -3606,7 +4253,7 @@ function startAutoPlay() {
   next();
 }
 
-function nxtL(ok){const w=S.words[S.idx%S.words.length];if(ok&&!S.learned.has(w.en)){S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);addXP(3);logStudy('words');sv();ok&&SFX.play('correct');vib(50);}S.idx++;S.flip=false;go();}
+function nxtL(ok){const w=S.words[S.idx%S.words.length];if(ok&&!S.learned.has(w.en)){S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);addXP(3);earnWordXP();logStudy('words');sv();ok&&SFX.play('correct');vib(50);}S.idx++;S.flip=false;go();}
 
 function rModes() {
   const modes=[
@@ -4047,7 +4694,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=S.tab||'home'; S.gameId=id; S.gDone=false; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput='';
+  S._prevTab=S.tab||'home'; S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput='';
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -4081,7 +4728,18 @@ function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wo
 
 function rGameDone(){
   SFX.stopBG();
+  S._gameRunning=false;
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
+  // 게임 완료 XP 지급
+  if(!S._inLevelTest && !S._inLearnSession) {
+    const gameXp = {quiz:30,fill:25,typing:35,match:20,sentence:40,listen:35,wordfind:25,wordle:50,wc:25,chain:30};
+    const xpAmt = gameXp[S.gameId]||20;
+    const pct = S.gWords.length>0 ? Math.round(S.gScore/100/S.gWords.length*100) : 0;
+    const bonus = pct>=100?1.5:pct>=80?1.2:1.0;
+    const finalXp = Math.round(xpAmt*bonus);
+    addXP(finalXp);
+    checkXpUsable();
+  }
   // 레벨 테스트
   if(S._inLevelTest) {
     const rm={...(S.gResultMap||{})};
@@ -4172,7 +4830,7 @@ function rGameDone(){
       <div style="font-size:12px;color:#6B7280">맞은 단어 → 외운 단어, 틀린 단어 → 헷갈리는 단어로 자동 표시됐어요</div>
     </div>`:''}
     <div style="display:flex;gap:8px;width:100%;flex-wrap:wrap">
-      <button class="btn bgr" onclick="SFX.stopBG();go(S._prevTab||'mybooks')" style="flex:1">다른 게임</button>
+      <button class="btn bgr" onclick="SFX.stopBG();S._gameRunning=false;S.gDone=true;go(S._prevTab||'mybooks')" style="flex:1">다른 게임</button>
       <button class="btn bb" onclick="SFX.stopBG();startGameW(S.gameId,null)" style="flex:1">다시 하기</button>
       ${S.gSavedGame&&S.gIdx<S.gWords.length?`<button onclick="SFX.stopBG();S.gDone=false;go('game')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:13px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;width:100%">▶ 이어하기 (${S.gIdx}/${S.gWords.length})</button>`:''}
     </div>
@@ -4790,7 +5448,7 @@ function rProfile(){
 
   // ── 상단: 캐릭터 + 이름 + 레벨 (성향 색상 배경) ──
   parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;text-align:center;color:#fff">
-    <div style="margin-bottom:10px" onclick="go('game')">${charSVG(S.lid,80,'happy')}</div>
+    <div style="margin-bottom:10px" onclick="go('game')">${charSVGAnimated(S.lid,80,'happy')}</div>
     <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick}</div>
     <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name} · ${l.desc}</div>
     <div style="display:flex;gap:8px;justify-content:center">
@@ -4851,7 +5509,7 @@ function rProfile(){
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
       ${BUTTERFLY_LIST.map(b=>{
         const owned=myB.includes(b.id);
-        return `<div style="text-align:center;padding:6px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${owned?b.color:'var(--border,#E5E7EB)'}">
+        return `<div onclick="${owned?'showButterflyDetail(\''+b.id+'\')':''}" style="text-align:center;padding:6px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#F9FAFB)'};border:1.5px solid ${owned?b.color:'var(--border,#E5E7EB)'};cursor:${owned?'pointer':'default'}">
           <div style="font-size:20px;filter:${owned?'none':'grayscale(1) opacity(.3)'}">🦋</div>
           <div style="font-size:8px;font-weight:700;color:${owned?b.color:'#9CA3AF'}">${owned?b.name:'???'}</div>
           ${owned?`<div style="font-size:8px;color:${b.color}">${b.rare}</div>`:''}
@@ -5094,8 +5752,8 @@ function showAppSettings(tab) {
         <div style="padding:14px 0;border-bottom:1px solid #F3F4F6">
           <div style="font-size:14px;font-weight:700;color:#374151;margin-bottom:8px">🔊 발음 테스트</div>
           <div style="display:flex;gap:8px">
-            <input id="tts-test" placeholder="테스트할 단어 입력..." value="Vocabug" style="flex:1">
-            <button onclick="(()=>{const w=document.getElementById('tts-test')?.value||'Vocabug';const u=new SpeechSynthesisUtterance(w);u.lang=S.speechLang||'en-US';u.rate=+(S.speechRate||0.85);speechSynthesis.cancel();speechSynthesis.speak(u);})()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer">▶ 듣기</button>
+            <input id="tts-test" placeholder="테스트할 단어 입력..." value="Butterfly Word" style="flex:1">
+            <button onclick="(()=>{const w=document.getElementById('tts-test')?.value||'Butterfly Word';const u=new SpeechSynthesisUtterance(w);u.lang=S.speechLang||'en-US';u.rate=+(S.speechRate||0.85);speechSynthesis.cancel();speechSynthesis.speak(u);})()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer">▶ 듣기</button>
           </div>
         </div>
         <!-- 나만의 발음 -->

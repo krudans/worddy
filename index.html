@@ -1002,6 +1002,20 @@ function importSharedBook(btn) {
   S.books.push({name,words:data.words,markMap:{},srsMap:{},learned:[]});
   sv();cm();toast('✅ "'+name+'" 추가 완료! ('+data.words.length+'개)');go('mybooks');
 }
+
+function getTodayWord() {
+  const t = new Date().toISOString().slice(0,10);
+  const key = 'wd-today-word-' + t;
+  let cached = localStorage.getItem(key);
+  if(cached) return JSON.parse(cached);
+  const pool = (S._sysWords||[]).length ? S._sysWords : S.words;
+  if(!pool.length) return null;
+  // 날짜 기반 시드로 항상 같은 단어
+  let seed = t.replace(/-/g,'').split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const word = pool[seed % pool.length];
+  localStorage.setItem(key, JSON.stringify(word));
+  return word;
+}
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -2253,6 +2267,7 @@ function showButterflyRoll(butterfly) {
 // ── 홈 ──
 function rHome() {
   const l=lv(S.lid), tot=S.words.length, done=S.learned.size;
+  const todayWord = getTodayWord();
   const pct=tot?Math.round(done/tot*100):0;
   const t=today();
   const todayLog=S.studyLog[t]||{words:0,quiz:0};
@@ -2289,10 +2304,10 @@ function rHome() {
         <div style="font-size:18px;font-weight:900;color:${todayLog.quiz>0?'#1E5FA5':'#9CA3AF'}">${todayLog.quiz}</div>
         <div style="font-size:10px;color:#9CA3AF">퀴즈</div>
       </div>
-      <div style="text-align:center;padding:10px;background:${S.dList[0]?.date===t?'#FDF4FF':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('diary')">
-        <div style="font-size:20px">${S.dList[0]?.date===t?'✅':'✍️'}</div>
-        <div style="font-size:18px;font-weight:900;color:${S.dList[0]?.date===t?'#7C3AED':'#9CA3AF'}">${S.dList[0]?.date===t?'완':'−'}</div>
-        <div style="font-size:10px;color:#9CA3AF">일기</div>
+      <div style="text-align:center;padding:10px;background:${Object.keys(S.bestScores||{}).length>0?'#FDF4FF':'#F9FAFB'};border-radius:12px;cursor:pointer" onclick="go('game')">
+        <div style="font-size:20px">🎮</div>
+        <div style="font-size:18px;font-weight:900;color:#7C3AED">${Object.keys(S.bestScores||{}).length}</div>
+        <div style="font-size:10px;color:#9CA3AF">게임기록</div>
       </div>
     </div>
     ${srsToday>0?`<div style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:12px;color:#E65100;font-weight:600;margin-top:10px;cursor:pointer" onclick="startMode('srs')">📖 오늘 복습할 단어 ${srsToday}개 → 지금 복습</div>`:''}
@@ -4190,7 +4205,7 @@ function rQ4(){
       <div style="font-size:28px;font-weight:900;color:#1E5FA5;font-family:monospace">${w.en}</div>
       <div style="font-size:13px;color:#64748B;margin-top:4px">${w.ph||''}</div>
     </div>
-    <div class="g2">${cs.map(c=>{let bg='#fff',col='#111',bd='#E5E7EB';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${c.kr}</button>`;}).join('')}
+    <div class="g2">${cs.map((ch,ci)=>{let bg='var(--bg-card,#fff)',col='var(--text1,#111)',bd='var(--border,#E5E7EB)';if(S.gAns){if(ch.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'&&S._gLastAns===ci){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':`ansQIdx(${ci},${S.gIdx})`}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${ch.kr}</button>`;}).join('')}</div>
     </div>
   </div>`;
 }
@@ -4199,8 +4214,22 @@ function ansQ(c,ok2){
   if(c===ok2){S.gScore+=100;ok();S.gResultMap[ok2]=true;}
   else{ng();S.gResultMap[ok2]=false;}
   logStudy('quiz'); go();
-  const delay = S.gameSettings?.autoNext ? 600 : 900;
-  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+  const delay=S.gameSettings?.autoNext?600:900;
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+}
+
+function ansQIdx(ci,wIdx){
+  const cs=S._gCs; const w=S.gWords[wIdx];
+  if(!cs||!w)return;
+  const chosen=cs[ci]; if(!chosen)return;
+  S._gLastAns=ci;
+  const isOk=chosen.en===w.en;
+  S.gAns=true; S.gRes=isOk?'ok':'ng';
+  if(isOk){S.gScore+=100;ok();S.gResultMap[w.en]=true;}
+  else{ng();S.gResultMap[w.en]=false;}
+  logStudy('quiz'); go();
+  const delay=S.gameSettings?.autoNext?600:900;
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
 
 function rFill(){
@@ -4856,6 +4885,31 @@ function rProfile(){
   parts.push('<button class="btn" onclick="showAppSettings()" style="background:#EFF6FF;color:#1E5FA5;border:1.5px solid #BFDBFE">⚙️ 앱 설정</button>');
   parts.push('<button class="btn" onclick="showFriends()" style="background:#FDF4FF;color:#7C3AED;border:1.5px solid #E9D5FF">👥 친구 · 콕 찌르기</button>');
   parts.push('<button class="btn" onclick="showDataBackup()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #86EFAC">💾 데이터 백업 / 복원</button>');
+  // 반려나비 도감
+  const myB = getMyButterflies();
+  parts.push('<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">');
+  parts.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:14px;font-weight:800;color:var(--text1,#111)">🦋 반려나비 도감</div><span style="font-size:12px;font-weight:700;color:#7C3AED">'+myB.length+'/15</span></div>');
+  parts.push('<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">');
+  BUTTERFLY_LIST.forEach(b=>{
+    const owned=myB.includes(b.id);
+    parts.push('<div style="text-align:center;padding:6px;border-radius:10px;background:'+(owned?b.bg:'var(--bg-sub,#F9FAFB)')+';border:1.5px solid '+(owned?b.color:'var(--border,#E5E7EB)')+'"><div style="font-size:20px;filter:'+(owned?'none':'grayscale(1) opacity(.3)')+'">🦋</div><div style="font-size:8px;font-weight:700;color:'+(owned?b.color:'#9CA3AF')+'">'+( owned?b.name:'???')+'</div></div>');
+  });
+  parts.push('</div></div>');
+
+  // 악세사리
+  const acc=[
+    {id:'crown', ic:'👑', nm:'왕관', cond:'7일 연속', done:(S.streak||0)>=7},
+    {id:'star',  ic:'✨', nm:'별빛',  cond:'30일 연속', done:(S.streak||0)>=30},
+    {id:'halo',  ic:'🌟', nm:'후광',  cond:'100일 연속', done:(S.streak||0)>=100},
+  ];
+  parts.push('<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:16px">');
+  parts.push('<div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🎀 악세사리</div>');
+  parts.push('<div style="display:flex;gap:8px">');
+  acc.forEach(a=>{
+    parts.push('<div style="flex:1;text-align:center;padding:12px;border-radius:14px;background:'+(a.done?'#FEF9C3':'var(--bg-sub,#F9FAFB)')+';border:1.5px solid '+(a.done?'#D97706':'var(--border,#E5E7EB)')+'"><div style="font-size:28px;filter:'+(a.done?'none':'grayscale(1) opacity(.3)')+'">'+a.ic+'</div><div style="font-size:11px;font-weight:700;color:'+(a.done?'#D97706':'#9CA3AF')+'">'+a.nm+'</div><div style="font-size:9px;color:#9CA3AF">'+a.cond+'</div></div>');
+  });
+  parts.push('</div></div>');
+
   parts.push('<button class="btn bgr" onclick="showLogoutMenu()">로그아웃 / 초기화</button>');
   parts.push('</div>');
   return parts.join('');

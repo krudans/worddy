@@ -164,287 +164,45 @@ function deleteMarketPack(id) {
 }
 
 
-function rButterflyAdmin() {
-  const body = document.getElementById('butterfly-body');
-  if(!body) return;
-  body.innerHTML = `<div style="padding:16px">
-    <div style="font-size:14px;font-weight:700;margin-bottom:12px">🦋 나비 30종 데이터</div>
-    <div style="font-size:12px;color:#6B7280;margin-bottom:16px">나비 희소성 점수 및 확률 설정</div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      ${`
-      <!-- 나비 목록은 클라이언트 JS에서 로드 -->
-      <div style="background:#F9FAFB;border-radius:10px;padding:12px;font-size:12px;color:#6B7280">
-        나비 데이터는 index.html의 BUTTERFLY_LIST에서 관리됩니다.<br>
-        총 30종 · ⭐⭐⭐⭐전설 4종(3%) · ⭐⭐⭐영웅 7종(12%) · ⭐⭐희귀 10종(35%) · ⭐일반 9종(50%)
-      </div>`}
-    </div>
-    <div style="margin-top:16px;font-size:13px;font-weight:700;margin-bottom:8px">출현 확률 안내</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <tr style="background:#F3F4F6"><th style="padding:8px;text-align:left">등급</th><th style="padding:8px">종수</th><th style="padding:8px">기본확률</th><th style="padding:8px">고XP보정</th></tr>
-      <tr><td style="padding:8px">⭐⭐⭐⭐ 전설</td><td style="padding:8px;text-align:center">4</td><td style="padding:8px;text-align:center">~3%</td><td style="padding:8px;text-align:center">+최대3배</td></tr>
-      <tr style="background:#F9FAFB"><td style="padding:8px">⭐⭐⭐ 영웅</td><td style="padding:8px;text-align:center">7</td><td style="padding:8px;text-align:center">~12%</td><td style="padding:8px;text-align:center">+최대1.5배</td></tr>
-      <tr><td style="padding:8px">⭐⭐ 희귀</td><td style="padding:8px;text-align:center">10</td><td style="padding:8px;text-align:center">~35%</td><td style="padding:8px;text-align:center">고정</td></tr>
-      <tr style="background:#F9FAFB"><td style="padding:8px">⭐ 일반</td><td style="padding:8px;text-align:center">9</td><td style="padding:8px;text-align:center">~50%</td><td style="padding:8px;text-align:center">고정</td></tr>
-    </table>
-  </div>`;
+function rButterflyUserAdmin() {
+  const body=document.getElementById('butterfly-body');
+  if(!body)return;
+  body.innerHTML='<div style="padding:12px;font-size:13px;color:#6B7280">로딩 중...</div>';
+
+  if(typeof db==='undefined'){body.innerHTML='<div style="padding:12px;color:#DC2626">Firebase 연결 필요</div>';return;}
+
+  db.collection('users').get().then(snap=>{
+    const users=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const bfSnaps=[];
+    const promises=users.map(u=>
+      db.collection('user_butterflies').doc(u.id).get().then(bSnap=>{
+        bfSnaps.push({uid:u.id,nick:u.nick||'알수없음',bfs:bSnap.exists?bSnap.data().list||[]:[]});
+      }).catch(()=>bfSnaps.push({uid:u.id,nick:u.nick||'알수없음',bfs:[]}))
+    );
+    Promise.all(promises).then(()=>{
+      let html='<div style="padding:12px">';
+      html+='<div style="font-size:14px;font-weight:700;margin-bottom:12px">👥 사용자별 나비 획득 현황</div>';
+      html+='<div style="display:flex;flex-direction:column;gap:8px">';
+      bfSnaps.sort((a,b)=>b.bfs.length-a.bfs.length).forEach(u=>{
+        const pct=Math.round(u.bfs.length/30*100);
+        html+=`<div style="background:#F9FAFB;border-radius:12px;padding:12px;border:1px solid #E5E7EB">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:700">${u.nick}</span>
+            <span style="font-size:12px;color:#7C3AED;font-weight:700">${u.bfs.length}/30종 (${pct}%)</span>
+          </div>
+          <div style="background:#E5E7EB;border-radius:4px;height:6px;overflow:hidden">
+            <div style="height:100%;background:#7C3AED;border-radius:4px;width:${pct}%"></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:6px">
+            ${u.bfs.map(bId=>{const b=BUTTERFLY_LIST?.find?.(x=>x.id===bId);return b?`<span style="font-size:10px;background:${b.bg};color:${b.color};border-radius:20px;padding:2px 6px">${b.name}</span>`:''}).join('')}
+          </div>
+        </div>`;
+      });
+      html+='</div></div>';
+      body.innerHTML=html;
+    });
+  }).catch(e=>{body.innerHTML=`<div style="padding:12px;color:#DC2626">오류: ${e.message}</div>`;});
 }
-
-</script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:#F5F7FF;color:#111;min-height:100vh}
-
-/* ── 로그인 화면 ── */
-#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0F172A,#1E3A5F,#1E5FA5);padding:20px}
-.login-box{background:#fff;border-radius:24px;padding:40px 36px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.login-logo{text-align:center;margin-bottom:28px}
-.login-logo .ic{font-size:56px;margin-bottom:8px}
-.login-logo h1{font-size:24px;font-weight:900;color:#1E3A5F}
-.login-logo p{font-size:13px;color:#9CA3AF;margin-top:4px}
-.login-tab{display:flex;background:#F3F4F6;border-radius:12px;padding:4px;margin-bottom:24px;gap:4px}
-.login-tab button{flex:1;padding:9px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:#6B7280}
-.login-tab button.on{background:#fff;color:#1E5FA5;box-shadow:0 1px 4px rgba(0,0,0,.1)}
-.lf{display:flex;flex-direction:column;gap:14px}
-.lf-group{position:relative}
-.lf-group label{font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:5px}
-.lf-group input{border:1.5px solid #E5E7EB;border-radius:10px;padding:11px 14px;font-size:14px;width:100%;background:#fff;transition:border-color .15s;font-family:inherit}
-.lf-group input:focus{outline:none;border-color:#1E5FA5;box-shadow:0 0 0 3px rgba(30,95,165,.1)}
-.lf-group .pw-toggle{position:absolute;right:12px;bottom:11px;cursor:pointer;font-size:16px;color:#9CA3AF;border:none;background:none}
-.login-btn{background:linear-gradient(135deg,#1E5FA5,#2563EB);color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;width:100%;font-family:inherit;transition:all .15s;margin-top:4px}
-.login-btn:hover{background:linear-gradient(135deg,#1a52a0,#1d4ed8);transform:translateY(-1px);box-shadow:0 4px 12px rgba(30,95,165,.4)}
-.login-btn:active{transform:translateY(0)}
-.login-err{background:#FEF2F2;border:1.5px solid #FECDD3;border-radius:10px;padding:10px 14px;font-size:13px;color:#DC2626;font-weight:600;display:none}
-.login-err.show{display:block}
-
-/* ── 앱 전체 ── */
-#app-screen{display:none}
-.hd{background:linear-gradient(135deg,#1E3A5F,#1E5FA5);color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
-.hd h1{font-size:18px;font-weight:900;letter-spacing:.5px}
-.hd-right{display:flex;align-items:center;gap:12px;font-size:13px;opacity:.9}
-.sidebar{width:220px;background:#fff;border-right:1.5px solid #E5E7EB;position:fixed;top:56px;left:0;bottom:0;overflow-y:auto;padding:12px 0;z-index:90}
-.ss{font-size:10px;font-weight:800;color:#9CA3AF;padding:10px 20px 4px;text-transform:uppercase;letter-spacing:.8px}
-.ni{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:14px;font-weight:600;color:#6B7280;cursor:pointer;border-left:3px solid transparent;transition:all .15s}
-.ni:hover{color:#1E5FA5;background:#F0F7FF}
-.ni.on{color:#1E5FA5;background:#EFF6FF;border-left-color:#1E5FA5}
-.ni .ic{font-size:16px;width:20px;text-align:center}
-.main{margin-left:220px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px)}
-.card{background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:20px;margin-bottom:16px}
-.ct{font-size:15px;font-weight:800;color:#111;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.st{background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:18px;text-align:center}
-.st .v{font-size:32px;font-weight:900;margin-bottom:4px}
-.st .l{font-size:12px;color:#9CA3AF;font-weight:600}
-.btn{border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
-.btn:active{transform:scale(.97)}
-.bb{background:#1E5FA5;color:#fff}.br{background:#DC2626;color:#fff}.bg{background:#16A34A;color:#fff}
-.bgr{background:#F3F4F6;color:#6B7280}.bp{background:#7C3AED;color:#fff}.bo{background:#E65100;color:#fff}
-.tw{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{background:#F9FAFB;padding:10px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:1.5px solid #E5E7EB;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid #F3F4F6;vertical-align:middle}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:#FAFBFF}
-input,select,textarea{font-family:inherit;border:1.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;font-size:13px;width:100%;background:#fff;transition:border-color .15s}
-input:focus,select:focus,textarea:focus{outline:none;border-color:#1E5FA5;box-shadow:0 0 0 3px rgba(30,95,165,.1)}
-label{font-size:12px;font-weight:700;color:#6B7280;display:block;margin-bottom:5px}
-.fg{margin-bottom:12px}
-.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:3px}
-.bb2{background:#EFF6FF;color:#1E5FA5}.bg2{background:#F0FDF4;color:#16A34A}.br2{background:#FEF2F2;color:#DC2626}
-.by{background:#FFF8E1;color:#E65100}.bp2{background:#FDF4FF;color:#7C3AED}
-.mbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
-.modal{background:#fff;border-radius:18px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
-.mt{font-size:17px;font-weight:800;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
-.tw2{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px}
-.toast{background:#1A1A2E;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:700;animation:pop .25s ease}
-.tok{background:#16A34A}.terr{background:#DC2626}
-@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.bi{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.bl{width:80px;font-size:12px;font-weight:600;color:#374151;text-align:right;flex-shrink:0}
-.bt{flex:1;background:#F3F4F6;border-radius:4px;height:8px;overflow:hidden}
-.bf{height:100%;border-radius:4px;transition:width .5s}
-.bv{font-size:11px;color:#9CA3AF;width:40px;flex-shrink:0}
-.es{text-align:center;padding:48px 20px;color:#9CA3AF}
-.es .ei{font-size:48px;margin-bottom:12px}
-.es p{font-size:14px;font-weight:600}
-.admin-card{background:linear-gradient(135deg,#1E3A5F,#1E5FA5);border-radius:16px;padding:18px;color:#fff;display:flex;align-items:center;gap:14px}
-.admin-avatar{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border:2px solid rgba(255,255,255,.4);flex-shrink:0}
-@media(max-width:768px){.sidebar{transform:translateX(-100%);transition:transform .3s}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.sg{grid-template-columns:repeat(2,1fr)}}
-</style>
-</head>
-<body>
-
-<!-- ── 로그인 화면 ── -->
-<div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="ic">⚡</div>
-      <h1>WordDay 관리자</h1>
-      <p>관리자 계정으로 로그인하세요</p>
-    </div>
-    <div class="login-tab">
-      <button class="on" id="lt-login" onclick="switchLoginTab('login')">🔐 로그인</button>
-      <button id="lt-reg" onclick="switchLoginTab('reg')">📝 관리자 등록</button>
-    </div>
-
-    <!-- 로그인 폼 -->
-    <div id="lf-login" class="lf">
-      <div class="lf-group">
-        <label>관리자 ID (이메일)</label>
-        <input type="email" id="li-id" placeholder="admin@wordday.com" autocomplete="username">
-      </div>
-      <div class="lf-group">
-        <label>비밀번호</label>
-        <input type="password" id="li-pw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
-        <button class="pw-toggle" onclick="togglePw('li-pw',this)" type="button">👁️</button>
-      </div>
-      <div class="login-err" id="li-err"></div>
-      <button class="login-btn" onclick="doLogin()" id="li-btn">로그인</button>
-      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-top:8px">비밀번호를 잊었다면 슈퍼 관리자에게 문의하세요</div>
-    </div>
-
-    <!-- 관리자 등록 폼 -->
-    <div id="lf-reg" class="lf" style="display:none">
-      <div style="background:#FFF8E1;border-radius:10px;padding:10px 14px;font-size:12px;color:#E65100;font-weight:600;margin-bottom:4px">
-        ⚠️ 등록 후 슈퍼 관리자 승인이 필요합니다
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="lf-group">
-          <label>이름 *</label>
-          <input type="text" id="rg-name" placeholder="홍길동">
-        </div>
-        <div class="lf-group">
-          <label>전화번호 *</label>
-          <input type="tel" id="rg-phone" placeholder="010-0000-0000">
-        </div>
-      </div>
-      <div class="lf-group">
-        <label>주소</label>
-        <input type="text" id="rg-addr" placeholder="서울시 강남구...">
-      </div>
-      <div class="lf-group">
-        <label>관리자 ID (이메일) *</label>
-        <input type="email" id="rg-id" placeholder="admin@wordday.com" autocomplete="username">
-      </div>
-      <div class="lf-group">
-        <label>비밀번호 * (8자 이상)</label>
-        <input type="password" id="rg-pw" placeholder="••••••••" autocomplete="new-password">
-        <button class="pw-toggle" onclick="togglePw('rg-pw',this)" type="button">👁️</button>
-      </div>
-      <div class="lf-group">
-        <label>비밀번호 확인 *</label>
-        <input type="password" id="rg-pw2" placeholder="••••••••" autocomplete="new-password">
-        <button class="pw-toggle" onclick="togglePw('rg-pw2',this)" type="button">👁️</button>
-      </div>
-      <div class="lf-group">
-        <label>소속/직책</label>
-        <input type="text" id="rg-role" placeholder="예: 콘텐츠팀 / 단어장 관리자">
-      </div>
-      <div class="lf-group">
-        <label>등록 코드 (슈퍼 관리자에게 받기)</label>
-        <input type="text" id="rg-code" placeholder="WORDDAY-ADMIN-XXXX">
-      </div>
-      <div class="login-err" id="rg-err"></div>
-      <button class="login-btn" onclick="doRegister()" id="rg-btn" style="background:linear-gradient(135deg,#7C3AED,#A855F7)">관리자 등록 신청</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── 앱 화면 ── -->
-<div id="app-screen">
-  <div class="hd">
-    <div style="display:flex;align-items:center;gap:12px">
-      <button onclick="document.getElementById('sb').classList.toggle('open')" style="background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#fff;font-size:16px">☰</button>
-      <h1>⚡ WordDay 관리자</h1>
-    </div>
-    <div class="hd-right">
-      <span id="au" style="font-weight:700"></span>
-      <span id="au-role" style="font-size:11px;opacity:.7;background:rgba(255,255,255,.1);padding:3px 8px;border-radius:20px"></span>
-      <span id="at" style="font-family:monospace;font-size:12px;opacity:.7"></span>
-      <button onclick="doLogout()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:6px 12px;cursor:pointer;color:#fff;font-size:12px;font-weight:700">로그아웃</button>
-    </div>
-  </div>
-  <nav class="sidebar" id="sb">
-    <div class="ss">메인</div>
-    <div class="ni on" onclick="T('db')" id="ni-db"><span class="ic">📊</span>대시보드</div>
-    <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>분석</div>
-    <div class="ss">콘텐츠</div>
-    <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어장 관리</div>
-    <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
-    <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🦋</span>레벨 관리</div>
-    <div class="ni" onclick="T('nt')" id="ni-nt"><span class="ic">📢</span>공지사항</div>
-    <div class="ss">사용자</div>
-    <div class="ni" onclick="T('us')" id="ni-us"><span class="ic">👥</span>회원 관리</div>
-    <div class="ni" onclick="T('po')" id="ni-po"><span class="ic">👉</span>콕 찌르기</div>
-    <div class="ss">관리자</div>
-    <div class="ni" onclick="T('adm')" id="ni-adm"><span class="ic">🔐</span>관리자 관리</div>
-    <div class="ss">시스템</div>
-    <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
-  </nav>
-  <main class="main" id="main">
-    <div style="text-align:center;padding:80px;color:#9CA3AF"><div style="font-size:48px;margin-bottom:16px">⚡</div><div style="font-size:16px;font-weight:700">로딩 중...</div></div>
-  </main>
-</div>
-
-<div id="tw" class="tw2"></div>
-<div id="ma"></div>
-
-<script src="js/wordpacks.js"></script>
-<script>
-firebase.initializeApp({apiKey:"AIzaSyAjs9nugwoI-S9CiPrtn0Y5UXYOKJ1lJic",authDomain:"wordday-75ae0.firebaseapp.com",projectId:"wordday-75ae0",storageBucket:"wordday-75ae0.firebasestorage.app",messagingSenderId:"959781543804",appId:"1:959781543804:web:63630bb49b91c9b3908ef9"});
-const auth=firebase.auth(), db=firebase.firestore();
-
-// 슈퍼 관리자 이메일 (Firebase 콘솔에서 직접 생성한 계정)
-const SUPER_ADMINS=['krudans@gmail.com'];
-// 등록 코드 (실제 운영 시 변경 권장)
-const REG_CODE='WORDDAY-ADMIN-2025';
-
-const LIDS=['egg','baby','crown','coco','shine','small','big','god'];
-const LI={egg:{n:'알',e:'🥚',c:'#F9A825'},baby:{n:'아기 벌거지',e:'🐛',c:'#43A047'},crown:{n:'왕관 벌거지',e:'🍀',c:'#2E7D32'},coco:{n:'번데기',e:'🫘',c:'#5D4037'},shine:{n:'빛나는 번데기',e:'✨',c:'#E65100'},small:{n:'작은 나비',e:'🦋',c:'#880E4F'},big:{n:'큰 나비',e:'🦋',c:'#6A1B9A'},god:{n:'황금 나비',e:'⚡',c:'#E65100'}};
-let selLv='egg', currentAdmin=null;
-
-// ── 시계 ──
-setInterval(()=>{const e=document.getElementById('at');if(e)e.textContent=new Date().toLocaleTimeString('ko-KR',{hour12:false});},1000);
-
-// ── 인증 상태 감지 ──
-auth.onAuthStateChanged(async u=>{
-  if(!u){
-    showLoginScreen();
-    return;
-  }
-  // Firestore에서 관리자 정보 확인
-  try{
-    const doc=await db.collection('admins').doc(u.uid).get();
-    if(!doc.exists){
-      // 슈퍼 관리자이면 자동 허용
-      if(SUPER_ADMINS.includes(u.email)){
-        currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
-      } else {
-        showErr('승인 대기 중인 계정입니다. 슈퍼 관리자에게 문의하세요.');
-        auth.signOut();
-        return;
-      }
-    } else {
-      const data=doc.data();
-      if(!data.approved && !SUPER_ADMINS.includes(u.email)){
-        showErr('아직 승인되지 않은 계정입니다. 슈퍼 관리자 승인 후 이용 가능합니다.');
-        auth.signOut();
-        return;
-      }
-      currentAdmin={uid:u.uid,email:u.email,...data};
-    }
-    showAppScreen();
-  }catch(e){
-    if(SUPER_ADMINS.includes(u.email)){
-      currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
-      showAppScreen();
-    } else {
-      showErr('오류: '+e.message);
-      auth.signOut();
-    }
-  }
-});
 
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';

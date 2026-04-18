@@ -1,12 +1,12 @@
 const CACHE = 'butterfly-word-v1';
 const ASSETS = [
-  '/worddy/',
-  '/worddy/index.html',
-  '/worddy/manifest.json',
-  '/worddy/js/features.js',
-  '/worddy/js/wordpacks.js',
-  '/worddy/icons/icon-192.png',
-  '/worddy/icons/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './js/features.js',
+  './js/wordpacks.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', e => {
@@ -38,7 +38,7 @@ self.addEventListener('fetch', e => {
       })
       .catch(() => {
         return caches.match(e.request)
-          .then(r => r || caches.match('/worddy/index.html'));
+          .then(r => r || caches.match('./index.html'));
       })
   );
 });
@@ -47,17 +47,17 @@ self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : {};
   e.waitUntil(self.registration.showNotification(data.title || 'Vocabug', {
     body: data.body || '학습할 시간이에요! 🐛',
-    icon: '/worddy/icons/icon-192.png',
-    badge: '/worddy/icons/icon-72.png',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-72.png',
     tag: data.tag || 'vocabug',
     vibrate: [100, 50, 100],
-    data: { url: data.url || '/worddy/' }
+    data: { url: data.url || './' }
   }));
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  e.waitUntil(clients.openWindow(e.notification.data.url || '/worddy/'));
+  e.waitUntil(clients.openWindow(e.notification.data.url || './'));
 });
 
 self.addEventListener('message', e => {
@@ -65,10 +65,10 @@ self.addEventListener('message', e => {
     const { title, body, delay, tag } = e.data;
     setTimeout(() => {
       self.registration.showNotification(title, {
-        body, icon: '/worddy/icons/icon-192.png',
-        badge: '/worddy/icons/icon-72.png',
+        body, icon: './icons/icon-192.png',
+        badge: './icons/icon-72.png',
         tag, vibrate: [100, 50, 100, 50, 200],
-        data: { url: '/worddy/' }
+        data: { url: './' }
       });
     }, delay);
   }

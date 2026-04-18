@@ -51,6 +51,17 @@ body { background: var(--bg) !important; }
 /* 헤더 유지 (성향색) */
 
 /* 캐릭터 미세 움직임 */
+@keyframes comboFlash {
+  0%   { opacity:0; transform:translate(-50%,-50%) scale(.5); }
+  30%  { opacity:1; transform:translate(-50%,-60%) scale(1.2); }
+  70%  { opacity:1; transform:translate(-50%,-70%) scale(1); }
+  100% { opacity:0; transform:translate(-50%,-90%) scale(.9); }
+}
+@keyframes bfAppear {
+  0%   { opacity:0; transform:scale(0.5) rotate(-10deg); }
+  60%  { opacity:1; transform:scale(1.1) rotate(3deg); }
+  100% { opacity:1; transform:scale(1) rotate(0deg); }
+}
 @keyframes float {
   0%,100% { transform: translateY(0px) rotate(0deg); }
   33%      { transform: translateY(-5px) rotate(0.5deg); }
@@ -512,6 +523,26 @@ const SFX = {
       } else if(type==='flip'||type==='tap') {
         g.gain.setValueAtTime(.1,c.currentTime); g.gain.exponentialRampToValueAtTime(.01,c.currentTime+.08);
         o.frequency.value=type==='flip'?800:600; o.start(c.currentTime); o.stop(c.currentTime+.08);
+      } else if(type==='combo') {
+        g.gain.setValueAtTime(.25,c.currentTime); g.gain.exponentialRampToValueAtTime(.01,c.currentTime+.5);
+        [659,784,988,1047].forEach((f,i)=>{o.frequency.setValueAtTime(f,c.currentTime+i*.1);});
+        o.start(c.currentTime); o.stop(c.currentTime+.5);
+      } else if(type==='achievement') {
+        [523,523,659,784,659,784,988].forEach((f,i)=>{
+          const oo=c.createOscillator(), gg=c.createGain();
+          oo.connect(gg); gg.connect(c.destination);
+          oo.frequency.value=f; gg.gain.setValueAtTime(.25,c.currentTime+i*.1);
+          gg.gain.exponentialRampToValueAtTime(.01,c.currentTime+i*.1+.25);
+          oo.start(c.currentTime+i*.1); oo.stop(c.currentTime+i*.1+.25);
+        });
+      } else if(type==='swipe_ok') {
+        g.gain.setValueAtTime(.2,c.currentTime); g.gain.exponentialRampToValueAtTime(.01,c.currentTime+.25);
+        [784,988].forEach((f,i)=>{o.frequency.setValueAtTime(f,c.currentTime+i*.1);});
+        o.start(c.currentTime); o.stop(c.currentTime+.25);
+      } else if(type==='swipe_ng') {
+        g.gain.setValueAtTime(.2,c.currentTime); g.gain.exponentialRampToValueAtTime(.01,c.currentTime+.25);
+        [440,330].forEach((f,i)=>{o.frequency.setValueAtTime(f,c.currentTime+i*.1);});
+        o.start(c.currentTime); o.stop(c.currentTime+.25);
       }
     } catch(e){}
   },
@@ -536,8 +567,29 @@ const SFX = {
   stopBG() { if(this.bgTimer){clearInterval(this.bgTimer);this.bgTimer=null;} }
 };
 const vib = p => { try { if('vibrate' in navigator) navigator.vibrate(p); } catch(e){} };
-const ok = () => { SFX.play('correct'); vib([50,0,50]); };
-const ng = () => { SFX.play('wrong'); vib([100,50,100]); };
+const ok = () => {
+  SFX.play('correct'); vib([50,0,50]);
+  S._combo = (S._combo||0)+1;
+  S._maxCombo = Math.max(S._maxCombo||0, S._combo);
+  // 콤보 보너스 XP + 연출
+  if(S._combo===3)  { addXP(5,true);  showComboFlash(3,  '+5XP'); }
+  if(S._combo===5)  { addXP(10,true); showComboFlash(5,  '+10XP 🔥'); SFX.play('combo'); }
+  if(S._combo===10) { addXP(20,true); showComboFlash(10, '+20XP ⚡'); }
+  if(S._combo===20) { addXP(50,true); showComboFlash(20, '+50XP 🌟'); }
+};
+const ng = () => {
+  SFX.play('wrong'); vib([100,50,100]);
+  if(S._combo>=3) toast('콤보 끊김 😢 ('+S._combo+'연속)');
+  S._combo = 0;
+  // 오답 노트 추가
+  const gw = S.gWords?.[S.gIdx];
+  if(gw && !(S._wrongWords||[]).some(w=>w.en===gw.en)) {
+    if(!S._wrongWords) S._wrongWords=[];
+    S._wrongWords.unshift({...gw, wrongAt:Date.now()});
+    if(S._wrongWords.length>50) S._wrongWords.pop();
+    sv();
+  }
+};
 
 // ── 캐릭터 SVG ──
 // ── 벌거지 캐릭터 SVG (Vocabug) ──
@@ -864,7 +916,15 @@ const S = {
   // 게임
   gameId:null, gDone:true, gWords:[], gIdx:0, gScore:0,
   _gameRunning:false, _lvNotified:false,
-  _petFull:5, _petHappy:5, // 벌거지 상태 (0~10)
+  _petFull:5, _petHappy:5,
+  _combo:0, _maxCombo:0, // 연속 정답 콤보
+  _totalStudyMins:0, _studyStartTime:null, // 총 학습 시간
+  _dcClaimed:'', // 오늘의 도전 수령 날짜
+  _hadPerfect:false, // 테스트 100% 달성
+  _srsCount:0, // SRS 복습 누적 횟수
+  favorites:new Set(), // 즐겨찾기 단어
+  _wrongWords:[], // 오답 노트
+  _achievements:[], // 달성한 도전 과제 // 벌거지 상태 (0~10)
   gAns:false, gRes:null, gInput:'', gResultMap:{},
   sbS:null, sbC:[], sbP:[], sbAns:false, sbOk:false,
   mPairs:[], mEn:[], mKr:[], mEn0:null, mKr0:null, mMatched:new Set(), mScore:0,
@@ -1249,8 +1309,8 @@ function charSVGAnimated(lid, size=60, mood='normal') {
   return '<div class="'+cls+'" style="display:inline-block;will-change:transform">'+charSVG(lid,size,mood)+'</div>';
 }
 
-function showGameIntro() {
-  if(localStorage.getItem('bw-intro-seen')) return;
+function showGameIntro(force=false) {
+  if(!force && localStorage.getItem('bw-intro-seen')) return;
   const mr = document.getElementById('mr');
   if(!mr) return;
   let step = 0;
@@ -1739,53 +1799,131 @@ function shareCollectionCard(colId) {
 function rMarket() {
   const packs = S._marketPacks||[];
   const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
-  let html = '<div class="pad" style="padding-bottom:24px">';
-  html += `<div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:16px;color:#fff;margin-bottom:0">
-    <div style="font-size:18px;font-weight:900;margin-bottom:4px">🛒 단어 마켓</div>
-    <div style="font-size:12px;opacity:.8">새로운 단어팩을 추가해보세요</div>
-  </div>`;
+  const ownedPacks = S._ownedPacks||[];
+
+  // 카테고리 추출
+  const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
+  const selCat = S._mktCat||'전체';
+  const filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
+
+  let html = `<div class="pad" style="padding-bottom:24px">
+    <div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:16px;color:#fff">
+      <div style="font-size:18px;font-weight:900">🛒 단어 마켓</div>
+      <div style="font-size:12px;opacity:.8;margin-top:2px">관리자가 엄선한 단어팩을 내 단어장에 추가해요</div>
+    </div>`;
+
+  // 새로고침 버튼
+  html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#6B5200)">🔄 목록 새로고침</button>`;
+
   if(!packs.length) {
-    html += `<div style="text-align:center;padding:40px 20px;color:var(--text3,#9CA3AF)">
+    html += `<div style="text-align:center;padding:48px 20px">
       <div style="font-size:48px;margin-bottom:12px">📦</div>
-      <div style="font-size:15px;font-weight:700;margin-bottom:8px">아직 마켓 단어팩이 없어요</div>
-      <div style="font-size:13px">관리자가 단어팩을 추가하면 여기에 표시돼요</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text1,#3D2C00);margin-bottom:6px">아직 단어팩이 없어요</div>
+      <div style="font-size:12px;color:var(--text3,#A08040)">관리자가 단어팩을 등록하면 여기에 표시돼요</div>
     </div>`;
   } else {
-    html += '<div style="display:flex;flex-direction:column;gap:10px">';
-    packs.forEach(pk=>{
-      const owned = (S._ownedPacks||[]).includes(pk.id);
-      html += `<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
-        <div style="display:flex;align-items:center;gap:12px">
+    // 카테고리 탭
+    if(cats.length > 2) {
+      html += `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px">
+        ${cats.map(cat=>`<button onclick="S._mktCat='${cat}';go()" style="background:${selCat===cat?petCol.main:'var(--bg-sub,#FFF9ED)'};color:${selCat===cat?'#fff':'var(--text2,#6B5200)'};border:1.5px solid ${selCat===cat?petCol.main:'var(--border,#F0E6C8)'};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">${cat}</button>`).join('')}
+      </div>`;
+    }
+
+    // 팩 목록
+    html += `<div style="display:flex;flex-direction:column;gap:10px">`;
+    filtered.forEach(pk => {
+      const owned = ownedPacks.includes(pk.id);
+      const wordCount = (pk.words||[]).length;
+      const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
+      html += `<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,#F0E6C8)'};padding:14px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
           <div style="font-size:36px">${pk.emoji||'📚'}</div>
           <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;color:var(--text1,#3D2C00)">${pk.name}</div>
-            <div style="font-size:11px;color:var(--text3,#A08040)">${pk.desc||''} · ${(pk.words||[]).length}개</div>
+            <div style="font-size:15px;font-weight:800;color:var(--text1,#3D2C00)">${pk.name}</div>
+            <div style="font-size:11px;color:var(--text3,#A08040);margin-top:2px">
+              ${pk.cat||'기타'} · ${wordCount}개 단어
+            </div>
+            ${preview?`<div style="font-size:11px;color:var(--text3,#A08040);margin-top:2px">${preview}...</div>`:''}
           </div>
           ${owned
-            ? '<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700">✅ 보유</span>'
-            : `<button onclick="buyPack('${pk.id}')" style="background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">추가</button>`}
+            ? `<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;flex-shrink:0">✅ 보유</span>`
+            : `<button onclick="buyPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 추가</button>`}
         </div>
+        ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
+        <div id="preview-${pk.id}" style="display:none;margin-top:8px;display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:4px">
+            ${(pk.words||[]).slice(0,10).map(w=>`<span style="background:var(--bg-sub,#FFF9ED);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text1,#3D2C00)">${w.en} <span style="color:var(--text3,#A08040)">${w.kr}</span></span>`).join('')}
+            ${wordCount>10?`<span style="font-size:11px;color:var(--text3,#A08040)">+${wordCount-10}개 더</span>`:''}
+          </div>
+        </div>`:''}
       </div>`;
     });
-    html += '</div>';
+    html += `</div>`;
   }
-  html += `<button onclick="S.stab='books';go('mybooks')" style="width:100%;background:none;border:none;color:var(--text3,#A08040);font-size:13px;cursor:pointer;padding:12px">← 단어장으로</button>`;
+
+  html += `<button onclick="S.stab='books';go('mybooks')" style="width:100%;background:none;border:none;color:var(--text3,#A08040);font-size:13px;cursor:pointer;padding:12px 0 0">← 단어장으로</button>`;
   html += '</div>';
   return html;
 }
 
+function togglePackPreview(packId) {
+  const el = document.getElementById('preview-'+packId);
+  if(!el) return;
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+
 function buyPack(packId) {
-  const pk=(S._marketPacks||[]).find(p=>p.id===packId);
-  if(!pk){toast('팩을 찾을 수 없어요');return;}
-  if(!S._ownedPacks)S._ownedPacks=[];
-  if(S._ownedPacks.includes(packId)){toast('이미 보유 중');return;}
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  if(!pk) { toast('팩을 찾을 수 없어요'); return; }
+  if(!S._ownedPacks) S._ownedPacks = [];
+  if(S._ownedPacks.includes(packId)) { toast('이미 보유 중이에요'); return; }
+
+  const words = pk.words||[];
+  if(!words.length) { toast('단어가 없는 팩이에요'); return; }
+
+  // 구매 확인
+  if(!confirm(pk.name+' ('+words.length+'개 단어)를 내 단어장에 추가할까요?')) return;
+
+  // 새 단어장으로 추가 (기존 단어장과 분리)
+  if(!S.books) S.books = [];
+  const existing = S.books.find(b=>b.name===pk.name);
+  if(existing) {
+    // 이미 같은 이름 단어장 있으면 업데이트
+    const newW = words.filter(w=>!existing.words.find(x=>x.en===w.en));
+    existing.words = [...existing.words, ...newW];
+  } else {
+    // 새 단어장 생성
+    S.books.push({
+      name: pk.name,
+      emoji: pk.emoji||'📦',
+      words: [...words],
+      markMap: {},
+      srsMap: {},
+      learned: [],
+      fromMarket: true,
+      packId: packId,
+    });
+  }
+
+  // 내 단어장에도 추가 (현재 단어장)
+  const newWords = words.filter(w=>!S.words.find(x=>x.en===w.en));
+
   S._ownedPacks.push(packId);
-  // 단어장에 단어 추가
-  const newWords=(pk.words||[]).filter(w=>!S.words.find(sw=>sw.en===w.en));
-  S.words=[...S.words,...newWords];
-  sv(); go('mybooks','market');
-  toast('✅ '+pk.name+' 추가 완료! '+newWords.length+'개 단어');
-  vib(100);
+  sv();
+
+  // Firebase에 구매 이력 저장
+  if(typeof db !== 'undefined' && S.user?.uid) {
+    db.collection('user_packs').doc(S.user.uid).set(
+      {owned: firebase.firestore.FieldValue.arrayUnion(packId)},
+      {merge: true}
+    ).catch(()=>{});
+  }
+
+  toast('✅ '+pk.name+' 추가! 단어장에서 확인하세요 📚');
+  vib([100,50,100]);
+  SFX.play('levelup');
+  go('mybooks','market');
 }
 
 function removeButterflyFromCollection(bId) {
@@ -1911,6 +2049,464 @@ function showAppGuide() {
     </div>
   </div></div>`;
 }
+
+function showComboFlash(n, bonus) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;text-align:center;animation:comboFlash .9s ease-out forwards';
+  el.innerHTML = '<div style="font-size:28px;font-weight:900;color:#F59E0B;text-shadow:0 2px 8px rgba(0,0,0,.3)">'+n+'연속! 🔥</div><div style="font-size:16px;font-weight:700;color:#FDE68A">'+bonus+'</div>';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 900);
+}
+
+function showSwipeHint(msg, color) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:35%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;animation:comboFlash .7s ease-out forwards';
+  el.innerHTML = '<div style="font-size:24px;font-weight:900;color:'+color+';background:white;border-radius:20px;padding:10px 24px;box-shadow:0 4px 20px rgba(0,0,0,.15)">'+msg+'</div>';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 700);
+}
+
+function showWrongNote() {
+  const mr=document.getElementById('mr');
+  if(!mr)return;
+  const ww=S._wrongWords||[];
+  if(!ww.length){toast('오답 단어가 없어요! 👍');return;}
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:85vh">
+    <div style="background:linear-gradient(135deg,#DC2626,#B91C1C);padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:16px;font-weight:900;color:#fff">🦋 오답 노트</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.8)">${ww.length}개 · 탭해서 퀴즈</div></div>
+      <button onclick="startWrongQuiz()" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">🎯 전체 퀴즈</button>
+    </div>
+    <div style="overflow-y:auto;max-height:60vh;padding:12px;display:flex;flex-direction:column;gap:8px">
+      ${ww.map((w,i)=>`
+        <div style="background:var(--bg-card,#FFFEF8);border-radius:12px;border:1.5px solid #FECDD3;padding:12px;display:flex;align-items:center;gap:10px">
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:800;color:#DC2626;font-family:monospace">${w.en}</div>
+            <div style="font-size:12px;color:var(--text2,#6B5200);margin-top:2px">${w.kr}</div>
+            ${w.ph?`<div style="font-size:11px;color:#9CA3AF">${w.ph}</div>`:''}
+          </div>
+          <button onclick="speak('${w.en.replace(/'/g,"\'")}');event.stopPropagation()" style="background:#FEF2F2;border:none;border-radius:8px;padding:6px 10px;font-size:14px;cursor:pointer">🔊</button>
+          <button onclick="S._wrongWords=S._wrongWords.filter(x=>x.en!=='${w.en.replace(/'/g,"\'")}');sv();showWrongNote()" style="background:#F3F4F6;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:#9CA3AF">✕</button>
+        </div>`).join('')}
+    </div>
+    <div style="padding:12px;border-top:1px solid var(--border,#F0E6C8)">
+      <button onclick="S._wrongWords=[];sv();cm();toast('오답노트 초기화!')" style="width:100%;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">🗑️ 전체 삭제</button>
+    </div>
+  </div></div>`;
+}
+
+function startWrongQuiz() {
+  const ww=S._wrongWords||[];
+  if(ww.length<2){toast('오답 단어가 2개 이상 필요해요');return;}
+  cm();
+  startGameW('quiz', ww);
+}
+
+// ── 도전 과제 정의 ──
+const ACHIEVEMENTS = [
+  {id:'first_word',   emoji:'🌱',name:'첫 걸음',     desc:'단어 1개 처음 학습',      check:()=>(S.learned?.size||0)>=1},
+  {id:'words_10',     emoji:'📖',name:'10단어',       desc:'단어 10개 학습 완료',     check:()=>(S.learned?.size||0)>=10},
+  {id:'words_50',     emoji:'📚',name:'50단어',       desc:'단어 50개 학습 완료',     check:()=>(S.learned?.size||0)>=50},
+  {id:'words_100',    emoji:'🏆',name:'100단어',      desc:'단어 100개 학습 완료',    check:()=>(S.learned?.size||0)>=100},
+  {id:'words_500',    emoji:'👑',name:'500단어',      desc:'단어 500개 학습 완료',    check:()=>(S.learned?.size||0)>=500},
+  {id:'streak_3',     emoji:'🔥',name:'3일 연속',     desc:'3일 연속 학습 달성',      check:()=>(S.streak||0)>=3},
+  {id:'streak_7',     emoji:'⭐',name:'7일 연속',     desc:'7일 연속 학습 달성',      check:()=>(S.streak||0)>=7},
+  {id:'streak_30',    emoji:'💎',name:'30일 연속',    desc:'30일 연속 학습 달성',     check:()=>(S.streak||0)>=30},
+  {id:'first_game',   emoji:'🎮',name:'게임 시작',    desc:'게임 처음 완료',           check:()=>Object.keys(S.bestScores||{}).length>=1},
+  {id:'all_games',    emoji:'🎯',name:'게임 마스터',  desc:'모든 게임 1회 이상 완료', check:()=>Object.keys(S.bestScores||{}).length>=8},
+  {id:'perfect_test', emoji:'💯',name:'완벽',         desc:'테스트 100% 달성',        check:()=>(S._hadPerfect||false)},
+  {id:'combo_5',      emoji:'⚡',name:'5연속 정답',   desc:'5연속 정답 달성',         check:()=>(S._maxCombo||0)>=5},
+  {id:'combo_10',     emoji:'🌟',name:'10연속 정답',  desc:'10연속 정답 달성',        check:()=>(S._maxCombo||0)>=10},
+  {id:'first_bf',     emoji:'🦋',name:'첫 나비',      desc:'나비 처음 수집',           check:()=>getMyButterflies().length>=1},
+  {id:'bf_10',        emoji:'🌈',name:'나비 10종',    desc:'나비 10종 수집',          check:()=>getMyButterflies().length>=10},
+  {id:'bf_all',       emoji:'👑',name:'나비 도감 완성',desc:'나비 30종 전부 수집',    check:()=>getMyButterflies().length>=30},
+  {id:'levelup_god',  emoji:'🌟',name:'나비의 신',    desc:'최고 레벨 달성',          check:()=>S.lid==='god'},
+  {id:'srs_master',   emoji:'🧠',name:'SRS 마스터',   desc:'SRS 복습 100회',          check:()=>(S._srsCount||0)>=100},
+];
+
+function checkAchievements() {
+  const done = new Set(S._achievements||[]);
+  let newOnes = [];
+  ACHIEVEMENTS.forEach(a=>{
+    if(!done.has(a.id) && a.check()) {
+      done.add(a.id);
+      newOnes.push(a);
+    }
+  });
+  if(newOnes.length>0) {
+    S._achievements = [...done];
+    sv();
+    // 순차 표시
+    newOnes.forEach((a,i)=>{
+      setTimeout(()=>showAchievementToast(a), i*1500);
+    });
+  }
+}
+
+function showAchievementToast(a) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(80px);z-index:9998;opacity:0;transition:all .4s;width:90%;max-width:340px';
+  el.innerHTML = `<div style="background:linear-gradient(135deg,#FFF8E1,#FFFBF0);border:2px solid #F6D860;border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(0,0,0,.15)">
+    <span style="font-size:32px">${a.emoji}</span>
+    <div style="flex:1">
+      <div style="font-size:10px;font-weight:700;color:#A08040">🏆 도전 과제 달성!</div>
+      <div style="font-size:14px;font-weight:900;color:#3D2C00">${a.name}</div>
+      <div style="font-size:11px;color:#A08040">${a.desc}</div>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  SFX.play('achievement'); vib([50,30,100,30,50]);
+  setTimeout(()=>{el.style.transform='translateX(-50%) translateY(0)';el.style.opacity='1';},50);
+  setTimeout(()=>{el.style.transform='translateX(-50%) translateY(-10px)';el.style.opacity='0';},2500);
+  setTimeout(()=>el.remove(),3000);
+}
+
+function showAchievementsModal() {
+  const mr=document.getElementById('mr');
+  if(!mr)return;
+  const done=new Set(S._achievements||[]);
+  const total=ACHIEVEMENTS.length;
+  const got=done.size;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:85vh">
+    <div style="background:linear-gradient(135deg,#F6D860,#E65100);padding:16px 20px">
+      <div style="font-size:16px;font-weight:900;color:#fff">🏆 도전 과제</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.8)">${got}/${total} 달성</div>
+      <div style="background:rgba(255,255,255,.3);border-radius:4px;height:4px;margin-top:8px;overflow:hidden">
+        <div style="height:100%;background:#fff;border-radius:4px;width:${Math.round(got/total*100)}%"></div>
+      </div>
+    </div>
+    <div style="overflow-y:auto;max-height:60vh;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${ACHIEVEMENTS.map(a=>{
+        const isDone=done.has(a.id);
+        return `<div style="background:${isDone?'#FFF8E1':'var(--bg-sub,#FFF9ED)'};border:1.5px solid ${isDone?'#F6D860':'var(--border,#F0E6C8)'};border-radius:14px;padding:12px;text-align:center;opacity:${isDone?1:0.5}">
+          <div style="font-size:28px;margin-bottom:4px">${isDone?a.emoji:'❓'}</div>
+          <div style="font-size:11px;font-weight:800;color:var(--text1,#3D2C00)">${isDone?a.name:'???'}</div>
+          <div style="font-size:10px;color:var(--text3,#A08040);margin-top:2px">${isDone?a.desc:'미달성'}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="padding:12px;border-top:1px solid var(--border,#F0E6C8)">
+      <button onclick="cm()" class="btn bb">닫기</button>
+    </div>
+  </div></div>`;
+}
+
+// ── 오늘의 도전 ──
+function getDailyChallenge() {
+  const t = today();
+  const seed = parseInt(t.replace(/-/g,'')) % 7;
+  const challenges = [
+    {id:'words20',  emoji:'📚', title:'단어 20개 학습',   desc:'오늘 단어 20개를 외워요',    check:()=>(S.studyLog[today()]?.words||0)>=20,  reward:50},
+    {id:'quiz10',   emoji:'🎯', title:'퀴즈 10문제',      desc:'오늘 퀴즈 10문제를 풀어요',   check:()=>(S.studyLog[today()]?.quiz||0)>=10,   reward:30},
+    {id:'combo5',   emoji:'⚡', title:'5연속 정답',        desc:'게임에서 5연속 정답!',         check:()=>(S._maxCombo||0)>=5,                  reward:40},
+    {id:'srs',      emoji:'🧠', title:'복습 단어 완료',   desc:'모든 복습 단어를 완료해요',    check:()=>Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length===0&&Object.keys(S.srsMap||{}).length>0, reward:60},
+    {id:'perfect',  emoji:'💯', title:'테스트 100%',      desc:'테스트를 완벽하게 통과해요',   check:()=>(S._hadPerfect||false),               reward:80},
+    {id:'words30',  emoji:'🌟', title:'단어 30개 학습',   desc:'오늘 단어 30개를 외워요',    check:()=>(S.studyLog[today()]?.words||0)>=30,  reward:70},
+    {id:'streak',   emoji:'🔥', title:'오늘 학습 완료',   desc:'오늘 미션 3개를 모두 완료해요',check:()=>{const l=S.studyLog[today()]||{};return l.words>=10&&l.quiz>=5&&Object.keys(S.bestScores||{}).length>0;},reward:100},
+  ];
+  return challenges[seed];
+}
+
+function showDailyChallenge() {
+  const ch = getDailyChallenge();
+  if(!ch) return;
+  const mr=document.getElementById('mr');
+  if(!mr) return;
+  const done = ch.check();
+  const t = today();
+  const alreadyClaimed = (S._dcClaimed||'') === t;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px">
+    <div style="font-size:48px;margin-bottom:10px">${ch.emoji}</div>
+    <div style="font-size:11px;font-weight:700;color:#A08040;margin-bottom:6px">오늘의 도전</div>
+    <div style="font-size:20px;font-weight:900;color:var(--text1,#3D2C00);margin-bottom:6px">${ch.title}</div>
+    <div style="font-size:13px;color:var(--text3,#A08040);margin-bottom:16px">${ch.desc}</div>
+    <div style="background:${done?'#F0FDF4':'var(--bg-sub,#FFF9ED)'};border-radius:14px;padding:14px;margin-bottom:16px;border:2px solid ${done?'#86EFAC':'var(--border,#F0E6C8)'}">
+      <div style="font-size:32px;margin-bottom:6px">${done?'✅':'⏳'}</div>
+      <div style="font-size:14px;font-weight:800;color:${done?'#16A34A':'var(--text2,#6B5200)'}">${done?'완료!':'진행 중...'}</div>
+      <div style="font-size:13px;font-weight:700;color:#7C3AED;margin-top:4px">보상: +${ch.reward} XP</div>
+    </div>
+    ${done&&!alreadyClaimed?`<button onclick="claimDailyChallenge()" class="btn bb" style="margin-bottom:8px">🎁 보상 받기 (+${ch.reward}XP)</button>`:''}
+    ${alreadyClaimed?`<div style="font-size:13px;color:#16A34A;font-weight:700;margin-bottom:12px">✅ 오늘 보상 수령 완료!</div>`:''}
+    <button onclick="cm()" class="btn" style="background:var(--bg-sub,#FFF9ED);color:var(--text2,#6B5200)">닫기</button>
+  </div></div>`;
+}
+
+function claimDailyChallenge() {
+  const ch = getDailyChallenge();
+  if(!ch || !ch.check()) return;
+  const t = today();
+  if((S._dcClaimed||'')===t) { toast('이미 수령했어요!'); return; }
+  S._dcClaimed = t;
+  addXP(ch.reward);
+  checkAchievements();
+  sv();
+  document.getElementById('mr').innerHTML='';
+  toast('🎁 오늘의 도전 완료! +'+ch.reward+'XP 획득!');
+  vib([100,50,200,50,100]);
+  SFX.play('levelup');
+}
+
+function showPomodoroTimer() {
+  const mr=document.getElementById('mr');
+  if(!mr) return;
+  let mins=25, secs=0, running=false, interval=null;
+  const render=()=>{
+    const mm=String(Math.floor(mins)).padStart(2,'0');
+    const ss=String(secs).padStart(2,'0');
+    const total=25*60, left=mins*60+secs;
+    const pct=Math.round((1-left/total)*100);
+    mr.innerHTML=`<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px">
+      <div style="font-size:14px;font-weight:700;color:var(--text3,#A08040);margin-bottom:16px">🍅 집중 타이머</div>
+      <div style="position:relative;width:160px;height:160px;margin:0 auto 16px">
+        <svg width="160" height="160" style="position:absolute;top:0;left:0;transform:rotate(-90deg)">
+          <circle cx="80" cy="80" r="70" fill="none" stroke="var(--border,#F0E6C8)" stroke-width="8"/>
+          <circle cx="80" cy="80" r="70" fill="none" stroke="#E65100" stroke-width="8"
+            stroke-dasharray="${2*Math.PI*70}" stroke-dashoffset="${2*Math.PI*70*(1-pct/100)}"
+            stroke-linecap="round" style="transition:stroke-dashoffset .5s"/>
+        </svg>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">
+          <div style="font-size:42px;font-weight:900;color:var(--text1,#3D2C00);font-family:monospace">${mm}:${ss}</div>
+          <div style="font-size:11px;color:var(--text3,#A08040)">${running?'집중 중 🔥':'준비'}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+        ${[['5분',5],['10분',10],['25분',25]].map(([lb,m])=>`<button onclick="window._pomMins=${m};window._pomReset&&window._pomReset()" style="background:${mins===m&&secs===0?'#E65100':'var(--bg-sub,#FFF9ED)'};color:${mins===m&&secs===0?'#fff':'var(--text2,#6B5200)'};border:1.5px solid var(--border,#F0E6C8);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">${lb}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="window._pomToggle&&window._pomToggle()" style="flex:2;background:${running?'#FEF2F2':'#E65100'};color:${running?'#DC2626':'#fff'};border:${running?'1.5px solid #FECDD3':'none'};border-radius:14px;padding:13px;font-size:15px;font-weight:700;cursor:pointer">${running?'⏸ 일시정지':'▶ 시작'}</button>
+        <button onclick="window._pomReset&&window._pomReset()" style="flex:1;background:var(--bg-sub,#FFF9ED);color:var(--text2,#6B5200);border:1.5px solid var(--border,#F0E6C8);border-radius:14px;padding:13px;font-size:13px;font-weight:700;cursor:pointer">🔄 초기화</button>
+      </div>
+      <button onclick="if(window._pomInterval)clearInterval(window._pomInterval);cm()" style="width:100%;background:none;border:none;color:var(--text3,#A08040);font-size:13px;cursor:pointer;padding:12px 0 0">닫기</button>
+    </div></div>`;
+  };
+  window._pomReset = ()=>{
+    if(interval)clearInterval(interval);
+    running=false; interval=null;
+    mins=window._pomMins||25; secs=0;
+    render();
+  };
+  window._pomToggle = ()=>{
+    if(running){
+      clearInterval(interval); interval=null; running=false; render();
+    } else {
+      running=true;
+      interval=setInterval(()=>{
+        if(secs===0){if(mins===0){
+          clearInterval(interval); running=false;
+          SFX.play('levelup'); vib([200,100,200,100,400]);
+          addXP(30); checkAchievements(); sv();
+          toast('🍅 집중 완료! +30XP 획득!');
+          render(); return;
+        }mins--;secs=59;}else secs--;
+        render();
+      },1000);
+      render();
+    }
+  };
+  window._pomInterval=interval;
+  window._pomMins=25;
+  render();
+}
+
+function checkLearnMilestone() {
+  const done = S.learned ? S.learned.size : 0;
+  const milestones = [10,50,100,200,500];
+  const hit = milestones.find(m => done===m);
+  if(!hit) return;
+  const emojis = {10:'🌱',50:'🌿',100:'🏆',200:'💫',500:'👑'};
+  const msgs = {
+    10:'단어 10개 달성! 시작이 반이에요!',
+    50:'단어 50개! 꾸준히 잘하고 있어요!',
+    100:'단어 100개! 대단해요! 🎉',
+    200:'단어 200개! 진짜 실력자!',
+    500:'단어 500개! 전설이에요! 👑'
+  };
+  showLevelUpFlash(null);
+  addXP(hit, true);
+  checkAchievements();
+  setTimeout(()=>{
+    const mr=document.getElementById('mr');
+    if(!mr) return;
+    mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:28px">
+      <div style="font-size:56px;margin-bottom:10px">${emojis[hit]}</div>
+      <div style="font-size:11px;font-weight:700;color:#A08040;margin-bottom:6px">🎊 마일스톤 달성!</div>
+      <div style="font-size:20px;font-weight:900;color:var(--text1,#3D2C00);margin-bottom:6px">단어 ${hit}개!</div>
+      <div style="font-size:13px;color:var(--text3,#A08040);margin-bottom:14px">${msgs[hit]}</div>
+      <div style="background:#F5F3FF;border-radius:12px;padding:8px;margin-bottom:16px">
+        <span style="font-size:14px;font-weight:700;color:#7C3AED">+${hit} XP 보너스!</span>
+      </div>
+      <button onclick="cm()" class="btn bb">계속하기 🚀</button>
+    </div></div>`;
+  }, 700);
+}
+
+function toggleFavorite(en) {
+  if(!S.favorites) S.favorites=new Set();
+  if(S.favorites.has(en)) {
+    S.favorites.delete(en);
+    toast('⭐ 즐겨찾기 해제');
+  } else {
+    S.favorites.add(en);
+    toast('⭐ 즐겨찾기 추가!');
+    vib(50);
+  }
+  sv(); go();
+}
+
+function showCountdown(cb) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9997;display:flex;align-items:center;justify-content:center;pointer-events:none';
+  document.body.appendChild(overlay);
+  const nums = ['3','2','1','GO!'];
+  const colors = ['#EF4444','#F97316','#22C55E','#FFD700'];
+  let i = 0;
+  const show = () => {
+    overlay.innerHTML = `<div style="font-size:${nums[i]==='GO!'?80:96}px;font-weight:900;color:${colors[i]};text-shadow:0 4px 20px rgba(0,0,0,.5);animation:comboFlash .6s ease-out forwards">${nums[i]}</div>`;
+    if(nums[i]!=='GO!') SFX.play('tap'); else SFX.play('correct');
+    vib(nums[i]==='GO!'?[100,50,100]:50);
+    i++;
+    if(i < nums.length) setTimeout(show, 700);
+    else setTimeout(()=>{ overlay.remove(); if(cb) cb(); }, 600);
+  };
+  show();
+}
+
+function downloadWordCard(en) {
+  const w = S.words.find(x=>x.en===en);
+  if(!w) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = 400; canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+  // 배경
+  const grad = ctx.createLinearGradient(0,0,400,240);
+  const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
+  grad.addColorStop(0, petCol.main);
+  grad.addColorStop(1, petCol.main+'88');
+  ctx.fillStyle = grad;
+  ctx.roundRect(0,0,400,240,20);
+  ctx.fill();
+  // 앱 이름
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('🦋 Butterfly Word', 20, 30);
+  // 이모지
+  ctx.font = '48px sans-serif';
+  ctx.fillText(w.img||'📝', 300, 80);
+  // 영어 단어
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 36px monospace';
+  ctx.fillText(w.en, 24, 80);
+  // 발음
+  if(w.ph) {
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = '16px sans-serif';
+    ctx.fillText(w.ph, 24, 110);
+  }
+  // 한국어
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText(w.kr, 24, 150);
+  // 예문
+  if(w.ex) {
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.font = '14px sans-serif';
+    const ex = w.ex.length>40 ? w.ex.slice(0,40)+'...' : w.ex;
+    ctx.fillText('"'+ex+'"', 24, 185);
+  }
+  // 마킹
+  const mark = getMark(en);
+  const markEmojis = ['○','✅','🦋'];
+  ctx.font = '18px sans-serif';
+  ctx.fillText(markEmojis[mark]||'○', 24, 220);
+  // 날짜
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '12px sans-serif';
+  ctx.fillText(new Date().toLocaleDateString('ko-KR'), 300, 220);
+  // 다운로드
+  const a = document.createElement('a');
+  a.download = en+'-card.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+  toast('📸 단어 카드 저장!');
+}
+
+function showStudyCalendar() {
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const days = new Date(year, month+1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const monthName = (month+1)+'월';
+
+  // 이번 달 학습 데이터
+  const monthData = {};
+  for(let d=1; d<=days; d++) {
+    const key = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const log = S.studyLog[key]||{};
+    monthData[d] = (log.words||0) + (log.quiz||0);
+  }
+  const maxVal = Math.max(...Object.values(monthData), 1);
+
+  let calHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#E65100,#F97316);padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:900;color:#fff">📅 ${year}년 ${monthName} 학습 달력</div>
+      <button onclick="cm()" style="background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;color:#fff;font-size:13px;cursor:pointer">닫기</button>
+    </div>
+    <div style="padding:16px">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:8px">
+        ${dayNames.map(d=>`<div style="text-align:center;font-size:10px;font-weight:700;color:var(--text3,#A08040);padding:4px">${d}</div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">
+        ${Array(firstDay).fill('<div></div>').join('')}
+        ${Array.from({length:days},(_,i)=>{
+          const d = i+1;
+          const val = monthData[d]||0;
+          const isToday = d===now.getDate();
+          const intensity = val===0?0:Math.ceil(val/maxVal*4);
+          const bgColors = ['var(--bg-sub,#FFF9ED)','#FEF9C3','#FDE68A','#F59E0B','#D97706'];
+          const bg = isToday ? '#E65100' : bgColors[intensity];
+          const col = isToday ? '#fff' : intensity>=3 ? '#1A0A00' : 'var(--text1,#3D2C00)';
+          return `<div style="text-align:center;padding:6px 2px;border-radius:6px;background:${bg};border:${isToday?'2px solid #B45309':'1px solid transparent'}">
+            <div style="font-size:11px;font-weight:${isToday?'900':'400'};color:${col}">${d}</div>
+            ${val>0?`<div style="font-size:8px;color:${isToday?'rgba(255,255,255,.8)':'#A08040'}">${val}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:center">
+        <div style="font-size:11px;color:var(--text3,#A08040)">학습량:</div>
+        ${['없음','적음','보통','많음','최다'].map((lb,i)=>`
+          <div style="display:flex;align-items:center;gap:3px">
+            <div style="width:12px;height:12px;border-radius:2px;background:${['var(--bg-sub)','#FEF9C3','#FDE68A','#F59E0B','#D97706'][i]}"></div>
+            <span style="font-size:10px;color:var(--text3,#A08040)">${lb}</span>
+          </div>`).join('')}
+      </div>
+      <div style="margin-top:12px;background:var(--bg-sub,#FFF9ED);border-radius:12px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${[
+          ['이번달 학습일', Object.values(monthData).filter(v=>v>0).length+'일'],
+          ['이번달 총 학습', Object.values(monthData).reduce((s,v)=>s+v,0)+'개'],
+          ['최대 하루 학습', Math.max(...Object.values(monthData))+'개'],
+          ['연속 학습', (S.streak||0)+'일'],
+        ].map(([lb,v])=>`<div style="text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text1,#3D2C00)">${v}</div><div style="font-size:10px;color:var(--text3,#A08040)">${lb}</div></div>`).join('')}
+      </div>
+    </div>
+  </div></div>`;
+  mr.innerHTML = calHTML;
+}
+
+// ── 마켓 단어팩 Firebase 로드 ──
+async function loadMarketPacks() {
+  if(typeof db === 'undefined') return;
+  try {
+    const snap = await db.collection('word_packs').orderBy('createdAt','desc').get();
+    S._marketPacks = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(p=>p.active!==false);
+    sv();
+  } catch(e) {
+    console.warn('마켓 로드 실패:', e.message);
+  }
+}
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -1944,6 +2540,10 @@ function load() {
   S.learned = new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]'));
   S.srsMap = JSON.parse(localStorage.getItem('wd-srs')||'{}');
   S.markMap = JSON.parse(localStorage.getItem('wd-mk')||'{}');
+  S.favorites = new Set(JSON.parse(localStorage.getItem('wd-fav')||'[]'));
+  S._dcClaimed = localStorage.getItem('wd-dcc')||'';
+  S._srsCount = parseInt(localStorage.getItem('wd-srsc')||'0');
+  S._totalStudyMins = parseInt(localStorage.getItem('wd-tsm')||'0');
   S.dList = JSON.parse(localStorage.getItem('wd-dl')||'[]');
   S.goal = localStorage.getItem('wd-gl')||null;
   S.goalTotal = +(localStorage.getItem('wd-glt')||0);
@@ -1985,6 +2585,10 @@ function sv() {
   localStorage.setItem('wd-srs',JSON.stringify(S.srsMap));
   localStorage.setItem('wd-mk',JSON.stringify(S.markMap));
   localStorage.setItem('wd-dl',JSON.stringify(S.dList));
+  localStorage.setItem('wd-fav',JSON.stringify([...(S.favorites||new Set())]));
+  if(S._dcClaimed) localStorage.setItem('wd-dcc', S._dcClaimed);
+  if(S._srsCount) localStorage.setItem('wd-srsc', String(S._srsCount));
+  if(S._totalStudyMins) localStorage.setItem('wd-tsm', String(S._totalStudyMins));
   if(S.goal) localStorage.setItem('wd-gl',S.goal);
   localStorage.setItem('wd-glt',S.goalTotal);
   localStorage.setItem('wd-sv',S.surveyDone?'1':'');
@@ -2126,7 +2730,25 @@ function updStreak() {
     }
     else if(S.streak===30) { setTimeout(()=>{toast('👑 30일 연속! XP x2.0 보너스!'); vib([100,50,100,50,300]);},500); }
     else if(S.streak===3) { setTimeout(()=>{toast('⭐ 3일 연속! XP x1.2 보너스!'); vib(100);},500); }
-  } else S.streak=1;
+  } else {
+    const prevStreak2 = S.streak||0;
+    S.streak=1;
+    S._lvNotified=false;
+    if(prevStreak2>=3) {
+      setTimeout(()=>{
+        const mr=document.getElementById('mr');
+        if(!mr) return;
+        mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px">
+          <div style="font-size:48px;margin-bottom:8px">💔</div>
+          <div style="font-size:17px;font-weight:900;color:#DC2626;margin-bottom:8px">${prevStreak2}일 연속이 끊겼어요</div>
+          <div style="margin-bottom:8px">${charSVG(S.lid,60,'sad')}</div>
+          <div style="font-size:13px;color:#6B7280;margin-bottom:16px;line-height:1.7">벌거지가 많이 슬퍼해요 😢<br>오늘부터 다시 시작해봐요!</div>
+          <button onclick="startLearnSession('new');cm()" class="btn bb" style="margin-bottom:8px">📚 지금 바로 학습하기</button>
+          <button onclick="cm()" style="background:none;border:none;color:#9CA3AF;font-size:13px;cursor:pointer;width:100%">다음에 할게요</button>
+        </div></div>`;
+      }, 1500);
+    }
+  }
   S.lastDate=td; sv();
 }
 
@@ -2573,6 +3195,19 @@ function startApp() {
   loadWordsFromFirestore(S.lid);
   setTimeout(()=>checkAttend(), 1000);
   setTimeout(()=>syncProfileToFirebase(), 2000);
+  setTimeout(async ()=>{
+    await loadMarketPacks();
+    // 구매 이력 로드
+    if(typeof db !== 'undefined' && S.user?.uid) {
+      try {
+        const doc = await db.collection('user_packs').doc(S.user.uid).get();
+        if(doc.exists) {
+          S._ownedPacks = doc.data().owned||[];
+          sv();
+        }
+      } catch(e) {}
+    }
+  }, 3000); // 마켓 팩 + 구매이력 로드
   // 첫 실행 온보딩 투어
   if(!localStorage.getItem('wd-onboard')) {
     setTimeout(()=>showOnboarding(), 1500);
@@ -2693,6 +3328,9 @@ function rLearnTab() {
   // ── 상단: 캐릭터 + 레벨 + 진행 ──
   html+=`<div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:18px;color:#fff">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
+      <div style="position:absolute;top:12px;right:12px" onclick="showPomodoroTimer()" title="집중 타이머">
+        <div style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;color:#fff;cursor:pointer">🍅 타이머</div>
+      </div>
       <div style="flex-shrink:0;animation:float 3.5s ease-in-out infinite;display:inline-block">
         ${charSVG(S.lid,56,'normal')}
       </div>
@@ -2823,6 +3461,7 @@ function loadSysWords(lvId, cb) {
 }
 
 function startLearnSession(mode) {
+  S._studyStartTime = Date.now();
   if(!S._sysWords||!S._sysWords.length) {
     S._sysWords=DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg||[];
     loadSysWords(S.lid,null);
@@ -2916,21 +3555,32 @@ function finishLearnSession(resultMap) {
     correct.forEach(w=>learned.add(w.en));
     localStorage.setItem(key,JSON.stringify([...learned]));
     S._learnDoneCount=(S._learnDoneCount||0)+correct.length;
+    setTimeout(checkMiniQuiz,300);
   }
   // 정답률 기반 XP
   const total2 = sw.length||1;
   const pct2 = Math.round(correct.length/total2*100);
   let xpAmt = 10;
-  if(pct2>=100) xpAmt=120;
+  if(pct2>=100) { xpAmt=120; S._hadPerfect=true; sv(); }
   else if(pct2>=90) xpAmt=80;
   else if(pct2>=80) xpAmt=50;
   else if(pct2>=60) xpAmt=30;
   addXP(xpAmt); checkXpUsable();
-  logStudy('quiz'); sv();
+  logStudy('quiz');
+  // 학습 시간 추적
+  if(S._studyStartTime) {
+    const mins = Math.round((Date.now()-S._studyStartTime)/60000);
+    S._totalStudyMins = (S._totalStudyMins||0) + mins;
+    S._studyStartTime = null;
+  }
+  sv();
+  checkAchievements();
   // 세션 완료 캐릭터 반응
   setTimeout(()=>{
     const pet=getPetState();
-    toast('🐛 '+pet.mood.slice(0,20)+'.. 오늘도 수고했어! +'+xpAmt+'XP');
+    const nextActions=['🎯 퀴즈로 확인해봐요!','🎮 게임으로 복습해봐요!','🔥 SRS 복습도 해봐요!'];
+    const nextAct = nextActions[Math.floor(Math.random()*nextActions.length)];
+    toast('🐛 오늘도 수고했어! +'+xpAmt+'XP ・ '+nextAct);
     vib([100,50,100]);
   },300);
   const mr=document.getElementById('mr');
@@ -2962,6 +3612,33 @@ function _reLearn(words) {
   S._learnSessionWords=words; S._inLearnSession=true;
   const gameId=S._learnMode==='random'?LEARN_GAMES[Math.floor(Math.random()*LEARN_GAMES.length)]:(S._learnMode||'quiz');
   startGameW(gameId,words);
+}
+
+function checkMiniQuiz() {
+  // 5개 학습마다 즉석 미니퀴즈
+  const done = S._learnDoneCount||0;
+  if(done>0 && done%5===0 && S.words.length>=4) {
+    const w = S.words[S.idx%S.words.length];
+    if(!w) return;
+    const wrong = S.words.filter(x=>x.en!==w.en).sort(()=>Math.random()-.5).slice(0,3);
+    const choices = [w,...wrong].sort(()=>Math.random()-.5);
+    const mr=document.getElementById('mr');
+    if(!mr) return;
+    // 다른 모달이 열려있으면 건너뜀
+    if(mr.innerHTML.trim() !== '') return;
+    mr.innerHTML=`<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:20px">
+      <div style="font-size:11px;font-weight:700;color:#A08040;margin-bottom:8px">⚡ 미니 퀴즈! (${done}개 학습)</div>
+      <div style="font-size:22px;font-weight:900;color:#1E5FA5;font-family:monospace;margin-bottom:16px">${w.en}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${choices.map(ch=>`<button onclick="
+          const isOk='${ch.en}'==='${w.en}';
+          if(isOk){ok();addXP(5,true);document.getElementById('mr').innerHTML='';toast('정답! +5XP ⚡');}
+          else{ng();document.getElementById('mr').innerHTML='<div class=\'mbg\'><div class=\'modal\' style=\'text-align:center;padding:20px\'><div style=\'font-size:48px\'>❌</div><div style=\'font-size:14px;font-weight:700;margin:10px 0\'>정답은 ${w.kr}</div><button onclick=\'cm()\' class=\'btn bb\'>확인</button></div></div>';}
+        " style="background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);border-radius:12px;padding:12px 8px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text1,#3D2C00)">${ch.kr}</button>`).join('')}
+      </div>
+      <button onclick="cm()" style="margin-top:10px;background:none;border:none;color:var(--text3,#A08040);font-size:12px;cursor:pointer">건너뛰기</button>
+    </div></div>`;
+  }
 }
 
 function checkLearnComplete() {
@@ -3072,7 +3749,7 @@ function _doLevelUp() {
                 `<div style="font-size:12px;color:#E65100">🦋 아직 ${totalBf-myBf.length}종이 남았어요!<br>다시 알부터 시작해서 수집해요</div>`}
             </div>
             <button onclick="resetToEgg();cm();go()" class="btn bb" style="margin-bottom:8px">🥚 다시 시작하기</button>
-            <button onclick="S.stab='butterfly';go('butterfly');cm()" class="btn" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">📚 내 도감 보기</button>
+            <button onclick="S.stab=null;go('butterfly');cm()" class="btn" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">📚 나비탭으로</button>
           </div></div>`;
         }, 2000);
       });
@@ -3119,20 +3796,23 @@ function showLevelUpFlash(cb) {
   el.id='levelup-flash';
   el.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,0);z-index:9998;pointer-events:none;transition:background .15s';
   document.body.appendChild(el);
-  // 파티클 생성
-  for(let i=0;i<12;i++){
+  // 파티클 생성 (나비 이모지 + 원형 혼합)
+  const emojis=['🦋','✨','🌸','⭐','🎉','💫','🌟','🎊'];
+  const colors=['#FDE68A','#A78BFA','#6EE7B7','#FCA5A5','#93C5FD','#FCD34D','#F9A825','#E65100'];
+  for(let i=0;i<20;i++){
     const p=document.createElement('div');
-    const angle=Math.random()*360;
-    const dist=80+Math.random()*120;
-    const size=6+Math.random()*10;
-    const colors=['#FDE68A','#A78BFA','#6EE7B7','#FCA5A5','#93C5FD','#FCD34D'];
-    p.style.cssText=`position:fixed;left:50%;top:50%;width:${size}px;height:${size}px;border-radius:50%;background:${colors[i%colors.length]};z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .6s ease-out;opacity:1`;
+    const angle=(i/20)*360+Math.random()*18;
+    const dist=60+Math.random()*160;
+    const isEmoji=i%3===0;
+    const size=isEmoji?20:(4+Math.random()*12);
+    p.style.cssText=`position:fixed;left:50%;top:45%;width:${size}px;height:${size}px;border-radius:${isEmoji?'0':'50%'};background:${isEmoji?'transparent':colors[i%colors.length]};font-size:${size}px;z-index:9999;pointer-events:none;transform:translate(-50%,-50%) scale(0);transition:all ${.5+Math.random()*.4}s ease-out;opacity:1;display:flex;align-items:center;justify-content:center`;
+    if(isEmoji) p.textContent=emojis[i%emojis.length];
     document.body.appendChild(p);
     setTimeout(()=>{
-      p.style.transform=`translate(calc(-50% + ${Math.cos(angle*Math.PI/180)*dist}px),calc(-50% + ${Math.sin(angle*Math.PI/180)*dist}px))`;
+      p.style.transform=`translate(calc(-50% + ${Math.cos(angle*Math.PI/180)*dist}px),calc(-50% + ${Math.sin(angle*Math.PI/180)*dist}px)) scale(1) rotate(${Math.random()*360}deg)`;
       p.style.opacity='0';
-    },50);
-    setTimeout(()=>p.remove(),700);
+    },30+i*20);
+    setTimeout(()=>p.remove(),1200);
   }
   setTimeout(()=>{el.style.background='rgba(255,255,255,0.85)';},50);
   setTimeout(()=>{el.style.background='rgba(255,255,255,0)';},300);
@@ -3215,9 +3895,11 @@ function rGameTab() {
     {id:'wordle',ic:'🟩',nm:'워들',c:'#92400E',bg:'#FEF3C7'},
   ];
   games.forEach(g => {
-    html += `<div onclick="showGameSettings('${g.id}')" style="background:${g.bg};border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid ${g.c}22">
-      <div style="font-size:28px;margin-bottom:6px">${g.ic}</div>
-      <div style="font-size:13px;font-weight:800;color:${g.c}">${g.nm}</div>
+    const best=S.bestScores?.[g.id];
+    html += `<div onclick="showGameSettings('${g.id}')" style="background:${g.bg};border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid ${g.c}22;position:relative">
+      <div style="font-size:28px;margin-bottom:4px">${g.ic}</div>
+      <div style="font-size:12px;font-weight:800;color:${g.c}">${g.nm}</div>
+      ${best?`<div style="font-size:9px;color:#9CA3AF;margin-top:2px">🏆 ${best}%</div>`:'<div style="font-size:9px;color:#D1D5DB;margin-top:2px">미도전</div>'}
     </div>`;
   });
   html += `</div></div>`;
@@ -3231,7 +3913,21 @@ function rGameTab() {
       <span style="font-size:12px;font-weight:700;color:#7C3AED;background:#F5F3FF;padding:3px 10px;border-radius:20px">${butterflies.length}/30 · 캐릭터 ${myCol.length}/${MAX_COLLECTION}</span>
     </div>
     <!-- 나비 30종 도감 그리드 -->
-    <div style="font-size:11px;font-weight:700;color:var(--text3,#A08040);margin-bottom:8px">🦋 나비 도감 (${butterflies.length}/30)</div>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:800;color:var(--text1,#3D2C00)">🦋 나비 도감</div>
+        <div style="font-size:11px;font-weight:700;color:${butterflies.length===30?'#16A34A':'#7C3AED'}">${butterflies.length}/30종 ${butterflies.length===30?'완성! 👑':''}</div>
+      </div>
+      <div style="background:var(--border,#F0E6C8);border-radius:4px;height:6px;overflow:hidden">
+        <div style="height:100%;background:${butterflies.length===30?'#16A34A':'#7C3AED'};border-radius:4px;width:${Math.round(butterflies.length/30*100)}%;transition:width .8s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3,#A08040);margin-top:3px">
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/4 전설</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/7 영웅</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐').filter(b=>butterflies.includes(b.id)).length}/10 희귀</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐').filter(b=>butterflies.includes(b.id)).length}/9 일반</span>
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px">
       ${[...BUTTERFLY_LIST].sort((a,b)=>{
           const ao=butterflies.includes(a.id),bo=butterflies.includes(b.id);
@@ -3240,8 +3936,8 @@ function rGameTab() {
         }).map((b) => {
         const owned = butterflies.includes(b.id);
         return `<div onclick="${owned?'showButterflyDetail(\''+b.id+'\')':''}"
-          style="text-align:center;padding:5px 3px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#FFF9ED)'};border:1.5px solid ${owned?b.color:'var(--border,#F0E6C8)'};cursor:${owned?'pointer':'default'};position:relative;overflow:hidden">
-          <div style="transition:filter .3s">${getButterflyCharSVG(b.id,36,owned)}</div>
+          style="text-align:center;padding:5px 3px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#FFF9ED)'};border:1.5px solid ${owned?b.color:'var(--border,#F0E6C8)'};cursor:${owned?'pointer':'default'};position:relative;overflow:hidden;${owned?'animation:bfAppear .5s ease-out':''}">
+          <div style="transition:filter .3s;display:inline-block">${getButterflyCharSVG(b.id,36,owned)}</div>
           <div style="font-size:7px;font-weight:700;color:${owned?b.color:'#C4A46B'};margin-top:2px;line-height:1.2">${owned?b.name:'???'}</div>
           ${owned?`<div style="font-size:6px;color:${b.color}">${b.rare}</div>`:''}
         </div>`;
@@ -3661,8 +4357,14 @@ function getPetState() {
   const happy = S._petHappy||0;
   // 수치가 낮으면 상태 악화
   const lowStats = full<=2 || happy<=2;
-  if(todayDone && !lowStats) return {emoji:'😄',mood:'"오늘도 열심히 했어! 나 좀 더 자란 것 같아! 🐛"',bg1:col.main,bg2:col.main,color:col.main};
-  if(daysSince===0 && !lowStats) return {emoji:'😊',mood:'"오늘 아직 공부 안 했지? 같이 해보자!"',bg1:col.main,bg2:col.main,color:col.main};
+  if(todayDone && !lowStats) {
+    const _happyMoods=['오늘도 열심히 했어! 나 점점 자라! 🐛','공부하니까 빛나는 것 같아! ✨','오늘 정말 잘했어! 최고야 👍','단어 외울수록 나 커져! 계속해줘!'];
+    return {emoji:'😄',mood:_happyMoods[Math.floor(Math.random()*_happyMoods.length)],bg1:col.main,bg2:col.main,color:col.main};
+  }
+  const _happyMoods=['오늘도 열심히 했어! 나 점점 자라! 🐛','공부하니까 빛나는 것 같아! ✨','오늘 정말 잘했어! 최고야 👍','단어 외울수록 나 커져! 계속해줘!'];
+  return {emoji:'😄',mood:_happyMoods[Math.floor(Math.random()*_happyMoods.length)],bg1:col.main,bg2:col.main,color:col.main};
+  const _normalMoods=['오늘 아직 공부 안 했지? 같이 해보자!','나 배고파... 공부하면 밥 줄 거지? 🥺','오늘도 같이 공부하자! 화이팅!','단어 하나만 더 외우면 안 될까? 😊'];
+  if(daysSince===0 && !lowStats) return {emoji:'😊',mood:_normalMoods[Math.floor(Math.random()*_normalMoods.length)],bg1:col.main,bg2:col.main,color:col.main};
   if(full<=2 && happy<=2) return {emoji:'😢',mood:'"배고프고 심심해... 나 좀 돌봐줘..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
   if(daysSince===1) return {emoji:'😐',mood:'"어제도 안 왔잖아... 나 혼자 있었어"',bg1:'#6B7280',bg2:'#4B5563',color:'#6B7280'};
   if(daysSince===2) return {emoji:'😢',mood:'"이틀이나 공부 안 하면 나 점점 작아져..."',bg1:'#D97706',bg2:'#B45309',color:'#D97706'};
@@ -3731,31 +4433,57 @@ function showButterflyRoll(butterfly, onClose) {
     return;
   }
   const rareLabel = butterfly.rare==='⭐⭐⭐⭐'?'전설':butterfly.rare==='⭐⭐⭐'?'영웅':butterfly.rare==='⭐⭐'?'희귀':'일반';
-  const rareBg = butterfly.rare==='⭐⭐⭐⭐'?'#FEF3C7':butterfly.rare==='⭐⭐⭐'?'#F5F3FF':butterfly.rare==='⭐⭐'?'#EFF6FF':'#F9FAFB';
-  const rareCol = butterfly.rare==='⭐⭐⭐⭐'?'#D97706':butterfly.rare==='⭐⭐⭐'?'#7C3AED':butterfly.rare==='⭐⭐'?'#2563EB':'#6B7280';
-  // 레벨업 효과
-  vib([100,50,100,50,200,100,300]);
-  mr.innerHTML=`<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px 20px">
-    <div style="font-size:13px;color:#9CA3AF;margin-bottom:6px">✨ 새로운 반려나비 탄생!</div>
-    <div style="font-size:80px;margin-bottom:8px;animation:float-happy 2s ease-in-out infinite;display:inline-block">🦋</div>
-    <div style="font-size:22px;font-weight:900;color:#111;margin-bottom:4px">${butterfly.name}</div>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:8px;font-style:italic">${butterfly.en}</div>
-    <div style="display:inline-block;background:${rareBg};color:${rareCol};border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:12px">
-      ${butterfly.rare} ${rareLabel}급 · ${butterfly.score}점
+  const rareBg   = butterfly.rare==='⭐⭐⭐⭐'?'linear-gradient(135deg,#FEF3C7,#FDE68A)':butterfly.rare==='⭐⭐⭐'?'linear-gradient(135deg,#F5F3FF,#EDE9FE)':butterfly.rare==='⭐⭐'?'linear-gradient(135deg,#EFF6FF,#DBEAFE)':'#F9FAFB';
+  const rareCol  = butterfly.rare==='⭐⭐⭐⭐'?'#D97706':butterfly.rare==='⭐⭐⭐'?'#7C3AED':butterfly.rare==='⭐⭐'?'#2563EB':'#6B7280';
+  const rareBorder = butterfly.rare==='⭐⭐⭐⭐'?'#F6D860':butterfly.rare==='⭐⭐⭐'?'#A78BFA':butterfly.rare==='⭐⭐'?'#93C5FD':'#E5E7EB';
+  const isLegend = butterfly.rare==='⭐⭐⭐⭐';
+  const isHero   = butterfly.rare==='⭐⭐⭐';
+  // 희귀도별 진동
+  if(isLegend) vib([200,100,200,100,400,100,400,100,600]);
+  else if(isHero) vib([150,80,150,80,300,100,400]);
+  else vib([100,50,100,50,200,100,300]);
+  // 희귀도별 효과음
+  SFX.play(isLegend?'achievement':'levelup');
+  // 전설급이면 파티클 먼저
+  if(isLegend) {
+    const colors=['#FFD700','#FFA500','#FF6B35','#FFD700','#FFEC8B'];
+    for(let i=0;i<30;i++) {
+      const p=document.createElement('div');
+      const angle=(i/30)*360;
+      const dist=50+Math.random()*150;
+      p.style.cssText=`position:fixed;left:50%;top:50%;width:${4+Math.random()*8}px;height:${4+Math.random()*8}px;border-radius:50%;background:${colors[i%colors.length]};z-index:10001;pointer-events:none;transform:translate(-50%,-50%);transition:all ${.6+Math.random()*.4}s ease-out;opacity:1`;
+      document.body.appendChild(p);
+      setTimeout(()=>{p.style.transform=`translate(calc(-50% + ${Math.cos(angle*Math.PI/180)*dist}px),calc(-50% + ${Math.sin(angle*Math.PI/180)*dist}px))`;p.style.opacity='0';},50+i*30);
+      setTimeout(()=>p.remove(),1500);
+    }
+  }
+  mr.innerHTML=`<div class="mbg" style="${isLegend?'background:rgba(0,0,0,.85)':''}"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:20px;background:${isLegend?'linear-gradient(135deg,#1A1A2E,#16213E)':isHero?'linear-gradient(135deg,#F5F3FF,#fff)':'#fff'};${isLegend?'color:#fff':''}">
+    ${isLegend?`<div style="font-size:11px;font-weight:700;color:#FFD700;letter-spacing:2px;margin-bottom:8px">👑 전 설 등 장 👑</div>`:`<div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">${isHero?'⭐⭐⭐ 영웅급 등장!':'✨ 새로운 반려나비 탄생!'}</div>`}
+    <div style="animation:float-happy 1.8s ease-in-out infinite;display:inline-block;margin-bottom:8px;${isLegend?'filter:drop-shadow(0 0 20px #FFD700)':isHero?'filter:drop-shadow(0 0 10px #A78BFA)':''}">
+      ${getButterflyCharSVG(butterfly.id, 90, true)}
     </div>
-    <div style="background:#F0FDF4;border-radius:12px;padding:10px 14px;font-size:12px;color:#374151;line-height:1.7;margin-bottom:16px;text-align:left">
-      <div style="font-weight:700;color:#16A34A;margin-bottom:4px">🌿 나비를 사랑하고 보호해요</div>
-      ${butterfly.protect||''}
+    <div style="font-size:20px;font-weight:900;color:${isLegend?'#FFD700':isHero?'#7C3AED':'#111'};margin-bottom:3px">${butterfly.name}</div>
+    <div style="font-size:12px;color:${isLegend?'rgba(255,255,255,.6)':'#9CA3AF'};margin-bottom:8px;font-style:italic">${butterfly.en}</div>
+    <div style="display:inline-block;background:${rareBg};border:2px solid ${rareBorder};border-radius:20px;padding:5px 16px;font-size:12px;font-weight:800;color:${rareCol};margin-bottom:10px">
+      ${butterfly.rare} ${rareLabel}급
+    </div>
+    <div style="background:${isLegend?'rgba(255,255,255,.1)':'#F0FDF4'};border-radius:12px;padding:10px 12px;font-size:11px;color:${isLegend?'rgba(255,255,255,.8)':'#374151'};line-height:1.6;margin-bottom:14px;text-align:left">
+      <div style="font-weight:700;color:${isLegend?'#6EE7B7':'#16A34A'};margin-bottom:3px">🌿 ${butterfly.protect||'이 나비를 사랑하고 보호해요'}</div>
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="showButterflyDetail('${butterfly.id}')" style="flex:1;background:${butterfly.color||'#7C3AED'};color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">상세 보기</button>
-      <button onclick="cm();if(typeof window._bfRollCallback==='function'){var cb=window._bfRollCallback;window._bfRollCallback=null;cb();}else go('butterfly');" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">도감 확인</button>
+      <button onclick="showButterflyDetail('${butterfly.id}')" style="flex:1;background:${isLegend?'#FFD700':butterfly.color||'#7C3AED'};color:${isLegend?'#1A1A2E':'#fff'};border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">상세 보기</button>
+      <button onclick="cm();if(typeof window._bfRollCallback==='function'){var cb=window._bfRollCallback;window._bfRollCallback=null;cb();}else go('butterfly');" style="flex:1;background:${isLegend?'rgba(255,255,255,.15)':'#F3F4F6'};color:${isLegend?'#fff':'#374151'};border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">도감 확인</button>
     </div>
   </div></div>`;
 }
 
 // ── 홈 ──
 function rHome() {
+  // 스트릭 위기 체크 (오늘 아직 학습 안 함 + 스트릭>=3)
+  const _todayLog = S.studyLog[today()]||{};
+  const _todayDone = (_todayLog.words||0) > 0;
+  const _dangerStreak = (S.streak||0)>=3 && !_todayDone;
+
   const l=lv(S.lid), tot=S.words.length, done=S.learned.size;
   const todayWord = getTodayWord();
   const pet = getPetState();
@@ -3794,6 +4522,37 @@ function rHome() {
   const parts=[];
   parts.push('<div class="pad" style="padding-bottom:24px">');
 
+  // ── 스트릭 위기 배너 ──
+  if(_dangerStreak) {
+    const hoursLeft = 23 - new Date().getHours();
+    parts.push(`<div onclick="startLearnSession('new')" style="background:linear-gradient(135deg,#FEF2F2,#FFF1F2);border-radius:14px;border:2px solid #FECDD3;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;animation:float-angry 2s ease-in-out infinite">
+      <span style="font-size:24px">🔥</span>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:800;color:#DC2626">${S.streak}일 연속 위기!</div>
+        <div style="font-size:11px;color:#EF4444">오늘 학습 안 하면 스트릭이 끊겨요 (${hoursLeft}시간 남음)</div>
+      </div>
+      <span style="font-size:12px;font-weight:700;color:#DC2626">지금 →</span>
+    </div>`);
+  }
+
+  // ── 오늘의 도전 배너 ──
+  const dc = getDailyChallenge();
+  const dcDone = dc && dc.check();
+  const dcClaimed = (S._dcClaimed||'') === t;
+  if(dc) {
+    parts.push(`<div onclick="showDailyChallenge()" style="background:linear-gradient(135deg,${dcDone?'#F0FDF4,#DCFCE7':'#FFF8E1,#FEF3C7'});border-radius:14px;border:2px solid ${dcDone?'#86EFAC':'#F6D860'};padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
+      <span style="font-size:24px">${dc.emoji}</span>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:700;color:#A08040">오늘의 도전${dcClaimed?' ✅':''}</div>
+        <div style="font-size:13px;font-weight:800;color:var(--text1,#3D2C00)">${dc.title}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;font-weight:700;color:#7C3AED">+${dc.reward}XP</div>
+        <div style="font-size:10px;color:${dcDone?'#16A34A':'#9CA3AF'}">${dcDone?(dcClaimed?'수령완료':'보상받기'):'진행중'}</div>
+      </div>
+    </div>`);
+  }
+
   // ── 1순위: 오늘 해야 할 것 (단어 중심) ──
   parts.push(`<div style="background:linear-gradient(135deg,${petCol.main}22,${petCol.main}11);border-radius:20px;border:2px solid ${petCol.main}44;padding:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -3806,7 +4565,9 @@ function rHome() {
       ${m.done?'':`<span style="font-size:11px;font-weight:700;color:${petCol.main};background:${petCol.light||petCol.main+'22'};border-radius:20px;padding:2px 8px">+${m.xp}XP</span>`}
     </div>`).join('')}
     ${srsToday>0?`<div onclick="startMode('srs')" style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:12px;color:#E65100;font-weight:700;cursor:pointer;margin-top:4px">📖 복습 단어 ${srsToday}개 대기 중 → 지금 복습 (+${srsToday*8}XP)</div>`:''}
-    ${marked2>0?`<div onclick="S.listMarkFilter=2;go('mybooks','list')" style="background:#FDF2F8;border-radius:10px;padding:8px 12px;font-size:12px;color:#EC4899;font-weight:700;cursor:pointer;margin-top:4px">🦋 헷갈리는 단어 ${marked2}개 → 집중 복습</div>`:''}
+    ${marked2>0?`<div onclick="showWrongNote()" style="background:#FEF2F2;border-radius:10px;padding:8px 12px;font-size:12px;color:#DC2626;font-weight:700;cursor:pointer;margin-top:4px;display:flex;align-items:center;gap:6px">
+      <span>🦋</span><span style="flex:1">오답 노트 ${(S._wrongWords||[]).length}개 · 헷갈리는 단어 ${marked2}개</span><span style="opacity:.5">→</span>
+    </div>`:''}
   </div>`);
 
   // ── 2순위: 오늘의 단어 카드 (즉시 학습 유도) ──
@@ -3905,6 +4666,34 @@ function rHome() {
         <div style="font-size:10px;color:#9CA3AF">보유 XP</div>
         <div style="font-size:14px;font-weight:900;color:#7C3AED">⚡${S.xp||0}</div>
       </div>
+    </div>
+  </div>`);
+
+  // ── 이번 주 학습 히트맵 ──
+  const last7 = Array.from({length:7},(_,i)=>{
+    const d=new Date(); d.setDate(d.getDate()-6+i);
+    const k=d.toISOString().slice(0,10);
+    const log=S.studyLog[k]||{words:0,quiz:0};
+    const total=log.words+log.quiz;
+    const isToday=k===t;
+    const dayNames=['일','월','화','수','목','금','토'];
+    return {k,total,words:log.words,isToday,day:dayNames[d.getDay()]};
+  });
+  const maxDay=Math.max(...last7.map(d=>d.total),1);
+  parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:800;color:var(--text1,#3D2C00)">📅 이번 주 학습</div>
+      <div style="font-size:11px;color:var(--text3,#A08040)">${last7.reduce((s,d)=>s+d.words,0)}단어 / 7일</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;align-items:end;height:60px">
+      ${last7.map(d=>{
+        const h=Math.max(8,Math.round(d.total/maxDay*50));
+        const bg=d.total===0?'var(--bg-sub,#FFF9ED)':d.isToday?'#E65100':d.total>=20?'#16A34A':d.total>=10?'#22C55E':'#86EFAC';
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;justify-content:flex-end">
+          <div style="width:100%;height:${h}px;background:${bg};border-radius:4px;transition:height .5s"></div>
+          <div style="font-size:9px;color:${d.isToday?'#E65100':'var(--text3,#A08040)'};font-weight:${d.isToday?'700':'400'}">${d.day}</div>
+        </div>`;
+      }).join('')}
     </div>
   </div>`);
 
@@ -4441,6 +5230,7 @@ function showSRSMode() {
     if(qi>=total){
       SFX.play('levelup'); vib([100,50,200]);
       const srsXp=Math.round(correct*8+(correct/total*50));addXP(srsXp,true);checkXpUsable();
+      S._srsCount=(S._srsCount||0)+total; sv(); checkAchievements();
       document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal" style="text-align:center">
         ${charSVG(S.lid,60,'happy')}
         <div style="font-size:18px;font-weight:900;color:#111;margin:12px 0 6px">SRS 완료! 🎉</div>
@@ -5042,53 +5832,152 @@ function getCurrentBookMarkMap() {
 
 
 function rLearn() {
-  // 깜빡이 모드: _flipWords 사용
   const words = S._flipWords || S.words;
   const idx = S._flipWords ? (S._flipIdx||0) : S.idx;
+  if(!words.length) return `<div class="pad" style="text-align:center;margin-top:60px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('mybooks','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
 
-  if(!words.length) return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('mybooks','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
-  const w=words[idx%words.length], prog=(idx%words.length)+1, tot=words.length;
-  const l=lv(S.lid);
-  const mark=getMark(w.en);
-  const mInfo=MARK_INFO[mark];
-  const hideMode=S.flashHide||0; // 0=다보기, 1=뜻가리기, 2=단어가리기
-  // 가리기 상태에 따라 카드 내용
+  const w = words[idx%words.length];
+  const prog = (idx%words.length)+1, tot = words.length;
+  const pct = Math.round(prog/tot*100);
+  const mark = getMark(w.en);
+  const mInfo = MARK_INFO[mark];
+  const hideMode = S.flashHide||0;
   const showWord = hideMode!==2;
   const showMeaning = hideMode!==1;
-  return `<div class="pad" style="padding-bottom:80px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div class="pb" style="flex:1;min-width:120px"><div class="pf" style="width:${Math.round(prog/tot*100)}%;background:#1E5FA5"></div></div>
-        <span style="font-size:12px;color:#9CA3AF;white-space:nowrap">${prog}/${tot}</span>
+  const flipped = S.flip||false;
+  const isFav = (S.favorites||new Set()).has(w.en);
+  const safeEn = w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+  // 마킹별 카드 테마
+  const cardThemes = {
+    0: {bg:'#FFFEF8', border:'#F0E6C8', accent:'#A08040'},
+    1: {bg:'#F0FDF4', border:'#86EFAC', accent:'#16A34A'},
+    2: {bg:'#FDF4FF', border:'#E9D5FF', accent:'#7C3AED'},
+  };
+  const theme = cardThemes[mark] || cardThemes[0];
+
+  return `<div style="display:flex;flex-direction:column;height:100%;background:var(--bg,#FFFBF0)">
+
+    <!-- 상단 바 -->
+    <div style="padding:12px 16px 8px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <button onclick="go('mybooks','mode')" style="background:none;border:none;font-size:22px;cursor:pointer;padding:4px;color:var(--text3,#A08040)">‹</button>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <span style="font-size:13px;font-weight:700;color:var(--text1,#3D2C00)">${prog} / ${tot}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--text3,#A08040)">${pct}%</span>
+            <button onclick="S.flashHide=((S.flashHide||0)+1)%3;go()" style="background:${hideMode>0?'#EFF6FF':'var(--bg-sub,#FFF9ED)'};border:1.5px solid ${hideMode>0?'#BFDBFE':'var(--border,#F0E6C8)'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;color:${hideMode>0?'#1E5FA5':'var(--text3,#A08040)'}">
+              ${hideMode===0?'👁 전체':hideMode===1?'뜻 가림':'단어 가림'}
+            </button>
+          </div>
+        </div>
+        <!-- 진행 바 -->
+        <div style="background:var(--border,#F0E6C8);border-radius:4px;height:4px;overflow:hidden">
+          <div style="height:100%;background:#E65100;border-radius:4px;width:${pct}%;transition:width .4s"></div>
+        </div>
       </div>
-      <button onclick="S.flashHide=((S.flashHide||0)+1)%3;go()" style="background:${hideMode>0?'#EFF6FF':'#F3F4F6'};border:1.5px solid ${hideMode>0?'#BFDBFE':'#E5E7EB'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:${hideMode>0?'#1E5FA5':'#9CA3AF'}">
-        👁️ ${hideMode===0?'전체보기':hideMode===1?'뜻 가리기':'단어 가리기'}
-      </button>
     </div>
-    <div id="flash-card" onclick="SFX.play('flip');vib(30);S.flip=!S.flip;go()" style="background:#fff;border-radius:24px;border:1.5px solid #E5E7EB;min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px 20px;cursor:pointer;position:relative;user-select:none">
-      ${S.showImg!==false?`<div style="font-size:64px">${w.img||'📝'}</div>`:''}
-      ${showWord
-        ?`<div style="font-size:32px;font-weight:900;color:#111;font-family:monospace;text-align:center">${w.en}</div>
-          <div style="font-size:13px;color:#9CA3AF">${w.ph||''}</div>
-          ${w.koSnd?`<div style="font-size:13px;color:#7C3AED;font-weight:600">[${w.koSnd}]</div>`:''}`
-        :`<div style="background:#E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#9CA3AF">탭해서 단어 보기 👆</div>`}
-      ${showMeaning
-        ?`<div style="font-size:20px;font-weight:800;color:#374151;text-align:center">${w.kr}</div>
-          ${w.pos?`<span style="background:#EFF6FF;color:#1E5FA5;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px">${w.pos}</span>`:''}
-          ${w.syn?`<div style="font-size:11px;color:#9CA3AF">유의어: ${w.syn}</div>`:''}
-          ${w.ex?`<div style="font-size:12px;color:#9CA3AF;font-style:italic;text-align:center;line-height:1.6">"${w.ex}"</div>`:''}
-          ${w.memo?`<div style="background:#FFF8E1;border-radius:8px;padding:6px 12px;font-size:12px;color:#E65100;text-align:center">✏️ ${w.memo}</div>`:''}`
-        :`<div style="background:#E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#9CA3AF">탭해서 뜻 보기 👆</div>`}
+
+    <!-- 스와이프 힌트 -->
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3,#A08040);padding:0 20px;margin-bottom:8px">
+      <span>← 모르겠어 🦋</span>
+      <span>알았어 ✅ →</span>
     </div>
-    <div style="position:fixed;bottom:calc(env(safe-area-inset-bottom,0px)+56px);left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:#fff;border-top:1.5px solid #E5E7EB;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;z-index:10">
-      <button onclick="event.stopPropagation();const n=cycleMark('${w.en.replace(/'/g,"\\'")}');const inf=MARK_INFO[n];toast(inf.emoji+' '+inf.label+'!');SFX.play('tap');go();" style="width:44px;height:44px;border-radius:50%;background:${mInfo.bg};border:2px solid ${mInfo.color}44;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">${MARK_INFO[mark].emoji}</button>
-      <button onclick="${S._flipWords?'S._flipIdx=Math.max(0,(S._flipIdx||0)-1)':'S.idx=Math.max(0,S.idx-1)'};S.flip=false;go()" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">←</button>
-      <button onclick="startAutoPlay()" style="width:52px;height:52px;border-radius:50%;background:#1E5FA5;border:none;font-size:22px;cursor:pointer;color:#fff">▶</button>
-      <button onclick="${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;${S._flipWords?`if(S._flipIdx>=${words.length}){S._flipWords=null;S._flipIdx=0;S.stab='mode';go('mybooks','mode');return;}`:''}go()" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">→</button>
-      <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${w.en}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:44px;height:44px;border-radius:50%;background:#F3F4F6;border:none;font-size:18px;cursor:pointer">🔊</button>
+
+    <!-- 메인 카드 영역 -->
+    <div style="flex:1;padding:0 16px;display:flex;flex-direction:column;gap:0;min-height:0">
+
+      <!-- 플래시카드 -->
+      <div id="flash-card"
+        onclick="SFX.play('flip');vib(30);S.flip=!S.flip;go()"
+        ontouchend="this.style.transform='';this.style.background=this.dataset.origBg||'';this.style.transition='transform .25s,background .25s,box-shadow .25s'"
+        data-orig-bg="${theme.bg}"
+        style="flex:1;background:${theme.bg};border-radius:28px;border:2px solid ${theme.border};
+               display:flex;flex-direction:column;align-items:center;justify-content:center;
+               gap:10px;padding:28px 24px;cursor:pointer;position:relative;user-select:none;
+               transition:transform .25s,background .25s,box-shadow .25s;
+               box-shadow:0 4px 24px ${theme.border}88;min-height:200px">
+
+        <!-- 마킹 뱃지 (우상단) -->
+        <div style="position:absolute;top:14px;right:14px;display:flex;gap:6px;align-items:center">
+          ${isFav?'<span style="font-size:16px">⭐</span>':''}
+          <span style="background:${mInfo.bg};color:${mInfo.color};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700">${mInfo.emoji} ${mInfo.label}</span>
+        </div>
+
+        <!-- 단어 번호 (좌상단) -->
+        <div style="position:absolute;top:14px;left:14px;font-size:11px;color:${theme.accent};font-weight:700;opacity:.6">#${prog}</div>
+
+        ${S.showImg!==false && w.img && w.img!=='📝'
+          ? `<div style="font-size:72px;line-height:1;margin-bottom:4px">${w.img}</div>`
+          : ''}
+
+        ${showWord
+          ? `<div style="font-size:36px;font-weight:900;color:var(--text1,#1A1A2E);font-family:monospace;text-align:center;letter-spacing:-0.5px;line-height:1.2">${w.en}</div>
+             ${w.ph?`<div style="font-size:13px;color:${theme.accent};font-weight:500">${w.ph}</div>`:''}
+             ${w.koSnd?`<div style="font-size:13px;color:#7C3AED;font-weight:600">[${w.koSnd}]</div>`:''}`
+          : `<div style="background:var(--border,#F0E6C8);border-radius:14px;padding:12px 28px;font-size:14px;color:var(--text3,#A08040)">탭해서 단어 보기 👆</div>`}
+
+        ${showMeaning
+          ? `<div style="width:100%;height:1px;background:${theme.border};margin:4px 0"></div>
+             <div style="font-size:22px;font-weight:800;color:var(--text1,#3D2C00);text-align:center">${w.kr}</div>
+             ${w.pos?`<span style="background:${theme.bg};border:1.5px solid ${theme.border};color:${theme.accent};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${w.pos}</span>`:''}
+             ${w.syn?`<div style="font-size:11px;color:var(--text3,#A08040)">= ${w.syn}</div>`:''}
+             ${w.ex?`<div style="font-size:12px;color:var(--text3,#A08040);font-style:italic;text-align:center;line-height:1.7;background:${theme.bg}cc;border-radius:10px;padding:8px 12px">"${w.ex}"</div>`:''}`
+          : `<div style="background:var(--border,#F0E6C8);border-radius:14px;padding:12px 28px;font-size:14px;color:var(--text3,#A08040)">탭해서 뜻 보기 👆</div>`}
+
+        ${w.memo?`<div style="background:#FFF8E1;border-radius:10px;padding:7px 14px;font-size:12px;color:#E65100;text-align:center;width:100%;box-sizing:border-box">✏️ ${w.memo}</div>`:''}
+
+        <!-- 탭 힌트 (처음에만) -->
+        <div style="position:absolute;bottom:12px;font-size:10px;color:${theme.accent};opacity:.5">탭해서 뒤집기</div>
+      </div>
+    </div>
+
+    <!-- 하단 액션 바 -->
+    <div style="padding:12px 16px calc(env(safe-area-inset-bottom,0px)+64px);flex-shrink:0">
+      <!-- 모르겠어 / 알았어 스와이프 버튼 -->
+      <div style="display:grid;grid-template-columns:1fr auto auto auto auto 1fr;gap:8px;align-items:center;margin-bottom:10px">
+
+        <!-- 모르겠어 -->
+        <button onclick="setMark('${safeEn}',2);ng();SFX.play('swipe_ng');showSwipeHint('🦋 복습필요','#DC2626');${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;go()"
+          style="background:#FEF2F2;border:2px solid #FECDD3;border-radius:16px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#DC2626;display:flex;flex-direction:column;align-items:center;gap:3px">
+          <span style="font-size:20px">🦋</span>
+          <span>모르겠어</span>
+        </button>
+
+        <!-- 이전 -->
+        <button onclick="${S._flipWords?'S._flipIdx=Math.max(0,(S._flipIdx||0)-1)':'S.idx=Math.max(0,S.idx-1)'};S.flip=false;go()"
+          style="width:46px;height:46px;border-radius:50%;background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,#6B5200)">‹</button>
+
+        <!-- 발음 -->
+        <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u);SFX.play('tap')"
+          style="width:52px;height:52px;border-radius:50%;background:#E65100;border:none;font-size:20px;cursor:pointer;color:#fff;box-shadow:0 4px 12px #E6510044;display:flex;align-items:center;justify-content:center">🔊</button>
+        <!-- 자동재생 -->
+        <button onclick="startAutoPlay()"
+          style="width:46px;height:46px;border-radius:50%;background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,#6B5200)" title="자동재생">⏩</button>
+
+        <!-- 다음 -->
+        <button onclick="${S._flipWords?`S._flipIdx=(S._flipIdx||0)+1;if(S._flipIdx>=${words.length}){S._flipWords=null;S._flipIdx=0;S.stab='mode';go('mybooks','mode');return;}`:'S.idx++'};S.flip=false;go()"
+          style="width:46px;height:46px;border-radius:50%;background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,#6B5200)">›</button>
+
+        <!-- 알았어 -->
+        <button onclick="if(!S.learned.has(w.en)){S.learned.add(w.en);setMark('${safeEn}',1);srsRate('${safeEn}',1);logStudy('words');checkAchievements();checkLearnMilestone();sv();const clrs=['#FDE68A','#6EE7B7','#93C5FD'];for(let ci=0;ci<6;ci++){const p=document.createElement('div');const ang=(ci/6)*360;p.style.cssText='position:fixed;left:50%;top:60%;width:8px;height:8px;border-radius:50%;background:'+clrs[ci%3]+';z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .4s ease-out;opacity:1';document.body.appendChild(p);setTimeout(()=>{p.style.transform='translate(calc(-50% + '+Math.round(Math.cos(ang*Math.PI/180)*50)+'px),calc(-50% + '+Math.round(Math.sin(ang*Math.PI/180)*50)+'px))';p.style.opacity='0';},30);setTimeout(()=>p.remove(),500);}}else{ok();}SFX.play('swipe_ok');showSwipeHint('✅ 알았어!','#16A34A');${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;go()"
+          style="background:#F0FDF4;border:2px solid #86EFAC;border-radius:16px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;display:flex;flex-direction:column;align-items:center;gap:3px">
+          <span style="font-size:20px">✅</span>
+          <span>알았어</span>
+        </button>
+      </div>
+
+      <!-- 마킹 + 즐겨찾기 -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span onclick="event.stopPropagation();toggleFavorite('${safeEn}')" style="font-size:20px;cursor:pointer;padding:4px">${isFav?'⭐':'☆'}</span>
+        <div style="flex:1;display:flex;gap:6px">
+          ${[0,1,2].map(v=>`<button onclick="setMark('${safeEn}',${v});go()" style="flex:1;padding:8px;border-radius:12px;border:2px solid ${MARK_INFO[v].color}44;background:${mark===v?MARK_INFO[v].bg:'var(--bg-sub,#FFF9ED)'};font-size:13px;cursor:pointer;font-weight:${mark===v?'700':'400'}">${MARK_INFO[v].emoji} ${MARK_INFO[v].label}</button>`).join('')}
+        </div>
+      </div>
     </div>
   </div>`;
 }
+
 
 // 플래시카드 스와이프 제스처 등록
 function initFlashSwipe() {
@@ -5099,12 +5988,41 @@ function initFlashSwipe() {
   card.addEventListener('touchend', e=>{
     const dx=e.changedTouches[0].clientX-sx;
     const dy=e.changedTouches[0].clientY-sy;
-    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40) {
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50) {
       e.stopPropagation();
-      if(dx<0){S.idx++;S.flip=false;}
-      else{S.idx=Math.max(0,S.idx-1);S.flip=false;}
-      SFX.play('tap'); vib(20); go();
+      const w=S.words[S.idx%S.words.length];
+      if(dx>0 && w) {
+        // 오른쪽 스와이프 = 알았어 ✅
+        setMark(w.en,1); ok(); logStudy('words');
+        SFX.play('swipe_ok');
+        showSwipeHint('✅ 알았어!', '#16A34A');
+        if(!S.learned.has(w.en)){S.learned.add(w.en);srsRate(w.en,1);sv();}
+        S.idx++; S.flip=false;
+      } else if(dx<0 && w) {
+        // 왼쪽 스와이프 = 모르겠어 🦋
+        setMark(w.en,2); ng();
+        SFX.play('swipe_ng');
+        showSwipeHint('🦋 복습필요', '#DC2626');
+        S.idx++; S.flip=false;
+      }
+      SFX.play('tap'); vib(30); go();
+    } else {
+      // 임계값 미만 → 카드 원위치
+      card.style.transform = '';
+      card.style.background = card.dataset.origBg || '';
     }
+  },{passive:true});
+  // 스와이프 방향 힌트 표시
+  card.addEventListener('touchmove', e=>{
+    const dx=e.touches[0].clientX-sx;
+    if(Math.abs(dx)>15) {
+      card.style.transform=`rotate(${dx*0.025}deg) translateX(${dx*0.12}px)`;
+      card.style.background=dx>0?'#F0FDF4':'#FFF1F2';
+      card.style.boxShadow=dx>0?'0 4px 24px #86EFAC88':'0 4px 24px #FECDD388';
+    }
+  },{passive:true});
+  card.addEventListener('touchstart', ()=>{
+    card.style.transition='none';
   },{passive:true});
 }
 
@@ -5128,7 +6046,12 @@ function startAutoPlay() {
   next();
 }
 
-function nxtL(ok){const w=S.words[S.idx%S.words.length];if(ok&&!S.learned.has(w.en)){S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);logStudy('words');sv();ok&&SFX.play('correct');vib(50);}S.idx++;S.flip=false;go();}
+function nxtL(ok){const w=S.words[S.idx%S.words.length];if(ok&&!S.learned.has(w.en)){S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);logStudy('words');checkAchievements();checkLearnMilestone();sv();
+    SFX.play('correct');vib(50);
+    const clrs=['#FDE68A','#6EE7B7','#93C5FD'];
+    for(let ci=0;ci<6;ci++){const p=document.createElement('div');const ang=(ci/6)*360;p.style.cssText='position:fixed;left:50%;top:60%;width:8px;height:8px;border-radius:50%;background:'+clrs[ci%3]+';z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .4s ease-out;opacity:1';document.body.appendChild(p);setTimeout(()=>{p.style.transform='translate(calc(-50% + '+Math.round(Math.cos(ang*Math.PI/180)*50)+'px),calc(-50% + '+Math.round(Math.sin(ang*Math.PI/180)*50)+'px))';p.style.opacity='0';},30);setTimeout(()=>p.remove(),500);}
+  } else if(ok) {SFX.play('correct');vib(50);}
+  S.idx++;S.flip=false;go();}
 
 function rModes() {
   const modes=[
@@ -5414,6 +6337,10 @@ function showWordDetail(en) {
 
     <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🔊 발음 듣기</button>
 
+    <button onclick="toggleFavorite('${safeEn}');showWordDetail('${safeEn}')" style="width:100%;background:${Array.from(S.favorites||[]).includes(w.en)?'#FFF8E1':'#F9FAFB'};border:1.5px solid ${Array.from(S.favorites||[]).includes(w.en)?'#F6D860':'#E5E7EB'};border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:${Array.from(S.favorites||[]).includes(w.en)?'#D97706':'#9CA3AF'};margin-bottom:10px">
+      ${Array.from(S.favorites||[]).includes(w.en)?'⭐ 즐겨찾기 해제':'☆ 즐겨찾기 추가'}
+    </button>
+
     <div style="display:flex;justify-content:center;gap:6px;margin-bottom:12px">
       ${[0,1,2].map(v=>`<button onclick="setMark('${safeEn}',${v});showWordDetail('${safeEn}');" style="flex:1;padding:8px;border-radius:12px;border:2px solid ${MARK_INFO[v].color}44;background:${mark===v?MARK_INFO[v].bg:'#fff'};font-size:11px;font-weight:700;cursor:pointer;color:${MARK_INFO[v].color}">${mark===v?'✓':''} ${MARK_INFO[v].label}</button>`).join('')}
     </div>
@@ -5428,6 +6355,7 @@ function showWordDetail(en) {
     </div>
 
     <button onclick="aiEnrichWord('${safeEn}')" style="background:#F3F4F6;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;width:100%;color:#374151;margin-bottom:10px">✨ AI로 발음·품사·유의어 채우기</button>
+     <button onclick="downloadWordCard('${safeEn}')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:10px 12px;font-size:16px;cursor:pointer" title="단어 카드 저장">📸</button>
 
     <button onclick="cm()" class="btn bgr">닫기</button>
   </div></div>`;
@@ -5569,7 +6497,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='butterfly'||S.tab==='game')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput='';
+  S._prevTab=(S.tab==='butterfly'||S.tab==='game')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -5596,7 +6524,8 @@ function startGameW(id, ws) {
   }
 
   // 나비 탭으로 전환
-  S.tab='butterfly'; S.stab=null; go();
+  S.tab='butterfly'; S.stab=null; updHD();
+  showCountdown(()=>go());
 }
 
 function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rTyping,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
@@ -5696,19 +6625,24 @@ function rGameDone(){
       <div style="font-size:14px;color:#9CA3AF;font-weight:700">${right}/${tot}</div>
     </div>
     <div style="display:flex;gap:8px;width:100%">
-      ${[['✅',right+'개','정답','#16A34A'],['❌',(tot-right)+'개','오답','#DC2626'],['📊',pct+'%','정확도','#1E5FA5']].map(([ic,v,lb,c])=>`<div style="flex:1;background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px;text-align:center"><div style="font-size:18px">${ic}</div><div style="font-size:18px;font-weight:900;color:${c}">${v}</div><div style="font-size:10px;color:#9CA3AF">${lb}</div></div>`).join('')}
+      ${[['✅',right+'개','정답','#16A34A'],['❌',(tot-right)+'개','오답','#DC2626'],['📊',pct+'%','정확도','#1E5FA5'],['⚡',(S._maxCombo||0)+'연속','최고콤보','#F59E0B']].map(([ic,v,lb,col])=>`<div style="flex:1;background:var(--bg-card,#FFFEF8);border-radius:14px;border:1.5px solid var(--border,#F0E6C8);padding:10px;text-align:center"><div style="font-size:16px">${ic}</div><div style="font-size:16px;font-weight:900;color:${col}">${v}</div><div style="font-size:9px;color:#9CA3AF">${lb}</div></div>`).join('')}
     </div>
     ${isNewBest&&pct>0?`<div style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:14px;padding:10px 14px;width:100%;text-align:center">
       <div style="font-size:14px;font-weight:900;color:#E65100">🏆 신기록! ${pct}%</div>
       <div style="font-size:11px;color:#9CA3AF">이 게임 최고점을 갱신했어요!</div>
     </div>`:`<div style="font-size:12px;color:#9CA3AF;text-align:center">최고점: ${prevBest}%</div>`}
     ${S.gResultMap&&Object.keys(S.gResultMap).length?`<div style="background:#FFF8E1;border-radius:14px;padding:10px 14px;width:100%;text-align:left">
-      <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:6px">✅ 자동 마킹 완료</div>
-      <div style="font-size:12px;color:#6B7280">맞은 단어 → 외운 단어, 틀린 단어 → 헷갈리는 단어로 자동 표시됐어요</div>
+      <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:4px">✅ 자동 마킹 완료</div>
+      <div style="font-size:11px;color:#6B7280">맞은 단어 ✅ · 틀린 단어 🦋 복습필요로 표시됨</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="S.listMarkFilter=2;S._gameRunning=false;go('mybooks','list')" style="flex:1;background:#FDF2F8;border:1.5px solid #FECDD3;border-radius:10px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;color:#DC2626">🦋 틀린 단어 복습</button>
+        <button onclick="showWrongNote()" style="flex:1;background:#FEF2F2;border:1.5px solid #FECDD3;border-radius:10px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;color:#DC2626">📋 오답 노트</button>
+      </div>
     </div>`:''}
     <div style="display:flex;gap:8px;width:100%;flex-wrap:wrap">
       <button class="btn bgr" onclick="SFX.stopBG();S._gameRunning=false;S.gDone=true;go(S._prevTab||'butterfly')" style="flex:1">다른 게임</button>
       <button class="btn bb" onclick="SFX.stopBG();startGameW(S.gameId,null)" style="flex:1">다시 하기</button>
+      ${(S._wrongWords||[]).length>0?`<button onclick="SFX.stopBG();showWrongNote()" style="background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3;border-radius:14px;padding:13px;font-size:12px;font-weight:700;cursor:pointer;width:100%">🦋 오답 노트 ${(S._wrongWords||[]).length}개 보기</button>`:''}
       ${S.gSavedGame&&S.gIdx<S.gWords.length?`<button onclick="SFX.stopBG();S.gDone=false;go('butterfly')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:13px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;width:100%">▶ 이어하기 (${S.gIdx}/${S.gWords.length})</button>`:''}
     </div>
   </div>`;
@@ -5751,7 +6685,7 @@ function ansQIdx(ci,wIdx){
   S.gAns=true; S.gRes=isOk?'ok':'ng';
   if(isOk){S.gScore+=100;ok();S.gResultMap[w.en]=true;}
   else{ng();S.gResultMap[w.en]=false;}
-  logStudy('quiz'); go();
+  logStudy('quiz'); checkAchievements(); go();
   const delay=S.gameSettings?.autoNext?600:900;
   setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
@@ -6044,7 +6978,7 @@ function svDiary(){
   if(!S.dText.trim()&&!S.dTr.trim()){toast('일기를 써주세요');return;}
   S.dList.unshift({date:today(),mood:S.dMood,kr:S.dText,en:S.dTr,help:S.dHelp,photos:S.dPhotos||[],id:Date.now()});
   if(S.dList.length>100) S.dList.pop();
-  S.dSaved=true; S.dPhotos=[]; addXP(10); sv(); go();
+  S.dSaved=true; S.dPhotos=[]; sv(); go();
 }
 
 function vwDiary(id){
@@ -6218,7 +7152,37 @@ function rProfile(){
     </div>
   </div>`);
 
+
+  // ── 학습 통계 ──
+  const last30 = Array.from({length:30},(_,i)=>{
+    const d=new Date(); d.setDate(d.getDate()-29+i);
+    return (S.studyLog[d.toISOString().slice(0,10)]||{}).words||0;
+  });
+  const totalWords7 = last30.slice(-7).reduce((s,v)=>s+v,0);
+  const totalWords30 = last30.reduce((s,v)=>s+v,0);
+  const avgDay7 = Math.round(totalWords7/7);
+  const maxW30 = Math.max(...last30,1);
+  parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--text1,#3D2C00);margin-bottom:12px">📈 학습 통계</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      ${[['7일',totalWords7+'개'],['30일',totalWords30+'개'],['일평균',avgDay7+'개'],['총학습',Math.floor((S._totalStudyMins||0)/60)+'시간']].map(([lb,v])=>
+        '<div style="text-align:center;background:var(--bg-sub,#FFF9ED);border-radius:10px;padding:8px"><div style="font-size:16px;font-weight:900;color:var(--text1,#3D2C00)">'+v+'</div><div style="font-size:9px;color:var(--text3,#A08040)">'+lb+'</div></div>'
+      ).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--text3,#A08040);margin-bottom:4px">최근 30일 학습 단어</div>
+    <div style="display:flex;align-items:flex-end;gap:1px;height:36px">
+      ${last30.map((v,i)=>{
+        const h=Math.max(2,Math.round(v/maxW30*34));
+        const col=v===0?'var(--border,#F0E6C8)':i>=23?'#E65100':'#F6D860';
+        return '<div style="flex:1;height:'+h+'px;background:'+col+';border-radius:2px 2px 0 0"></div>';
+      }).join('')}
+    </div>
+  </div>`);
+
+  parts.push('<button class="btn" onclick="showAchievementsModal()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">🏆 도전 과제</button>');
   parts.push('<button class="btn" onclick="showAppGuide()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📖 앱 사용법</button>');
+  parts.push('<button class="btn" onclick="showGameIntro(true)" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">🎬 첫 화면 다시보기</button>');
+  parts.push('<button class="btn" onclick="showStudyCalendar()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📅 학습 달력</button>');
   parts.push('<button class="btn" onclick="showXpGuide()" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">⚡ XP 안내</button>');
   parts.push('<button class="btn" onclick="showTestIntro(true)" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📝 레벨 재테스트</button>');
   parts.push('<button class="btn" onclick="showDataBackup()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #86EFAC">💾 데이터 백업 / 복원</button>');
@@ -6806,7 +7770,7 @@ async function showFriends() {
   } catch(e){}
 
   // 저장된 친구 목록
-  const friends = S.friends || [];
+  const friends = (S.friends||[]).sort((a,b)=>(b.todayWords||0)-(a.todayWords||0));
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
     <div style="font-size:17px;font-weight:800;margin-bottom:14px">👥 친구 · 콕 찌르기</div>
@@ -6842,6 +7806,7 @@ async function showFriends() {
         <div style="flex:1">
           <div style="font-size:13px;font-weight:700">${f.nick||'친구'}</div>
           <div style="font-size:11px;color:#9CA3AF">${lv(f.lid||'egg').name} · 🔥${f.streak||0}일</div>
+          ${(f.todayWords||0)>0?`<div style="font-size:11px;color:#16A34A;font-weight:700">📚 오늘 ${f.todayWords}개</div>`:`<div style="font-size:10px;color:#D1D5DB">오늘 미학습</div>`}
         </div>
         <button onclick="pokeFriend('${f.uid}','${(f.nick||'친구').replace(/'/g,"\\'")}',this)" style="background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:10px;padding:7px 12px;font-size:13px;cursor:pointer;color:#7C3AED;font-weight:700">👉 콕</button>
       </div>`).join('')}
@@ -6896,11 +7861,16 @@ async function markPokeRead(id) {
 async function syncProfileToFirebase() {
   if(!S.user?.uid) return;
   try {
+    const todayStudy = (S.studyLog[new Date().toISOString().slice(0,10)]||{}).words||0;
     await db.collection('users').doc(S.user.uid).set({
       nick: S.nick||'',
       lid: S.lid||'egg',
       streak: S.streak||0,
       xp: S.xp||0,
+      todayWords: todayStudy,
+      totalLearned: S.learned ? S.learned.size : 0,
+      maxCombo: S._maxCombo||0,
+      achievements: (S._achievements||[]).length,
       code: S.user.uid.slice(0,8).toUpperCase(),
       updatedAt: new Date().toISOString(),
     }, {merge:true});

@@ -117,7 +117,10 @@ function rMarketAdmin() {
             <input id="pk-emoji" placeholder="이모지" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
             <input id="pk-cat" placeholder="카테고리" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
           </div>
-          <textarea id="pk-words" placeholder='단어 JSON: [{"en":"apple","kr":"사과","img":"🍎"}]' style="width:100%;height:100px;padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:12px;resize:none;box-sizing:border-box;margin-bottom:8px"></textarea>
+          <input id="pk-desc" placeholder="설명 (선택)" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px;grid-column:span 2">
+          <textarea id="pk-words" placeholder='단어 JSON: [{"en":"apple","kr":"사과","ph":"[ǽpl]","img":"🍎","ex":"I eat an apple."}]' style="width:100%;height:100px;padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:12px;resize:none;box-sizing:border-box;margin-bottom:4px;grid-column:span 2"></textarea>
+          <div style="grid-column:span 2;font-size:11px;color:#6B7280;margin-bottom:4px">또는 CSV 업로드 (en,kr,ph,img,ex 컬럼)</div>
+          <input type="file" id="pk-csv" accept=".csv" onchange="parseCsvForPack(this)" style="grid-column:span 2;font-size:12px">
           <div style="display:flex;gap:8px">
             <button onclick="saveNewPack()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer">저장</button>
             <button onclick="document.getElementById('pack-add-form').style.display='none'" style="flex:1;background:#F3F4F6;border:none;border-radius:8px;padding:8px;font-size:13px;cursor:pointer">취소</button>
@@ -129,6 +132,8 @@ function rMarketAdmin() {
           <span style="font-size:28px">${p.emoji||'📦'}</span>
           <div style="flex:1"><div style="font-size:14px;font-weight:700">${p.name}</div>
             <div style="font-size:12px;color:#6B7280">${p.cat||''} · ${(p.words||[]).length}개</div></div>
+          <button onclick="editMarketPack('${p.id}')" style="background:#EFF6FF;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#1E5FA5;cursor:pointer">수정</button>
+          <button onclick="togglePackActive('${p.id}',${p.active!==false})" style="background:${p.active!==false?'#F0FDF4':'#FEF2F2'};border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:${p.active!==false?'#16A34A':'#DC2626'};cursor:pointer">${p.active!==false?'활성':'비활성'}</button>
           <button onclick="deleteMarketPack('${p.id}')" style="background:#FEF2F2;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#DC2626;cursor:pointer">삭제</button>
         </div>`;
       });
@@ -152,7 +157,8 @@ function saveNewPack() {
   if(!id||!name){alert('ID와 이름은 필수입니다');return;}
   let words=[];
   try{words=JSON.parse(wordsRaw||'[]');}catch(e){alert('단어 JSON 형식 오류');return;}
-  db.collection('word_packs').doc(id).set({id,name,emoji,cat,words,createdAt:new Date()})
+  const desc=document.getElementById('pk-desc')?.value?.trim()||'';
+  db.collection('word_packs').doc(id).set({id,name,emoji,cat,desc,words,active:true,createdAt:new Date()})
     .then(()=>{alert('✅ 저장 완료!');rMarketAdmin();})
     .catch(e=>alert('오류: '+e.message));
 }
@@ -1541,6 +1547,46 @@ async function saveST(){
     toast('✅ 설정 저장 완료!','ok');
   }catch(e){toast('오류: '+e.message,'err');}
 }
+
+function parseCsvForPack(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n').filter(l=>l.trim());
+    const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
+    const words = lines.slice(1).map(line => {
+      const vals = line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+      const obj = {};
+      headers.forEach((h,i) => { if(vals[i]) obj[h] = vals[i]; });
+      return obj;
+    }).filter(w=>w.en && w.kr);
+    document.getElementById('pk-words').value = JSON.stringify(words, null, 2);
+    alert('✅ CSV 파싱 완료: '+words.length+'개 단어');
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function editMarketPack(packId) {
+  db.collection('word_packs').doc(packId).get().then(doc=>{
+    if(!doc.exists){alert('팩을 찾을 수 없음');return;}
+    const p = doc.data();
+    document.getElementById('pk-id').value = packId;
+    document.getElementById('pk-name').value = p.name||'';
+    document.getElementById('pk-emoji').value = p.emoji||'';
+    document.getElementById('pk-cat').value = p.cat||'';
+    document.getElementById('pk-desc').value = p.desc||'';
+    document.getElementById('pk-words').value = JSON.stringify(p.words||[], null, 2);
+    document.getElementById('pack-add-form').style.display = 'block';
+    document.getElementById('pack-add-form').scrollIntoView({behavior:'smooth'});
+  });
+}
+
+function togglePackActive(packId, currentActive) {
+  db.collection('word_packs').doc(packId).update({active: !currentActive})
+    .then(()=>rMarketAdmin()).catch(e=>alert('오류: '+e.message));
+}
+
 </script>
 </body>
 </html>

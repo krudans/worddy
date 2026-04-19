@@ -348,7 +348,7 @@ const DEFAULT_WORDS = {
     {en:'courage',kr:'용기',ph:'[ˈkʌrɪdʒ]',meanings:['용기'],tip:'커리지 = 용기!',ex:'Have courage.',img:'💪'},
     {en:'danger',kr:'위험',ph:'[ˈdeɪndʒər]',meanings:['위험'],tip:'데인저 = 위험!',ex:'There is danger.',img:'⚠️'},
     {en:'effort',kr:'노력',ph:'[ˈefət]',meanings:['노력'],tip:'에포트 = 노력!',ex:'Make an effort.',img:'💯'},
-    {en:'famous',kr:'유명한',ph:'[ˈfeɪməs]',meanings:['유명한'],tip:'페이머스 = 유명!',ex:'She is famous.',img:'⭐'},
+    {en:'famous',kr:'유명한',ph:'[ˈfeɪməs]',meanings:['유명한'],tip:'페이머스 = 유명!',ex:'She is famous.',img:'⭐⭐'},
     {en:'honest',kr:'정직한',ph:'[ˈɒnɪst]',meanings:['정직한'],tip:'어니스트 = 정직!',ex:'Be honest.',img:'🤲'},
     {en:'unique',kr:'독특한',ph:'[juːˈniːk]',meanings:['독특한'],tip:'유니크 = 독특!',ex:'She is unique.',img:'🦄'},
     {en:'talent',kr:'재능',ph:'[ˈtælənt]',meanings:['재능'],tip:'탤런트 = 재능!',ex:'She has talent.',img:'🎯'},
@@ -452,7 +452,7 @@ const TEST_POOL = {
     {q:'quiet',c:['시끄러운','빠른','조용한','무거운'],a:2,img:'🤫'},{q:'world',c:['나라','도시','세상','마을'],a:2,img:'🌍'},
   ],
   crown:[
-    {q:'achieve',c:['포기하다','성취하다','실패하다','도망가다'],a:1,img:'🏆'},{q:'famous',c:['무명의','숨겨진','유명한','평범한'],a:2,img:'⭐'},
+    {q:'achieve',c:['포기하다','성취하다','실패하다','도망가다'],a:1,img:'🏆'},{q:'famous',c:['무명의','숨겨진','유명한','평범한'],a:2,img:'⭐⭐'},
     {q:'honest',c:['거짓된','교활한','정직한','나쁜'],a:2,img:'🤲'},{q:'unique',c:['흔한','독특한','평범한','일반적인'],a:1,img:'🦄'},
     {q:'talent',c:['노력','재능','돈','행운'],a:1,img:'🎯'},{q:'courage',c:['두려움','용기','슬픔','분노'],a:1,img:'💪'},
     {q:'wisdom',c:['어리석음','지혜','힘','부'],a:1,img:'🦉'},{q:'balance',c:['불균형','무질서','균형','혼란'],a:2,img:'⚖️'},
@@ -920,6 +920,8 @@ const S = {
   _combo:0, _maxCombo:0, // 연속 정답 콤보
   _totalStudyMins:0, _studyStartTime:null, // 총 학습 시간
   _dcClaimed:'', // 오늘의 도전 수령 날짜
+  mWrongEn:null, mWrongKr:null, // 매칭 오답 피드백
+  _twSpoken:'', // 오늘의 단어 자동 발음 날짜
   _hadPerfect:false, // 테스트 100% 달성
   _srsCount:0, // SRS 복습 누적 횟수
   favorites:new Set(), // 즐겨찾기 단어
@@ -2110,7 +2112,7 @@ const ACHIEVEMENTS = [
   {id:'words_100',    emoji:'🏆',name:'100단어',      desc:'단어 100개 학습 완료',    check:()=>(S.learned?.size||0)>=100},
   {id:'words_500',    emoji:'👑',name:'500단어',      desc:'단어 500개 학습 완료',    check:()=>(S.learned?.size||0)>=500},
   {id:'streak_3',     emoji:'🔥',name:'3일 연속',     desc:'3일 연속 학습 달성',      check:()=>(S.streak||0)>=3},
-  {id:'streak_7',     emoji:'⭐',name:'7일 연속',     desc:'7일 연속 학습 달성',      check:()=>(S.streak||0)>=7},
+  {id:'streak_7',     emoji:'⭐⭐',name:'7일 연속',     desc:'7일 연속 학습 달성',      check:()=>(S.streak||0)>=7},
   {id:'streak_30',    emoji:'💎',name:'30일 연속',    desc:'30일 연속 학습 달성',     check:()=>(S.streak||0)>=30},
   {id:'first_game',   emoji:'🎮',name:'게임 시작',    desc:'게임 처음 완료',           check:()=>Object.keys(S.bestScores||{}).length>=1},
   {id:'all_games',    emoji:'🎯',name:'게임 마스터',  desc:'모든 게임 1회 이상 완료', check:()=>Object.keys(S.bestScores||{}).length>=8},
@@ -3322,6 +3324,13 @@ function rLearnTab() {
   const pct=sysWords.length?Math.round(learned/sysWords.length*100):0;
   const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
+  const curLvLearn = LEVELS.find(lx=>lx.id===S.lid);
+  const xpForNext = curLvLearn ? (curLvLearn.xp||100) : 100;
+  const xpProgress = Math.min(100, Math.round((S.xp||0)/xpForNext*100));
+  // 현재 단어장
+  const curBookName = S.currentBook||'내 단어장';
+  const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const curLearned = curWords.filter(w=>getMark(w.en)===1).length;
 
   let html=`<div class="pad" style="padding-bottom:24px">`;
 
@@ -3382,10 +3391,15 @@ function rLearnTab() {
 
   // ── 학습 시작 버튼 ──
   html+=`<div style="display:flex;gap:8px">
-    <div onclick="startLearnSession('new')" style="flex:2;background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:16px;cursor:pointer;text-align:center">
-      <div style="font-size:32px;margin-bottom:6px">📖</div>
-      <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">새 단어 학습</div>
-      <div style="font-size:11px;color:#9CA3AF;margin-top:2px">단계별 시스템 단어</div>
+    <div onclick="startLearnSession('new')" style="flex:1;background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px;cursor:pointer;text-align:center">
+      <div style="font-size:28px;margin-bottom:4px">📖</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">시스템 단어</div>
+      <div style="font-size:10px;color:#9CA3AF;margin-top:2px">${l.desc||'레벨별'} 학습</div>
+    </div>
+    <div onclick="S.stab='learn';go('mybooks','learn')" style="flex:1;background:#F0FDF4;border-radius:16px;border:1.5px solid #86EFAC;padding:14px;cursor:pointer;text-align:center">
+      <div style="font-size:28px;margin-bottom:4px">📚</div>
+      <div style="font-size:13px;font-weight:800;color:#16A34A">${curBookName.slice(0,6)}</div>
+      <div style="font-size:10px;color:#86EFAC;margin-top:2px">${curWords.length}개 · ${curLearned}개 완료</div>
     </div>
     ${srsToday>0?`<div onclick="startMode('srs')" style="flex:1;background:#FFF8E1;border-radius:16px;border:1.5px solid #FFE082;padding:16px;cursor:pointer;text-align:center">
       <div style="font-size:32px;margin-bottom:6px">🔁</div>
@@ -3421,23 +3435,7 @@ function rLearnTab() {
     </div>
   </div>`;
 
-  // ── 오늘의 미션 ──
-  const todayLog=S.studyLog[today()]||{words:0,quiz:0};
-  const missions=[
-    {ic:'📚',lb:'단어 10개 학습',done:todayLog.words>=10,fn:"startLearnSession('new')"},
-    {ic:'🎯',lb:'퀴즈 5문제',done:todayLog.quiz>=5,fn:"showGameSettings('quiz')"},
-    {ic:'🎮',lb:'게임 1회 완료',done:Object.keys(S.bestScores||{}).length>0,fn:"go('butterfly')"},
-  ];
-  html+=`<div style="background:var(--bg-card,#FFFEF8);border-radius:18px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📅 오늘의 미션</div>
-    ${missions.map(m=>`<div onclick="${m.done?'':m.fn}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:${m.done?'#F0FDF4':'var(--bg-sub,#F9FAFB)'};margin-bottom:6px;cursor:${m.done?'default':'pointer'}">
-      <span style="font-size:20px">${m.done?'✅':m.ic}</span>
-      <span style="font-size:13px;font-weight:700;color:${m.done?'#16A34A':'var(--text1,#111)'};text-decoration:${m.done?'line-through':'none'}">${m.lb}</span>
-    </div>`).join('')}
-  </div>`;
-
-  html+=`</div>`;
-  return html;
+    return html;
 }
 
 function getLearnedSysWords(lvId) {
@@ -3618,7 +3616,7 @@ function checkMiniQuiz() {
   // 5개 학습마다 즉석 미니퀴즈
   const done = S._learnDoneCount||0;
   if(done>0 && done%5===0 && S.words.length>=4) {
-    const w = S.words[S.idx%S.words.length];
+    const w = S.words[Math.min(S.idx, S.words.length-1)];
     if(!w) return;
     const wrong = S.words.filter(x=>x.en!==w.en).sort(()=>Math.random()-.5).slice(0,3);
     const choices = [w,...wrong].sort(()=>Math.random()-.5);
@@ -3797,7 +3795,7 @@ function showLevelUpFlash(cb) {
   el.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,0);z-index:9998;pointer-events:none;transition:background .15s';
   document.body.appendChild(el);
   // 파티클 생성 (나비 이모지 + 원형 혼합)
-  const emojis=['🦋','✨','🌸','⭐','🎉','💫','🌟','🎊'];
+  const emojis=['🦋','✨','🌸','⭐⭐','🎉','💫','🌟','🎊'];
   const colors=['#FDE68A','#A78BFA','#6EE7B7','#FCA5A5','#93C5FD','#FCD34D','#F9A825','#E65100'];
   for(let i=0;i<20;i++){
     const p=document.createElement('div');
@@ -3897,9 +3895,10 @@ function rGameTab() {
   games.forEach(g => {
     const best=S.bestScores?.[g.id];
     html += `<div onclick="showGameSettings('${g.id}')" style="background:${g.bg};border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid ${g.c}22;position:relative">
+      ${!best?`<span style="position:absolute;top:8px;right:8px;background:${g.c};color:#fff;font-size:9px;font-weight:700;border-radius:20px;padding:2px 6px">NEW</span>`:''}
       <div style="font-size:28px;margin-bottom:4px">${g.ic}</div>
       <div style="font-size:12px;font-weight:800;color:${g.c}">${g.nm}</div>
-      ${best?`<div style="font-size:9px;color:#9CA3AF;margin-top:2px">🏆 ${best}%</div>`:'<div style="font-size:9px;color:#D1D5DB;margin-top:2px">미도전</div>'}
+      ${best?`<div style="font-size:9px;color:#9CA3AF;margin-top:2px">🏆 ${best}%</div>`:'<div style="font-size:9px;color:'+g.c+';font-weight:700;margin-top:2px">도전해봐!</div>'}
     </div>`;
   });
   html += `</div></div>`;
@@ -3922,10 +3921,10 @@ function rGameTab() {
         <div style="height:100%;background:${butterflies.length===30?'#16A34A':'#7C3AED'};border-radius:4px;width:${Math.round(butterflies.length/30*100)}%;transition:width .8s"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3,#A08040);margin-top:3px">
-        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/4 전설</span>
-        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/7 영웅</span>
-        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐').filter(b=>butterflies.includes(b.id)).length}/10 희귀</span>
-        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐').filter(b=>butterflies.includes(b.id)).length}/9 일반</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/4 전설</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/7 영웅</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐⭐').filter(b=>butterflies.includes(b.id)).length}/10 희귀</span>
+        <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐').filter(b=>butterflies.includes(b.id)).length}/9 일반</span>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px">
@@ -4161,181 +4160,181 @@ function getButterflyCharSVG(bId, sz=60, owned=true) {
 
 const BUTTERFLY_LIST = [
   {id:'b01',name:'제르세스 블루',en:'Xerces Blue',sci:'Glaucopsyche xerces',
-   rare:'⭐⭐⭐⭐',score:100,color:'#7BA8D4',bg:'#EFF6FF',
+   rare:'⭐⭐⭐⭐⭐',score:100,color:'#7BA8D4',bg:'#EFF6FF',
    size:'2.5cm',habitat:'미국 샌프란시스코',status:'멸종',
    feature:'은청색 날개, 흰 테두리선',
    story:'1941년 마지막 개체 채집 후 영원히 사라진 미국 최초 멸종 나비. 도시 개발로 서식지가 파괴되었어.',
    protect:'이 나비는 이제 박물관에만 존재해요. 도시 개발이 생태계를 얼마나 위협하는지 보여줘요.'},
   {id:'b02',name:'알렉산드라 비단제비나비',en:"Queen Alexandra's Birdwing",sci:'Ornithoptera alexandrae',
-   rare:'⭐⭐⭐⭐',score:95,color:'#2D7A5C',bg:'#F0FDF4',
+   rare:'⭐⭐⭐⭐⭐',score:95,color:'#2D7A5C',bg:'#F0FDF4',
    size:'30cm',habitat:'파푸아뉴기니',status:'멸종위기',
    feature:'세계 최대 나비, 청록/갈색',
    story:'화산 폭발 속에서도 살아남은 정글의 여왕. 현재 밀거래꾼들의 표적이 되어 국제적 보호를 받고 있어.',
    protect:'세계 최대 나비예요. 서식지 보호와 불법 거래 근절이 시급해요.'},
   {id:'b03',name:'팔로스베르데스 블루',en:'Palos Verdes Blue',sci:'Glaucopsyche lygdamus palosverdesensis',
-   rare:'⭐⭐⭐⭐',score:94,color:'#5C8AB8',bg:'#EFF6FF',
+   rare:'⭐⭐⭐⭐⭐',score:94,color:'#5C8AB8',bg:'#EFF6FF',
    size:'2cm',habitat:'미국 캘리포니아',status:'멸종위기',
    feature:'동전보다 작은 초소형 은청색',
    story:'멸종된 줄 알았다가 1994년 기적적으로 재발견! 현재 철조망과 전문가 24시간 감시로 보호 중.',
    protect:'살아있는 보석이라 불려요. 서식지에 철조망을 치고 24시간 감시할 만큼 귀한 나비예요.'},
   {id:'b04',name:'상제나비',en:'Parnassius bremeri',sci:'Parnassius bremeri',
-   rare:'⭐⭐⭐⭐',score:92,color:'#374151',bg:'#F9FAFB',
+   rare:'⭐⭐⭐⭐⭐',score:92,color:'#374151',bg:'#F9FAFB',
    size:'7cm',habitat:'유라시아(한국)',status:'멸종위기1급',
    feature:'흰 날개, 검은 혈관 수묵화 무늬',
    story:'한국에서 절멸했다 극소수 재발견! 흰 날개의 검은 혈관은 동양 수묵화 같은 아름다움을 가졌어.',
    protect:'한국 멸종위기 야생생물 1급이에요. 우리 숲의 건강성을 증명하는 소중한 생명이에요.'},
   {id:'b05',name:'붉은점모시나비',en:'Clouded Apollo',sci:'Parnassius mnemosyne',
-   rare:'⭐⭐⭐',score:90,color:'#DC2626',bg:'#FEF2F2',
+   rare:'⭐⭐⭐⭐',score:90,color:'#DC2626',bg:'#FEF2F2',
    size:'7.5cm',habitat:'한국 고산지',status:'멸종위기',
    feature:'반투명 날개, 선명한 붉은 점',
    story:'빙하기의 유물! 영하 기온도 견디는 강인함. 지구온난화로 산 정상으로 쫓겨나고 있는 기후위기의 증인.',
    protect:'기후위기의 산증인이에요. 지구 온도가 오를수록 이 나비의 서식지는 점점 줄어들어요.'},
   {id:'b06',name:'블루 몰포',en:'Blue Morpho',sci:'Morpho peleides',
-   rare:'⭐⭐⭐',score:85,color:'#1565C0',bg:'#EFF6FF',
+   rare:'⭐⭐⭐⭐',score:85,color:'#1565C0',bg:'#EFF6FF',
    size:'15cm',habitat:'중남미 아마존',status:'생존',
    feature:'메탈릭 블루, 실제 파란 색소 없음',
    story:'날개에 파란 색소가 없어! 빛의 굴절로 눈부신 광택을 내는 자연의 마법. 위협받으면 날개를 접어 갈색 위장색으로 순식간에 사라져.',
    protect:'아마존 열대우림이 사라지면 이 나비도 사라져요. 열대림 보호가 절실해요.'},
   {id:'b07',name:'쌍꼬리부전나비',en:'Double-tailed Blue',sci:'Cigaritis syama',
-   rare:'⭐⭐⭐',score:84,color:'#6B7280',bg:'#F9FAFB',
+   rare:'⭐⭐⭐⭐',score:84,color:'#6B7280',bg:'#F9FAFB',
    size:'3.5cm',habitat:'한국 소나무숲',status:'멸종위기',
    feature:'뒷날개 두 개의 가느다란 꼬리',
    story:'개미와 공생하는 전략가! 애벌레가 개미에게 달콤한 액체를 주고, 개미는 천적으로부터 보호해줘. 성충이 되면 개미와 인연을 끊고 소나무 위로 비상!',
    protect:'한국 소나무숲의 터줏대감이에요. 소나무숲 보호가 이 나비를 지키는 길이에요.'},
   {id:'b08',name:'부엉이나비',en:'Owl Butterfly',sci:'Caligo eurilochus',
-   rare:'⭐⭐⭐',score:82,color:'#6D4C41',bg:'#FFF8E1',
+   rare:'⭐⭐⭐⭐',score:82,color:'#6D4C41',bg:'#FFF8E1',
    size:'16cm',habitat:'아마존 정글',status:'생존',
    feature:'뒷날개 거대한 부엉이 눈무늬',
    story:'날개의 거대한 눈 무늬로 부엉이 얼굴을 완벽하게 흉내내! 도마뱀을 공포에 빠뜨리는 심리전의 달인.',
    protect:'자연이 만든 최고의 위장술사예요. 아마존 생태계의 균형을 지키는 소중한 존재예요.'},
   {id:'b09',name:'나뭇잎나비',en:'Dead Leaf Butterfly',sci:'Kallima inachus',
-   rare:'⭐⭐⭐',score:80,color:'#E65100',bg:'#FFF3E0',
+   rare:'⭐⭐⭐⭐',score:80,color:'#E65100',bg:'#FFF3E0',
    size:'8.5cm',habitat:'동남아시아',status:'생존',
    feature:'접으면 완벽한 마른 잎, 오렌지+파랑',
    story:'날개를 접으면 마른 낙엽! 팡이 핀 자국까지 정교하게 재현. 날개를 펴면 찬란한 오렌지+파랑으로 반전 매력 폭발!',
    protect:'자연계 최고의 위장술사예요. 열대우림의 다양성이 있어야 이 나비가 살아갈 수 있어요.'},
   {id:'b10',name:'모나크 (왕나비)',en:'Monarch Butterfly',sci:'Danaus plexippus',
-   rare:'⭐⭐⭐',score:78,color:'#E65100',bg:'#FFF3E0',
+   rare:'⭐⭐⭐⭐',score:78,color:'#E65100',bg:'#FFF3E0',
    size:'10cm',habitat:'북미 대륙',status:'이주성',
    feature:'주황/검정맥/흰점, 4000km 이주',
    story:'매년 4,000km 대륙 이동의 주인공! 조상이 갔던 길을 한 번도 본 적 없으면서 유전자의 기억만으로 정확히 찾아가는 기적.',
    protect:'기후변화로 이주 경로가 흔들리고 있어요. 서식지 보호와 기후 행동이 필요해요.'},
   {id:'b11',name:'공작나비',en:'Peacock Butterfly',sci:'Aglais io',
-   rare:'⭐⭐⭐',score:75,color:'#8B1A1A',bg:'#FEF2F2',
+   rare:'⭐⭐⭐⭐',score:75,color:'#8B1A1A',bg:'#FEF2F2',
    size:'6.5cm',habitat:'유라시아',status:'생존',
    feature:'4개의 화려한 공작 눈무늬',
    story:'위협받으면 날개를 활짝 펴 눈무늬를 보이는 동시에 날개를 비벼 소리까지 내! 시각+청각 동시 기만술.',
    protect:'유라시아 전역에 서식하는 아름다운 나비예요. 꽃밭을 가꾸면 이 나비를 만날 수 있어요.'},
   {id:'b12',name:'오색나비',en:'Oriental Great Purple Emperor',sci:'Sasakia charonda',
-   rare:'⭐⭐',score:73,color:'#6A1B9A',bg:'#F5F3FF',
+   rare:'⭐⭐⭐',score:73,color:'#6A1B9A',bg:'#F5F3FF',
    size:'8.5cm',habitat:'한국/일본',status:'생존',
    feature:'보라/청색, 각도따라 5가지 색',
    story:'빛의 각도에 따라 보라에서 진한 청색까지 5가지 색 아우라! 꽃보다 참나무 수액을 좋아하는 개성파.',
    protect:'한국과 일본의 숲을 대표하는 나비예요. 참나무 숲 보호가 이 나비를 지켜요.'},
   {id:'b13',name:'대왕나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
-   rare:'⭐⭐',score:71,color:'#4E342E',bg:'#FFF8E1',
+   rare:'⭐⭐⭐',score:71,color:'#4E342E',bg:'#FFF8E1',
    size:'9.5cm',habitat:'동아시아 산지',status:'생존',
    feature:'흑갈색, 한국 네발나비 중 최대',
    story:'한국 네발나비 중 최대 크기의 지배자! 영역 본능이 어찌나 강한지 작은 새에게도 겁 없이 달려들어 몸싸움을 벌여.',
    protect:'강인한 생명력으로 우리 숲을 지키는 존재예요. 산림 보호가 이 나비의 서식지를 지켜요.'},
   {id:'b14',name:'유리창나비',en:'Window Butterfly',sci:'Dilipa fenestra',
-   rare:'⭐⭐',score:69,color:'#5D4037',bg:'#FFF8E1',
+   rare:'⭐⭐⭐',score:69,color:'#5D4037',bg:'#FFF8E1',
    size:'5.5cm',habitat:'동아시아',status:'생존',
    feature:'날개 끝이 유리처럼 투명함',
    story:'날개 끝에 비늘이 없어 유리창처럼 투명하게 속이 비쳐 보여! 숲속에서 날개가 없는 듯한 착시로 포식자를 혼란에 빠뜨리는 닌자.',
    protect:'독특한 투명 날개를 가진 희귀한 나비예요. 동아시아 숲의 보물이에요.'},
   {id:'b15',name:'청띠신선나비',en:'Blue Admiral',sci:'Kaniska canace',
-   rare:'⭐⭐',score:65,color:'#1565C0',bg:'#EFF6FF',
+   rare:'⭐⭐⭐',score:65,color:'#1565C0',bg:'#EFF6FF',
    size:'7cm',habitat:'동아시아',status:'생존',
    feature:'검정+선명한 푸른 띠',
    story:'검은 상복에 푸른 리본 같은 우아한 외모! 하지만 꽃보다 썩은 과일과 동물의 배설물을 찾아다니는 반전 미식가.',
    protect:'생태계의 청소부 역할을 하는 고마운 나비예요. 다양한 생태계가 이 나비를 살려요.'},
   {id:'b16',name:'홍점알락나비',en:'Red Spot Butterfly',sci:'Hestina assimilis',
-   rare:'⭐⭐',score:59,color:'#DC2626',bg:'#FEF2F2',
+   rare:'⭐⭐⭐',score:59,color:'#DC2626',bg:'#FEF2F2',
    size:'8cm',habitat:'한국/중국',status:'생존',
    feature:'흰색+검정줄, 뒷날개 끝 붉은 반점',
    story:'애벌레 시절엔 나무껍질 같은 모습으로 위장, 성충이 되면 화려하고 우아한 모습으로 반전! 생물학적 변신의 경이로움.',
    protect:'변신의 달인이에요. 건강한 숲이 있어야 이 나비가 아름답게 날아오를 수 있어요.'},
   {id:'b17',name:'은줄팔랑나비',en:'Silver-striped Skipper',sci:'Lobocla bifasciata',
-   rare:'⭐⭐',score:55,color:'#A0785A',bg:'#FFF8E1',
+   rare:'⭐⭐⭐',score:55,color:'#A0785A',bg:'#FFF8E1',
    size:'3.5cm',habitat:'한국 산지',status:'생존',
    feature:'아랫면 선명한 은색 세로줄',
    story:'날개 뒷면의 선명한 은색 줄무늬가 예술적! 숲속에서 은색 광채가 번쩍하며 사라지는 신비로운 광경.',
    protect:'한국 산지의 보물이에요. 빠른 비행 속도로 눈앞에서 사라지는 신비로운 나비예요.'},
   {id:'b18',name:'청띠제비나비',en:'Common Bluebottle',sci:'Graphium sarpedon',
-   rare:'⭐⭐',score:50,color:'#00796B',bg:'#E0F2F1',
+   rare:'⭐⭐⭐',score:50,color:'#00796B',bg:'#E0F2F1',
    size:'9cm',habitat:'아시아 온대',status:'생존',
    feature:'검정+에메랄드 청록 띠',
    story:'검은 날개 중앙을 가로지르는 에메랄드 띠가 일품! 여름철 해변에 수백 마리가 모여 집단으로 물을 마시는 장관.',
    protect:'여름 숲이 선사하는 최고의 선물이에요. 청정 계곡과 숲이 있어야 볼 수 있어요.'},
   {id:'b19',name:'산제비나비',en:"Maack's Swallowtail",sci:'Papilio maackii',
-   rare:'⭐⭐',score:45,color:'#26A69A',bg:'#E0F2F1',
+   rare:'⭐⭐⭐',score:45,color:'#26A69A',bg:'#E0F2F1',
    size:'청록 광택, 뒷날개 붉은 반달',habitat:'동아시아 산지',status:'생존',
    feature:'청록 금속 광택, 붉은 반달 무늬',
    story:'물가에 수십 마리의 산제비나비가 내려앉아 검은 보석처럼 반짝이는 모습은 보는 이의 넋을 놓게 만들어.',
    protect:'오염되지 않은 청정 자연이 선사하는 최고의 선물이에요.'},
   {id:'b20',name:'호랑나비',en:'Asian Swallowtail',sci:'Papilio xuthus',
-   rare:'⭐',score:40,color:'#F9A825',bg:'#FFF8E1',
+   rare:'⭐⭐',score:40,color:'#F9A825',bg:'#FFF8E1',
    size:'10cm',habitat:'동아시아',status:'생존',
    feature:'노란+검정 호랑이 무늬',
    story:'나비의 대명사! 당당한 날갯짓과 화려한 무늬는 예로부터 선조들의 민화와 공예품 속 영혼의 상징으로 귀하게 대접받았어.',
    protect:'우리 민족이 가장 사랑하는 나비예요. 꽃이 있는 곳에 호랑나비가 찾아와요.'},
   {id:'b21',name:'배추흰나비',en:'Small White',sci:'Pieris rapae',
-   rare:'⭐',score:30,color:'#9E9E9E',bg:'#F9FAFB',
+   rare:'⭐⭐',score:30,color:'#9E9E9E',bg:'#F9FAFB',
    size:'6cm',habitat:'전 세계',status:'생존',
    feature:'유백색, 둥글고 부드러운 날개',
    story:'인류 역사상 나비를 처음 가르쳐준 선생님! 아이들이 처음으로 채집망을 들고 쫓아가는 순수한 추억의 주인공.',
    protect:'가장 친근한 나비지만 꽃가루를 옮겨주는 소중한 공로자예요. 꽃밭을 지켜주세요.'},
   {id:'b22',name:'노랑나비',en:'Eastern Pale Clouded Yellow',sci:'Colias erate',
-   rare:'⭐',score:20,color:'#F9A825',bg:'#FFFDE7',
+   rare:'⭐⭐',score:20,color:'#F9A825',bg:'#FFFDE7',
    size:'5.5cm',habitat:'전 세계',status:'생존',
    feature:'밝은 노란색, 봄을 알리는 날개',
    story:'봄의 전령! 밝은 노란 날개로 들판을 누비며 생명의 활기를 전하는 모습은 누구에게나 미소를 짓게 만들어.',
    protect:'봄의 상징이에요. 초원과 꽃밭이 사라지면 이 노란 날개도 볼 수 없게 돼요.'},
   {id:'b23',name:'네발나비',en:'Yellow Comma',sci:'Polygonia c-aureum',
-   rare:'⭐',score:10,color:'#E65100',bg:'#FFF3E0',
+   rare:'⭐⭐',score:10,color:'#E65100',bg:'#FFF3E0',
    size:'5.5cm',habitat:'한국 전역',status:'생존',
    feature:'황갈색, 앞다리 퇴화해 4개로 걸음',
    story:'앞다리 두 개가 퇴화해 4개로만 걷는 독특한 진화! 성충으로 추운 겨울을 견디며 한겨울에도 햇볕을 쬐는 지혜로운 나비.',
    protect:'한국 어디서나 만날 수 있는 우리 주변의 나비예요. 도시 숲과 공원을 지켜주세요.'},
   {id:'b24',name:'왕오색나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
-   rare:'⭐⭐',score:72,color:'#4A148C',bg:'#F3E5F5',
+   rare:'⭐⭐⭐',score:72,color:'#4A148C',bg:'#F3E5F5',
    size:'대형',habitat:'동아시아',status:'생존',
    feature:'보라/청색 대형, 화려한 광택',
    story:'왕이라는 이름처럼 당당하고 화려한 보라빛 대형 나비. 숲의 상층부에서 군주처럼 자신의 영역을 지배해.',
    protect:'숲의 왕이에요. 오래된 숲과 참나무가 있어야 이 나비가 살아갈 수 있어요.'},
   {id:'b25',name:'긴꼬리제비나비',en:'Red Helen',sci:'Papilio helenus',
-   rare:'⭐⭐',score:60,color:'#212121',bg:'#F5F5F5',
+   rare:'⭐⭐⭐',score:60,color:'#212121',bg:'#F5F5F5',
    size:'검정+흰점, 긴 꼬리',habitat:'동아시아',status:'생존',
    feature:'검정 날개, 흰 점열, 긴 꼬리',
    story:'길고 우아한 꼬리가 돋보이는 제비나비의 귀공자. 검정 날개 위 흰 점들이 밤하늘의 별처럼 빛나.',
    protect:'아름다운 꼬리를 가진 나비예요. 남쪽 숲과 제주도에서 만날 수 있어요.'},
   {id:'b26',name:'제비나비',en:'Spangle',sci:'Papilio protenor',
-   rare:'⭐',score:48,color:'#212121',bg:'#F5F5F5',
+   rare:'⭐⭐',score:48,color:'#212121',bg:'#F5F5F5',
    size:'검정 날개',habitat:'동아시아',status:'생존',
    feature:'순수 검정 날개, 청록 광택',
    story:'검정 날개에 은은한 청록 광택이 도는 세련된 나비. 아랫날개의 붉은 반점이 포인트야.',
    protect:'우리 주변 숲에서 볼 수 있는 아름다운 나비예요.'},
   {id:'b27',name:'남방제비나비',en:'Great Mormon',sci:'Papilio memnon',
-   rare:'⭐',score:43,color:'#1A237E',bg:'#E8EAF6',
+   rare:'⭐⭐',score:43,color:'#1A237E',bg:'#E8EAF6',
    size:'검정+파란 광택',habitat:'동아시아',status:'생존',
    feature:'검정 날개, 강렬한 파란 광택',
    story:'검정 날개에 강렬한 파란 광택이 도는 남방의 귀족. 붉은 반점이 포인트야.',
    protect:'따뜻한 남쪽 지방에 사는 나비예요. 기후변화로 북쪽으로 서식지가 확장되고 있어요.'},
   {id:'b28',name:'애호랑나비',en:"Puzillo's Swallowtail",sci:'Luehdorfia puziloi',
-   rare:'⭐',score:35,color:'#F9A825',bg:'#FFFDE7',
+   rare:'⭐⭐',score:35,color:'#F9A825',bg:'#FFFDE7',
    size:'노란+검정, 호랑나비보다 작음',habitat:'한국',status:'생존',
    feature:'노란+검정, 봄에 가장 먼저 나타남',
    story:'한국 봄의 전령! 가장 먼저 나타나는 봄나비로 산속에서 짝짓기 춤을 추는 모습이 아름다워.',
    protect:'봄의 첫 손님이에요. 산벚꽃과 현호색이 있어야 이 나비를 만날 수 있어요.'},
   {id:'b29',name:'큰줄흰나비',en:'Large Striped White',sci:'Pieris melete',
-   rare:'⭐',score:25,color:'#9E9E9E',bg:'#F9FAFB',
+   rare:'⭐⭐',score:25,color:'#9E9E9E',bg:'#F9FAFB',
    size:'흰색+검은 줄',habitat:'동아시아',status:'생존',
    feature:'흰색 날개에 굵은 검은 줄',
    story:'배추흰나비보다 크고 검은 줄이 선명한 사촌 나비. 산속 청정 지역에서 주로 볼 수 있어.',
    protect:'청정 산지 환경을 좋아하는 나비예요. 깨끗한 자연을 지켜주세요.'},
   {id:'b30',name:'긴은줄표범나비',en:'Silver-washed Fritillary',sci:'Argynnis paphia',
-   rare:'⭐',score:22,color:'#E65100',bg:'#FFF3E0',
+   rare:'⭐⭐',score:22,color:'#E65100',bg:'#FFF3E0',
    size:'주황+검정 점',habitat:'유라시아',status:'생존',
    feature:'주황 날개, 은색 줄무늬',
    story:'주황 날개에 검정 점박이 무늬가 표범처럼 화려해. 날개 뒷면의 은색 줄이 반짝반짝!',
@@ -4402,15 +4401,15 @@ function rollButterfly() {
   const roll = Math.random(); // 0~1
 
   let targetRare;
-  if(roll < LEGEND_CHANCE) targetRare = '⭐⭐⭐⭐';
-  else if(roll < LEGEND_CHANCE + HERO_CHANCE) targetRare = '⭐⭐⭐';
-  else if(roll < LEGEND_CHANCE + HERO_CHANCE + RARE_CHANCE) targetRare = '⭐⭐';
-  else targetRare = '⭐';
+  if(roll < LEGEND_CHANCE) targetRare = '⭐⭐⭐⭐⭐';
+  else if(roll < LEGEND_CHANCE + HERO_CHANCE) targetRare = '⭐⭐⭐⭐';
+  else if(roll < LEGEND_CHANCE + HERO_CHANCE + RARE_CHANCE) targetRare = '⭐⭐⭐';
+  else targetRare = '⭐⭐';
 
   // 해당 등급 중 미획득 나비 필터
   let pool = available.filter(b=>b.rare===targetRare);
   // 해당 등급 없으면 일반으로 폴백
-  if(!pool.length) pool = available.filter(b=>b.rare==='⭐');
+  if(!pool.length) pool = available.filter(b=>b.rare==='⭐⭐');
   if(!pool.length) pool = available; // 최후 폴백
   
   const chosen = pool[Math.floor(Math.random()*pool.length)];
@@ -4432,12 +4431,12 @@ function showButterflyRoll(butterfly, onClose) {
     </div></div>`;
     return;
   }
-  const rareLabel = butterfly.rare==='⭐⭐⭐⭐'?'전설':butterfly.rare==='⭐⭐⭐'?'영웅':butterfly.rare==='⭐⭐'?'희귀':'일반';
-  const rareBg   = butterfly.rare==='⭐⭐⭐⭐'?'linear-gradient(135deg,#FEF3C7,#FDE68A)':butterfly.rare==='⭐⭐⭐'?'linear-gradient(135deg,#F5F3FF,#EDE9FE)':butterfly.rare==='⭐⭐'?'linear-gradient(135deg,#EFF6FF,#DBEAFE)':'#F9FAFB';
-  const rareCol  = butterfly.rare==='⭐⭐⭐⭐'?'#D97706':butterfly.rare==='⭐⭐⭐'?'#7C3AED':butterfly.rare==='⭐⭐'?'#2563EB':'#6B7280';
-  const rareBorder = butterfly.rare==='⭐⭐⭐⭐'?'#F6D860':butterfly.rare==='⭐⭐⭐'?'#A78BFA':butterfly.rare==='⭐⭐'?'#93C5FD':'#E5E7EB';
-  const isLegend = butterfly.rare==='⭐⭐⭐⭐';
-  const isHero   = butterfly.rare==='⭐⭐⭐';
+  const rareLabel = butterfly.rare==='⭐⭐⭐⭐⭐'?'전설':butterfly.rare==='⭐⭐⭐⭐'?'영웅':butterfly.rare==='⭐⭐⭐'?'희귀':'일반';
+  const rareBg   = butterfly.rare==='⭐⭐⭐⭐⭐'?'linear-gradient(135deg,#FEF3C7,#FDE68A)':butterfly.rare==='⭐⭐⭐⭐'?'linear-gradient(135deg,#F5F3FF,#EDE9FE)':butterfly.rare==='⭐⭐⭐'?'linear-gradient(135deg,#EFF6FF,#DBEAFE)':'#F9FAFB';
+  const rareCol  = butterfly.rare==='⭐⭐⭐⭐⭐'?'#D97706':butterfly.rare==='⭐⭐⭐⭐'?'#7C3AED':butterfly.rare==='⭐⭐⭐'?'#2563EB':'#6B7280';
+  const rareBorder = butterfly.rare==='⭐⭐⭐⭐⭐'?'#F6D860':butterfly.rare==='⭐⭐⭐⭐'?'#A78BFA':butterfly.rare==='⭐⭐⭐'?'#93C5FD':'#E5E7EB';
+  const isLegend = butterfly.rare==='⭐⭐⭐⭐⭐';
+  const isHero   = butterfly.rare==='⭐⭐⭐⭐';
   // 희귀도별 진동
   if(isLegend) vib([200,100,200,100,400,100,400,100,600]);
   else if(isHero) vib([150,80,150,80,300,100,400]);
@@ -4513,7 +4512,7 @@ function rHome() {
   const marked2 = Object.values(S.markMap).filter(v=>v===2).length;
 
   const todayMission = [
-    {ic:'📚',lb:'단어 10개 학습',done:todayLog.words>=10,fn:"startLearnSession('new')",xp:50},
+    {ic:'📚',lb:'단어 10개 학습',done:todayLog.words>=10,fn:"go('learn')",xp:50},
     {ic:'🎯',lb:'퀴즈 5문제',done:todayLog.quiz>=5,fn:"showGameSettings('quiz')",xp:20},
     {ic:'🎮',lb:'게임 1회',done:Object.keys(S.bestScores||{}).length>0,fn:"go('butterfly')",xp:30},
   ];
@@ -4571,9 +4570,32 @@ function rHome() {
   </div>`);
 
   // ── 2순위: 오늘의 단어 카드 (즉시 학습 유도) ──
+  // 단어 없을 때 학습 시작 유도
+  if(!S.words.length) {
+    parts.push(`<div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:24px;color:#fff;text-align:center">
+      <div style="margin-bottom:12px">${charSVGAnimated(S.lid,64,'normal')}</div>
+      <div style="font-size:16px;font-weight:900;margin-bottom:6px">단어를 추가해봐요!</div>
+      <div style="font-size:12px;opacity:.8;margin-bottom:16px">단어를 외울수록 ${l.name}이/가 자라요 🌱</div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button onclick="go('mybooks','add')" style="background:#fff;color:${petCol.main};border:none;border-radius:14px;padding:11px 20px;font-size:13px;font-weight:700;cursor:pointer">✏️ 직접 추가</button>
+        <button onclick="S.stab='market';go('mybooks','market')" style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.4);border-radius:14px;padding:11px 20px;font-size:13px;font-weight:700;cursor:pointer">🛒 마켓</button>
+      </div>
+    </div>`);
+    parts.push('</div>');
+    return parts.join('');
+  }
+
   if(todayWord) {
     const wMark = getMark(todayWord.en);
     const wInfo = MARK_INFO[wMark];
+    // 오늘의 단어 자동 발음 (첫 로드시)
+    const autoSpeak = ()=>{
+      if(S._twSpoken!==t){
+        S._twSpoken=t;
+        setTimeout(()=>{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(todayWord.en);u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u);},800);
+      }
+    };
+    autoSpeak();
     parts.push(`<div style="background:linear-gradient(135deg,#1A1A2E,#16213E);border-radius:18px;padding:16px;color:#fff">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.6)">✨ 오늘의 단어</div>
@@ -4584,7 +4606,7 @@ function rHome() {
       <div style="font-size:16px;font-weight:700;color:#E2E8F0;margin-bottom:10px">${todayWord.kr}</div>
       ${todayWord.ex?`<div style="font-size:12px;color:#94A3B8;font-style:italic;line-height:1.6">"${todayWord.ex}"</div>`:''}
       <div style="display:flex;gap:8px;margin-top:12px">
-        <button onclick="go('mybooks','learn')" style="flex:2;background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">📚 이어서 학습하기</button>
+        <button onclick="go('learn')" style="flex:2;background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">📚 학습하기</button>
         <button onclick="showGameSettings('quiz')" style="flex:1;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">🎯 퀴즈</button>
       </div>
     </div>`);
@@ -4940,7 +4962,8 @@ function showStreamMode() {
   const render=()=>{
     const el=document.getElementById('mode-word');
     if(!el) return;
-    const w=words[idx%words.length];
+    if(idx>=words.length){clearInterval(timer);if(el)el.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:48px">🎉</div><div style="font-size:16px;font-weight:700;margin:10px 0">스트림 완료!</div><button onclick="cm()" class="btn bb">닫기</button></div>';return;}
+    const w=words[idx];
     el.innerHTML=`<div style="font-size:80px;margin-bottom:12px">${w.img||'📝'}</div>
       <div style="font-size:30px;font-weight:900;color:#60A5FA;font-family:monospace;margin-bottom:6px">${w.en}</div>
       <div style="font-size:18px;color:#E2E8F0;font-weight:700;margin-bottom:6px">${w.kr}</div>
@@ -5043,7 +5066,8 @@ function showAudioMode() {
   };
   const playNext=async()=>{
     if(!playing) return;
-    const w=S.words[idx%S.words.length];
+    if(idx>=S.words.length){clearInterval(sleepTimer);return;}
+    const w=S.words[idx];
     document.getElementById('audio-word').innerHTML=`<div style="font-size:64px;margin-bottom:8px">${w.img||'🔊'}</div>
       <div style="font-size:26px;font-weight:900;color:#fff;font-family:monospace">${w.en}</div>
       <div style="font-size:16px;color:rgba(255,255,255,.8);margin-top:4px">${w.kr}</div>
@@ -5079,8 +5103,9 @@ function showShadowMode() {
   let idx=0, step=0; // step: 0=보기 1=듣기 2=따라하기 3=결과
 
   const renderShadow=()=>{
-    const w=words[idx%words.length];
-    const prog=idx%words.length+1;
+    if(idx>=words.length){clearInterval(shadowTimer);if(document.getElementById('shadow-box'))document.getElementById('shadow-box').innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:36px">🎉</div><div style="font-size:15px;font-weight:700;margin:10px 0">쉐도잉 완료!</div><button onclick="cm()" class="btn bb">닫기</button></div>';return;}
+    const w=words[idx];
+    const prog=idx+1;
     const steps=['📖 문장 읽기','🔊 원어민 듣기','🎤 따라 말하기'];
     document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -5173,7 +5198,8 @@ function showSpeakQuiz() {
 function showSleepMode() {
   let idx=0, sleepTimer=null, autoTimer=null;
   const render=()=>{
-    const w=S.words[idx%S.words.length];
+    if(idx>=S.words.length){clearInterval(null);playing=false;return;}
+    const w=S.words[idx];
     document.getElementById('sleep-word').innerHTML=`<div style="font-size:56px;margin-bottom:12px;opacity:.6">${w.img||'✨'}</div>
       <div style="font-size:26px;font-weight:900;color:rgba(255,255,255,.9);font-family:monospace">${w.en}</div>
       <div style="font-size:16px;color:rgba(255,255,255,.5);margin-top:6px">${w.kr}</div>`;
@@ -5273,7 +5299,7 @@ function showSRSMode() {
       <div style="font-size:12px;font-weight:700;color:#9CA3AF;text-align:center;margin-bottom:8px">얼마나 기억하나요?</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
         ${[['다시',0,'#FEF2F2','#DC2626'],['힘들어',1,'#FFF7ED','#D97706'],['알아요',4,'#F0FDF4','#16A34A'],['완벽!',7,'#EFF6FF','#1E5FA5']].map(([lb,q,bg,c])=>
-          `<button onclick="srsFeedback('${w.en.replace(/'/g,"\\'")}',${q});${q>=3?'correct++;':''}qi++;renderSRS();" style="background:${bg};border:2px solid ${c}22;border-radius:12px;padding:10px 4px;font-size:12px;font-weight:700;color:${c};cursor:pointer">
+          `<button onclick="srsFeedback('${w.en.replace(/'/g,"\\'")}',${q});${q>=3?'correct++;ok();':'ng();'}qi++;renderSRS();" style="background:${bg};border:2px solid ${c}22;border-radius:12px;padding:10px 4px;font-size:12px;font-weight:700;color:${c};cursor:pointer">
             ${lb}<br><span style="font-size:10px;opacity:.7">${q===0?'바로':q===1?'1일':q===4?'4일':'7일+'}</span>
           </button>`).join('')}
       </div>
@@ -5384,7 +5410,7 @@ function rStudyBooks() {
       </div>
     </div>
     <div style="border-top:1px solid var(--border,#F3F4F6);display:flex">
-      <button onclick="selectBookAndLearn('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer;border-right:1px solid var(--border,#F3F4F6)">📚 학습하기</button>
+      <button onclick="selectBookAndLearn('내 단어장')" style="flex:2;padding:11px;background:#1E5FA5;color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 0 0 14px">📖 바로 학습</button>
       <button onclick="S.currentBook='내 단어장';S.stab='add';go('mybooks','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
       <button onclick="shareWordBook('내 단어장')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#1E5FA5;cursor:pointer">🔗 공유</button>
       <button onclick="S.stab='market';go('mybooks','market')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#7C3AED;cursor:pointer">🛒 마켓</button>
@@ -5419,7 +5445,7 @@ function rStudyBooks() {
         </div>
       </div>
       <div style="border-top:1px solid var(--border,#F3F4F6);display:flex">
-        <button onclick="selectBookAndLearn('${safeName}')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#7C3AED;cursor:pointer;border-right:1px solid var(--border,#F3F4F6)">📚 학습하기</button>
+        <button onclick="selectBookAndLearn('${safeName}')" style="flex:2;padding:11px;background:#7C3AED;color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 0 0 14px">📖 바로 학습</button>
         <button onclick="switchBook('${safeName}');S.stab='add';go('mybooks','add')" style="flex:1;padding:11px;background:none;border:none;font-size:13px;font-weight:700;color:#16A34A;cursor:pointer">➕ 단어 추가</button>
       </div>
     </div>`);
@@ -5445,15 +5471,15 @@ function rStudyBooks() {
 }
 
 function selectBookAndLearn(bookName) {
-  // 단어장 전환
   if(bookName === '내 단어장') {
     S.currentBook = '내 단어장';
   } else {
     switchBook(bookName);
   }
-  // 학습 방법 선택 화면으로
-  S.stab = 'mode';
-  go('mybooks','mode');
+  // 바로 플래시카드로 이동 (단순화)
+  S.stab = 'learn';
+  S.idx = 0; S.flip = false;
+  go('mybooks','learn');
 }
 
 function rStudyMode() {
@@ -5836,8 +5862,21 @@ function rLearn() {
   const idx = S._flipWords ? (S._flipIdx||0) : S.idx;
   if(!words.length) return `<div class="pad" style="text-align:center;margin-top:60px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('mybooks','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
 
-  const w = words[idx%words.length];
-  const prog = (idx%words.length)+1, tot = words.length;
+  // 단어 전체 완료 시 처리
+  if(idx >= words.length && !S._flipWords) {
+    return `<div class="pad" style="text-align:center;padding:40px 20px">
+      ${charSVGAnimated(S.lid,64,'happy')}
+      <div style="font-size:18px;font-weight:900;color:var(--text1,#3D2C00);margin:16px 0 8px">오늘 학습 완료! 🎉</div>
+      <div style="font-size:13px;color:var(--text3,#A08040);margin-bottom:20px">${words.length}개 단어를 모두 넘겼어요</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:280px;margin:0 auto">
+        <button onclick="S.idx=0;S.flip=false;go()" class="btn bb">🔄 처음부터 다시</button>
+        <button onclick="showGameSettings('quiz')" class="btn" style="background:#EFF6FF;color:#1E5FA5;border:1.5px solid #BFDBFE">🎯 퀴즈로 확인</button>
+        <button onclick="go('mybooks','mode')" class="btn" style="background:var(--bg-sub,#FFF9ED);color:var(--text2,#6B5200);border:1.5px solid var(--border,#F0E6C8)">← 학습 방법 선택</button>
+      </div>
+    </div>`;
+  }
+  const w = words[Math.min(idx, words.length-1)];
+  const prog = idx+1, tot = words.length;
   const pct = Math.round(prog/tot*100);
   const mark = getMark(w.en);
   const mInfo = MARK_INFO[mark];
@@ -5969,7 +6008,7 @@ function rLearn() {
 
       <!-- 마킹 + 즐겨찾기 -->
       <div style="display:flex;align-items:center;gap:8px">
-        <span onclick="event.stopPropagation();toggleFavorite('${safeEn}')" style="font-size:20px;cursor:pointer;padding:4px">${isFav?'⭐':'☆'}</span>
+        <span onclick="event.stopPropagation();toggleFavorite('${safeEn}')" style="font-size:20px;cursor:pointer;padding:4px">${isFav?'⭐⭐':'☆'}</span>
         <div style="flex:1;display:flex;gap:6px">
           ${[0,1,2].map(v=>`<button onclick="setMark('${safeEn}',${v});go()" style="flex:1;padding:8px;border-radius:12px;border:2px solid ${MARK_INFO[v].color}44;background:${mark===v?MARK_INFO[v].bg:'var(--bg-sub,#FFF9ED)'};font-size:13px;cursor:pointer;font-weight:${mark===v?'700':'400'}">${MARK_INFO[v].emoji} ${MARK_INFO[v].label}</button>`).join('')}
         </div>
@@ -5990,13 +6029,13 @@ function initFlashSwipe() {
     const dy=e.changedTouches[0].clientY-sy;
     if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50) {
       e.stopPropagation();
-      const w=S.words[S.idx%S.words.length];
+      const w=S.words.length>0?S.words[Math.min(S.idx,S.words.length-1)]:null;
       if(dx>0 && w) {
         // 오른쪽 스와이프 = 알았어 ✅
         setMark(w.en,1); ok(); logStudy('words');
         SFX.play('swipe_ok');
         showSwipeHint('✅ 알았어!', '#16A34A');
-        if(!S.learned.has(w.en)){S.learned.add(w.en);srsRate(w.en,1);sv();}
+        if(!S.learned.has(w.en)){S.learned.add(w.en);srsRate(w.en,1);checkAchievements();checkLearnMilestone();sv();}
         S.idx++; S.flip=false;
       } else if(dx<0 && w) {
         // 왼쪽 스와이프 = 모르겠어 🦋
@@ -6046,12 +6085,21 @@ function startAutoPlay() {
   next();
 }
 
-function nxtL(ok){const w=S.words[S.idx%S.words.length];if(ok&&!S.learned.has(w.en)){S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);logStudy('words');checkAchievements();checkLearnMilestone();sv();
+function nxtL(ok){
+  const words = S.words;
+  const w=words[Math.min(S.idx, words.length-1)];
+  if(!w) return;
+  if(ok&&!S.learned.has(w.en)){
+    S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);
+    logStudy('words');checkAchievements();checkLearnMilestone();sv();
     SFX.play('correct');vib(50);
     const clrs=['#FDE68A','#6EE7B7','#93C5FD'];
     for(let ci=0;ci<6;ci++){const p=document.createElement('div');const ang=(ci/6)*360;p.style.cssText='position:fixed;left:50%;top:60%;width:8px;height:8px;border-radius:50%;background:'+clrs[ci%3]+';z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .4s ease-out;opacity:1';document.body.appendChild(p);setTimeout(()=>{p.style.transform='translate(calc(-50% + '+Math.round(Math.cos(ang*Math.PI/180)*50)+'px),calc(-50% + '+Math.round(Math.sin(ang*Math.PI/180)*50)+'px))';p.style.opacity='0';},30);setTimeout(()=>p.remove(),500);}
   } else if(ok) {SFX.play('correct');vib(50);}
-  S.idx++;S.flip=false;go();}
+  S.idx++;
+  S.flip=false;
+  go();
+}
 
 function rModes() {
   const modes=[
@@ -6266,7 +6314,14 @@ function rList(){
   const sortBy=S.listSort||'default';
   const marked1=S.words.filter(w=>getMark(w.en)===1).length;
   const marked2=S.words.filter(w=>getMark(w.en)===2).length;
-  let filtered=filterMark<0?[...S.words]:S.words.filter(w=>getMark(w.en)===filterMark);
+  const markedFav=(S.favorites||new Set()).size;
+  // 즐겨찾기 필터 (-2)
+  let filtered;
+  if(filterMark===-2) {
+    filtered = [...S.words].filter(w=>(S.favorites||new Set()).has(w.en));
+  } else {
+    filtered = filterMark<0 ? [...S.words] : S.words.filter(w=>getMark(w.en)===filterMark);
+  }
   if(searchQ) filtered=filtered.filter(w=>w.en.toLowerCase().includes(searchQ)||w.kr.includes(searchQ));
   if(sortBy==='alpha') filtered.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sortBy==='alpha_kr') filtered.sort((a,b)=>a.kr.localeCompare(b.kr));
@@ -6298,9 +6353,9 @@ function rList(){
     +'<button onclick="if(confirm(\'마크 초기화?\')){S.markMap={};S.learned.clear();sv();go();}" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;white-space:nowrap">초기화</button>'
     +'</div>'
     +'<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px">'
-    +[[-1,'전체',S.words.length,'#374151'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF'],[1,'외운 🐛',marked1,'#1E5FA5'],[2,'헷갈리는 🐾',marked2,'#EC4899']].map(function(arr){
+    +[[-1,'전체',S.words.length,'#374151'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF'],[1,'외운 ✅',marked1,'#16A34A'],[2,'헷갈림 🦋',marked2,'#7C3AED'],[-2,'⭐즐겨찾기',markedFav,'#D97706']].map(function(arr){
       const v=arr[0],lb=arr[1],cnt=arr[2],col=arr[3];
-      return '<button onclick="S.listMarkFilter='+v+';go()" style="padding:5px 10px;border-radius:20px;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;background:'+(filterMark===v?col:'#F3F4F6')+';color:'+(filterMark===v?'#fff':col)+'">'+lb+' '+cnt+'</button>';
+      return '<button onclick="S.listMarkFilter='+v+';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(filterMark===v?col:'#E5E7EB')+';font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;background:'+(filterMark===v?col:'#F9FAFB')+';color:'+(filterMark===v?'#fff':col)+'">'+lb+' '+cnt+'</button>';
     }).join('')
     +'</div>'
     +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">'+filtered.length+'개 표시</div>'
@@ -6506,7 +6561,7 @@ function startGameW(id, ws) {
   if(id==='quiz'||id==='typing') {
     S.gSavedGame={id,words:S.gWords,score:0,idx:0};
   }
-  if(id==='match'){S.mPairs=pick(src,Math.min(5,src.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mEn0=null;S.mKr0=null;S.mScore=0;}
+  if(id==='match'){S.mPairs=pick(src,Math.min(5,src.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mEn0=null;S.mKr0=null;S.mScore=0;S.mWrongEn=null;S.mWrongKr=null;}
   if(id==='wordle'){const pool=src.filter(w=>w.en.length>=4&&w.en.length<=7);S.wWord=pool.length?rnd(pool):src[0];S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
   if(id==='wordfind'){buildWF(src);}
   if(id==='wc'){const pool=src.filter(w=>w.en.length>=3);S.wcWord=pool.length?rnd(pool):src[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
@@ -6542,6 +6597,7 @@ function rGameDone(){
     const bonus = pct>=100?1.5:pct>=80?1.2:1.0;
     const finalXp = Math.round(xpAmt*bonus);
     addXP(finalXp);
+    checkAchievements();
     checkXpUsable();
   }
   // 레벨 테스트
@@ -6626,6 +6682,10 @@ function rGameDone(){
     </div>
     <div style="display:flex;gap:8px;width:100%">
       ${[['✅',right+'개','정답','#16A34A'],['❌',(tot-right)+'개','오답','#DC2626'],['📊',pct+'%','정확도','#1E5FA5'],['⚡',(S._maxCombo||0)+'연속','최고콤보','#F59E0B']].map(([ic,v,lb,col])=>`<div style="flex:1;background:var(--bg-card,#FFFEF8);border-radius:14px;border:1.5px solid var(--border,#F0E6C8);padding:10px;text-align:center"><div style="font-size:16px">${ic}</div><div style="font-size:16px;font-weight:900;color:${col}">${v}</div><div style="font-size:9px;color:#9CA3AF">${lb}</div></div>`).join('')}
+    ${isNewBest?`<div style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:12px;padding:10px;text-align:center;border:1.5px solid #F6D860">
+      <div style="font-size:14px;font-weight:800;color:#D97706">🏆 신기록 달성!</div>
+      <div style="font-size:11px;color:#A08040">${S.gameId} 최고 점수 ${pct}%</div>
+    </div>`:''}
     </div>
     ${isNewBest&&pct>0?`<div style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:14px;padding:10px 14px;width:100%;text-align:center">
       <div style="font-size:14px;font-weight:900;color:#E65100">🏆 신기록! ${pct}%</div>
@@ -6654,7 +6714,9 @@ function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;const right=Ob
 function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
   const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(()=>{S._gCs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);return S._gCs;})();
+  const otherPool=src.filter(x=>x.en!==w.en);
+  const needCount=Math.min(3,otherPool.length);
+  const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(()=>{S._gCs=shuf([w,...pick(otherPool,needCount)]);return S._gCs;})();
   return ghdr('🎯 뜻 맞추기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'맞아! 🎉':'아쉬워! 💪'):'이 단어의 뜻은?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#1E5FA5"></div></div>
@@ -6663,17 +6725,22 @@ function rQ4(){
       <div style="font-size:28px;font-weight:900;color:#1E5FA5;font-family:monospace">${w.en}</div>
       <div style="font-size:13px;color:#64748B;margin-top:4px">${w.ph||''}</div>
     </div>
-    <div class="g2">${cs.map((ch,ci)=>{let bg='var(--bg-card,#fff)',col='var(--text1,#111)',bd='var(--border,#E5E7EB)';if(S.gAns){if(ch.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'&&S._gLastAns===ci){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':`ansQIdx(${ci},${S.gIdx})`}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${ch.kr}</button>`;}).join('')}</div>
+    <div class="g2">${cs.map((ch,ci)=>{let bg='var(--bg-card,#fff)',col='var(--text1,#111)',bd='var(--border,#E5E7EB)';if(S.gAns){if(ch.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'&&S._gLastAns===ci){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}else if(S.gRes==='ng'){bg='#F9FAFB';col='#9CA3AF';bd='#E5E7EB';}}return `<button onclick="${S.gAns?'':`ansQIdx(${ci},${S.gIdx})`}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};transition:all .2s;font-family:inherit">${ch.kr}</button>`;}).join('')}</div>
     </div>
   </div>`;
 }
 function ansQ(c,ok2){
+  S._gSc=c; // 선택한 답 저장
   S.gAns=true; S.gRes=c===ok2?'ok':'ng';
-  if(c===ok2){S.gScore+=100;ok();S.gResultMap[ok2]=true;}
-  else{ng();S.gResultMap[ok2]=false;}
+  if(c===ok2){
+    S.gScore+=100; ok(); S.gResultMap[ok2]=true;
+    checkAchievements();
+  } else {
+    ng(); S.gResultMap[ok2]=false;
+  }
   logStudy('quiz'); go();
   const delay=S.gameSettings?.autoNext?600:900;
-  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gSc=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
 
 function ansQIdx(ci,wIdx){
@@ -6693,16 +6760,18 @@ function ansQIdx(ci,wIdx){
 function rFill(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
   const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  const cs=shuf([w,...pick(src.filter(x=>x.en!==w.en),3)]);
+  const otherPoolF=src.filter(x=>x.en!==w.en);
+  const needCountF=Math.min(3,otherPoolF.length);
+  const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(()=>{S._gCs=shuf([w,...pick(otherPoolF,needCountF)]);return S._gCs;})();
   return ghdr('📝 빈칸 채우기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'완벽해! 🎉':'아쉬워! 💪'):'빈칸에 들어갈 단어는?',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#D97706"></div></div>
     <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border-radius:20px;padding:20px;text-align:center;border:3px solid #FDE68A">
       ${S.showImg!==false?`<div style="font-size:64px;margin-bottom:8px">${w.img||'📝'}</div>`:''}
-      <div style="font-size:15px;color:#111;font-style:italic;line-height:2">"${w.ex.replace(w.en,'_______')}"</div>
+      <div style="font-size:15px;color:#111;font-style:italic;line-height:2">"${(w.ex||'('+w.kr+')').replace(w.en,'_______')}"</div>
       <div style="font-size:13px;color:#D97706;margin-top:8px;font-weight:700">뜻: ${w.kr}</div>
     </div>
-    <div class="g2">${cs.map(c=>{let bg='#fff',col='#111',bd='#E5E7EB';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};font-family:monospace">${c.en}</button>`;}).join('')}
+    <div class="g2">${cs.map(c=>{let bg='#fff',col='#111',bd='#E5E7EB';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'&&S._gSc===c.en){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};font-family:monospace">${c.en}</button>`;}).join('')}
     </div>
   </div>`;
 }
@@ -6710,7 +6779,12 @@ function rFill(){
 function rTyping(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
   const isSc=S.gameId==='scramble';
-  const sc=shuf([...w.en]).join('');
+  const sc=(S.gAns&&S._gSc)?S._gSc:(()=>{
+    let scrambled=w.en;
+    let tries=0;
+    while(scrambled===w.en&&tries<10){scrambled=shuf([...w.en]).join('');tries++;}
+    return S._gSc=scrambled;
+  })();
   const grad=isSc?GGRADS.scramble:GGRADS.typing;
   return ghdr(isSc?'🔀 스크램블':'✏️ 문장 완성',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'완벽해! 🎉':'아쉬워! 💪'):isSc?'섞인 철자를 올바르게 써봐!':'뜻을 보고 영단어를 써봐!',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
@@ -6718,13 +6792,22 @@ function rTyping(){
     <div style="background:${grad};border-radius:20px;padding:24px;text-align:center">
       <div style="font-size:72px;margin-bottom:8px">${w.img||'📝'}</div>
       ${isSc?`<div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:8px;font-family:monospace">${sc}</div><div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:6px">뜻: ${w.kr}</div>`
-      :`<div style="font-size:22px;font-weight:800;color:#fff">${w.kr}</div><div style="font-size:12px;font-style:italic;color:rgba(255,255,255,.8);margin-top:8px">"${w.ex.replace(w.en,'_____')}"</div>`}
+      :`<div style="font-size:22px;font-weight:800;color:#fff">${w.kr}</div>${w.ex?`<div style="font-size:12px;font-style:italic;color:rgba(255,255,255,.8);margin-top:8px">"${w.ex.replace(w.en,'_____')}"</div>`:''}`}
     </div>
     <input id="ti" value="${S.gInput}" oninput="S.gInput=this.value" onkeydown="if(event.key==='Enter')chkT('${w.en}')" placeholder="영단어 입력..." style="border:2px solid ${S.gRes==='ok'?'#16A34A':S.gRes==='ng'?'#DC2626':'#BFDBFE'};font-size:17px;font-family:monospace;font-weight:700">
     <button class="btn" onclick="chkT('${w.en}')" ${S.gAns?'disabled':''} style="background:#EC4899;color:#fff">확인</button>
   </div>`;
 }
-function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[ok2]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[ok2]=false;}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
+function chkT2(inputVal, ok2){
+  const v=(inputVal||'').trim().toLowerCase();
+  const r=v===ok2.toLowerCase();
+  S.gAns=true; S.gRes=r?'ok':'ng';
+  if(r){S.gScore+=100;ok();S.gResultMap[ok2]=true;}
+  else{ng();toast('❌ 정답: '+ok2);S.gResultMap[ok2]=false;}
+  logStudy('quiz'); go();
+  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);
+}
+function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[ok2]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[ok2]=false;}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';S._gSc=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
 
 // 단어 완성하기
 function rWC(){
@@ -6735,7 +6818,13 @@ function rWC(){
     return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:transparent;margin:0 2px;border-bottom:3px solid ${S.wcWrong>=6?'#DC2626':'#BFDBFE'};padding:0 4px">_</span>`;
   }).join('');
   const allDone=S.wcLetters.every((l,i)=>!l.hidden||S.wcGuessed.has(i));
-  if(allDone){S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{const pool=(S.words.length>=2?S.words:DEFAULT_WORDS[S.lid]).filter(ww=>ww.en.length>=3);S.wcWord=rnd(pool);S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;}go();},800);}
+  if(allDone){S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
+      // 다음 단어는 S.gWords에서
+      const nw=S.gWords[S.gIdx];
+      if(!nw){S.gDone=true;go();return;}
+      S.wcWord=nw;
+      S.wcLetters=nw.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<nw.en.length-1;return{letter:l,hidden:hide};});
+      S.wcGuessed=new Set();S.wcWrong=0;go();},800);}
   const alpha='abcdefghijklmnopqrstuvwxyz'.split('');
   const usedWrong=new Set([...S.wcGuessed].filter(i=>!S.wcLetters[i]?.hidden).map(()=>null));
   return ghdr('🔡 단어 완성하기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
@@ -6768,20 +6857,51 @@ function rMatch(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="display:flex;flex-direction:column;gap:6px">
         ${S.mEn.map((en,ei)=>{const d=S.mMatched.has(en),s=S.mEn0===en,ww=S.gWords.find(x=>x.en===en);
-          return `<button onclick="selM('en','${en}')" style="padding:12px 8px;border-radius:14px;font-size:12px;font-weight:700;font-family:monospace;background:${d?'#DCFCE7':s?'#EFF6FF':'#fff'};border:2px solid ${d?'#86EFAC':s?'#1E5FA5':'#E5E7EB'};color:${d?'#15803D':s?'#1E5FA5':'#111'};cursor:${d?'default':'pointer'};text-align:center">
+          const isWrong=S.mWrongEn===en;
+          return `<button onclick="selM('en','${en}')" style="padding:12px 8px;border-radius:14px;font-size:12px;font-weight:700;font-family:monospace;background:${d?'#DCFCE7':isWrong?'#FFF1F2':s?'#EFF6FF':'#fff'};border:2px solid ${d?'#86EFAC':isWrong?'#FECDD3':s?'#1E5FA5':'#E5E7EB'};color:${d?'#15803D':isWrong?'#DC2626':s?'#1E5FA5':'#111'};cursor:${d?'default':'pointer'};text-align:center;transition:all .2s">
             <div style="font-size:24px;margin-bottom:4px">${ww?.img||'📝'}</div>${en}
           </button>`;}).join('')}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         ${S.mKr.map((kr,ki)=>{const d=S.mMatched.has('kr_'+ki),s=S.mKr0===ki;
-          return `<button onclick="selM('kr',${ki})" style="padding:16px 8px;border-radius:14px;font-size:13px;font-weight:700;background:${d?'#DCFCE7':s?'#FFFBEB':'#fff'};border:2px solid ${d?'#86EFAC':s?'#D97706':'#E5E7EB'};color:${d?'#15803D':s?'#D97706':'#111'};cursor:${d?'default':'pointer'}">${kr}</button>`;}).join('')}
+          const isWrongK=S.mWrongKr===ki;
+          return `<button onclick="selM('kr',${ki})" style="padding:16px 8px;border-radius:14px;font-size:13px;font-weight:700;background:${d?'#DCFCE7':isWrongK?'#FFF1F2':s?'#FFFBEB':'#fff'};border:2px solid ${d?'#86EFAC':isWrongK?'#FECDD3':s?'#D97706':'#E5E7EB'};color:${d?'#15803D':isWrongK?'#DC2626':s?'#D97706':'#111'};cursor:${d?'default':'pointer'};transition:all .2s">${kr}</button>`;}).join('')}
       </div>
     </div>
   </div>`;
 }
 function selM(t,v){
-  if(t==='en'){S.mEn0=v;if(S.mKr0!==null){const p=S.mPairs[S.mKr0];if(p&&p.en===v){S.mMatched.add(v);S.mMatched.add('kr_'+S.mKr0);S.mScore+=100;ok();}else ng();S.mEn0=null;S.mKr0=null;}}
-  else{S.mKr0=v;if(S.mEn0){const p=S.mPairs[v];if(p&&p.en===S.mEn0){S.mMatched.add(S.mEn0);S.mMatched.add('kr_'+v);S.mScore+=100;ok();}else ng();S.mEn0=null;S.mKr0=null;}}
+  // mEn[i]↔mKr[j] 인덱스 기반 매칭
+  // mEnIdx[en] → mPairs에서의 원본 인덱스 저장
+  if(t==='en'){
+    if(S.mMatched.has(v)) return; // 이미 매칭된 것
+    S.mEn0=v;
+  } else {
+    if(S.mMatched.has('kr_'+v)) return; // 이미 매칭된 것
+    S.mKr0=v;
+  }
+  // 양쪽 모두 선택됐을 때 매칭 시도
+  if(S.mEn0!==null && S.mKr0!==null){
+    const enVal = S.mEn0;
+    const krIdx = S.mKr0;
+    const krVal = S.mKr[krIdx];
+    // mPairs에서 해당 en의 정답 kr 찾기
+    const pair = S.mPairs.find(p=>p.en===enVal);
+    const isMatch = pair && pair.kr===krVal;
+    if(isMatch){
+      S.mMatched.add(enVal);
+      S.mMatched.add('kr_'+krIdx);
+      S.mScore+=100; ok(); logStudy('quiz');
+      S.mEn0=null; S.mKr0=null;
+    } else {
+      // 오답: 잠깐 빨간색으로 표시 후 초기화
+      ng();
+      S.mWrongEn=enVal; S.mWrongKr=krIdx;
+      go();
+      setTimeout(()=>{S.mWrongEn=null;S.mWrongKr=null;S.mEn0=null;S.mKr0=null;go();},700);
+      return;
+    }
+  }
   go();
 }
 
@@ -6805,8 +6925,14 @@ function rSentence(){
 }
 function pickSB(w){SFX.play('tap');vib(20);S.sbC.push(w);go();}
 function rmSB(i){S.sbC.splice(i,1);go();}
-function chkSB(){const ans=S.sbC.join(' ');const ok2=ans.toLowerCase()===S.sbS.en.toLowerCase();S.sbAns=true;S.sbOk=ok2;if(ok2){S.gScore+=100;ok();}else ng();go();}
-function nxtSB(){buildSentenceFromWords(S.gWords);go();}
+function chkSB(){const ans=S.sbC.join(' ');const ok2=ans.toLowerCase()===S.sbS.en.toLowerCase();S.sbAns=true;S.sbOk=ok2;if(ok2){S.gScore+=100;ok();logStudy('quiz');}else ng();go();}
+function nxtSB(){
+  S.gIdx++;
+  if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
+  buildSentenceFromWords(S.gWords);
+  S.sbAns=false;S.sbOk=false;S.sbC=[];
+  go();
+}
 
 function rChain(){
   const prompts=['And then...','Suddenly...','After that...','Finally...'];
@@ -6819,7 +6945,7 @@ function rChain(){
     <button class="btn bb" onclick="svChain()" ${!S.chIn.trim()?'disabled':''}>이어가기 →</button>`}
   </div>`;
 }
-function svChain(){if(!S.chIn.trim())return;S.chStory+='\n'+S.chIn.trim();S.chIdx++;S.chIn='';S.gScore+=100;addXP(10);if(S.chIdx>=4)S.chDone=true;go();}
+function svChain(){if(!S.chIn.trim())return;S.chStory+='\n'+S.chIn.trim();S.chIdx++;S.chIn='';S.gScore+=100;addXP(10);ok();if(S.chIdx>=4)S.chDone=true;go();}
 
 function buildWF(src){
   // 단어 수에 따라 그리드 크기 결정
@@ -6896,7 +7022,7 @@ function wfCheckSel(){
   S.wfWords.forEach(wd=>{
     if(S.wfFound.has(wd.word))return;
     const m=wd.cells.every(c2=>S.wfSel.includes(c2))&&S.wfSel.every(c2=>wd.cells.includes(c2));
-    if(m){S.wfFound.add(wd.word);S.wfSel=[];ok();vib([50,30,50]);
+    if(m){S.wfFound.add(wd.word);S.wfSel=[];ok();logStudy('quiz');vib([50,30,50]);
       const wi=S.gWords.find(x=>x.en.toUpperCase()===wd.word);
       toast('✅ '+wd.word+(wi?' = '+wi.kr:'')+'!');
       S.gResultMap[wd.word.toLowerCase()]=true; found=true;}
@@ -6929,7 +7055,7 @@ function rWordle(){
     ${cbrow(S.wOver?(S.wWon?'맞췄어! 🎉':'아쉬워!'):S.wGuess.length===0?`힌트: "${S.wWord.kr}" · 6번 안에!`:`힌트: "${S.wWord.kr}"`,S.lid,S.wOver?(S.wWon?'happy':'sad'):'normal')}
     <div style="font-size:42px;margin:4px 0">${S.wWord.img||'📝'}</div>
     ${Array.from({length:6}).map((_,ri)=>{const g=S.wGuess[ri]||'',sc=g?scoreW(g,W):[],isCur=ri===S.wGuess.length&&!S.wOver,dp=isCur?S.wIn.padEnd(LEN):g.padEnd(LEN);return `<div style="display:flex;gap:5px">${Array.from({length:LEN}).map((_,ci)=>{const ch=dp[ci]||'',st=sc[ci]||'',bg=st==='correct'?'#16A34A':st==='present'?'#D97706':st==='absent'?'#6B7280':'transparent',bd=st?bg:(ch?'#1E5FA5':'#E5E7EB');return `<div class="wc" style="width:${cw}px;height:${cw}px;border-color:${bd};background:${bg};color:${st?'#fff':'#111'}">${ch.toUpperCase()}</div>`;}).join('')}</div>`;}).join('')}
-    ${S.wOver?`<div style="text-align:center;background:${S.wWon?'#F0FDF4':'#FFF1F2'};border-radius:14px;padding:14px;width:100%"><div style="font-size:15px;font-weight:800;color:${S.wWon?'#16A34A':'#DC2626'}">${S.wWon?'🎉 정답!':'정답: '+S.wWord.en}</div><button class="btn bb" onclick="S.gDone=true;S.gScore=S.wWon?(7-S.wGuess.length)*100:0;go()" style="margin-top:10px">완료</button></div>`:
+    ${S.wOver?`<div style="text-align:center;background:${S.wWon?'#F0FDF4':'#FFF1F2'};border-radius:14px;padding:14px;width:100%"><div style="font-size:15px;font-weight:800;color:${S.wWon?'#16A34A':'#DC2626'}">${S.wWon?'🎉 정답!':'정답: '+S.wWord.en}</div><button class="btn bb" onclick="S.gDone=true;S.gScore=S.wWon?(7-S.wGuess.length)*100:0;if(S.wWon)ok();else ng();go()" style="margin-top:10px">완료</button></div>`:
     `<input id="wi" value="${S.wIn}" oninput="S.wIn=this.value.slice(0,${LEN})" onkeydown="if(event.key==='Enter')subW('${W}')" placeholder="${LEN}글자 입력..." style="font-size:18px;font-family:monospace;font-weight:700;text-transform:lowercase;width:100%" maxlength="${LEN}">
     <button class="btn" onclick="subW('${W}')" style="background:#D97706;color:#fff;width:100%">제출</button>`}
   </div>`;
@@ -6951,7 +7077,7 @@ function rSSorting(){
     <div style="min-height:52px;background:#F9FAFB;border-radius:12px;border:2px dashed ${S.sbAns?(S.sbOk?'#86EFAC':'#FECDD3'):'#D1D5DB'};padding:8px 10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
       ${S.sbC.length?S.sbC.map((w,i)=>`<span onclick="${S.sbAns?'':'rmSB('+i+')'}" style="display:inline-block;padding:8px 14px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;border:2px solid #BFDBFE;background:#EFF6FF;color:#1E5FA5">${w}</span>`).join(''):`<span style="font-size:13px;color:#D1D5DB">아래 단어를 탭해서 배열하기</span>`}
     </div>
-    ${S.sbAns?`<div style="background:${S.sbOk?'#F0FDF4':'#FFF1F2'};border:2px solid ${S.sbOk?'#86EFAC':'#FECDD3'};border-radius:14px;padding:14px"><div style="font-size:14px;font-weight:700;color:#111">${S.sbS.en}</div></div><button class="btn bb" onclick="S.sbS=null;go()">다음 →</button>`:
+    ${S.sbAns?`<div style="background:${S.sbOk?'#F0FDF4':'#FFF1F2'};border:2px solid ${S.sbOk?'#86EFAC':'#FECDD3'};border-radius:14px;padding:14px"><div style="font-size:14px;font-weight:700;color:#111">${S.sbS.en}</div></div><button class="btn bb" onclick="S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;go();}else{S.sbS=null;S.sbAns=false;S.sbOk=false;S.sbC=[];buildSentenceFromWords(S.gWords);speak(S.sbS.en);go();}">다음 →</button>`:
     `<div style="display:flex;flex-wrap:wrap;gap:7px">${S.sbP.map(w=>{const used=S.sbC.filter(c=>c===w).length>=S.sbP.filter(p=>p===w).length;return `<span onclick="${used?'':'pickSB(\''+w+'\')'}" style="display:inline-block;padding:8px 14px;border-radius:12px;font-size:13px;font-weight:700;cursor:${used?'default':'pointer'};border:2px solid;background:${used?'#F3F4F6':'#EFF6FF'};border-color:${used?'#E5E7EB':'#BFDBFE'};color:${used?'#9CA3AF':'#1E5FA5'};opacity:${used?.5:1}">${w}</span>`;}).join('')}</div>
     <button class="btn" onclick="chkSB()" ${S.sbC.length<2?'disabled':''} style="background:#E65100;color:#fff">확인 ✓</button>`}
   </div>`;
@@ -6968,8 +7094,8 @@ function rListen(){
         <div class="wave">${[1,2,3,4,5].map(i=>`<div class="wave-bar" style="background:#fff;animation-delay:${i*.1}s"></div>`).join('')}</div>🔊 듣기
       </button>
     </div>
-    <input id="ti" value="${S.gInput}" oninput="S.gInput=this.value" onkeydown="if(event.key==='Enter')chkT('${w.en}')" placeholder="들린 단어 입력..." style="font-size:17px;font-family:monospace;font-weight:700">
-    <button class="btn" onclick="chkT('${w.en}')" ${S.gAns?'disabled':''} style="background:#880E4F;color:#fff">확인</button>
+    <input id="ti" value="${S.gInput}" oninput="S.gInput=this.value" onkeydown="if(event.key==='Enter'&&!S.gAns){const ti=document.getElementById('ti');if(ti)chkT2(ti.value,'${w.en}');}" placeholder="들린 단어 입력..." style="font-size:17px;font-family:monospace;font-weight:700" ${S.gAns?'disabled':''} autocomplete="off">
+    <button class="btn" onclick="if(!S.gAns){const ti=document.getElementById('ti');if(ti)chkT2(ti.value,'${w.en}');}" style="background:#880E4F;color:#fff">확인</button>
   </div>`;
 }
 

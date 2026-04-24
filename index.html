@@ -926,6 +926,8 @@ const S = {
   _acc:[], // 보유 장식품 목록
   _equipped:'', // 현재 장착 장식품
   _adConfig:null, // 광고 배너 설정
+  _ownedPacks:[], // 마켓 구매이력
+  _matchPlayed:0, // 매칭게임 진행 세트 수
   _hadPerfect:false, // 테스트 100% 달성
   _srsCount:0, // SRS 복습 누적 횟수
   favorites:new Set(), // 즐겨찾기 단어
@@ -4220,28 +4222,54 @@ function rGameTab() {
 
   let html = '<div class="pad" style="padding-bottom:24px">';
 
-  // ── 벌거지 상태 카드 ──
-  html += `<div style="background:linear-gradient(135deg,${pet.bg1},${pet.bg2});border-radius:20px;padding:18px;text-align:center">
-    <div style="font-size:64px;margin-bottom:8px">${pet.emoji}</div>
-    <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px">${lvInfo.name}</div>
-    <div style="background:rgba(255,255,255,.2);border-radius:20px;padding:6px 14px;display:inline-block;font-size:13px;color:#fff;margin-bottom:12px">${pet.mood}</div>
-    <div style="background:rgba(255,255,255,.15);border-radius:12px;padding:10px 14px;text-align:left">
-      <div style="font-size:12px;color:rgba(255,255,255,.8);margin-bottom:6px">다음 진화까지</div>
-      <div style="background:rgba(255,255,255,.25);border-radius:6px;height:10px;overflow:hidden;margin-bottom:4px">
-        <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .5s"></div>
+  // ── 캐릭터 + 상태 통합 카드 ──
+  const charMood = pet.emoji==='😄'||pet.emoji==='😊'?'happy':pet.emoji==='😤'?'angry':pet.emoji==='💀'?'danger':'normal';
+  const equipped = S._equipped||'';
+  const accMap = {crown:'👑',star:'⭐',halo:'🌟',ribbon:'🎀',glasses:'👓',wings:'🪶'};
+  html += `<div style="background:linear-gradient(135deg,${pet.bg1},${pet.bg2});border-radius:24px;padding:20px;position:relative;overflow:hidden">
+    <!-- 배경 장식 -->
+    <div style="position:absolute;top:-20px;right:-20px;width:120px;height:120px;background:rgba(255,255,255,.06);border-radius:50%"></div>
+    <div style="position:absolute;bottom:-30px;left:-10px;width:90px;height:90px;background:rgba(255,255,255,.04);border-radius:50%"></div>
+    <!-- 상단: 레벨 + 상태 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div>
+        <div style="font-size:11px;color:rgba(255,255,255,.7);font-weight:600">내 캐릭터</div>
+        <div style="font-size:18px;font-weight:900;color:#fff">${lvInfo.emoji} ${lvInfo.name}</div>
       </div>
-      <div style="font-size:12px;color:rgba(255,255,255,.9);font-weight:700">${S.xp||0} / ${nextEvol?nextEvol.xp:'MAX'} XP</div>
+      <div style="background:rgba(255,255,255,.2);border-radius:20px;padding:5px 12px;font-size:12px;color:#fff;font-weight:700">${pet.mood}</div>
     </div>
-  </div>`;
-
-  // ── 돌보기 바로가기 버튼 ──
-  html += `<div onclick="S.stab='petcare';go('butterfly')" style="background:linear-gradient(135deg,${pet.bg1||pet.color||'#7C3AED'},${pet.bg2||pet.bg1||pet.color||'#5B21B6'}cc);border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer">
-    <div style="animation:${pet.emoji==='😄'?'float-happy':pet.emoji==='💀'?'float-danger':pet.emoji==='😤'?'float-angry':'float'} 3s ease-in-out infinite;display:inline-block">${charSVG(S.lid,52,pet.emoji==='😄'||pet.emoji==='😊'?'happy':pet.emoji==='😤'?'angry':pet.emoji==='💀'?'sad':'normal')}</div>
-    <div style="flex:1">
-      <div style="font-size:14px;font-weight:800;color:#fff">${lvInfo.name} · ⚡${S.xp||0} XP</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${pet.mood.replace(/"/g,'')}</div>
+    <!-- 캐릭터 중앙 표시 -->
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
+      <div onclick="S.stab='petcare';go('butterfly')" style="cursor:pointer;position:relative;flex-shrink:0">
+        ${charSVGAnimated(S.lid, 80, charMood)}
+        ${equipped&&accMap[equipped]?`<div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-size:28px;line-height:1">${accMap[equipped]}</div>`:''}
+      </div>
+      <div style="flex:1">
+        <!-- XP 진행 -->
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.8);margin-bottom:5px">
+          <span>⚡ ${S.xp||0} XP</span>
+          <span>${nextEvol?(nextEvol.xp-(S.xp||0))+'XP 남음':'최고 레벨 👑'}</span>
+        </div>
+        <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden;margin-bottom:8px">
+          <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .6s;box-shadow:0 0 6px rgba(255,255,255,.5)"></div>
+        </div>
+        <!-- 배고픔/행복 지표 -->
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;background:rgba(255,255,255,.12);border-radius:8px;padding:5px 8px;text-align:center">
+            <div style="font-size:9px;color:rgba(255,255,255,.7)">배부름</div>
+            <div style="font-size:12px;font-weight:700;color:#fff">${'🟡'.repeat(Math.min(Math.ceil((S._petFull||0)/2),5))}${'⚪'.repeat(5-Math.min(Math.ceil((S._petFull||0)/2),5))}</div>
+          </div>
+          <div style="flex:1;background:rgba(255,255,255,.12);border-radius:8px;padding:5px 8px;text-align:center">
+            <div style="font-size:9px;color:rgba(255,255,255,.7)">행복</div>
+            <div style="font-size:12px;font-weight:700;color:#fff">${'🟡'.repeat(Math.min(Math.ceil((S._petHappy||0)/2),5))}${'⚪'.repeat(5-Math.min(Math.ceil((S._petHappy||0)/2),5))}</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div style="background:rgba(255,255,255,.2);border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;color:#fff">돌보기 ›</div>
+    <!-- 하단 버튼 -->
+    <div onclick="S.stab='petcare';go('butterfly')" style="background:rgba(255,255,255,.15);border-radius:12px;padding:10px;text-align:center;cursor:pointer;font-size:13px;font-weight:700;color:#fff">
+      🐛 돌보기 →
+    </div>
   </div>`;
 
   // ── XP 사용 버튼 ──
@@ -4945,10 +4973,54 @@ function rHome() {
   const parts=[];
   parts.push('<div class="pad" style="padding-bottom:24px">');
 
+  // ── 캐릭터 + 성장 게이지 (최상단) ──
+  parts.push(`<div onclick="S.stab='petcare';go('butterfly')" style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:18px;color:#fff;cursor:pointer">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+      <div style="flex-shrink:0">
+        ${charSVGAnimated(S.lid,64,stateKey==='happy'?'happy':stateKey==='danger'?'danger':stateKey==='angry'?'angry':stateKey==='sad1'||stateKey==='sad2'?'sad':'normal')}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:11px;opacity:.8;margin-bottom:3px">${l.emoji} ${l.name} · 🔥${S.streak||0}일 연속</div>
+        <div style="font-size:14px;font-weight:700;line-height:1.5">${bubbleMsg}</div>
+      </div>
+    </div>
+    <!-- 성장 게이지 -->
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;opacity:.8;margin-bottom:4px">
+        <span>⚡ XP 진행 (다음: ${nextLv?nextLv.emoji+' '+nextLv.name:'👑 최고'})</span>
+        <span>${S.xp||0}/${xpTarget} (${xpPct}%)</span>
+      </div>
+      <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
+        <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .8s"></div>
+      </div>
+    </div>
+    <!-- 빠른 액션 -->
+    <div onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+      ${[[30,'🍎','먹이주기'],[20,'🎮','놀아주기'],[100,'⬆️','레벨업']].map(([cost,ic,nm])=>`
+        <div onclick="useXP(${cost},'${nm}')" style="background:rgba(255,255,255,.2);border-radius:12px;padding:8px;text-align:center;cursor:pointer;opacity:${(S.xp||0)>=cost?1:0.45}">
+          <div style="font-size:18px">${ic}</div>
+          <div style="font-size:10px;font-weight:700;color:#fff">${nm}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.7)">XP ${cost}</div>
+        </div>`).join('')}
+    </div>
+    <!-- 성장 8단계 미니 표시 -->
+    <div style="display:flex;justify-content:center;gap:4px;margin-top:10px;align-items:center">
+      ${LEVELS.map((lv,i)=>{
+        const isCur = lv.id===S.lid;
+        const isPassed = LEVELS.findIndex(l=>l.id===S.lid) > i;
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+          <div style="font-size:${isCur?16:10}px;opacity:${isCur?1:isPassed?0.7:0.35};transition:all .3s;${isCur?'filter:drop-shadow(0 0 4px rgba(255,255,255,.8))':''}">${lv.emoji}</div>
+          ${isCur?`<div style="width:4px;height:4px;border-radius:50%;background:#fff;margin-top:1px"></div>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="text-align:center;font-size:10px;opacity:.5;margin-top:4px">탭해서 자세히 돌보기 👆</div>
+  </div>`);
+
   // ── 스트릭 위기 배너 ──
   if(_dangerStreak) {
     const hoursLeft = 23 - new Date().getHours();
-    parts.push(`<div onclick="startLearnSession('new')" style="background:linear-gradient(135deg,#FEF2F2,#FFF1F2);border-radius:14px;border:2px solid #FECDD3;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;animation:float-angry 2s ease-in-out infinite">
+    parts.push(`<div onclick="go('learn')" style="background:linear-gradient(135deg,#FEF2F2,#FFF1F2);border-radius:14px;border:2px solid #FECDD3;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;animation:float-angry 2s ease-in-out infinite">
       <span style="font-size:24px">🔥</span>
       <div style="flex:1">
         <div style="font-size:12px;font-weight:800;color:#DC2626">${S.streak}일 연속 위기!</div>
@@ -5035,50 +5107,6 @@ function rHome() {
       </div>
     </div>`);
   }
-
-  // ── 캐릭터 + 성장 게이지 (최상단) ──
-  parts.push(`<div onclick="S.stab='petcare';go('butterfly')" style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:18px;color:#fff;cursor:pointer">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-      <div style="flex-shrink:0">
-        ${charSVGAnimated(S.lid,64,stateKey==='happy'?'happy':stateKey==='danger'?'danger':stateKey==='angry'?'angry':stateKey==='sad1'||stateKey==='sad2'?'sad':'normal')}
-      </div>
-      <div style="flex:1">
-        <div style="font-size:11px;opacity:.8;margin-bottom:3px">${l.emoji} ${l.name} · 🔥${S.streak||0}일 연속</div>
-        <div style="font-size:14px;font-weight:700;line-height:1.5">${bubbleMsg}</div>
-      </div>
-    </div>
-    <!-- 성장 게이지 -->
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;font-size:10px;opacity:.8;margin-bottom:4px">
-        <span>⚡ XP 진행 (다음: ${nextLv?nextLv.emoji+' '+nextLv.name:'👑 최고'})</span>
-        <span>${S.xp||0}/${xpTarget} (${xpPct}%)</span>
-      </div>
-      <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-        <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .8s"></div>
-      </div>
-    </div>
-    <!-- 빠른 액션 -->
-    <div onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-      ${[[30,'🍎','먹이주기'],[20,'🎮','놀아주기'],[100,'⬆️','레벨업']].map(([cost,ic,nm])=>`
-        <div onclick="useXP(${cost},'${nm}')" style="background:rgba(255,255,255,.2);border-radius:12px;padding:8px;text-align:center;cursor:pointer;opacity:${(S.xp||0)>=cost?1:0.45}">
-          <div style="font-size:18px">${ic}</div>
-          <div style="font-size:10px;font-weight:700;color:#fff">${nm}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,.7)">XP ${cost}</div>
-        </div>`).join('')}
-    </div>
-    <!-- 성장 8단계 미니 표시 -->
-    <div style="display:flex;justify-content:center;gap:4px;margin-top:10px;align-items:center">
-      ${LEVELS.map((lv,i)=>{
-        const isCur = lv.id===S.lid;
-        const isPassed = LEVELS.findIndex(l=>l.id===S.lid) > i;
-        return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
-          <div style="font-size:${isCur?16:10}px;opacity:${isCur?1:isPassed?0.7:0.35};transition:all .3s;${isCur?'filter:drop-shadow(0 0 4px rgba(255,255,255,.8))':''}">${lv.emoji}</div>
-          ${isCur?`<div style="width:4px;height:4px;border-radius:50%;background:#fff;margin-top:1px"></div>`:''}
-        </div>`;
-      }).join('')}
-    </div>
-    <div style="text-align:center;font-size:10px;opacity:.5;margin-top:4px">탭해서 자세히 돌보기 👆</div>
-  </div>`);
 
   // ── XP 배너 ──
   if((S.xp||0)>=30) {
@@ -6203,7 +6231,7 @@ function showGameSettings(gameId, tab) {
         <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">마크</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${(()=>{
-            const markOpts=[[-1,'전체',curWords.length,'#9CA3AF'],[0,'🥚 미분류',unmarked,'#9CA3AF'],[1,'🐛 외운',marked1,'#1E5FA5'],[2,'🦋 헷갈리는',marked2,'#EC4899']];
+            const markOpts=[[-1,'전체',curWords.length,'#9CA3AF'],[-2,'✅제외',curWords.length-marked1,'#16A34A'],[0,'🥚 미분류',unmarked,'#9CA3AF'],[1,'🐛 외운',marked1,'#1E5FA5'],[2,'🦋 헷갈리는',marked2,'#EC4899']];
             return markOpts.map(function(opt){
               const v=opt[0],lb=opt[1],mc=opt[2],c=opt[3];
               const sel=gs.markFilter===v;
@@ -6336,14 +6364,14 @@ function startGameWithSettings(gameId) {
     return;
   }
 
-  let src = curWords;
-  if(gs.markFilter>=0) {
-    src = curWords.filter(w=>{
-      const mm = getCurrentBookMarkMap();
-      return (mm[w.en]||0) === gs.markFilter;
-    });
+  const _mm = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
+  let src = allWords;
+  if(gs.markFilter === -2) {
+    src = allWords.filter(w=>(_mm[w.en]||0) !== 1); // 외운단어 제외
+  } else if(gs.markFilter>=0) {
+    src = allWords.filter(w=>(_mm[w.en]||0) === gs.markFilter);
   }
-  if(!src.length) src = curWords;
+  if(!src.length) src = allWords;
   startGameW(gameId, pick(src, Math.min(gs.count, src.length)));
 }
 
@@ -7229,7 +7257,7 @@ function rGameDone(){
 }
 
 const GGRADS={quiz:'linear-gradient(135deg,#1E5FA5,#2563EB)',fill:'linear-gradient(135deg,#D97706,#F59E0B)',wordfind:'linear-gradient(135deg,#16A34A,#22C55E)',chain:'linear-gradient(135deg,#7C3AED,#A855F7)',match:'linear-gradient(135deg,#0D9488,#14B8A6)',sentence:'linear-gradient(135deg,#E91E63,#F43F5E)',scramble:'linear-gradient(135deg,#EC4899,#F472B6)',wordle:'linear-gradient(135deg,#92400E,#D97706)',typing:'linear-gradient(135deg,#15803D,#16A34A)',wc:'linear-gradient(135deg,#0369A1,#0EA5E9)',ssort:'linear-gradient(135deg,#E65100,#F97316)',listen:'linear-gradient(135deg,#880E4F,#BE185D)'};
-function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;const wrong=Object.values(S.gResultMap||{}).filter(v=>v===false).length;const scoreStr=(right>0||wrong>0)?`<span style="font-size:12px;font-weight:800;color:#86EFAC">✅${right}</span> <span style="font-size:12px;font-weight:800;color:#FECACA">❌${wrong}</span>`:`<span style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</span>`;return `<div style="background:${grd};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><button onclick="SFX.stopBG();go('mybooks','quiz3')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button><div style="font-size:14px;font-weight:800;color:#fff">${title}</div><div>${scoreStr}</div></div>`;}
+function ghdr(title,prog){const grd=GGRADS[S.gameId]||GGRADS.quiz;const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;const wrong=Object.values(S.gResultMap||{}).filter(v=>v===false).length;const scoreStr=(right>0||wrong>0)?`<span style="font-size:12px;font-weight:800;color:#86EFAC">✅${right}</span> <span style="font-size:12px;font-weight:800;color:#FECACA">❌${wrong}</span>`:`<span style="font-size:12px;color:rgba(255,255,255,.8)">${prog}</span>`;return `<div style="background:${grd};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><button onclick="SFX.stopBG();go(S._prevTab||'butterfly')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;color:#fff">← 나가기</button><div style="font-size:14px;font-weight:800;color:#fff">${title}</div><div>${scoreStr}</div></div>`;}
 
 function rQ4(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
@@ -7462,7 +7490,7 @@ function rSentence(){
       ${S.sbC.length?S.sbC.map((w,i)=>`<span onclick="${S.sbAns?'':'rmSB('+i+')'}" style="display:inline-block;padding:8px 14px;border-radius:12px;font-size:13px;font-weight:700;cursor:${S.sbAns?'default':'pointer'};border:2px solid;background:${S.sbAns?(S.sbOk?'#DCFCE7':'#FFF1F2'):'#EFF6FF'};border-color:${S.sbAns?(S.sbOk?'#86EFAC':'#FECDD3'):'#BFDBFE'};color:${S.sbAns?(S.sbOk?'#15803D':'#DC2626'):'#1E5FA5'}">${w}</span>`).join(''):`<span style="font-size:13px;color:#D1D5DB">아래 단어를 탭해서 문장 만들기</span>`}
     </div>
     ${S.sbAns?`<div style="background:${S.sbOk?'#F0FDF4':'#FFF1F2'};border:2px solid ${S.sbOk?'#86EFAC':'#FECDD3'};border-radius:14px;padding:14px"><div style="font-size:12px;font-weight:700;color:${S.sbOk?'#16A34A':'#DC2626'};margin-bottom:4px">${S.sbOk?'✅ 정답!':'❌ 정답은...'}</div><div style="font-size:14px;font-weight:700;color:#111">${s.en}</div></div>
-    <div style="display:flex;gap:8px"><button class="btn bgr" onclick="SFX.stopBG();go('mybooks','quiz3')">게임 목록</button><button class="btn bb" onclick="nxtSB()">다음 →</button></div>`:
+    <div style="display:flex;gap:8px"><button class="btn bgr" onclick="SFX.stopBG();go(S._prevTab||'butterfly')">게임 목록</button><button class="btn bb" onclick="nxtSB()">다음 →</button></div>`:
     `<div style="display:flex;flex-wrap:wrap;gap:7px">${S.sbP.map((w,i)=>{const used=S.sbC.filter(c=>c===w).length>=S.sbP.filter(p=>p===w).length;return `<span onclick="${used?'':'pickSB(\''+w+'\')'}" style="display:inline-block;padding:8px 14px;border-radius:12px;font-size:13px;font-weight:700;cursor:${used?'default':'pointer'};border:2px solid;background:${used?'#F3F4F6':'#EFF6FF'};border-color:${used?'#E5E7EB':'#BFDBFE'};color:${used?'#9CA3AF':'#1E5FA5'};opacity:${used?.5:1}">${w}</span>`;}).join('')}</div>
     <button class="btn bb" onclick="chkSB()" ${S.sbC.length<2?'disabled':''}>확인 ✓</button>`}
   </div>`;
@@ -7483,7 +7511,7 @@ function rChain(){
   return ghdr('➡️ 문장 이어가기',`${S.chIdx}/4`)+`<div class="pad">
     ${cbrow(S.chDone?'멋진 이야기 완성! 🎉':rnd(['이야기를 이어봐! ✍️','창의적으로! 😊','영어로 도전! 💪']),S.lid,S.chDone?'happy':'normal')}
     <div style="background:linear-gradient(135deg,#FDF4FF,#F3E8FF);border-radius:20px;padding:16px;border:2px solid #E9D5FF"><div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">📖 지금까지의 이야기</div><div style="font-size:14px;color:#111;line-height:1.9;white-space:pre-wrap">${S.chStory}</div></div>
-    ${S.chDone?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">${charSVG(S.lid,56,'happy')}<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">이야기 완성! 🎊</div><button class="btn bb" onclick="SFX.stopBG();go('mybooks','quiz3')">다른 게임</button></div>`:
+    ${S.chDone?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">${charSVG(S.lid,56,'happy')}<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">이야기 완성! 🎊</div><button class="btn bb" onclick="SFX.stopBG();go(S._prevTab||'butterfly')">다른 게임</button></div>`:
     `<div style="background:#EFF6FF;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:700;color:#1E5FA5">${prompts[S.chIdx]||'마무리해봐!'}</div>
     <textarea id="ci" style="min-height:80px;resize:none;line-height:1.7" placeholder="영어로 이어서..." oninput="S.chIn=this.value">${S.chIn}</textarea>
     <button class="btn bb" onclick="svChain()" ${!S.chIn.trim()?'disabled':''}>이어가기 →</button>`}
@@ -7857,6 +7885,15 @@ function rProfile(){
   parts.push('<button class="btn" onclick="showXpGuide()" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">⚡ XP 안내</button>');
   parts.push('<button class="btn" onclick="showTestIntro(true)" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📝 레벨 재테스트</button>');
   parts.push('<button class="btn" onclick="showDataBackup()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #86EFAC">💾 데이터 백업 / 복원</button>');
+  // 최고레벨이면 재탄생 버튼 표시
+  const isGodLv = S.lid === 'god';
+  if(isGodLv) {
+    parts.push(`<div style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:16px;padding:14px;border:1.5px solid #F6D860;margin-bottom:8px;text-align:center">
+      <div style="font-size:14px;font-weight:800;color:#D97706;margin-bottom:4px">👑 나비의 신 달성!</div>
+      <div style="font-size:11px;color:#92400E;margin-bottom:10px">알로 돌아가 새로운 여정을 시작해보세요</div>
+      <button onclick="if(confirm('정말 알로 돌아갈까요?\nXP가 초기화되고 새 여정이 시작돼요')){resetToEgg();toast('🥚 새로운 여정 시작!');go();}" class="btn bb" style="font-size:13px">🥚 알로 돌아가기</button>
+    </div>`);
+  }
   parts.push('<button class="btn bgr" onclick="showLogoutMenu()">로그아웃 / 초기화</button>');
   parts.push('</div>');
   return parts.join('');

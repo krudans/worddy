@@ -923,6 +923,8 @@ const S = {
   mWrongEn:null, mWrongKr:null, // 매칭 오답 피드백
   _twSpoken:'', // 오늘의 단어 자동 발음 날짜
   _studyHourReward:0, // 연속 학습 시간 보상 카운터
+  _acc:[], // 보유 장식품 목록
+  _equipped:'', // 현재 장착 장식품
   _adConfig:null, // 광고 배너 설정
   _hadPerfect:false, // 테스트 100% 달성
   _srsCount:0, // SRS 복습 누적 횟수
@@ -1310,8 +1312,14 @@ function charSVGAnimated(lid, size=60, mood='normal') {
                mood==='sad'?'char-float-sad':
                mood==='angry'?'char-float-angry':
                mood==='normal'?'char-breathe':'char-float';
-  return '<div class="'+cls+'" style="display:inline-block;will-change:transform">'+charSVG(lid,size,mood)+'</div>';
+  const equipped = S._equipped||'';
+  const accMap = {crown:'👑',star:'⭐',halo:'🌟',ribbon:'🎀',glasses:'👓',wings:'🪶'};
+  const accOverlay = equipped && accMap[equipped]
+    ? '<div style="position:absolute;top:-'+Math.round(size*0.28)+'px;left:50%;transform:translateX(-50%);font-size:'+Math.round(size*0.42)+'px;line-height:1;pointer-events:none">'+accMap[equipped]+'</div>'
+    : '';
+  return '<div class="'+cls+'" style="display:inline-block;position:relative;will-change:transform">'+charSVG(lid,size,mood)+accOverlay+'</div>';
 }
+
 
 function showGameIntro(force=false) {
   if(!force && localStorage.getItem('bw-intro-seen')) return;
@@ -1428,11 +1436,12 @@ function showAccessoryShop() {
   const mr = document.getElementById('mr');
   if(!mr) return;
   const acc = [
-    {id:'crown', ic:'👑', nm:'왕관', desc:'7일 연속 달성', xp:100, done:(S.streak||0)>=7},
-    {id:'star',  ic:'✨', nm:'별빛', desc:'30일 연속 달성', xp:200, done:(S.streak||0)>=30},
-    {id:'halo',  ic:'🌟', nm:'후광', desc:'100일 연속 달성', xp:300, done:(S.streak||0)>=100},
-    {id:'ribbon',ic:'🎀', nm:'리본', desc:'즉시 구매 가능', xp:50, done:S._acc?.includes('ribbon')},
-    {id:'glasses',ic:'👓',nm:'안경', desc:'즉시 구매 가능', xp:80, done:S._acc?.includes('glasses')},
+    {id:'crown',  ic:'👑', nm:'왕관', desc:'7일 연속 달성 조건', xp:100, unlock:(S.streak||0)>=7},
+    {id:'star',   ic:'⭐', nm:'별빛 왕관', desc:'30일 연속 달성 조건', xp:200, unlock:(S.streak||0)>=30},
+    {id:'halo',   ic:'🌟', nm:'빛의 후광', desc:'100일 연속 달성 조건', xp:300, unlock:(S.streak||0)>=100},
+    {id:'ribbon', ic:'🎀', nm:'리본', desc:'즉시 구매 가능', xp:50, unlock:true},
+    {id:'glasses',ic:'👓', nm:'안경', desc:'즉시 구매 가능', xp:80, unlock:true},
+    {id:'wings',  ic:'🪶', nm:'날개', desc:'나비 5종 수집 조건', xp:150, unlock:(JSON.parse(localStorage.getItem('wd-butterflies')||'[]').length>=5)},
   ];
   mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:17px;font-weight:800;margin-bottom:14px">🎀 장식품 상점</div>
@@ -1442,8 +1451,13 @@ function showAccessoryShop() {
         <span style="font-size:28px">${a.ic}</span>
         <div style="flex:1"><div style="font-size:13px;font-weight:700">${a.nm}</div><div style="font-size:11px;color:#6B7280">${a.desc}</div></div>
         <div style="text-align:right">
-          ${a.done?'<span style="font-size:11px;color:#16A34A;font-weight:700">✅ 보유</span>':
-            `<button onclick="buyAccessory('${a.id}',${a.xp})" style="background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">${a.xp} XP</button>`}
+          ${(()=>{
+            const owned=(S._acc||[]).includes(a.id);
+            const equipped=S._equipped===a.id;
+            if(owned) return `<button onclick="buyAccessory('${a.id}',0)" style="background:${equipped?'#7C3AED':'#F0FDF4'};color:${equipped?'#fff':'#16A34A'};border:1.5px solid ${equipped?'#7C3AED':'#86EFAC'};border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">${equipped?'✅ 장착중':'장착하기'}</button>`;
+            if(!a.unlock) return '<span style="font-size:10px;color:#9CA3AF">🔒 조건 미달성</span>';
+            return '<button data-bid="'+a.id+'" data-bxp="'+a.xp+'" onclick="buyAccessory(this.dataset.bid,parseInt(this.dataset.bxp))" style="background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">'+a.xp+' XP 구매</button>';
+          })()}
         </div>
       </div>`).join('')}
     </div>
@@ -1751,6 +1765,11 @@ function rPetCare() {
           <div style="font-size:13px;font-weight:800;color:#7C3AED">${nextEvol&&nextEvol.isFinal?'나비 뽑기!':'레벨업!'}</div>
           <div style="font-size:11px;color:#6B7280">${xpPct>=100?(nextEvol&&nextEvol.isFinal?'나비 뽑기 준비완료! 🦋':'진화 준비 완료!'):'XP '+(lvInfo&&lvInfo.xp?(lvInfo.xp-(S.xp||0)):0)+'개 더 필요'}</div>
           <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-top:4px">XP ${lvInfo?lvInfo.xp:100}</div>
+        </div>
+        <div onclick="saveMyCharacter()" style="background:#F0FDF4;border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid #86EFAC;text-align:center">
+          <div style="font-size:22px;margin-bottom:4px">📸</div>
+          <div style="font-size:12px;font-weight:700;color:#16A34A">캐릭터 담기</div>
+          <div style="font-size:10px;color:#9CA3AF">이미지 저장</div>
         </div>
         <div onclick="useXP(50,'장식품')" style="background:#FFFBEB;border-radius:14px;padding:14px;cursor:pointer;opacity:${(S.xp||0)>=50?1:0.4};border:1.5px solid #D97706;text-align:center">
           <div style="font-size:32px;margin-bottom:6px">🎀</div>
@@ -2670,6 +2689,200 @@ function showSpeakMode() {
   };
   render();
 }
+
+function saveMyCharacter() {
+  const size = 200;
+  const svg = charSVG(S.lid, size, 'happy');
+  const equipped = S._equipped||'';
+  const accMap = {crown:'👑',star:'⭐',halo:'🌟',ribbon:'🎀',glasses:'👓',wings:'🪶'};
+  const accEmoji = accMap[equipped]||'';
+  const l = lv(S.lid);
+  
+  // SVG to Canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = 300; canvas.height = 360;
+  const ctx = canvas.getContext('2d');
+  
+  // 배경
+  const grad = ctx.createLinearGradient(0,0,0,360);
+  grad.addColorStop(0, l.bg||'#FFF9C4');
+  grad.addColorStop(1, '#fff');
+  ctx.fillStyle = grad;
+  ctx.roundRect(0,0,300,360,20);
+  ctx.fill();
+  
+  // 이름 배지
+  ctx.fillStyle = l.color||'#F9A825';
+  ctx.roundRect(75,10,150,30,15);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(l.emoji+' '+l.name, 150, 31);
+  
+  // 캐릭터 SVG 렌더
+  const img = new Image();
+  const svgBlob = new Blob([svg], {type:'image/svg+xml'});
+  const url = URL.createObjectURL(svgBlob);
+  img.onload = ()=>{
+    ctx.drawImage(img, 50, 50, size, size);
+    URL.revokeObjectURL(url);
+    
+    // 장식품
+    if(accEmoji) {
+      ctx.font = `${Math.round(size*0.3)}px serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(accEmoji, 150, 85);
+    }
+    
+    // 닉네임
+    ctx.fillStyle = '#374151';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(S.nick||'나의 캐릭터', 150, 285);
+    
+    // XP / 스트릭
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('⚡ '+S.xp+'XP  🔥 '+S.streak+'일', 150, 308);
+    
+    // 워터마크
+    ctx.fillStyle = '#D1D5DB';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('Butterfly Word', 150, 345);
+    
+    // 다운로드
+    const a = document.createElement('a');
+    a.download = 'butterfly_character.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    toast('📸 캐릭터 이미지 저장됨!');
+  };
+  img.onerror = ()=>{ toast('이미지 생성 실패. 다시 시도해주세요.'); };
+  img.src = url;
+}
+
+// ── 회화 모드 ──
+async function showConversationMode() {
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  mr.innerHTML = '<div class="mbg"><div class="modal" style="text-align:center;padding:40px"><div style="font-size:32px">💬</div><div style="margin-top:10px;color:#6B7280">로딩 중...</div></div></div>';
+
+  let sentences = [];
+  // Firebase에서 로드
+  try {
+    if(typeof db !== 'undefined') {
+      const snap = await db.collection('conversation_sentences').orderBy('cat').orderBy('order').get();
+      sentences = snap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+  } catch(e) {}
+
+  // Firebase 없으면 기본 데이터
+  if(!sentences.length) sentences = CONV_DEFAULT;
+  if(!sentences.length) {
+    mr.innerHTML='';
+    toast('회화 문장이 없어요. 관리자에서 등록해주세요.');
+    return;
+  }
+
+  const cats = [...new Set(sentences.map(s=>s.cat||'기타'))];
+  let selCat = cats[0]||'';
+  let cvIdx = 0;
+  let cvFlip = false;
+
+  const renderCV = ()=>{
+    const filtered = sentences.filter(s=>s.cat===selCat);
+    if(!filtered.length) return;
+    if(cvIdx>=filtered.length) cvIdx=0;
+    const s = filtered[cvIdx];
+    mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F172A,#1E293B);display:flex;flex-direction:column;overflow:hidden">
+      <!-- 헤더 -->
+      <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#fff">💬 회화 모드</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5)">${selCat} · ${cvIdx+1}/${filtered.length}</div>
+        </div>
+        <button onclick="window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+      </div>
+      <!-- 카테고리 탭 -->
+      <div style="display:flex;gap:6px;padding:0 16px;overflow-x:auto;flex-shrink:0;padding-bottom:8px">
+        ${cats.map(cat=>`<button onclick="selCat='${cat}';cvIdx=0;cvFlip=false;renderCV()" style="background:${selCat===cat?'rgba(99,179,237,.3)':'rgba(255,255,255,.08)'};color:${selCat===cat?'#63B3ED':'rgba(255,255,255,.5)'};border:1px solid ${selCat===cat?'rgba(99,179,237,.4)':'rgba(255,255,255,.1)'};border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">${cat}</button>`).join('')}
+      </div>
+      <!-- 메인 카드 -->
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px">
+        <div onclick="cvFlip=!cvFlip;renderCV()" style="width:100%;max-width:360px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px 24px;text-align:center;cursor:pointer;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+          <div style="font-size:11px;color:rgba(99,179,237,.8);font-weight:700;margin-bottom:4px">${'⭐'.repeat(s.level||1)} 난이도 ${s.level||1}</div>
+          <div style="font-size:22px;font-weight:900;color:#fff;line-height:1.4">${s.en||''}</div>
+          ${s.ph?`<div style="font-size:13px;color:rgba(167,139,250,.9)">${s.ph}</div>`:''}
+          ${cvFlip?`<div style="width:100%;height:1px;background:rgba(255,255,255,.1);margin:4px 0"></div>
+          <div style="font-size:17px;font-weight:700;color:rgba(255,255,255,.85)">${s.kr||''}</div>`
+          :`<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:8px">탭해서 뜻 보기 👆</div>`}
+        </div>
+      </div>
+      <!-- 하단 컨트롤 -->
+      <div style="padding:0 20px 24px;display:flex;flex-direction:column;gap:10px;flex-shrink:0">
+        <div style="display:flex;gap:10px">
+          <button onclick="cvIdx=Math.max(0,cvIdx-1);cvFlip=false;renderCV()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;color:#fff;font-size:20px;cursor:pointer">◀</button>
+          <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(s.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="flex:2;background:linear-gradient(135deg,#4299E1,#7C3AED);border:none;border-radius:14px;padding:14px;color:#fff;font-size:18px;cursor:pointer;font-weight:700">🔊 발음 듣기</button>
+          <button onclick="cvIdx=Math.min(filtered.length-1,cvIdx+1);cvFlip=false;renderCV()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;color:#fff;font-size:20px;cursor:pointer">▶</button>
+        </div>
+        <button onclick="cvFlip=!cvFlip;renderCV()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px;color:rgba(255,255,255,.6);font-size:12px;cursor:pointer">🔄 뒤집기 (뜻 ${cvFlip?'가리기':'보기'})</button>
+      </div>
+    </div></div>`;
+    // 자동 발음
+    setTimeout(()=>{
+      window.speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(s.en||'');
+      u.lang='en-US';u.rate=0.85;
+      window.speechSynthesis.speak(u);
+    },300);
+  };
+  renderCV();
+}
+
+// 회화 기본 데이터 (Firebase 없을 때)
+const CONV_DEFAULT = [
+  {cat:'인사/소개',en:'Hello, how are you?',kr:'안녕하세요, 잘 지내세요?',ph:'[héloʊ, haʊ ɑːr juː]',level:1},
+  {cat:'인사/소개',en:'My name is ..., nice to meet you.',kr:'제 이름은 ...입니다, 만나서 반갑습니다.',ph:'[maɪ neɪm ɪz ..., naɪs tə miːt juː]',level:1},
+  {cat:'인사/소개',en:'Where are you from?',kr:'어디서 오셨나요?',ph:'[wɛr ɑːr juː frʌm]',level:1},
+  {cat:'인사/소개',en:'I am from Korea.',kr:'저는 한국에서 왔습니다.',level:1},
+  {cat:'인사/소개',en:'What do you do for a living?',kr:'직업이 무엇인가요?',level:2},
+  {cat:'쇼핑',en:'How much does this cost?',kr:'이것은 얼마인가요?',level:1},
+  {cat:'쇼핑',en:'Do you have this in a different size?',kr:'다른 사이즈도 있나요?',level:2},
+  {cat:'쇼핑',en:'Can I get a discount?',kr:'할인이 되나요?',level:2},
+  {cat:'쇼핑',en:'I would like to return this.',kr:'이것을 반품하고 싶습니다.',level:2},
+  {cat:'쇼핑',en:'Do you accept credit cards?',kr:'신용카드 되나요?',level:1},
+  {cat:'음식/식당',en:'Can I see the menu, please?',kr:'메뉴 좀 볼 수 있을까요?',level:1},
+  {cat:'음식/식당',en:'I would like to order, please.',kr:'주문하고 싶습니다.',level:1},
+  {cat:'음식/식당',en:'I am allergic to nuts.',kr:'저는 견과류 알레르기가 있어요.',level:2},
+  {cat:'음식/식당',en:'Could I have the bill, please?',kr:'계산서 좀 주세요.',level:1},
+  {cat:'음식/식당',en:'Is this dish spicy?',kr:'이 요리는 매운가요?',level:1},
+  {cat:'교통',en:'How do I get to the subway station?',kr:'지하철역에 어떻게 가나요?',level:1},
+  {cat:'교통',en:'How long does it take to get there?',kr:'거기까지 얼마나 걸리나요?',level:1},
+  {cat:'교통',en:'Please take me to this address.',kr:'이 주소로 가주세요.',level:1},
+  {cat:'교통',en:'Could you call a taxi for me?',kr:'택시 좀 불러주시겠어요?',level:2},
+  {cat:'교통',en:'Is this the right bus to downtown?',kr:'이 버스가 시내로 가나요?',level:2},
+  {cat:'호텔/숙소',en:'I have a reservation under my name.',kr:'제 이름으로 예약했습니다.',level:1},
+  {cat:'호텔/숙소',en:'Could I have a wake-up call at 7?',kr:'7시에 모닝콜 부탁드려요.',level:2},
+  {cat:'호텔/숙소',en:'The air conditioner is not working.',kr:'에어컨이 작동하지 않아요.',level:2},
+  {cat:'호텔/숙소',en:'Could I have an extra pillow?',kr:'베개 하나 더 주실 수 있나요?',level:2},
+  {cat:'호텔/숙소',en:'What time is checkout?',kr:'체크아웃은 몇 시인가요?',level:1},
+  {cat:'병원/긴급',en:'I need to see a doctor.',kr:'의사를 만나야 합니다.',level:1},
+  {cat:'병원/긴급',en:'I have a headache.',kr:'머리가 아파요.',level:1},
+  {cat:'병원/긴급',en:'Please call an ambulance.',kr:'구급차를 불러주세요.',level:1},
+  {cat:'병원/긴급',en:'I lost my passport.',kr:'여권을 잃어버렸어요.',level:2},
+  {cat:'병원/긴급',en:'I need to go to the emergency room.',kr:'응급실에 가야 합니다.',level:2},
+  {cat:'비즈니스',en:'Let me introduce myself.',kr:'제 소개를 하겠습니다.',level:2},
+  {cat:'비즈니스',en:'Could we schedule a meeting?',kr:'미팅 일정을 잡을 수 있을까요?',level:2},
+  {cat:'비즈니스',en:'Please send me the report by Friday.',kr:'금요일까지 보고서를 보내주세요.',level:2},
+  {cat:'비즈니스',en:'I would like to discuss the proposal.',kr:'제안서에 대해 논의하고 싶습니다.',level:3},
+  {cat:'비즈니스',en:'Thank you for your time.',kr:'시간 내주셔서 감사합니다.',level:1},
+  {cat:'일상대화',en:'What are you up to this weekend?',kr:'이번 주말에 뭐 해요?',level:2},
+  {cat:'일상대화',en:'I enjoy watching movies.',kr:'저는 영화 보는 것을 좋아해요.',level:1},
+  {cat:'일상대화',en:'Can you recommend a good restaurant?',kr:'좋은 식당 추천해 주실 수 있나요?',level:2},
+  {cat:'일상대화',en:'How was your day?',kr:'오늘 어떠셨나요?',level:1},
+  {cat:'일상대화',en:'I am looking forward to it.',kr:'기대가 됩니다.',level:2},
+];
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -3577,6 +3790,11 @@ function rLearnTab() {
       <div style="font-size:28px;margin-bottom:4px">📚</div>
       <div style="font-size:13px;font-weight:800;color:#16A34A">${curBookName.slice(0,6)}</div>
       <div style="font-size:10px;color:#86EFAC;margin-top:2px">${curWords.length}개 · ${curLearned}개 완료</div>
+    </div>
+    <div onclick="showConversationMode()" style="flex:1;background:#EFF6FF;border-radius:16px;border:1.5px solid #BFDBFE;padding:14px;cursor:pointer;text-align:center">
+      <div style="font-size:28px;margin-bottom:4px">💬</div>
+      <div style="font-size:13px;font-weight:800;color:#1E5FA5">회화</div>
+      <div style="font-size:10px;color:#93C5FD;margin-top:2px">상황별 문장</div>
     </div>
     ${srsToday>0?`<div onclick="startMode('srs')" style="flex:1;background:#FFF8E1;border-radius:16px;border:1.5px solid #FFE082;padding:16px;cursor:pointer;text-align:center">
       <div style="font-size:32px;margin-bottom:6px">🔁</div>
@@ -6132,8 +6350,11 @@ function startGameWithSettings(gameId) {
 // 현재 선택된 단어장 단어 반환
 function getCurrentBookWords() {
   if(!S.currentBook || S.currentBook==='내 단어장') return S.words;
+  // 일반 단어장 + 마켓 단어장 모두 검색
   const bk = (S.books||[]).find(b=>b.name===S.currentBook);
-  return bk ? (bk.words||[]) : S.words;
+  if(bk && (bk.words||[]).length) return bk.words;
+  // S.words에서 찾기 (내 단어장 기본)
+  return S.words.length ? S.words : [];
 }
 
 // 현재 선택된 단어장 마크맵 반환
@@ -7067,7 +7288,13 @@ function rFill(){
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#D97706"></div></div>
     <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border-radius:20px;padding:20px;text-align:center;border:3px solid #FDE68A">
       ${S.showImg!==false?`<div style="font-size:64px;margin-bottom:8px">${w.img||'📝'}</div>`:''}
-      <div style="font-size:15px;color:#111;font-style:italic;line-height:2">"${(w.ex||'('+w.kr+')').replace(w.en,'_______')}"</div>
+      <div style="font-size:15px;color:#111;font-style:italic;line-height:2">${(()=>{
+        const ex = w.ex||'';
+        const hasBlank = ex.toLowerCase().includes(w.en.toLowerCase());
+        if(hasBlank) return '"'+ex.replace(new RegExp(w.en,'gi'),'_______')+'"';
+        // 빈칸 못만들면 단어→뜻 방식으로 대체
+        return '<span style="font-size:13px;font-style:normal;color:#6B7280">단어의 뜻을 고르세요</span><br><strong style="font-size:22px;font-family:monospace">' + w.en + '</strong>';
+      })()}</div>
       <div style="font-size:13px;color:#D97706;margin-top:8px;font-weight:700">뜻: ${w.kr}</div>
     </div>
     <div class="g2">${cs.map(c=>{let bg='#fff',col='#111',bd='#E5E7EB';if(S.gAns){if(c.en===w.en){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}else if(S.gRes==='ng'&&S._gSc===c.en){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}}return `<button onclick="${S.gAns?'':'ansQ(\''+c.en+'\',\''+w.en+'\')'}" style="background:${bg};color:${col};border:2px solid ${bd};border-radius:14px;padding:14px 8px;font-size:13px;font-weight:700;cursor:${S.gAns?'default':'pointer'};font-family:monospace">${c.en}</button>`;}).join('')}
@@ -8157,6 +8384,11 @@ function doResetStudy() {
   S.words=[]; S.learned=new Set(); S.markMap={}; S.srsMap={}; S.srsData={}; S.srsReps={};
   S.studyLog={}; S.attendCount=0; S.attendDates=[]; S.attendPopupShown='';
   S.bestScores={}; S.gSavedGame=null; S.idx=0;
+  S._ownedPacks=[]; S._acc=[]; S._equipped=''; // 마켓 구매이력 + 장식품 초기화
+  // Firebase 구매이력도 초기화
+  if(typeof db!=='undefined' && S.user?.uid) {
+    db.collection('user_packs').doc(S.user.uid).delete().catch(()=>{});
+  }
   sv();
   cm();
   toast('✅ 학습 데이터 초기화 완료');

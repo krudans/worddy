@@ -107,8 +107,43 @@ let selLv='egg', currentAdmin=null;
 setInterval(()=>{const e=document.getElementById('at');if(e)e.textContent=new Date().toLocaleTimeString('ko-KR',{hour12:false});},1000);
 
 // ── 인증 상태 감지 ──
-auth.onAuthS
-
+auth.onAuthStateChanged(async u=>{
+  if(!u){
+    showLoginScreen();
+    return;
+  }
+  // Firestore에서 관리자 정보 확인
+  try{
+    const doc=await db.collection('admins').doc(u.uid).get();
+    if(!doc.exists){
+      // 슈퍼 관리자이면 자동 허용
+      if(SUPER_ADMINS.includes(u.email)){
+        currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
+      } else {
+        showErr('승인 대기 중인 계정입니다. 슈퍼 관리자에게 문의하세요.');
+        auth.signOut();
+        return;
+      }
+    } else {
+      const data=doc.data();
+      if(!data.approved && !SUPER_ADMINS.includes(u.email)){
+        showErr('아직 승인되지 않은 계정입니다. 슈퍼 관리자 승인 후 이용 가능합니다.');
+        auth.signOut();
+        return;
+      }
+      currentAdmin={uid:u.uid,email:u.email,...data};
+    }
+    showAppScreen();
+  }catch(e){
+    if(SUPER_ADMINS.includes(u.email)){
+      currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
+      showAppScreen();
+    } else {
+      showErr('오류: '+e.message);
+      auth.signOut();
+    }
+  }
+});
 
 function rSW() {
   if(typeof db==='undefined'){document.getElementById('sw-body').innerHTML='<div style="padding:20px;color:#9CA3AF">Firebase 연결 필요</div>';return;}

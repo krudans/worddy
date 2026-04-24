@@ -1392,7 +1392,27 @@ function useXP(cost, type) {
     const ni2=LEVELS.findIndex(l=>l.id===S.lid);
     const curLv2=LEVELS[ni2];
     const next2=LEVELS[ni2+1];
-    if(!next2){toast('이미 최고 레벨이에요! 👑');S.xp+=cost;sv();return;}
+    if(!next2){
+    // 최고레벨 → 재탄생 안내
+    S.xp+=cost; sv();
+    const mr=document.getElementById('mr');
+    if(!mr||mr.innerHTML.trim()) return;
+    mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px">
+      <div style="font-size:48px;margin-bottom:12px;animation:float-happy 2s ease-in-out infinite;display:inline-block">👑</div>
+      <div style="font-size:20px;font-weight:900;margin-bottom:8px">나비의 신 달성!</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:20px;line-height:1.7">
+        축하해요! 최고 레벨에 도달했어요 🎉<br>
+        이제 다시 알부터 새로운 여정을 시작해<br>
+        더 많은 나비를 수집해보세요!
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="cm();go('butterfly')" style="background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:700;cursor:pointer">🦋 나비 뽑기하러 가기</button>
+        <button onclick="cm();if(confirm('정말 알로 돌아갈까요? XP가 초기화돼요')){resetToEgg();toast('🥚 새로운 여정 시작!');}" style="background:#FFF9ED;color:#E65100;border:1.5px solid #F0E6C8;border-radius:14px;padding:12px;font-size:13px;font-weight:700;cursor:pointer">🥚 알로 돌아가기</button>
+        <button onclick="cm()" style="background:#F3F4F6;color:#6B7280;border:none;border-radius:14px;padding:10px;font-size:13px;cursor:pointer">나중에</button>
+      </div>
+    </div></div>`;
+    return;
+  }
     const needXp=curLv2?curLv2.xp||100:100;
     // cost는 이미 차감됨, 실제 XP 확인
     const realXp=(S.xp||0)+cost; // 차감 전 XP 복원
@@ -2615,6 +2635,41 @@ function renderAdBanner() {
     ${ad.text||''}
   </div>`;
 }
+
+function showSpeakMode() {
+  const words = S.words;
+  if(!words.length){toast('단어가 없어요!');return;}
+  let idx=0;
+  const mr=document.getElementById('mr');
+  if(!mr)return;
+  const render=()=>{
+    if(idx>=words.length){
+      mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" style="text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">🎤</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:8px">말하기 완료!</div>
+        <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">${words.length}개 단어 말하기 연습 완료</div>
+        <button onclick="cm()" class="btn bb">닫기</button>
+      </div></div>`;
+      return;
+    }
+    const w=words[idx];
+    mr.innerHTML=`<div class="mbg"><div class="modal" style="text-align:center;padding:24px">
+      <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">${idx+1}/${words.length}</div>
+      <div style="font-size:32px;font-weight:900;color:var(--text1,#1A1A2E);font-family:monospace;margin-bottom:8px">${w.en}</div>
+      ${w.ph?`<div style="font-size:13px;color:#7C3AED;margin-bottom:6px">${w.ph}</div>`:''}
+      <div style="font-size:18px;font-weight:700;color:var(--text2,#6B5200);margin-bottom:16px">${w.kr}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${w.en.replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" 
+          style="background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">🔊 원어민 발음 듣기</button>
+        <button onclick="idx++;render();logStudy('words');addXP(5)"
+          style="background:#16A34A;color:#fff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">✅ 말했어요! 다음 →</button>
+        <button onclick="cm()" style="background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:10px;font-size:13px;cursor:pointer">나가기</button>
+      </div>
+    </div></div>`;
+    setTimeout(()=>{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u);},300);
+  };
+  render();
+}
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -3438,8 +3493,8 @@ function rLearnTab() {
   const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
   const curLvLearn = LEVELS.find(lx=>lx.id===S.lid);
-  const xpForNext = curLvLearn ? (curLvLearn.xp||100) : 100;
-  const xpProgress = Math.min(100, Math.round((S.xp||0)/xpForNext*100));
+  const xpForNext = (curLvLearn && !curLvLearn.isFinal) ? (curLvLearn.xp||100) : 9999;
+  const xpProgress = curLvLearn?.isFinal ? 100 : Math.min(100, Math.round((S.xp||0)/xpForNext*100));
   // 현재 단어장
   const curBookName = S.currentBook||'내 단어장';
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
@@ -3471,14 +3526,23 @@ function rLearnTab() {
     </div>
     <div style="font-size:10px;opacity:.75;margin-bottom:6px">단어 ${pct}% 완료 · 남은 단어 ${sysWords.length-learned}개</div>
     <!-- XP 진행도 -->
-    <div style="display:flex;justify-content:space-between;font-size:10px;opacity:.8;margin-bottom:3px">
-      <span>⚡ XP 진행</span>
-      <span>${xpProgress}% · ${S.xp||0}/${xpForNext}XP</span>
-    </div>
-    <div style="background:rgba(255,255,255,.25);border-radius:6px;height:6px;overflow:hidden">
-      <div style="height:100%;background:#FDE68A;border-radius:6px;width:${xpProgress}%;transition:width .8s"></div>
-    </div>
-    <div style="font-size:10px;opacity:.75;margin-top:3px">${xpProgress>=100?(curLvLearn&&curLvLearn.isFinal?'👑 나비 뽑기 준비완료! 나비탭에서 레벨업!':'⬆️ 레벨업 가능! 나비 탭으로 이동'):'XP '+(xpForNext-(S.xp||0))+'개 더 모으면 레벨업'}</div>
+    ${(()=>{
+      const isFin = curLvLearn && curLvLearn.isFinal;
+      return isFin
+        ? `<div style="background:rgba(255,255,255,.2);border-radius:10px;padding:8px;text-align:center;margin-top:4px">
+            <div style="font-size:12px;font-weight:800">👑 최고 레벨! 누적 XP: ${S.xp||0}</div>
+            <div style="font-size:10px;opacity:.8;margin-top:3px">나비 뽑기 후 알로 돌아가서 새 여정을 시작하세요</div>
+            <button onclick="go('butterfly')" style="background:rgba(255,255,255,.25);border:none;border-radius:8px;padding:5px 14px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-top:6px">🦋 나비탭으로</button>
+          </div>`
+        : `<div style="display:flex;justify-content:space-between;font-size:10px;opacity:.8;margin-bottom:3px">
+            <span>⚡ XP 진행</span>
+            <span>${xpProgress}% · ${S.xp||0}/${xpForNext}XP</span>
+           </div>
+           <div style="background:rgba(255,255,255,.25);border-radius:6px;height:6px;overflow:hidden">
+             <div style="height:100%;background:#FDE68A;border-radius:6px;width:${xpProgress}%;transition:width .8s"></div>
+           </div>
+           <div style="font-size:10px;opacity:.75;margin-top:3px">${xpProgress>=100?'⬆️ 레벨업 가능! 나비 탭으로 이동':'XP '+(xpForNext-(S.xp||0))+'개 더 모으면 레벨업'}</div>`;
+    })()}
   </div>`;
 
   // ── 집중 추천 섹션 ──
@@ -5236,23 +5300,84 @@ function showAudioMode() {
     idx=(idx+1)%S.words.length;
     if(playing) playNext();
   };
-  document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal" style="background:linear-gradient(160deg,#1A1A2E,#16213E);border-radius:24px 24px 0 0">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-size:14px;font-weight:800;color:#fff">🏃 오디오 모드</div>
-      <button onclick="playing=false;window.speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:6px 12px;color:#fff;cursor:pointer;font-size:12px">종료</button>
-    </div>
-    <div style="text-align:center;padding:10px 0">
-      <div class="wave" style="justify-content:center;margin-bottom:16px">${[1,2,3,4,5].map(i=>`<div class="wave-bar" style="background:#1E5FA5;height:20px;animation-delay:${i*.1}s"></div>`).join('')}</div>
-    </div>
-    <div id="audio-word" style="text-align:center;min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"></div>
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button onclick="playing=false;window.speechSynthesis.cancel();idx=(idx-1+S.words.length)%S.words.length;playing=true;playNext()" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:12px;flex:1;color:#fff;cursor:pointer;font-size:18px">⏮</button>
-      <button id="audio-play-btn" onclick="if(playing){playing=false;window.speechSynthesis.cancel();this.textContent='▶';}else{playing=true;this.textContent='⏸';playNext();}" style="background:#1E5FA5;border:none;border-radius:10px;padding:12px;flex:2;color:#fff;cursor:pointer;font-size:20px;font-weight:700">⏸</button>
-      <button onclick="playing=false;window.speechSynthesis.cancel();idx=(idx+1)%S.words.length;playing=true;playNext()" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:12px;flex:1;color:#fff;cursor:pointer;font-size:18px">⏭</button>
-    </div>
-    <div style="font-size:11px;color:rgba(255,255,255,.4);text-align:center;margin-top:10px">화면이 꺼져도 계속 재생돼요</div>
-  </div></div>`;
-  playing=true; playNext();
+  const buildAudioUI = ()=>{
+    document.getElementById('mr').innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;display:flex;flex-direction:column;background:linear-gradient(160deg,#0F0C29,#302B63,#24243E);overflow:hidden">
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;flex-shrink:0">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#fff">🎧 오디오 모드</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">듣고 말하며 자연스럽게 암기</div>
+        </div>
+        <button onclick="playing=false;window.speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;cursor:pointer;font-size:13px;font-weight:700">✕ 나가기</button>
+      </div>
+      <!-- 파형 애니메이션 -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;flex-shrink:0">
+        ${[1,2,3,4,5,6,7].map(i=>`<div style="width:3px;background:rgba(99,179,237,.8);border-radius:4px;animation:audioWave ${0.6+i*.08}s ease-in-out infinite alternate;height:${8+Math.sin(i)*12}px"></div>`).join('')}
+      </div>
+      <!-- 단어 카드 영역 -->
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px">
+        <div id="audio-word" style="width:100%;text-align:center"></div>
+      </div>
+      <!-- 진행 표시 -->
+      <div style="padding:0 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.5);margin-bottom:6px">
+          <span id="audio-idx-display">1/${S.words.length}</span>
+          <span>오디오 학습</span>
+        </div>
+        <div style="background:rgba(255,255,255,.15);border-radius:4px;height:3px;overflow:hidden;margin-bottom:16px">
+          <div id="audio-prog" style="height:100%;background:linear-gradient(90deg,#63B3ED,#9F7AEA);width:${Math.round(1/Math.max(S.words.length,1)*100)}%;transition:width .5s"></div>
+        </div>
+      </div>
+      <!-- 컨트롤 버튼 -->
+      <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:10px;flex-shrink:0">
+        <div style="display:flex;gap:10px;align-items:center">
+          <button onclick="playing=false;window.speechSynthesis.cancel();idx=Math.max(0,idx-1);playing=true;playNext()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px;flex:1;color:#fff;cursor:pointer;font-size:22px">⏮</button>
+          <button id="audio-play-btn" onclick="if(playing){playing=false;window.speechSynthesis.cancel();document.getElementById('audio-play-btn').innerHTML='▶';}else{playing=true;document.getElementById('audio-play-btn').innerHTML='⏸';playNext();}" 
+            style="background:linear-gradient(135deg,#4299E1,#7C3AED);border:none;border-radius:18px;padding:18px;flex:2;color:#fff;cursor:pointer;font-size:24px;font-weight:700;box-shadow:0 4px 20px rgba(66,153,225,.4)">⏸</button>
+          <button onclick="playing=false;window.speechSynthesis.cancel();idx=Math.min(S.words.length-1,idx+1);playing=true;playNext()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px;flex:1;color:#fff;cursor:pointer;font-size:22px">⏭</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="playing=false;window.speechSynthesis.cancel();idx=0;playing=true;playNext()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;color:rgba(255,255,255,.7);font-size:12px;cursor:pointer">🔄 처음부터</button>
+          <button onclick="playing=false;window.speechSynthesis.cancel();cm()" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
+        </div>
+      </div>
+    </div></div>`;
+    // 파형 애니메이션 CSS
+    if(!document.getElementById('audio-wave-css')){
+      const st=document.createElement('style');st.id='audio-wave-css';
+      st.textContent='@keyframes audioWave{0%{transform:scaleY(1)}100%{transform:scaleY(3)}}';
+      document.head.appendChild(st);
+    }
+  };
+  buildAudioUI();
+  // playNext에서 UI 업데이트 추가
+  const origPlayNext = playNext;
+  const updateAudioDisplay = (w, currentIdx) => {
+    const el = document.getElementById('audio-word');
+    const prog = document.getElementById('audio-prog');
+    const idxDisplay = document.getElementById('audio-idx-display');
+    if(el) el.innerHTML = `
+      <div style="font-size:${w.img&&w.img!=='📝'?'52':'0'}px;margin-bottom:8px">${w.img||''}</div>
+      <div style="font-size:38px;font-weight:900;color:#fff;font-family:monospace;letter-spacing:-1px;margin-bottom:10px;text-shadow:0 2px 20px rgba(99,179,237,.5)">${w.en}</div>
+      ${w.ph?`<div style="font-size:14px;color:rgba(167,139,250,.9);margin-bottom:8px">${w.ph}</div>`:''}
+      <div style="font-size:22px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:10px">${w.kr}</div>
+      ${w.ex?`<div style="font-size:13px;color:rgba(255,255,255,.45);font-style:italic;max-width:280px;line-height:1.7">"${w.ex}"</div>`:''}
+    `;
+    if(prog) prog.style.width = Math.round((currentIdx+1)/S.words.length*100)+'%';
+    if(idxDisplay) idxDisplay.textContent = (currentIdx+1)+'/'+S.words.length;
+  };
+  playing=true;
+  // playNext 래핑해서 UI 업데이트
+  const wrappedPlay = async()=>{
+    if(!playing) return;
+    if(idx>=S.words.length){playing=false;return;}
+    const w=S.words[idx];
+    updateAudioDisplay(w, idx);
+    await speakWord(w);
+    idx++;
+    if(playing) wrappedPlay();
+  };
+  wrappedPlay();
 }
 
 // ── 쉐도잉 모드 ──
@@ -6953,6 +7078,7 @@ function rFill(){
 function rTyping(){
   const w=S.gWords[S.gIdx];if(!w){S.gDone=true;return rGame();}
   const isSc=S.gameId==='scramble';
+  const gameTitle = isSc ? '🔤 스크램블' : '✏️ 받아쓰기';
   const sc=(S.gAns&&S._gSc)?S._gSc:(()=>{
     let scrambled=w.en;
     let tries=0;
@@ -6960,7 +7086,7 @@ function rTyping(){
     return S._gSc=scrambled;
   })();
   const grad=isSc?GGRADS.scramble:GGRADS.typing;
-  return ghdr(isSc?'🔀 스크램블':'✏️ 문장 완성',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+  return ghdr(isSc?'🔀 스크램블':'✏️ 받아쓰기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.gAns?(S.gRes==='ok'?'완벽해! 🎉':'아쉬워! 💪'):isSc?'섞인 철자를 올바르게 써봐!':'뜻을 보고 영단어를 써봐!',S.lid,S.gAns?(S.gRes==='ok'?'happy':'sad'):'normal')}
     <div class="pb"><div class="pf" style="width:${Math.round(S.gIdx/S.gWords.length*100)}%;background:#EC4899"></div></div>
     <div style="background:${grad};border-radius:20px;padding:24px;text-align:center">

@@ -563,34 +563,192 @@ async function deleteAdmin(uid,name){
 // 📈 분석
 // ══════════════════════════════════
 async function rAN(){
-  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">분석 데이터 로딩 중...</div>';
-  let users=[],ld={};
-  try{const s=await db.collection('users').get();s.forEach(d=>{const x=d.data();users.push(x);if(x.lid||x.level){const k=x.lid||x.level;ld[k]=(ld[k]||0)+1;}});}catch(e){}
-  const LN={egg:'🥚 알',baby:'🐛 벌거지',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛나는',small:'🦋 작은',big:'🦋 큰',god:'⚡ 황금'};
-  const rd=Array.from({length:7},(_,i)=>{const d=new Date(Date.now()-(6-i)*86400000);return d.toISOString().slice(0,10);});
-  document.getElementById('main').innerHTML=`
-    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📈 이용 분석</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card"><div class="ct">🦋 레벨 분포</div>
-        ${LIDS.map(l=>{const cnt=ld[l]||0;const p=users.length?Math.round(cnt/users.length*100):0;return `<div class="bi"><div class="bl" style="font-size:11px">${LN[l]}</div><div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div><div class="bv">${cnt}명</div></div>`;}).join('')}
-        <div style="font-size:12px;color:#9CA3AF;margin-top:10px">총 ${users.length}명</div>
-      </div>
-      <div class="card"><div class="ct">📊 통계 요약</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          ${[['총 회원수',users.length+'명','#1E5FA5'],['평균 streak',Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/Math.max(users.length,1))+'일','#16A34A'],['마켓 팩 수',(typeof WORD_PACKS!=='undefined'?WORD_PACKS.length:0)+'개','#D97706'],['게임 종류','12종','#7C3AED']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:10px"><span style="font-size:13px;font-weight:600;color:#374151">${l}</span><span style="font-size:16px;font-weight:900;color:${c}">${v}</span></div>`).join('')}
-        </div>
-      </div>
+  const main=document.getElementById('main');
+  main.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">📊 통계 로딩 중...</div>';
+  
+  let users=[], ld={}, gameStats={}, learnStats={}, dailyActive={};
+  const today7 = Array.from({length:7},(_,i)=>{
+    const d=new Date(Date.now()-(6-i)*86400000);
+    return d.toISOString().slice(0,10);
+  });
+  
+  try {
+    const s = await db.collection('users').get();
+    s.forEach(d=>{
+      const x=d.data();
+      users.push(x);
+      // 레벨 분포
+      const k=x.lid||'egg'; ld[k]=(ld[k]||0)+1;
+      // 게임 점수 집계
+      if(x.bestScores) Object.entries(x.bestScores).forEach(([gid,pct])=>{
+        if(!gameStats[gid]) gameStats[gid]={total:0,count:0,plays:0};
+        gameStats[gid].total+=pct; gameStats[gid].count++; gameStats[gid].plays++;
+      });
+      // 학습 통계
+      if(x.studyLog) Object.entries(x.studyLog).forEach(([date,log])=>{
+        if(!learnStats[date]) learnStats[date]={words:0,quiz:0,users:new Set()};
+        learnStats[date].words+=(log.words||0);
+        learnStats[date].quiz+=(log.quiz||0);
+        learnStats[date].users.add(d.id);
+      });
+      // 일별 활성 사용자
+      const lastD = x.updatedAt?.toDate?.()?.toISOString().slice(0,10);
+      if(lastD) dailyActive[lastD]=(dailyActive[lastD]||0)+1;
+    });
+  } catch(e) { console.warn(e); }
+
+  const LN={egg:'🥚 알',baby:'🐛 아기',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛남',small:'🦋 작은',big:'🌟 큰',god:'👑 신'};
+  const GAME_NAMES={quiz:'뜻 맞추기',fill:'빈칸 채우기',typing:'받아쓰기',match:'스피드 매칭',chain:'단어 체인',wc:'단어 완성',ssort:'문장 배열',scramble:'스크램블',sentence:'문장 구성',listen:'듣고 완성',wordfind:'단어 찾기',wordle:'워들'};
+  
+  const totalStudyWords = Object.values(learnStats).reduce((a,v)=>a+v.words,0);
+  const totalStudyQuiz  = Object.values(learnStats).reduce((a,v)=>a+v.quiz,0);
+  const avgStreak = users.length ? Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/users.length) : 0;
+  const maxStreak = users.reduce((a,u)=>Math.max(a,u.streak||0),0);
+  const today = new Date().toISOString().slice(0,10);
+  const todayActive = dailyActive[today]||0;
+  const week7Active = today7.reduce((a,d)=>a+(dailyActive[d]||0),0);
+
+  main.innerHTML=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <h2 style="font-size:22px;font-weight:900">📈 이용 분석</h2>
+    <button onclick="rAN()" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer">🔄 새로고침</button>
+  </div>
+
+  <!-- 핵심 지표 -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    ${[
+      ['👥','총 회원',users.length+'명','#1E5FA5'],
+      ['📅','오늘 활성',todayActive+'명','#16A34A'],
+      ['🔥','평균 스트릭',avgStreak+'일','#E65100'],
+      ['📚','총 학습 단어',totalStudyWords.toLocaleString()+'개','#7C3AED'],
+    ].map(([ic,lb,v,cl])=>`
+      <div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:14px;text-align:center">
+        <div style="font-size:20px;margin-bottom:4px">${ic}</div>
+        <div style="font-size:18px;font-weight:900;color:${cl}">${v}</div>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${lb}</div>
+      </div>`).join('')}
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <!-- 레벨 분포 -->
+    <div class="card">
+      <div class="ct">🦋 레벨 분포 (${users.length}명)</div>
+      ${['egg','baby','crown','coco','shine','small','big','god'].map(l=>{
+        const cnt=ld[l]||0;
+        const p=users.length?Math.round(cnt/users.length*100):0;
+        return `<div class="bi">
+          <div class="bl" style="font-size:11px;min-width:70px">${LN[l]||l}</div>
+          <div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div>
+          <div class="bv">${cnt}명 (${p}%)</div>
+        </div>`;
+      }).join('')}
     </div>
-    <div class="card"><div class="ct">📅 최근 7일 활동</div>
-      <div style="display:flex;gap:8px;align-items:flex-end;height:80px">
-        ${rd.map(d=>{const cnt=users.filter(u=>u.updatedAt?.toDate?.()?.toISOString().slice(0,10)===d).length;const h=Math.max(cnt*20,4);const it=d===today();return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:10px;color:#1E5FA5;font-weight:700">${cnt||''}</div><div style="width:100%;background:${it?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${h}px;min-height:4px"></div><div style="font-size:10px;color:${it?'#1E5FA5':'#9CA3AF'};font-weight:${it?700:400}">${d.slice(5)}</div></div>`;}).join('')}
+
+    <!-- 7일 활성 사용자 -->
+    <div class="card">
+      <div class="ct">📅 7일 일별 활성 사용자</div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:100px;margin-bottom:8px">
+        ${today7.map(d=>{
+          const cnt=dailyActive[d]||0;
+          const maxD=Math.max(...today7.map(x=>dailyActive[x]||0),1);
+          const h=Math.round(cnt/maxD*90);
+          const isToday=d===today;
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <div style="font-size:9px;color:#9CA3AF">${cnt}</div>
+            <div style="width:100%;background:${isToday?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${Math.max(h,4)}px;transition:height .5s"></div>
+            <div style="font-size:9px;color:${isToday?'#1E5FA5':'#9CA3AF'};font-weight:${isToday?700:400}">${d.slice(5)}</div>
+          </div>`;
+        }).join('')}
       </div>
-    </div>`;
+      <div style="font-size:12px;color:#6B7280;text-align:center">이번 주 총 활성: <strong>${week7Active}명</strong></div>
+    </div>
+  </div>
+
+  <!-- 게임별 통계 -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="ct">🎮 게임별 플레이 통계</div>
+    ${Object.keys(GAME_NAMES).length ? `
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr style="background:#F9FAFB">
+        <th style="padding:10px 12px;text-align:left;font-weight:700;color:#374151">게임</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:700;color:#374151">플레이 수</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:700;color:#374151">평균 점수</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:700;color:#374151">인기도</th>
+      </tr>
+      ${Object.entries(GAME_NAMES).map(([gid,gnm])=>{
+        const gs=gameStats[gid]||{plays:0,total:0,count:0};
+        const avg=gs.count?Math.round(gs.total/gs.count):0;
+        const maxPlays=Math.max(...Object.values(gameStats).map(g=>g.plays),1);
+        const popularity=Math.round(gs.plays/maxPlays*100);
+        return `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:10px 12px;font-weight:600">${gnm}</td>
+          <td style="padding:10px 12px;text-align:right;color:#1E5FA5;font-weight:700">${gs.plays.toLocaleString()}회</td>
+          <td style="padding:10px 12px;text-align:right;color:#16A34A;font-weight:700">${avg}%</td>
+          <td style="padding:10px 12px">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+              <div style="background:#E5E7EB;border-radius:4px;height:6px;width:80px">
+                <div style="background:#1E5FA5;border-radius:4px;height:100%;width:${popularity}%"></div>
+              </div>
+              <span style="font-size:11px;color:#9CA3AF;min-width:30px">${popularity}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}
+    </table></div>` : '<div style="text-align:center;color:#9CA3AF;padding:20px">게임 데이터가 없어요</div>'}
+  </div>
+
+  <!-- 학습 활동 통계 -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="ct">📚 학습 활동 통계 (최근 7일)</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+      ${[
+        ['📖','단어 학습',totalStudyWords.toLocaleString()+'개','#1E5FA5'],
+        ['🎯','퀴즈 풀이',totalStudyQuiz.toLocaleString()+'회','#16A34A'],
+        ['🔥','최고 스트릭',maxStreak+'일','#E65100'],
+      ].map(([ic,lb,v,cl])=>`
+        <div style="background:#F9FAFB;border-radius:12px;padding:12px;text-align:center">
+          <div style="font-size:16px">${ic}</div>
+          <div style="font-size:16px;font-weight:900;color:${cl};margin-top:2px">${v}</div>
+          <div style="font-size:10px;color:#9CA3AF;margin-top:1px">${lb}</div>
+        </div>`).join('')}
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="background:#F9FAFB">
+        <th style="padding:8px 10px;text-align:left">날짜</th>
+        <th style="padding:8px 10px;text-align:right">단어 학습</th>
+        <th style="padding:8px 10px;text-align:right">퀴즈</th>
+        <th style="padding:8px 10px;text-align:right">활성 사용자</th>
+      </tr>
+      ${today7.slice().reverse().map(d=>{
+        const ls=learnStats[d]||{words:0,quiz:0,users:new Set()};
+        const isToday=d===today;
+        return `<tr style="border-top:1px solid #F3F4F6;${isToday?'background:#EFF6FF;':''}">
+          <td style="padding:8px 10px;font-weight:${isToday?700:400};color:${isToday?'#1E5FA5':'#374151'}">${d}${isToday?' (오늘)':''}</td>
+          <td style="padding:8px 10px;text-align:right;color:#16A34A;font-weight:700">${ls.words.toLocaleString()}</td>
+          <td style="padding:8px 10px;text-align:right;color:#7C3AED;font-weight:700">${ls.quiz.toLocaleString()}</td>
+          <td style="padding:8px 10px;text-align:right;color:#E65100;font-weight:700">${ls.users.size||0}</td>
+        </tr>`;
+      }).join('')}
+    </table>
+  </div>
+
+  <!-- 스트릭 분포 -->
+  <div class="card">
+    <div class="ct">🔥 스트릭 분포</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${[[0,'0일','#E5E7EB'],[1,1,'#FEF3C7'],[3,3,'#FDE68A'],[7,7,'#F59E0B'],[14,14,'#D97706'],[30,30,'#B45309'],[999,'30+일','#92400E']].map(([min,lb,bg],i,arr)=>{
+        const max=arr[i+1]?arr[i+1][0]:Infinity;
+        const cnt=users.filter(u=>{const s=u.streak||0;return s>=min&&s<max;}).length;
+        return `<div style="background:${bg};border-radius:10px;padding:8px 12px;text-align:center;min-width:60px">
+          <div style="font-size:14px;font-weight:900;color:#374151">${cnt}</div>
+          <div style="font-size:10px;color:#6B7280">${lb}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
 }
 
-// ══════════════════════════════════
-// 📚 단어장 관리
-// ══════════════════════════════════
 async function rWD(){
   document.getElementById('main').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">

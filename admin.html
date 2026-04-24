@@ -4,7 +4,85 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WordDay 관리자</title>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div id="login-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#F0F4F8;padding:20px">
+  <div style="background:#fff;border-radius:20px;padding:32px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:40px;margin-bottom:8px">🦋</div>
+      <div style="font-size:22px;font-weight:900;color:#1E3A5F">Butterfly Word</div>
+      <div style="font-size:13px;color:#9CA3AF;margin-top:4px">관리자 페이지</div>
+    </div>
+    <div id="lt-login" style="display:block">
+      <div style="display:flex;margin-bottom:20px;background:#F3F4F6;border-radius:12px;padding:4px">
+        <button id="btn-login-tab" onclick="switchLoginTab('login')" style="flex:1;padding:8px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#1E3A5F;box-shadow:0 1px 4px rgba(0,0,0,.1)">로그인</button>
+        <button id="btn-reg-tab" onclick="switchLoginTab('reg')" style="flex:1;padding:8px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:#9CA3AF">등록 신청</button>
+      </div>
+      <div id="pn-login">
+        <input id="li-email" type="email" placeholder="이메일" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
+        <input id="li-pw" type="password" placeholder="비밀번호" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:16px;box-sizing:border-box">
+        <div id="li-err" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
+        <button onclick="doLogin()" style="width:100%;padding:13px;background:#1E5FA5;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">로그인</button>
+      </div>
+      <div id="pn-reg" style="display:none">
+        <input id="rg-name" placeholder="이름" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
+        <input id="rg-email" type="email" placeholder="이메일" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
+        <input id="rg-pw" type="password" placeholder="비밀번호 (6자 이상)" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
+        <input id="rg-phone" placeholder="전화번호 (선택)" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
+        <input id="rg-code" placeholder="등록 코드" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:16px;box-sizing:border-box">
+        <div id="rg-err" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
+        <button onclick="doRegister()" style="width:100%;padding:13px;background:#7C3AED;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">등록 신청</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app-screen" style="display:none;min-height:100vh;background:#F0F4F8">
+  <div style="display:flex;min-height:100vh">
+    <!-- 사이드바 -->
+    <div style="width:220px;background:#1E3A5F;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column">
+      <div style="padding:0 16px 20px;border-bottom:1px solid rgba(255,255,255,.1)">
+        <div style="font-size:18px;font-weight:900;color:#fff;margin-bottom:2px">🦋 관리자</div>
+        <div id="au" style="font-size:12px;color:rgba(255,255,255,.6)"></div>
+        <div id="au-role" style="font-size:10px;color:rgba(255,255,255,.4)"></div>
+      </div>
+      <nav style="padding:12px 8px;flex:1;display:flex;flex-direction:column;gap:4px">
+        <button class="ni" id="ni-db" onclick="T('db')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📊 대시보드</button>
+        <button class="ni" id="ni-wd" onclick="T('wd')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📚 단어 관리</button>
+        <button class="ni" id="ni-pk" onclick="T('pk')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🛒 마켓 팩</button>
+        <button class="ni" id="ni-bf" onclick="T('bf')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🦋 나비 관리</button>
+        <button class="ni" id="ni-cv" onclick="T('cv')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">💬 회화 문장</button>
+        <button class="ni" id="ni-ad" onclick="T('ad')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📢 광고 배너</button>
+        <button class="ni" id="ni-nt" onclick="T('nt')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📢 공지사항</button>
+        <button class="ni" id="ni-us" onclick="T('us')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">👥 회원 관리</button>
+        <button class="ni" id="ni-an" onclick="T('an')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📈 이용 분석</button>
+        <button class="ni" id="ni-st" onclick="T('st')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📝 시스템 단어</button>
+        <button class="ni" id="ni-lv" onclick="T('lv')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🎓 레벨 관리</button>
+        <button class="ni" id="ni-po" onclick="T('po')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">👋 콕 찌르기</button>
+        <div id="ni-adm-wrap">
+          <button class="ni" id="ni-adm" onclick="T('adm')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🔐 관리자 관리</button>
+        </div>
+        <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,.1)">
+          <button onclick="window.open('index.html','_blank')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);background:transparent;text-align:left;width:100%">🔗 앱 열기</button>
+          <button onclick="doLogout()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,100,100,.7);background:transparent;text-align:left;width:100%">🚪 로그아웃</button>
+        </div>
+      </nav>
+    </div>
+    <!-- 메인 영역 -->
+    <div style="flex:1;overflow-y:auto">
+      <div id="main" style="padding:28px;max-width:1100px;margin:0 auto"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none"></div>
+<div id="mr"></div>
+
+<script>
+
 function rSW() {
   if(typeof db==='undefined'){document.getElementById('sw-body').innerHTML='<div style="padding:20px;color:#9CA3AF">Firebase 연결 필요</div>';return;}
   const lvId=window._swLv||'egg';
@@ -146,21 +224,6 @@ function rMarketAdmin() {
 function showAddPackForm() {
   const f=document.getElementById('pack-add-form');
   if(f) f.style.display=f.style.display==='none'?'block':'none';
-}
-
-function saveNewPack() {
-  const id=document.getElementById('pk-id')?.value?.trim();
-  const name=document.getElementById('pk-name')?.value?.trim();
-  const emoji=document.getElementById('pk-emoji')?.value?.trim()||'📦';
-  const cat=document.getElementById('pk-cat')?.value?.trim()||'기타';
-  const wordsRaw=document.getElementById('pk-words')?.value?.trim();
-  if(!id||!name){alert('ID와 이름은 필수입니다');return;}
-  let words=[];
-  try{words=JSON.parse(wordsRaw||'[]');}catch(e){alert('단어 JSON 형식 오류');return;}
-  const desc=document.getElementById('pk-desc')?.value?.trim()||'';
-  db.collection('word_packs').doc(id).set({id,name,emoji,cat,desc,words,active:true,createdAt:new Date()})
-    .then(()=>{alert('✅ 저장 완료!');rMarketAdmin();})
-    .catch(e=>alert('오류: '+e.message));
 }
 
 function deleteMarketPack(id) {
@@ -2065,7 +2128,8 @@ function uploadCVCSV(){
   inp.click();
 }
 
+
 </script>
-<div id="mr"></div>
+
 </body>
 </html>

@@ -330,7 +330,7 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -373,6 +373,10 @@ async function rDB(){
           <button class="btn bp" onclick="T('nt')" style="justify-content:flex-start">📢 공지사항 작성</button>
           <button class="btn bo" onclick="T('an')" style="justify-content:flex-start">📈 이용 분석</button>
           ${isSuperAdmin()?`<button class="btn" style="background:#1E3A5F;color:#fff;justify-content:flex-start" onclick="T('adm')">🔐 관리자 관리 (${ac}명)</button>`:''}
+          <hr style="border:none;border-top:1px solid #E5E7EB">
+          <button class="btn" style="background:#F5F3FF;color:#7C3AED;justify-content:flex-start" onclick="T('bf')">🦋 나비 관리</button>
+          <button class="btn" style="background:#FDF2F8;color:#BE185D;justify-content:flex-start" onclick="T('cv')">💬 회화 문장</button>
+          <button class="btn" style="background:#FFF8E1;color:#E65100;justify-content:flex-start" onclick="T('ad')">📢 광고 배너</button>
           <hr style="border:none;border-top:1px solid #E5E7EB">
           <button class="btn bgr" onclick="window.open('index.html','_blank')" style="justify-content:flex-start">🔗 앱 열기</button>
         </div>
@@ -1587,6 +1591,323 @@ function togglePackActive(packId, currentActive) {
     .then(()=>rMarketAdmin()).catch(e=>alert('오류: '+e.message));
 }
 
+
+// ══════════════════════════════════
+// 🦋 나비 관리
+// ══════════════════════════════════
+async function rBF() {
+  const main = document.getElementById('main');
+  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
+  let bfList = [];
+  try {
+    const snap = await db.collection('butterflies').orderBy('id').get();
+    bfList = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  } catch(e) {}
+
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2>
+      <div style="display:flex;gap:8px">
+        <span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${bfList.length}종 등록됨</span>
+        <button class="btn bb" onclick="showAddBF()">➕ 나비 추가</button>
+        <button class="btn bg" onclick="downloadBFImages()">📦 이미지 전체 다운로드</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+      ${bfList.length ? bfList.map(bf => `
+        <div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;text-align:center">
+          <div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">${bf.id}</div>
+          <div style="margin-bottom:6px;min-height:60px;display:flex;align-items:center;justify-content:center">
+            ${bf.svgCode ? bf.svgCode.replace('width="80"','width="60"').replace('height="80"','height="60"') : '<div style="font-size:36px">🦋</div>'}
+          </div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:3px">${bf.name||'-'}</div>
+          <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">${bf.rare||'⭐⭐'} · ${bf.enName||''}</div>
+          <div style="display:flex;gap:4px">
+            <button class="btn bgr" style="flex:1;font-size:11px;padding:5px" onclick="editBF('${bf.id}')">✏️ 수정</button>
+            <button class="btn br" style="font-size:11px;padding:5px 8px" onclick="deleteBF('${bf.id}','${bf.name||''}')">🗑</button>
+          </div>
+        </div>`).join('') : '<div class="es" style="grid-column:1/-1"><div class="ei">🦋</div><p>등록된 나비가 없어요</p></div>'}
+    </div>`;
+}
+
+function showAddBF(existing) {
+  const mr = document.getElementById('mr') || (() => {
+    const d = document.createElement('div'); d.id='mr';
+    document.body.appendChild(d); return d;
+  })();
+  const bf = existing || {};
+  mr.innerHTML = `<div class="mbg" onclick="this.parentElement.innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:90vh;overflow-y:auto">
+    <div style="background:linear-gradient(135deg,#7C3AED,#5B21B6);padding:16px 20px">
+      <div style="font-size:16px;font-weight:900;color:#fff">${bf.id?'나비 수정':'새 나비 추가'}</div>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="bf-id" placeholder="ID (예: b031)" value="${bf.id||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px" ${bf.id?'readonly':''}>
+        <input id="bf-name" placeholder="한글 이름" value="${bf.name||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+        <input id="bf-en" placeholder="영문 이름" value="${bf.enName||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+        <select id="bf-rare" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+          ${['⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'].map(r=>`<option value="${r}" ${bf.rare===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+        <input id="bf-color" placeholder="대표색 (#hex)" value="${bf.color||'#7C3AED'}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+        <input id="bf-status" placeholder="보호상태" value="${bf.status||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+      </div>
+      <textarea id="bf-desc" placeholder="설명 (서식지, 특징 등)" rows="2" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;resize:vertical">${bf.desc||''}</textarea>
+      <textarea id="bf-protect" placeholder="보호 메시지 (앱에 표시)" rows="2" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;resize:vertical">${bf.protect||''}</textarea>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">SVG 코드 (width/height="80" 기준)</div>
+        <textarea id="bf-svg" placeholder='<svg width="80" height="80" viewBox="0 0 80 80">...</svg>' rows="6" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:11px;font-family:monospace;resize:vertical;width:100%;box-sizing:border-box">${bf.svgCode||''}</textarea>
+        <button onclick="document.getElementById('bf-preview').innerHTML=document.getElementById('bf-svg').value" style="margin-top:4px;background:#F5F3FF;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:#7C3AED">👁 미리보기</button>
+        <div id="bf-preview" style="min-height:80px;display:flex;align-items:center;justify-content:center;border:1px dashed #E5E7EB;border-radius:8px;margin-top:6px">${bf.svgCode||''}</div>
+      </div>
+      <button onclick="saveBF('${bf.id||''}')" class="btn bb">💾 저장</button>
+    </div>
+  </div></div>`;
+}
+
+async function saveBF(existingId) {
+  const id = document.getElementById('bf-id').value.trim();
+  const name = document.getElementById('bf-name').value.trim();
+  if(!id||!name) { alert('ID와 이름은 필수입니다'); return; }
+  const data = {
+    id, name,
+    enName: document.getElementById('bf-en').value.trim(),
+    rare: document.getElementById('bf-rare').value,
+    color: document.getElementById('bf-color').value.trim(),
+    status: document.getElementById('bf-status').value.trim(),
+    desc: document.getElementById('bf-desc').value.trim(),
+    protect: document.getElementById('bf-protect').value.trim(),
+    svgCode: document.getElementById('bf-svg').value.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    await db.collection('butterflies').doc(id).set(data, {merge:true});
+    toast('✅ 나비 저장 완료');
+    document.getElementById('mr').innerHTML='';
+    rBF();
+  } catch(e) { alert('저장 오류: '+e.message); }
+}
+
+async function editBF(id) {
+  try {
+    const doc = await db.collection('butterflies').doc(id).get();
+    if(doc.exists) showAddBF({id:doc.id, ...doc.data()});
+  } catch(e) { alert('로드 오류: '+e.message); }
+}
+
+async function deleteBF(id, name) {
+  if(!confirm(name+' 나비를 삭제할까요?')) return;
+  try {
+    await db.collection('butterflies').doc(id).delete();
+    toast('🗑 삭제 완료'); rBF();
+  } catch(e) { alert('삭제 오류: '+e.message); }
+}
+
+async function downloadBFImages() {
+  toast('📦 이미지 준비 중...', 'info');
+  // JSZip 동적 로드
+  if(typeof JSZip === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    document.head.appendChild(s);
+    await new Promise(res => s.onload = res);
+  }
+  const snap = await db.collection('butterflies').get();
+  const zip = new JSZip();
+  const canvas = document.createElement('canvas');
+  canvas.width = 200; canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+  for(const doc of snap.docs) {
+    const bf = doc.data();
+    if(!bf.svgCode) continue;
+    const svgStr = bf.svgCode.replace(/width="[^"]*"/, 'width="200"').replace(/height="[^"]*"/, 'height="200"');
+    const img = new Image();
+    const blob = new Blob([svgStr], {type:'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    await new Promise(res => { img.onload=()=>{ctx.clearRect(0,0,200,200);ctx.drawImage(img,0,0);res();}; img.src=url; });
+    const pngData = canvas.toDataURL('image/png').split(',')[1];
+    zip.file(`${bf.id}_${(bf.name||bf.id).replace(/\s/g,'_')}.png`, pngData, {base64:true});
+    URL.revokeObjectURL(url);
+  }
+  const content = await zip.generateAsync({type:'blob'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(content);
+  a.download = 'butterfly_images.zip';
+  a.click();
+  toast('✅ 다운로드 완료!');
+}
+
+// ══════════════════════════════════
+// 📢 광고 배너 관리
+// ══════════════════════════════════
+async function rAD() {
+  const main = document.getElementById('main');
+  let adConfig = {};
+  try {
+    const doc = await db.collection('config').doc('ad_banner').get();
+    if(doc.exists) adConfig = doc.data();
+  } catch(e) {}
+  main.innerHTML = `
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📢 광고 배너 관리</h2>
+    <div class="card">
+      <div class="ct">배너 설정</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700">
+          <input type="checkbox" id="ad-on" ${adConfig.on?'checked':''} style="width:18px;height:18px">
+          배너 표시 ON/OFF
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:4px">배경색</div>
+            <input type="color" id="ad-bg" value="${adConfig.bg||'#FFF8E1'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB">
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:4px">텍스트 색상</div>
+            <input type="color" id="ad-tc" value="${adConfig.textColor||'#374151'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px">광고 텍스트</div>
+          <input id="ad-text" value="${adConfig.text||''}" placeholder="광고 문구를 입력하세요" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px">링크 URL (선택)</div>
+          <input id="ad-link" value="${adConfig.link||''}" placeholder="https://..." style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;box-sizing:border-box">
+        </div>
+        <div style="background:var(--bg,${adConfig.bg||'#FFF8E1'});padding:10px;border-radius:8px;text-align:center;font-size:13px;font-weight:700;color:${adConfig.textColor||'#374151'}">
+          미리보기: ${adConfig.text||'광고 텍스트'}
+        </div>
+        <button onclick="saveAdConfig()" class="btn bb">💾 저장</button>
+      </div>
+    </div>`;
+}
+
+async function saveAdConfig() {
+  const data = {
+    on: document.getElementById('ad-on').checked,
+    bg: document.getElementById('ad-bg').value,
+    textColor: document.getElementById('ad-tc').value,
+    text: document.getElementById('ad-text').value.trim(),
+    link: document.getElementById('ad-link').value.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    await db.collection('config').doc('ad_banner').set(data);
+    toast('✅ 광고 배너 저장 완료');
+    rAD();
+  } catch(e) { alert('저장 오류: '+e.message); }
+}
+
+// ══════════════════════════════════
+// 💬 회화 문장 관리
+// ══════════════════════════════════
+async function rCV() {
+  const main = document.getElementById('main');
+  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
+  let cats = [], sentences = [];
+  try {
+    const snap = await db.collection('conversation_sentences').orderBy('cat').orderBy('order').get();
+    sentences = snap.docs.map(d=>({id:d.id,...d.data()}));
+    cats = [...new Set(sentences.map(s=>s.cat||'기타'))];
+  } catch(e) {}
+  const selCat = window._cvCat || cats[0] || '';
+  const filtered = selCat ? sentences.filter(s=>s.cat===selCat) : sentences;
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px;font-weight:900">💬 회화 문장 관리</h2>
+      <div style="display:flex;gap:8px">
+        <span style="background:#FDF2F8;color:#BE185D;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${sentences.length}개 등록</span>
+        <button class="btn bb" onclick="showAddCV()">➕ 문장 추가</button>
+        <button class="btn bg" onclick="uploadCVCSV()">📤 CSV 업로드</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${cats.map(cat=>`<button onclick="window._cvCat='${cat}';rCV()" style="background:${selCat===cat?'#BE185D':'#F9FAFB'};color:${selCat===cat?'#fff':'#374151'};border:1.5px solid ${selCat===cat?'#BE185D':'#E5E7EB'};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">${cat}</button>`).join('')}
+    </div>
+    <div class="card">
+      ${filtered.length ? `<div class="tw"><table>
+        <tr><th>#</th><th>카테고리</th><th>영어 문장</th><th>한국어</th><th>난이도</th><th>작업</th></tr>
+        ${filtered.map((s,i)=>`<tr>
+          <td style="color:#9CA3AF;font-size:11px">${i+1}</td>
+          <td><span style="background:#FDF2F8;color:#BE185D;border-radius:20px;padding:2px 8px;font-size:11px">${s.cat||'기타'}</span></td>
+          <td style="font-weight:600;max-width:200px">${s.en||''}</td>
+          <td style="color:#6B7280;max-width:160px">${s.kr||''}</td>
+          <td><span style="font-size:11px">${'⭐'.repeat(s.level||1)}</span></td>
+          <td><div style="display:flex;gap:4px">
+            <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editCV('${s.id}')">✏️</button>
+            <button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteCV('${s.id}')">🗑</button>
+          </div></td>
+        </tr>`).join('')}
+      </table></div>` : '<div class="es"><div class="ei">💬</div><p>등록된 문장이 없어요</p></div>'}
+    </div>`;
+}
+
+function showAddCV(existing) {
+  const mr = document.getElementById('mr') || (() => {
+    const d=document.createElement('div');d.id='mr';document.body.appendChild(d);return d;
+  })();
+  const s = existing || {};
+  const cats=['인사/소개','쇼핑','음식/식당','교통','호텔/숙소','여행','병원/긴급','비즈니스','일상대화','감정표현'];
+  mr.innerHTML=`<div class="mbg" onclick="this.parentElement.innerHTML=''"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:900;margin-bottom:14px">${s.id?'문장 수정':'문장 추가'}</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <select id="cv-cat" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+        ${cats.map(c=>`<option value="${c}" ${s.cat===c?'selected':''}>${c}</option>`).join('')}
+        <option value="기타" ${!cats.includes(s.cat)?'selected':''}>기타</option>
+      </select>
+      <input id="cv-en" placeholder="영어 문장" value="${s.en||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+      <input id="cv-kr" placeholder="한국어 뜻" value="${s.kr||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+      <input id="cv-ph" placeholder="발음 (선택)" value="${s.ph||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+      <select id="cv-lv" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
+        ${[1,2,3].map(l=>`<option value="${l}" ${s.level===l?'selected':''}>${'⭐'.repeat(l)} 난이도 ${l}</option>`).join('')}
+      </select>
+      <button onclick="saveCV('${s.id||''}')" class="btn bb">💾 저장</button>
+    </div>
+  </div></div>`;
+}
+
+async function saveCV(existingId) {
+  const en=document.getElementById('cv-en').value.trim();
+  const kr=document.getElementById('cv-kr').value.trim();
+  if(!en||!kr){alert('영어/한국어는 필수');return;}
+  const data={cat:document.getElementById('cv-cat').value,en,kr,ph:document.getElementById('cv-ph').value.trim(),level:parseInt(document.getElementById('cv-lv').value),order:Date.now()};
+  try{
+    if(existingId) await db.collection('conversation_sentences').doc(existingId).update(data);
+    else await db.collection('conversation_sentences').add(data);
+    toast('✅ 저장 완료');document.getElementById('mr').innerHTML='';rCV();
+  }catch(e){alert('오류: '+e.message);}
+}
+
+async function editCV(id){
+  try{const doc=await db.collection('conversation_sentences').doc(id).get();if(doc.exists)showAddCV({id:doc.id,...doc.data()});}catch(e){alert('오류: '+e.message);}
+}
+async function deleteCV(id){
+  if(!confirm('삭제할까요?'))return;
+  try{await db.collection('conversation_sentences').doc(id).delete();toast('삭제 완료');rCV();}catch(e){alert('오류: '+e.message);}
+}
+function uploadCVCSV(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.csv';
+  inp.onchange=async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=async(ev)=>{
+      const lines=ev.target.result.split('\n').filter(l=>l.trim());
+      const headers=lines[0].split(',').map(h=>h.trim().toLowerCase());
+      const rows=lines.slice(1).map(line=>{
+        const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+        const obj={};headers.forEach((h,i)=>{if(vals[i])obj[h]=vals[i];});
+        return obj;
+      }).filter(r=>r.en&&r.kr);
+      const batch=db.batch();
+      rows.forEach(r=>{const ref=db.collection('conversation_sentences').doc();batch.set(ref,{...r,level:parseInt(r.level||1),order:Date.now()});});
+      await batch.commit();
+      toast('✅ '+rows.length+'개 문장 업로드 완료');rCV();
+    };
+    reader.readAsText(file,'UTF-8');
+  };
+  inp.click();
+}
+
 </script>
+<div id="mr"></div>
 </body>
 </html>

@@ -3362,6 +3362,33 @@ function sv() {
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
   localStorage.setItem('wd-alg',JSON.stringify(S.alGoal));
   localStorage.setItem('wd-alst',JSON.stringify(S.alStreak));
+  // 신규 필드 저장
+  localStorage.setItem('wd-dg', String(S._dailyGoalMin||30));
+  localStorage.setItem('wd-dsm', String(S._dailyStudiedMin||0));
+  localStorage.setItem('wd-dd', S._dailyDate||'');
+  localStorage.setItem('wd-dxg', JSON.stringify(S._dailyXpGiven||{}));
+  localStorage.setItem('wd-ach', JSON.stringify(S._achievements||[]));
+  // Firebase 동기화 (로그인 상태일 때)
+  if(S.user && S.user.uid && typeof db !== 'undefined') {
+    const uid = S.user.uid;
+    const saveData = {
+      lid:S.lid, xp:S.xp, streak:S.streak, nick:S.nick,
+      words:S.words||[], books:S.books||[], currentBook:S.currentBook||'내 단어장',
+      markMap:S.markMap||{}, learned:[...S.learned],
+      _achievements:S._achievements||[], _acc:S._acc||[], _equipped:S._equipped||'',
+      _ownedPacks:S._ownedPacks||[], alStudy:S.alStudy, alGoal:S.alGoal, alStreak:S.alStreak,
+      _dailyGoalMin:S._dailyGoalMin||30, _dailyStudiedMin:S._dailyStudiedMin||0,
+      _dailyDate:S._dailyDate||'', _dailyXpGiven:S._dailyXpGiven||{},
+      studyLog:S.studyLog||{}, fontFamily:S.fontFamily||'default',
+      updatedAt: new Date().toISOString()
+    };
+    // throttle: 3초에 1번만
+    clearTimeout(window._svTimer);
+    window._svTimer = setTimeout(()=>{
+      db.collection('users').doc(uid).set(saveData, {merge:true})
+        .catch(e=>console.warn('Firebase 저장 오류',e));
+    }, 3000);
+  }
 }
 
 function toast(msg) {
@@ -9836,6 +9863,22 @@ auth.onAuthStateChanged(user => {
   S.user = user;
   if(user) {
     // 로그인됨 → Firebase에서 데이터 로드 후 앱 시작
+    const restoreFromLS = () => {
+      try {
+        const ls = localStorage;
+        if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+        if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
+        if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
+        const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+        const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
+        const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
+        const mk=ls.getItem('wd-mk'); if(mk) S.markMap=JSON.parse(mk);
+        const lrn=ls.getItem('wd-lrn'); if(lrn) S.learned=new Set(JSON.parse(lrn));
+        const ach=ls.getItem('wd-ach'); if(ach) S._achievements=JSON.parse(ach);
+        const als=ls.getItem('wd-als'); if(als) S.alStudy=JSON.parse(als);
+        const alg=ls.getItem('wd-alg'); if(alg) S.alGoal=JSON.parse(alg);
+      } catch(e) {}
+    };
     db.collection('users').doc(user.uid).get().then(doc => {
       if(doc.exists) {
         const data = doc.data();
@@ -9846,20 +9889,43 @@ auth.onAuthStateChanged(user => {
         fields.forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
         if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
         if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
+        // Firebase에 books 없으면 localStorage에서 보완
+        if(!doc.data().books || !doc.data().books.length) restoreFromLS();
+      } else {
+        // Firebase에 데이터 없음 → localStorage fallback
+        restoreFromLS();
       }
       startApp();
-    }).catch(() => startApp());
+    }).catch(() => { restoreFromLS(); startApp(); });
   } else {
-    // 미로그인 → 로컬 스토리지에서 로드
+    // 미로그인 → localStorage에서 복원
     try {
-      const saved = localStorage.getItem('bw-state');
-      if(saved) {
-        const parsed = JSON.parse(saved);
-        Object.assign(S, parsed);
-        if(Array.isArray(parsed.learned)) S.learned = new Set(parsed.learned);
-        if(Array.isArray(parsed.favorites)) S.favorites = new Set(parsed.favorites);
-      }
-    } catch(e) {}
+      const ls = localStorage;
+      if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+      if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
+      if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
+      if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
+      const w = ls.getItem('wd-w'); if(w) S.words = JSON.parse(w);
+      const bks = ls.getItem('wd-bks'); if(bks) S.books = JSON.parse(bks);
+      const cbk = ls.getItem('wd-cbk'); if(cbk) S.currentBook = cbk;
+      const mk = ls.getItem('wd-mk'); if(mk) S.markMap = JSON.parse(mk);
+      const lrn = ls.getItem('wd-lrn'); if(lrn) S.learned = new Set(JSON.parse(lrn));
+      const fav = ls.getItem('wd-fav'); if(fav) S.favorites = new Set(JSON.parse(fav));
+      const srs = ls.getItem('wd-srs'); if(srs) S.srsMap = JSON.parse(srs);
+      const bc = ls.getItem('wd-bc'); if(bc) S.bookcase = JSON.parse(bc);
+      const sl = ls.getItem('wd-sl'); if(sl) S.studyLog = JSON.parse(sl);
+      const als = ls.getItem('wd-als'); if(als) S.alStudy = JSON.parse(als);
+      const alg = ls.getItem('wd-alg'); if(alg) S.alGoal = JSON.parse(alg);
+      const alst = ls.getItem('wd-alst'); if(alst) S.alStreak = JSON.parse(alst);
+      const gs = ls.getItem('wd-gs'); if(gs) S.gameSettings = JSON.parse(gs);
+      const dcc = ls.getItem('wd-dcc'); if(dcc) S._dcClaimed = dcc;
+      // 신규 필드
+      const dg = ls.getItem('wd-dg'); if(dg) S._dailyGoalMin = Number(dg)||30;
+      const dsm = ls.getItem('wd-dsm'); if(dsm) S._dailyStudiedMin = Number(dsm)||0;
+      const dd = ls.getItem('wd-dd'); if(dd) S._dailyDate = dd;
+      const dxg = ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven = JSON.parse(dxg);
+      const ach = ls.getItem('wd-ach'); if(ach) S._achievements = JSON.parse(ach);
+    } catch(e) { console.warn('localStorage 복원 오류', e); }
     // 로그인 화면 표시
     showLogin();
   }

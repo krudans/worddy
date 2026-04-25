@@ -4,91 +4,362 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WordDay 관리자</title>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
+
+// ── Google 로그인 ──
+async function doGoogleLogin(){
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  } catch(e) { showErr(e.message); }
+}
+
+// ── 나비 관리 ──
+async function rBF() {
+  const main = document.getElementById('main-inner');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:#9CA3AF">로딩 중...</div>';
+  let bfList = [];
+  try { const snap = await db.collection('butterflies').orderBy('id').get(); bfList = snap.docs.map(d=>({id:d.id,...d.data()})); } catch(e) {}
+  main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2><div style="display:flex;gap:8px"><span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${bfList.length}종</span><button class="btn bb" onclick="showAddBF()">➕ 추가</button><button class="btn bg" onclick="downloadBFImages()">📦 ZIP</button></div></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">${bfList.length?bfList.map(bf=>`<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px;text-align:center"><div style="font-size:10px;color:#9CA3AF">${bf.id}</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">${bf.svgCode?bf.svgCode.replace(/width="[^"]*"/,'width="48"').replace(/height="[^"]*"/,'height="48"'):'🦋'}</div><div style="font-size:12px;font-weight:700">${bf.name||'-'}</div><div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">${bf.rare||''}</div><div style="display:flex;gap:4px"><button class="btn bgr" style="flex:1;font-size:11px;padding:4px" onclick="editBF('${bf.id}')">✏️</button><button class="btn br" style="font-size:11px;padding:4px" onclick="deleteBF('${bf.id}','${bf.name||''}')">🗑</button></div></div>`).join(''):'<div class="es" style="grid-column:1/-1"><div class="ei">🦋</div><p>등록된 나비 없음</p></div>'}</div>`;
+}
+function showAddBF(bf){
+  bf=bf||{};
+  const mr=document.getElementById('mr');
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto"><div style="font-size:16px;font-weight:900;margin-bottom:14px">${bf.id?'수정':'추가'}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"><input id="bf-id" placeholder="ID(b031)" value="${bf.id||''}" ${bf.id?'readonly':''} style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><input id="bf-name" placeholder="한글명" value="${bf.name||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><input id="bf-en" placeholder="영문명" value="${bf.enName||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><select id="bf-rare" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB">${['⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'].map(r=>`<option value="${r}" ${bf.rare===r?'selected':''}>${r}</option>`).join('')}</select></div><textarea id="bf-desc" placeholder="설명" rows="2" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px;resize:vertical">${bf.desc||''}</textarea><div style="font-size:12px;font-weight:700;margin-bottom:4px">SVG 코드</div><textarea id="bf-svg" rows="5" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:11px;font-family:monospace;resize:vertical;margin-bottom:6px">${bf.svgCode||''}</textarea><button onclick="document.getElementById('bf-preview').innerHTML=document.getElementById('bf-svg').value" style="background:#F5F3FF;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:#7C3AED;margin-bottom:6px">👁 미리보기</button><div id="bf-preview" style="min-height:60px;display:flex;align-items:center;justify-content:center;border:1px dashed #E5E7EB;border-radius:8px;margin-bottom:12px">${bf.svgCode||''}</div><button onclick="saveBF('${bf.id||''}')" class="btn bb">💾 저장</button></div></div>`;
+}
+async function saveBF(id){const bid=document.getElementById('bf-id').value.trim();const name=document.getElementById('bf-name').value.trim();if(!bid||!name){toast('ID와 이름 필수','err');return;}const data={id:bid,name,enName:document.getElementById('bf-en').value.trim(),rare:document.getElementById('bf-rare').value,desc:document.getElementById('bf-desc').value.trim(),svgCode:document.getElementById('bf-svg').value.trim(),updatedAt:new Date().toISOString()};try{await db.collection('butterflies').doc(bid).set(data,{merge:true});toast('✅ 저장');cm();rBF();}catch(e){toast('오류: '+e.message,'err');}}
+async function editBF(id){try{const d=await db.collection('butterflies').doc(id).get();if(d.exists)showAddBF({id:d.id,...d.data()});}catch(e){toast('오류','err');}}
+async function deleteBF(id,name){if(!confirm(name+' 삭제?'))return;try{await db.collection('butterflies').doc(id).delete();toast('삭제');rBF();}catch(e){toast('오류','err');}}
+async function downloadBFImages(){toast('준비 중...');if(typeof JSZip==='undefined'){const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';document.head.appendChild(s);await new Promise(res=>s.onload=res);}const snap=await db.collection('butterflies').get();const zip=new JSZip();const canvas=document.createElement('canvas');canvas.width=200;canvas.height=200;const ctx=canvas.getContext('2d');for(const doc of snap.docs){const bf=doc.data();if(!bf.svgCode)continue;const svgStr=bf.svgCode.replace(/width="[^"]*"/,'width="200"').replace(/height="[^"]*"/,'height="200"');const img=new Image();const blob=new Blob([svgStr],{type:'image/svg+xml'});const url=URL.createObjectURL(blob);await new Promise(res=>{img.onload=()=>{ctx.clearRect(0,0,200,200);ctx.drawImage(img,0,0);res();};img.src=url;});zip.file(`${bf.id}_${(bf.name||bf.id).replace(/\s/g,'_')}.png`,canvas.toDataURL('image/png').split(',')[1],{base64:true});URL.revokeObjectURL(url);}const content=await zip.generateAsync({type:'blob'});const a=document.createElement('a');a.href=URL.createObjectURL(content);a.download='butterfly_images.zip';a.click();toast('✅ 완료');}
+
+// ── 광고 배너 ──
+async function rAD(){const main=document.getElementById('main-inner');let ad={};try{const d=await db.collection('config').doc('ad_banner').get();if(d.exists)ad=d.data();}catch(e){}main.innerHTML=`<h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📢 광고 배너</h2><div class="card"><div class="ct">배너 설정</div><div style="display:flex;flex-direction:column;gap:12px"><label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ad-on" ${ad.on?'checked':''} style="width:18px;height:18px"> ON/OFF</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">배경색</div><input type="color" id="ad-bg" value="${ad.bg||'#FFF8E1'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB"></div><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">텍스트 색</div><input type="color" id="ad-tc" value="${ad.textColor||'#374151'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB"></div></div><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">광고 텍스트</div><input id="ad-text" value="${ad.text||''}" placeholder="광고 문구" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"></div><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">링크 URL</div><input id="ad-link" value="${ad.link||''}" placeholder="https://..." style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"></div><button onclick="saveAdConfig()" class="btn bb">💾 저장</button></div></div>`;}
+async function saveAdConfig(){const data={on:document.getElementById('ad-on').checked,bg:document.getElementById('ad-bg').value,textColor:document.getElementById('ad-tc').value,text:document.getElementById('ad-text').value.trim(),link:document.getElementById('ad-link').value.trim()};try{await db.collection('config').doc('ad_banner').set(data);toast('✅ 저장');rAD();}catch(e){toast('오류','err');}}
+
+// ── 회화 문장 ──
+async function rCV(){const main=document.getElementById('main-inner');main.innerHTML='<div style="text-align:center;padding:40px;color:#9CA3AF">로딩...</div>';let sentences=[];try{const snap=await db.collection('conversation_sentences').orderBy('cat').get();sentences=snap.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}const cats=[...new Set(sentences.map(s=>s.cat||'기타'))];const selCat=window._cvCat||cats[0]||'';const filtered=selCat?sentences.filter(s=>s.cat===selCat):sentences;main.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="font-size:22px;font-weight:900">💬 회화 문장</h2><div style="display:flex;gap:8px"><span style="background:#FDF2F8;color:#BE185D;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${sentences.length}개</span><button class="btn bb" onclick="showAddCV()">➕ 추가</button><button class="btn bg" onclick="uploadCVCSV()">📤 CSV</button></div></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${cats.map(cat=>`<button onclick="window._cvCat='${cat}';rCV()" style="background:${selCat===cat?'#BE185D':'#F9FAFB'};color:${selCat===cat?'#fff':'#374151'};border:1.5px solid ${selCat===cat?'#BE185D':'#E5E7EB'};border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">${cat}</button>`).join('')}</div><div class="card"><div class="tw"><table><tr><th>카테고리</th><th>영어</th><th>한국어</th><th>난이도</th><th></th></tr>${filtered.map(s=>`<tr><td><span style="background:#FDF2F8;color:#BE185D;border-radius:10px;padding:2px 8px;font-size:11px">${s.cat||''}</span></td><td style="font-weight:600;max-width:180px">${s.en||''}</td><td style="color:#6B7280;max-width:140px">${s.kr||''}</td><td>${'⭐'.repeat(s.level||1)}</td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editCV('${s.id}')">✏️</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteCV('${s.id}')">🗑</button></div></td></tr>`).join('')}</table></div></div>`;}
+function showAddCV(s){s=s||{};const cats=['인사/소개','쇼핑','음식/식당','교통','호텔/숙소','병원/긴급','비즈니스','일상대화'];const mr=document.getElementById('mr');mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:16px;font-weight:900;margin-bottom:14px">${s.id?'수정':'추가'}</div><select id="cv-cat" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px">${cats.map(c=>`<option value="${c}" ${s.cat===c?'selected':''}>${c}</option>`).join('')}</select><input id="cv-en" placeholder="영어 문장" value="${s.en||''}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px"><input id="cv-kr" placeholder="한국어 뜻" value="${s.kr||''}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px"><select id="cv-lv" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:12px">${[1,2,3].map(l=>`<option value="${l}" ${s.level===l?'selected':''}>${'⭐'.repeat(l)} 난이도${l}</option>`).join('')}</select><button onclick="saveCV('${s.id||''}')" class="btn bb">💾 저장</button></div></div>`;}
+async function saveCV(id){const en=document.getElementById('cv-en').value.trim();const kr=document.getElementById('cv-kr').value.trim();if(!en||!kr){toast('영어/한국어 필수','err');return;}const data={cat:document.getElementById('cv-cat').value,en,kr,level:parseInt(document.getElementById('cv-lv').value),order:Date.now()};try{if(id)await db.collection('conversation_sentences').doc(id).update(data);else await db.collection('conversation_sentences').add(data);toast('✅ 저장');cm();rCV();}catch(e){toast('오류','err');}}
+async function editCV(id){try{const d=await db.collection('conversation_sentences').doc(id).get();if(d.exists)showAddCV({id:d.id,...d.data()});}catch(e){}}
+async function deleteCV(id){if(!confirm('삭제?'))return;try{await db.collection('conversation_sentences').doc(id).delete();toast('삭제');rCV();}catch(e){toast('오류','err');}}
+function uploadCVCSV(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=async e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async ev=>{const lines=ev.target.result.split('\n').filter(l=>l.trim());const headers=lines[0].split(',').map(h=>h.trim().toLowerCase());const rows=lines.slice(1).map(line=>{const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));const obj={};headers.forEach((h,i)=>{if(vals[i])obj[h]=vals[i];});return obj;}).filter(r=>r.en&&r.kr);const batch=db.batch();rows.forEach(r=>{const ref=db.collection('conversation_sentences').doc();batch.set(ref,{...r,level:parseInt(r.level||1),order:Date.now()});});await batch.commit();toast('✅ '+rows.length+'개 업로드');rCV();};reader.readAsText(file,'UTF-8');};inp.click();}
+
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  --primary: #1E40AF;
+  --primary-light: #3B82F6;
+  --primary-dark: #1E3A8A;
+  --accent: #06B6D4;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --purple: #7C3AED;
+  --bg: #F0F4F8;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #0F172A;
+  --bg-header: #1E293B;
+  --text-1: #0F172A;
+  --text-2: #475569;
+  --text-3: #94A3B8;
+  --border: #E2E8F0;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -2px rgba(0,0,0,.05);
+  --radius: 12px;
+  --radius-lg: 16px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+
+/* ── 로그인 ── */
+#login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;
+  background: linear-gradient(135deg, #0F172A 0%, #1E3A5F 50%, #0E7490 100%); }
+.login-box { background: rgba(255,255,255,.97); border-radius: 24px; padding: 40px 36px; width: 100%; max-width: 400px;
+  box-shadow: 0 25px 50px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05); }
+.login-logo { text-align: center; margin-bottom: 28px; }
+.login-logo .ic { font-size: 52px; margin-bottom: 8px; display: block; }
+.login-logo h1 { font-size: 22px; font-weight: 800; color: var(--primary-dark); letter-spacing: -0.5px; }
+.login-logo p { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.login-tab { display: flex; background: #F1F5F9; border-radius: 10px; padding: 4px; margin-bottom: 22px; gap: 4px; }
+.login-tab button { flex:1; padding:8px; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; background:transparent; color:#64748B; font-family:inherit; }
+.login-tab button.on { background:#fff; color: var(--primary); box-shadow: var(--shadow-sm); }
+.lf { display: flex; flex-direction: column; gap: 12px; }
+.lf-group label { font-size: 11px; font-weight: 700; color: var(--text-2); display: block; margin-bottom: 5px; letter-spacing: .3px; text-transform: uppercase; }
+.lf-group input { border: 1.5px solid var(--border); border-radius: 10px; padding: 11px 14px; font-size: 14px; width: 100%; background: #F8FAFC; transition: all .15s; font-family: inherit; color: var(--text-1); }
+.lf-group input:focus { outline: none; border-color: var(--primary-light); background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+.btn-login { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-weight: 800; cursor: pointer; width: 100%; font-family: inherit; transition: all .2s; letter-spacing: -0.2px; }
+.btn-login:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(30,64,175,.35); }
+.btn-login:active { transform: translateY(0); }
+.login-err { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--danger); display: none; }
+.login-err.show { display: block; }
+
+/* ── 앱 레이아웃 ── */
+#app-screen { display: none; min-height: 100vh; }
+.hd { position: fixed; top: 0; left: 220px; right: 0; height: 56px; background: var(--bg-header); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 100; border-bottom: 1px solid rgba(255,255,255,.06); }
+.hd h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+.hd-right { display: flex; align-items: center; gap: 10px; }
+.hd-badge { background: rgba(255,255,255,.1); border-radius: 20px; padding: 4px 10px; font-size: 11px; color: rgba(255,255,255,.7); font-weight: 600; }
+
+/* ── 사이드바 ── */
+.sidebar { position: fixed; top: 0; left: 0; width: 220px; height: 100vh; background: var(--bg-sidebar); display: flex; flex-direction: column; z-index: 200; overflow-y: auto; }
+.sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,.07); flex-shrink: 0; }
+.sidebar-logo .logo-icon { font-size: 28px; margin-bottom: 4px; }
+.sidebar-logo .logo-title { font-size: 14px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
+.sidebar-logo .logo-sub { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
+.sidebar nav { flex: 1; padding: 10px 8px; overflow-y: auto; }
+.ss { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.3); letter-spacing: 1.2px; text-transform: uppercase; padding: 14px 10px 6px; }
+.ni { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.55); transition: all .15s; margin-bottom: 1px; }
+.ni:hover { background: rgba(255,255,255,.07); color: rgba(255,255,255,.9); }
+.ni.on { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; box-shadow: 0 3px 10px rgba(30,64,175,.4); }
+.ni .ic { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.sidebar-bottom { padding: 10px 8px 16px; border-top: 1px solid rgba(255,255,255,.07); flex-shrink: 0; }
+#au-info { padding: 10px 12px; margin-bottom: 6px; }
+#au-info .au-name { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.8); }
+#au-info .au-role { font-size: 10px; color: rgba(255,255,255,.35); margin-top: 2px; }
+.ni-logout { color: rgba(239,68,68,.6) !important; }
+.ni-logout:hover { background: rgba(239,68,68,.1) !important; color: rgba(239,68,68,.9) !important; }
+
+/* ── 메인 콘텐츠 ── */
+#main { margin-left: 220px; padding-top: 56px; min-height: 100vh; }
+.main-inner { padding: 28px; max-width: 1100px; }
+
+/* ── 카드 ── */
+.card { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 16px; overflow: hidden; }
+.ct { font-size: 13px; font-weight: 700; color: var(--text-2); padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background: #FAFBFC; }
+.card > *:not(.ct) { padding: 16px 20px; }
+.card > .ct + * { padding-top: 16px; }
+
+/* ── 페이지 헤더 ── */
+.page-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.page-hd h2 { font-size: 20px; font-weight: 800; color: var(--text-1); letter-spacing: -0.5px; }
+.page-hd .page-hd-actions { display: flex; gap: 8px; align-items: center; }
+
+/* ── 버튼 ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 14px; border-radius: 9px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s; font-family: inherit; white-space: nowrap; }
+.btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.bb { background: var(--primary); color: #fff; }
+.bb:hover { background: var(--primary-light); }
+.bg { background: var(--success); color: #fff; }
+.bgr { background: #F1F5F9; color: var(--text-2); border: 1px solid var(--border); }
+.br { background: #FEF2F2; color: var(--danger); border: 1px solid #FECACA; }
+.bp { background: #F5F3FF; color: var(--purple); border: 1px solid #E9D5FF; }
+
+/* ── 통계 그리드 ── */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px; box-shadow: var(--shadow-sm); }
+.stat-card .s-icon { font-size: 24px; margin-bottom: 8px; }
+.stat-card .s-val { font-size: 24px; font-weight: 800; letter-spacing: -1px; }
+.stat-card .s-lb { font-size: 11px; color: var(--text-3); font-weight: 600; margin-top: 3px; text-transform: uppercase; letter-spacing: .3px; }
+
+/* ── 테이블 ── */
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--text-3); background: #F8FAFC; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+td { padding: 12px 14px; border-bottom: 1px solid #F1F5F9; color: var(--text-1); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #F8FAFC; }
+
+/* ── 뱃지 ── */
+.badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.badge-blue { background: #EFF6FF; color: #2563EB; }
+.badge-green { background: #ECFDF5; color: #059669; }
+.badge-red { background: #FEF2F2; color: #DC2626; }
+.badge-yellow { background: #FFFBEB; color: #D97706; }
+.badge-purple { background: #F5F3FF; color: #7C3AED; }
+.badge-gray { background: #F1F5F9; color: #64748B; }
+
+/* ── 빈 상태 ── */
+.es { text-align: center; padding: 48px 20px; color: var(--text-3); }
+.ei { font-size: 48px; margin-bottom: 12px; opacity: .5; }
+.es p { font-size: 14px; font-weight: 600; color: var(--text-2); }
+.es small { font-size: 12px; color: var(--text-3); }
+
+/* ── 입력 ── */
+.input { border: 1.5px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 13px; font-family: inherit; background: #F8FAFC; width: 100%; transition: all .15s; color: var(--text-1); }
+.input:focus { outline: none; border-color: var(--primary-light); background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+select.input { cursor: pointer; }
+textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+/* ── 바 차트 ── */
+.bi { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bl { font-size: 12px; min-width: 80px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
+.bt { flex: 1; height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; }
+.bf { height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-light)); border-radius: 4px; transition: width .6s ease; }
+.bv { font-size: 11px; color: var(--text-3); min-width: 60px; text-align: right; font-weight: 600; }
+
+/* ── 모달 ── */
+#mr { position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
+#mr > * { pointer-events: all; }
+.mbg { position: fixed; inset: 0; background: rgba(15,23,42,.6); display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
+.modal { background: #fff; border-radius: 20px; padding: 24px; width: 100%; max-width: 480px; box-shadow: 0 25px 50px rgba(0,0,0,.25); }
+.modal h3 { font-size: 16px; font-weight: 800; margin-bottom: 16px; color: var(--text-1); }
+
+/* ── 토스트 ── */
+#tw { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: #1E293B; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); animation: toastIn .3s ease; white-space: nowrap; }
+.toast.tok { background: var(--success); }
+.toast.terr { background: var(--danger); }
+@keyframes toastIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+
+/* ── 구분선 ── */
+.divider { height: 1px; background: var(--border); margin: 8px 0; }
+
+/* ── 반응형 ── */
+@media(max-width:768px) {
+  .hd { left: 0; }
+  .sidebar { transform: translateX(-100%); transition: transform .25s; }
+  .sidebar.open { transform: translateX(0); }
+  #main { margin-left: 0; }
+  .stat-grid { grid-template-columns: repeat(2,1fr); }
+}
+
+/* ── 스크롤바 ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+</style>
 </head>
 <body>
-<div id="login-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#F0F4F8;padding:20px">
-  <div style="background:#fff;border-radius:20px;padding:32px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.1)">
-    <div style="text-align:center;margin-bottom:24px">
-      <div style="font-size:40px;margin-bottom:8px">🦋</div>
-      <div style="font-size:22px;font-weight:900;color:#1E3A5F">Butterfly Word</div>
-      <div style="font-size:13px;color:#9CA3AF;margin-top:4px">관리자 페이지</div>
+
+<!-- ── 로그인 화면 ── -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="ic">⚡</div>
+      <h1>WordDay 관리자</h1>
+      <p>관리자 계정으로 로그인하세요</p>
     </div>
-    <div id="lt-login" style="display:block">
-      <div style="display:flex;margin-bottom:20px;background:#F3F4F6;border-radius:12px;padding:4px">
-        <button id="btn-login-tab" onclick="switchLoginTab('login')" style="flex:1;padding:8px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#1E3A5F;box-shadow:0 1px 4px rgba(0,0,0,.1)">로그인</button>
-        <button id="btn-reg-tab" onclick="switchLoginTab('reg')" style="flex:1;padding:8px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:#9CA3AF">등록 신청</button>
+    <div class="login-tab">
+      <button class="on" id="lt-login" onclick="switchLoginTab('login')">🔐 로그인</button>
+      <button id="lt-reg" onclick="switchLoginTab('reg')">📝 관리자 등록</button>
+    </div>
+
+    <!-- 로그인 폼 -->
+    <div id="lf-login" class="lf">
+      <div class="lf-group">
+        <label>관리자 ID (이메일)</label>
+        <input type="email" id="li-id" placeholder="admin@wordday.com" autocomplete="username">
       </div>
-      <div id="pn-login">
-        <input id="li-email" type="email" placeholder="이메일" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-        <input id="li-pw" type="password" placeholder="비밀번호" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:16px;box-sizing:border-box">
-        <div id="li-err" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
-        <button onclick="doLogin()" style="width:100%;padding:13px;background:#1E5FA5;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px">로그인</button>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <div style="flex:1;height:1px;background:#E5E7EB"></div>
-          <span style="font-size:12px;color:#9CA3AF">또는</span>
-          <div style="flex:1;height:1px;background:#E5E7EB"></div>
+      <div class="lf-group">
+        <label>비밀번호</label>
+        <input type="password" id="li-pw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+        <button class="pw-toggle" onclick="togglePw('li-pw',this)" type="button">👁️</button>
+      </div>
+      <div class="login-err" id="li-err"></div>
+      <button class="login-btn" onclick="doLogin()" id="li-btn">로그인</button>
+      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-top:8px">비밀번호를 잊었다면 슈퍼 관리자에게 문의하세요</div>
+    </div>
+
+    <!-- 관리자 등록 폼 -->
+    <div id="lf-reg" class="lf" style="display:none">
+      <div style="background:#FFF8E1;border-radius:10px;padding:10px 14px;font-size:12px;color:#E65100;font-weight:600;margin-bottom:4px">
+        ⚠️ 등록 후 슈퍼 관리자 승인이 필요합니다
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="lf-group">
+          <label>이름 *</label>
+          <input type="text" id="rg-name" placeholder="홍길동">
         </div>
-        <button onclick="doGoogleLogin()" style="width:100%;padding:13px;background:#fff;color:#374151;border:1.5px solid #E5E7EB;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 29.8 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-21 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15 16.2 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 16.3 2 9.6 6.4 6.3 14.7z"/><path fill="#FBBC05" d="M24 46c5.5 0 10.5-1.9 14.4-5l-6.7-5.5C29.8 37 27 38 24 38c-5.8 0-10.7-3.1-11.8-7.5l-7 5.4C8.7 42 15.8 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.9 2.6-2.6 4.8-4.9 6.3l6.7 5.5C41.8 36.8 45 31 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
-          Google로 로그인
-        </button>
+        <div class="lf-group">
+          <label>전화번호 *</label>
+          <input type="tel" id="rg-phone" placeholder="010-0000-0000">
+        </div>
       </div>
-      <div id="pn-reg" style="display:none">
-        <input id="rg-name" placeholder="이름" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-        <input id="rg-email" type="email" placeholder="이메일" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-        <input id="rg-pw" type="password" placeholder="비밀번호 (6자 이상)" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-        <input id="rg-phone" placeholder="전화번호 (선택)" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-        <input id="rg-code" placeholder="등록 코드" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:14px;margin-bottom:16px;box-sizing:border-box">
-        <div id="rg-err" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
-        <button onclick="doRegister()" style="width:100%;padding:13px;background:#7C3AED;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">등록 신청</button>
+      <div class="lf-group">
+        <label>주소</label>
+        <input type="text" id="rg-addr" placeholder="서울시 강남구...">
       </div>
+      <div class="lf-group">
+        <label>관리자 ID (이메일) *</label>
+        <input type="email" id="rg-id" placeholder="admin@wordday.com" autocomplete="username">
+      </div>
+      <div class="lf-group">
+        <label>비밀번호 * (8자 이상)</label>
+        <input type="password" id="rg-pw" placeholder="••••••••" autocomplete="new-password">
+        <button class="pw-toggle" onclick="togglePw('rg-pw',this)" type="button">👁️</button>
+      </div>
+      <div class="lf-group">
+        <label>비밀번호 확인 *</label>
+        <input type="password" id="rg-pw2" placeholder="••••••••" autocomplete="new-password">
+        <button class="pw-toggle" onclick="togglePw('rg-pw2',this)" type="button">👁️</button>
+      </div>
+      <div class="lf-group">
+        <label>소속/직책</label>
+        <input type="text" id="rg-role" placeholder="예: 콘텐츠팀 / 단어장 관리자">
+      </div>
+      <div class="lf-group">
+        <label>등록 코드 (슈퍼 관리자에게 받기)</label>
+        <input type="text" id="rg-code" placeholder="WORDDAY-ADMIN-XXXX">
+      </div>
+      <div class="login-err" id="rg-err"></div>
+      <button class="login-btn" onclick="doRegister()" id="rg-btn" style="background:linear-gradient(135deg,#7C3AED,#A855F7)">관리자 등록 신청</button>
     </div>
   </div>
 </div>
 
-<div id="app-screen" style="display:none;min-height:100vh;background:#F0F4F8">
-  <div style="display:flex;min-height:100vh">
-    <!-- 사이드바 -->
-    <div style="width:220px;background:#1E3A5F;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column">
-      <div style="padding:0 16px 20px;border-bottom:1px solid rgba(255,255,255,.1)">
-        <div style="font-size:18px;font-weight:900;color:#fff;margin-bottom:2px">🦋 관리자</div>
-        <div id="au" style="font-size:12px;color:rgba(255,255,255,.6)"></div>
-        <div id="au-role" style="font-size:10px;color:rgba(255,255,255,.4)"></div>
+<!-- ── 앱 화면 ── -->
+<div id="app-screen">
+  <!-- 사이드바 -->
+  <aside class="sidebar" id="sb">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🦋</div>
+      <div class="logo-title">Butterfly Word</div>
+      <div class="logo-sub">관리자 콘솔</div>
+    </div>
+    <nav>
+      <div class="ss">메인</div>
+      <div class="ni on" onclick="T('db')" id="ni-db"><span class="ic">📊</span>대시보드</div>
+      <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>이용 분석</div>
+      <div class="ss">콘텐츠</div>
+      <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어 관리</div>
+      <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
+      <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">📝</span>시스템 단어</div>
+      <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
+      <div class="ss">나비 & 게임</div>
+      <div class="ni" onclick="T('bf')" id="ni-bf"><span class="ic">🦋</span>나비 관리</div>
+      <div class="ni" onclick="T('cv')" id="ni-cv"><span class="ic">💬</span>회화 문장</div>
+      <div class="ss">사용자</div>
+      <div class="ni" onclick="T('us')" id="ni-us"><span class="ic">👥</span>회원 관리</div>
+      <div class="ni" onclick="T('nt')" id="ni-nt"><span class="ic">📢</span>공지사항</div>
+      <div class="ni" onclick="T('po')" id="ni-po"><span class="ic">👋</span>콕 찌르기</div>
+      <div class="ss">설정</div>
+      <div class="ni" onclick="T('ad')" id="ni-ad"><span class="ic">🎯</span>광고 배너</div>
+      <div class="ni" onclick="T('adm')" id="ni-adm"><span class="ic">🔐</span>관리자 관리</div>
+    </nav>
+    <div class="sidebar-bottom">
+      <div id="au-info">
+        <div class="au-name" id="au">관리자</div>
+        <div class="au-role" id="au-role"></div>
       </div>
-      <nav style="padding:12px 8px;flex:1;display:flex;flex-direction:column;gap:4px">
-        <button class="ni" id="ni-db" onclick="T('db')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📊 대시보드</button>
-        <button class="ni" id="ni-wd" onclick="T('wd')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📚 단어 관리</button>
-        <button class="ni" id="ni-pk" onclick="T('pk')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🛒 마켓 팩</button>
-        <button class="ni" id="ni-bf" onclick="T('bf')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🦋 나비 관리</button>
-        <button class="ni" id="ni-cv" onclick="T('cv')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">💬 회화 문장</button>
-        <button class="ni" id="ni-ad" onclick="T('ad')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📢 광고 배너</button>
-        <button class="ni" id="ni-nt" onclick="T('nt')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📢 공지사항</button>
-        <button class="ni" id="ni-us" onclick="T('us')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">👥 회원 관리</button>
-        <button class="ni" id="ni-an" onclick="T('an')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📈 이용 분석</button>
-        <button class="ni" id="ni-st" onclick="T('st')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">📝 시스템 단어</button>
-        <button class="ni" id="ni-lv" onclick="T('lv')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🎓 레벨 관리</button>
-        <button class="ni" id="ni-po" onclick="T('po')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">👋 콕 찌르기</button>
-        <div id="ni-adm-wrap">
-          <button class="ni" id="ni-adm" onclick="T('adm')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);background:transparent;text-align:left;width:100%">🔐 관리자 관리</button>
-        </div>
-        <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,.1)">
-          <button onclick="window.open('index.html','_blank')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);background:transparent;text-align:left;width:100%">🔗 앱 열기</button>
-          <button onclick="doLogout()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,100,100,.7);background:transparent;text-align:left;width:100%">🚪 로그아웃</button>
-        </div>
-      </nav>
+      <div class="ni ni-logout" onclick="doLogout()"><span class="ic">🚪</span>로그아웃</div>
     </div>
-    <!-- 메인 영역 -->
-    <div style="flex:1;overflow-y:auto">
-      <div id="main" style="padding:28px;max-width:1100px;margin:0 auto"></div>
+  </aside>
+
+  <!-- 헤더 -->
+  <header class="hd">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onclick="document.getElementById('sb').classList.toggle('open')" style="display:none;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:7px 10px;cursor:pointer;color:#fff;font-size:16px" id="menu-btn">☰</button>
+      <h1 id="page-title">대시보드</h1>
     </div>
+    <div class="hd-right">
+      <span id="at" class="hd-badge" style="font-family:monospace"></span>
+    </div>
+  </header>
+
+  <!-- 메인 -->
+  <div id="main">
+    <div class="main-inner" id="main-inner"></div>
   </div>
 </div>
-
-<div id="toast-container" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none"></div>
-<div id="mr"></div>
 
 <script>
 firebase.initializeApp({apiKey:"AIzaSyAjs9nugwoI-S9CiPrtn0Y5UXYOKJ1lJic",authDomain:"wordday-75ae0.firebaseapp.com",projectId:"wordday-75ae0",storageBucket:"wordday-75ae0.firebasestorage.app",messagingSenderId:"959781543804",appId:"1:959781543804:web:63630bb49b91c9b3908ef9"});
@@ -145,196 +416,6 @@ auth.onAuthStateChanged(async u=>{
   }
 });
 
-function rSW() {
-  if(typeof db==='undefined'){document.getElementById('sw-body').innerHTML='<div style="padding:20px;color:#9CA3AF">Firebase 연결 필요</div>';return;}
-  const lvId=window._swLv||'egg';
-  document.getElementById('sw-body').innerHTML='<div style="padding:20px;text-align:center">로딩 중...</div>';
-  db.collection('system_words').where('level','==',lvId).orderBy('order','asc').get()
-    .then(snap=>{
-      const words=snap.docs.map(d=>({id:d.id,...d.data()}));
-      let h=`<div style="padding:16px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-          ${['egg','baby','crown','coco','shine','small','big','god'].map(l=>`<button onclick="window._swLv='${l}';rSW()" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;font-weight:700;background:${lvId===l?'#1E5FA5':'#F3F4F6'};color:${lvId===l?'#fff':'#374151'};font-size:12px">${l}</button>`).join('')}
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <button onclick="swAddWord()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer">+ 단어 추가</button>
-          <label style="background:#16A34A;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;display:inline-block">📥 CSV<input type="file" accept=".csv" style="display:none" onchange="csvUpload(this)"></label>
-          <label style="background:#16A34A;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer">📥 CSV<input type="file" accept=".csv" style="display:none" onchange="csvUpload(this,window._swLv||'egg')"></label>
-          <span style="font-size:13px;color:#9CA3AF;line-height:36px">${words.length}개</span>
-        </div>
-        <div id="sw-add-form" style="display:none;background:#EFF6FF;border-radius:14px;padding:16px;margin-bottom:16px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-            <input id="sw-en" placeholder="영어 (en)" style="padding:8px 12px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-            <input id="sw-kr" placeholder="한국어 (kr)" style="padding:8px 12px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-            <input id="sw-ph" placeholder="발음 (ph)" style="padding:8px 12px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-            <input id="sw-img" placeholder="이모지 (img)" style="padding:8px 12px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-          </div>
-          <input id="sw-ex" placeholder="예문 (ex)" style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px;box-sizing:border-box;margin-bottom:8px">
-          <div style="display:flex;gap:8px">
-            <button onclick="swSaveWord()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer">저장</button>
-            <button onclick="document.getElementById('sw-add-form').style.display='none'" style="flex:1;background:#F3F4F6;border:none;border-radius:8px;padding:8px;font-size:13px;cursor:pointer">취소</button>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px">`;
-      words.forEach((w,i)=>{
-        h+=`<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;padding:10px 14px;border:1px solid #E5E7EB">
-          <span style="font-size:20px">${w.img||'📝'}</span>
-          <div style="flex:1"><div style="font-size:14px;font-weight:700;font-family:monospace">${w.en}</div>
-            <div style="font-size:12px;color:#6B7280">${w.kr} ${w.ph?'· '+w.ph:''}</div>
-            ${w.ex?`<div style="font-size:11px;color:#9CA3AF;font-style:italic">${w.ex}</div>`:''}
-          </div>
-          <button onclick="swDeleteWord('${w.id}')" style="background:#FEF2F2;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#DC2626;cursor:pointer">삭제</button>
-        </div>`;
-      });
-      h+=`</div></div>`;
-      document.getElementById('sw-body').innerHTML=h;
-    }).catch(e=>{document.getElementById('sw-body').innerHTML='<div style="padding:20px;color:#DC2626">오류: '+e.message+'</div>';});
-}
-
-
-function csvUpload(input) {
-  const file=input.files[0]; if(!file)return;
-  const lv=document.getElementById('sw-level-sel')?.value||'egg';
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const lines=e.target.result.split('\n').filter(l=>l.trim());
-    const words=[];
-    lines.forEach((line,i)=>{
-      if(i===0&&line.toLowerCase().includes('en'))return;
-      const parts=line.split(',').map(p=>p.trim().replace(/^"|"$/g,''));
-      if(parts.length>=2&&parts[0]){
-        words.push({en:parts[0],kr:parts[1]||'',ph:parts[2]||'',img:parts[3]||'📝',ex:parts[4]||'',level:lv,order:Date.now()+i});
-      }
-    });
-    if(!words.length){alert('단어를 찾을 수 없어요. (en,kr,ph,img,ex 형식)');return;}
-    if(!confirm(words.length+'개 단어를 추가할까요?'))return;
-    const batch=db.batch();
-    words.forEach(w=>batch.set(db.collection('system_words').doc(),w));
-    batch.commit().then(()=>{alert('✅ '+words.length+'개 추가 완료!');rSW();}).catch(e=>alert('오류: '+e.message));
-  };
-  reader.readAsText(file);
-}
-function swAddWord() {
-  const f=document.getElementById('sw-add-form');
-  if(f) f.style.display=f.style.display==='none'?'block':'none';
-}
-
-function swSaveWord() {
-  const en=document.getElementById('sw-en')?.value?.trim();
-  const kr=document.getElementById('sw-kr')?.value?.trim();
-  if(!en||!kr){alert('영어와 한국어는 필수입니다');return;}
-  const lvId=window._swLv||'egg';
-  const data={en,kr,ph:document.getElementById('sw-ph')?.value?.trim()||'',
-    img:document.getElementById('sw-img')?.value?.trim()||'📝',
-    ex:document.getElementById('sw-ex')?.value?.trim()||'',
-    level:lvId,order:Date.now()};
-  db.collection('system_words').add(data)
-    .then(()=>{alert('저장 완료!');rSW();})
-    .catch(e=>alert('오류: '+e.message));
-}
-
-function swDeleteWord(id) {
-  if(!confirm('삭제할까요?'))return;
-  db.collection('system_words').doc(id).delete()
-    .then(()=>rSW()).catch(e=>alert('오류: '+e.message));
-}
-
-
-function rMarketAdmin() {
-  const body = document.getElementById('market-body');
-  if(!body) return;
-  if(typeof db==='undefined'){body.innerHTML='<div style="padding:20px;color:#9CA3AF">Firebase 연결 필요</div>';return;}
-  body.innerHTML='<div style="padding:20px;text-align:center">로딩 중...</div>';
-  db.collection('word_packs').orderBy('createdAt','desc').get()
-    .then(snap=>{
-      const packs=snap.docs.map(d=>({id:d.id,...d.data()}));
-      let h=`<div style="padding:16px">
-        <button onclick="showAddPackForm()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px">+ 새 단어팩 추가</button>
-        <div id="pack-add-form" style="display:none;background:#EFF6FF;border-radius:14px;padding:16px;margin-bottom:16px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-            <input id="pk-id" placeholder="팩 ID (영문)" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-            <input id="pk-name" placeholder="팩 이름" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-            <input id="pk-emoji" placeholder="이모지" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-            <input id="pk-cat" placeholder="카테고리" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px">
-          </div>
-          <input id="pk-desc" placeholder="설명 (선택)" style="padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:13px;grid-column:span 2">
-          <textarea id="pk-words" placeholder='단어 JSON: [{"en":"apple","kr":"사과","ph":"[ǽpl]","img":"🍎","ex":"I eat an apple."}]' style="width:100%;height:100px;padding:8px;border-radius:8px;border:1.5px solid #BFDBFE;font-size:12px;resize:none;box-sizing:border-box;margin-bottom:4px;grid-column:span 2"></textarea>
-          <div style="grid-column:span 2;font-size:11px;color:#6B7280;margin-bottom:4px">또는 CSV 업로드 (en,kr,ph,img,ex 컬럼)</div>
-          <input type="file" id="pk-csv" accept=".csv" onchange="parseCsvForPack(this)" style="grid-column:span 2;font-size:12px">
-          <div style="display:flex;gap:8px">
-            <button onclick="saveNewPack()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer">저장</button>
-            <button onclick="document.getElementById('pack-add-form').style.display='none'" style="flex:1;background:#F3F4F6;border:none;border-radius:8px;padding:8px;font-size:13px;cursor:pointer">취소</button>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px">`;
-      packs.forEach(p=>{
-        h+=`<div style="background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #E5E7EB;display:flex;align-items:center;gap:10px">
-          <span style="font-size:28px">${p.emoji||'📦'}</span>
-          <div style="flex:1"><div style="font-size:14px;font-weight:700">${p.name}</div>
-            <div style="font-size:12px;color:#6B7280">${p.cat||''} · ${(p.words||[]).length}개</div></div>
-          <button onclick="editMarketPack('${p.id}')" style="background:#EFF6FF;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#1E5FA5;cursor:pointer">수정</button>
-          <button onclick="togglePackActive('${p.id}',${p.active!==false})" style="background:${p.active!==false?'#F0FDF4':'#FEF2F2'};border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:${p.active!==false?'#16A34A':'#DC2626'};cursor:pointer">${p.active!==false?'활성':'비활성'}</button>
-          <button onclick="deleteMarketPack('${p.id}')" style="background:#FEF2F2;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#DC2626;cursor:pointer">삭제</button>
-        </div>`;
-      });
-      if(!packs.length) h+='<div style="text-align:center;padding:30px;color:#9CA3AF">등록된 단어팩이 없어요</div>';
-      h+=`</div></div>`;
-      body.innerHTML=h;
-    }).catch(e=>{body.innerHTML='<div style="padding:20px;color:#DC2626">오류: '+e.message+'</div>';});
-}
-
-function showAddPackForm() {
-  const f=document.getElementById('pack-add-form');
-  if(f) f.style.display=f.style.display==='none'?'block':'none';
-}
-
-function deleteMarketPack(id) {
-  if(!confirm('삭제할까요?'))return;
-  db.collection('word_packs').doc(id).delete()
-    .then(()=>rMarketAdmin()).catch(e=>alert('오류: '+e.message));
-}
-
-
-function rButterflyUserAdmin() {
-  const body=document.getElementById('butterfly-body');
-  if(!body)return;
-  body.innerHTML='<div style="padding:12px;font-size:13px;color:#6B7280">로딩 중...</div>';
-
-  if(typeof db==='undefined'){body.innerHTML='<div style="padding:12px;color:#DC2626">Firebase 연결 필요</div>';return;}
-
-  db.collection('users').get().then(snap=>{
-    const users=snap.docs.map(d=>({id:d.id,...d.data()}));
-    const bfSnaps=[];
-    const promises=users.map(u=>
-      db.collection('user_butterflies').doc(u.id).get().then(bSnap=>{
-        bfSnaps.push({uid:u.id,nick:u.nick||'알수없음',bfs:bSnap.exists?bSnap.data().list||[]:[]});
-      }).catch(()=>bfSnaps.push({uid:u.id,nick:u.nick||'알수없음',bfs:[]}))
-    );
-    Promise.all(promises).then(()=>{
-      let html='<div style="padding:12px">';
-      html+='<div style="font-size:14px;font-weight:700;margin-bottom:12px">👥 사용자별 나비 획득 현황</div>';
-      html+='<div style="display:flex;flex-direction:column;gap:8px">';
-      bfSnaps.sort((a,b)=>b.bfs.length-a.bfs.length).forEach(u=>{
-        const pct=Math.round(u.bfs.length/30*100);
-        html+=`<div style="background:#F9FAFB;border-radius:12px;padding:12px;border:1px solid #E5E7EB">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-size:13px;font-weight:700">${u.nick}</span>
-            <span style="font-size:12px;color:#7C3AED;font-weight:700">${u.bfs.length}/30종 (${pct}%)</span>
-          </div>
-          <div style="background:#E5E7EB;border-radius:4px;height:6px;overflow:hidden">
-            <div style="height:100%;background:#7C3AED;border-radius:4px;width:${pct}%"></div>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:6px">
-            ${u.bfs.map(bId=>{const b=BUTTERFLY_LIST?.find?.(x=>x.id===bId);return b?`<span style="font-size:10px;background:${b.bg};color:${b.color};border-radius:20px;padding:2px 6px">${b.name}</span>`:''}).join('')}
-          </div>
-        </div>`;
-      });
-      html+='</div></div>';
-      body.innerHTML=html;
-    });
-  }).catch(e=>{body.innerHTML=`<div style="padding:12px;color:#DC2626">오류: ${e.message}</div>`;});
-}
-
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-screen').style.display='none';
@@ -368,17 +449,6 @@ function togglePw(id,btn){
 }
 
 // ── 로그인 ──
-async function doGoogleLogin(){
-  try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithPopup(provider);
-    // onAuthStateChanged가 처리
-  } catch(e) {
-    const el = document.getElementById('li-err');
-    if(el){ el.textContent = e.message; el.style.display='block'; }
-  }
-}
-
 async function doLogin(){
   const id=document.getElementById('li-id').value.trim();
   const pw=document.getElementById('li-pw').value;
@@ -466,6 +536,8 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'시스템 단어',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장'};
+  const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
   ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV})[tab]?.();
 }
 
@@ -473,14 +545,14 @@ function T(tab){
 // 📊 대시보드
 // ══════════════════════════════════
 async function rDB(){
-  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
+  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   let uc=0,tu=0,wu=0,pc=0,ac=0;
   const td=today(),wa=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
   try{const s=await db.collection('users').get();uc=s.size;s.forEach(d=>{const x=d.data();if(x.updatedAt?.toDate?.()?.toISOString().slice(0,10)===td)tu++;if(x.updatedAt?.toDate?.()?.toISOString().slice(0,10)>=wa)wu++;});}catch(e){}
   try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
   try{const as=await db.collection('admins').get();ac=as.size;}catch(e){}
   const packs=typeof WORD_PACKS!=='undefined'?WORD_PACKS:[];
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2 style="font-size:22px;font-weight:900">📊 대시보드</h2>
       <div style="font-size:13px;color:#9CA3AF">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</div>
@@ -510,10 +582,6 @@ async function rDB(){
           <button class="btn bo" onclick="T('an')" style="justify-content:flex-start">📈 이용 분석</button>
           ${isSuperAdmin()?`<button class="btn" style="background:#1E3A5F;color:#fff;justify-content:flex-start" onclick="T('adm')">🔐 관리자 관리 (${ac}명)</button>`:''}
           <hr style="border:none;border-top:1px solid #E5E7EB">
-          <button class="btn" style="background:#F5F3FF;color:#7C3AED;justify-content:flex-start" onclick="T('bf')">🦋 나비 관리</button>
-          <button class="btn" style="background:#FDF2F8;color:#BE185D;justify-content:flex-start" onclick="T('cv')">💬 회화 문장</button>
-          <button class="btn" style="background:#FFF8E1;color:#E65100;justify-content:flex-start" onclick="T('ad')">📢 광고 배너</button>
-          <hr style="border:none;border-top:1px solid #E5E7EB">
           <button class="btn bgr" onclick="window.open('index.html','_blank')" style="justify-content:flex-start">🔗 앱 열기</button>
         </div>
       </div>
@@ -533,10 +601,10 @@ async function rDB(){
 // 🔐 관리자 관리 (슈퍼 관리자 전용)
 // ══════════════════════════════════
 async function rADM(){
-  if(!isSuperAdmin()){document.getElementById('main').innerHTML='<div class="es"><div class="ei">🚫</div><p>슈퍼 관리자만 접근 가능합니다</p></div>';return;}
+  if(!isSuperAdmin()){document.getElementById('main-inner').innerHTML='<div class="es"><div class="ei">🚫</div><p>슈퍼 관리자만 접근 가능합니다</p></div>';return;}
   let admins=[];
   try{const s=await db.collection('admins').get();admins=s.docs.map(d=>({uid:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2 style="font-size:22px;font-weight:900">🔐 관리자 관리</h2>
       <div style="display:flex;gap:8px">
@@ -699,194 +767,36 @@ async function deleteAdmin(uid,name){
 // 📈 분석
 // ══════════════════════════════════
 async function rAN(){
-  const main=document.getElementById('main');
-  main.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">📊 통계 로딩 중...</div>';
-  
-  let users=[], ld={}, gameStats={}, learnStats={}, dailyActive={};
-  const today7 = Array.from({length:7},(_,i)=>{
-    const d=new Date(Date.now()-(6-i)*86400000);
-    return d.toISOString().slice(0,10);
-  });
-  
-  try {
-    const s = await db.collection('users').get();
-    s.forEach(d=>{
-      const x=d.data();
-      users.push(x);
-      // 레벨 분포
-      const k=x.lid||'egg'; ld[k]=(ld[k]||0)+1;
-      // 게임 점수 집계
-      if(x.bestScores) Object.entries(x.bestScores).forEach(([gid,pct])=>{
-        if(!gameStats[gid]) gameStats[gid]={total:0,count:0,plays:0};
-        gameStats[gid].total+=pct; gameStats[gid].count++; gameStats[gid].plays++;
-      });
-      // 학습 통계
-      if(x.studyLog) Object.entries(x.studyLog).forEach(([date,log])=>{
-        if(!learnStats[date]) learnStats[date]={words:0,quiz:0,users:new Set()};
-        learnStats[date].words+=(log.words||0);
-        learnStats[date].quiz+=(log.quiz||0);
-        learnStats[date].users.add(d.id);
-      });
-      // 일별 활성 사용자
-      const lastD = x.updatedAt?.toDate?.()?.toISOString().slice(0,10);
-      if(lastD) dailyActive[lastD]=(dailyActive[lastD]||0)+1;
-    });
-  } catch(e) { console.warn(e); }
-
-  const LN={egg:'🥚 알',baby:'🐛 아기',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛남',small:'🦋 작은',big:'🌟 큰',god:'👑 신'};
-  const GAME_NAMES={quiz:'뜻 맞추기',fill:'빈칸 채우기',typing:'받아쓰기',match:'스피드 매칭',chain:'단어 체인',wc:'단어 완성',ssort:'문장 배열',scramble:'스크램블',sentence:'문장 구성',listen:'듣고 완성',wordfind:'단어 찾기',wordle:'워들'};
-  
-  const totalStudyWords = Object.values(learnStats).reduce((a,v)=>a+v.words,0);
-  const totalStudyQuiz  = Object.values(learnStats).reduce((a,v)=>a+v.quiz,0);
-  const avgStreak = users.length ? Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/users.length) : 0;
-  const maxStreak = users.reduce((a,u)=>Math.max(a,u.streak||0),0);
-  const today = new Date().toISOString().slice(0,10);
-  const todayActive = dailyActive[today]||0;
-  const week7Active = today7.reduce((a,d)=>a+(dailyActive[d]||0),0);
-
-  main.innerHTML=`
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <h2 style="font-size:22px;font-weight:900">📈 이용 분석</h2>
-    <button onclick="rAN()" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer">🔄 새로고침</button>
-  </div>
-
-  <!-- 핵심 지표 -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-    ${[
-      ['👥','총 회원',users.length+'명','#1E5FA5'],
-      ['📅','오늘 활성',todayActive+'명','#16A34A'],
-      ['🔥','평균 스트릭',avgStreak+'일','#E65100'],
-      ['📚','총 학습 단어',totalStudyWords.toLocaleString()+'개','#7C3AED'],
-    ].map(([ic,lb,v,cl])=>`
-      <div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:14px;text-align:center">
-        <div style="font-size:20px;margin-bottom:4px">${ic}</div>
-        <div style="font-size:18px;font-weight:900;color:${cl}">${v}</div>
-        <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${lb}</div>
-      </div>`).join('')}
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-    <!-- 레벨 분포 -->
-    <div class="card">
-      <div class="ct">🦋 레벨 분포 (${users.length}명)</div>
-      ${['egg','baby','crown','coco','shine','small','big','god'].map(l=>{
-        const cnt=ld[l]||0;
-        const p=users.length?Math.round(cnt/users.length*100):0;
-        return `<div class="bi">
-          <div class="bl" style="font-size:11px;min-width:70px">${LN[l]||l}</div>
-          <div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div>
-          <div class="bv">${cnt}명 (${p}%)</div>
-        </div>`;
-      }).join('')}
-    </div>
-
-    <!-- 7일 활성 사용자 -->
-    <div class="card">
-      <div class="ct">📅 7일 일별 활성 사용자</div>
-      <div style="display:flex;align-items:flex-end;gap:4px;height:100px;margin-bottom:8px">
-        ${today7.map(d=>{
-          const cnt=dailyActive[d]||0;
-          const maxD=Math.max(...today7.map(x=>dailyActive[x]||0),1);
-          const h=Math.round(cnt/maxD*90);
-          const isToday=d===today;
-          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-            <div style="font-size:9px;color:#9CA3AF">${cnt}</div>
-            <div style="width:100%;background:${isToday?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${Math.max(h,4)}px;transition:height .5s"></div>
-            <div style="font-size:9px;color:${isToday?'#1E5FA5':'#9CA3AF'};font-weight:${isToday?700:400}">${d.slice(5)}</div>
-          </div>`;
-        }).join('')}
+  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">분석 데이터 로딩 중...</div>';
+  let users=[],ld={};
+  try{const s=await db.collection('users').get();s.forEach(d=>{const x=d.data();users.push(x);if(x.lid||x.level){const k=x.lid||x.level;ld[k]=(ld[k]||0)+1;}});}catch(e){}
+  const LN={egg:'🥚 알',baby:'🐛 벌거지',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛나는',small:'🦋 작은',big:'🦋 큰',god:'⚡ 황금'};
+  const rd=Array.from({length:7},(_,i)=>{const d=new Date(Date.now()-(6-i)*86400000);return d.toISOString().slice(0,10);});
+  document.getElementById('main-inner').innerHTML=`
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📈 이용 분석</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card"><div class="ct">🦋 레벨 분포</div>
+        ${LIDS.map(l=>{const cnt=ld[l]||0;const p=users.length?Math.round(cnt/users.length*100):0;return `<div class="bi"><div class="bl" style="font-size:11px">${LN[l]}</div><div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div><div class="bv">${cnt}명</div></div>`;}).join('')}
+        <div style="font-size:12px;color:#9CA3AF;margin-top:10px">총 ${users.length}명</div>
       </div>
-      <div style="font-size:12px;color:#6B7280;text-align:center">이번 주 총 활성: <strong>${week7Active}명</strong></div>
+      <div class="card"><div class="ct">📊 통계 요약</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${[['총 회원수',users.length+'명','#1E5FA5'],['평균 streak',Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/Math.max(users.length,1))+'일','#16A34A'],['마켓 팩 수',(typeof WORD_PACKS!=='undefined'?WORD_PACKS.length:0)+'개','#D97706'],['게임 종류','12종','#7C3AED']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:10px"><span style="font-size:13px;font-weight:600;color:#374151">${l}</span><span style="font-size:16px;font-weight:900;color:${c}">${v}</span></div>`).join('')}
+        </div>
+      </div>
     </div>
-  </div>
-
-  <!-- 게임별 통계 -->
-  <div class="card" style="margin-bottom:16px">
-    <div class="ct">🎮 게임별 플레이 통계</div>
-    ${Object.keys(GAME_NAMES).length ? `
-    <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <tr style="background:#F9FAFB">
-        <th style="padding:10px 12px;text-align:left;font-weight:700;color:#374151">게임</th>
-        <th style="padding:10px 12px;text-align:right;font-weight:700;color:#374151">플레이 수</th>
-        <th style="padding:10px 12px;text-align:right;font-weight:700;color:#374151">평균 점수</th>
-        <th style="padding:10px 12px;text-align:right;font-weight:700;color:#374151">인기도</th>
-      </tr>
-      ${Object.entries(GAME_NAMES).map(([gid,gnm])=>{
-        const gs=gameStats[gid]||{plays:0,total:0,count:0};
-        const avg=gs.count?Math.round(gs.total/gs.count):0;
-        const maxPlays=Math.max(...Object.values(gameStats).map(g=>g.plays),1);
-        const popularity=Math.round(gs.plays/maxPlays*100);
-        return `<tr style="border-top:1px solid #F3F4F6">
-          <td style="padding:10px 12px;font-weight:600">${gnm}</td>
-          <td style="padding:10px 12px;text-align:right;color:#1E5FA5;font-weight:700">${gs.plays.toLocaleString()}회</td>
-          <td style="padding:10px 12px;text-align:right;color:#16A34A;font-weight:700">${avg}%</td>
-          <td style="padding:10px 12px">
-            <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-              <div style="background:#E5E7EB;border-radius:4px;height:6px;width:80px">
-                <div style="background:#1E5FA5;border-radius:4px;height:100%;width:${popularity}%"></div>
-              </div>
-              <span style="font-size:11px;color:#9CA3AF;min-width:30px">${popularity}%</span>
-            </div>
-          </td>
-        </tr>`;
-      }).join('')}
-    </table></div>` : '<div style="text-align:center;color:#9CA3AF;padding:20px">게임 데이터가 없어요</div>'}
-  </div>
-
-  <!-- 학습 활동 통계 -->
-  <div class="card" style="margin-bottom:16px">
-    <div class="ct">📚 학습 활동 통계 (최근 7일)</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
-      ${[
-        ['📖','단어 학습',totalStudyWords.toLocaleString()+'개','#1E5FA5'],
-        ['🎯','퀴즈 풀이',totalStudyQuiz.toLocaleString()+'회','#16A34A'],
-        ['🔥','최고 스트릭',maxStreak+'일','#E65100'],
-      ].map(([ic,lb,v,cl])=>`
-        <div style="background:#F9FAFB;border-radius:12px;padding:12px;text-align:center">
-          <div style="font-size:16px">${ic}</div>
-          <div style="font-size:16px;font-weight:900;color:${cl};margin-top:2px">${v}</div>
-          <div style="font-size:10px;color:#9CA3AF;margin-top:1px">${lb}</div>
-        </div>`).join('')}
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <tr style="background:#F9FAFB">
-        <th style="padding:8px 10px;text-align:left">날짜</th>
-        <th style="padding:8px 10px;text-align:right">단어 학습</th>
-        <th style="padding:8px 10px;text-align:right">퀴즈</th>
-        <th style="padding:8px 10px;text-align:right">활성 사용자</th>
-      </tr>
-      ${today7.slice().reverse().map(d=>{
-        const ls=learnStats[d]||{words:0,quiz:0,users:new Set()};
-        const isToday=d===today;
-        return `<tr style="border-top:1px solid #F3F4F6;${isToday?'background:#EFF6FF;':''}">
-          <td style="padding:8px 10px;font-weight:${isToday?700:400};color:${isToday?'#1E5FA5':'#374151'}">${d}${isToday?' (오늘)':''}</td>
-          <td style="padding:8px 10px;text-align:right;color:#16A34A;font-weight:700">${ls.words.toLocaleString()}</td>
-          <td style="padding:8px 10px;text-align:right;color:#7C3AED;font-weight:700">${ls.quiz.toLocaleString()}</td>
-          <td style="padding:8px 10px;text-align:right;color:#E65100;font-weight:700">${ls.users.size||0}</td>
-        </tr>`;
-      }).join('')}
-    </table>
-  </div>
-
-  <!-- 스트릭 분포 -->
-  <div class="card">
-    <div class="ct">🔥 스트릭 분포</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${[[0,'0일','#E5E7EB'],[1,1,'#FEF3C7'],[3,3,'#FDE68A'],[7,7,'#F59E0B'],[14,14,'#D97706'],[30,30,'#B45309'],[999,'30+일','#92400E']].map(([min,lb,bg],i,arr)=>{
-        const max=arr[i+1]?arr[i+1][0]:Infinity;
-        const cnt=users.filter(u=>{const s=u.streak||0;return s>=min&&s<max;}).length;
-        return `<div style="background:${bg};border-radius:10px;padding:8px 12px;text-align:center;min-width:60px">
-          <div style="font-size:14px;font-weight:900;color:#374151">${cnt}</div>
-          <div style="font-size:10px;color:#6B7280">${lb}</div>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>`;
+    <div class="card"><div class="ct">📅 최근 7일 활동</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;height:80px">
+        ${rd.map(d=>{const cnt=users.filter(u=>u.updatedAt?.toDate?.()?.toISOString().slice(0,10)===d).length;const h=Math.max(cnt*20,4);const it=d===today();return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:10px;color:#1E5FA5;font-weight:700">${cnt||''}</div><div style="width:100%;background:${it?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${h}px;min-height:4px"></div><div style="font-size:10px;color:${it?'#1E5FA5':'#9CA3AF'};font-weight:${it?700:400}">${d.slice(5)}</div></div>`;}).join('')}
+      </div>
+    </div>`;
 }
 
+// ══════════════════════════════════
+// 📚 단어장 관리
+// ══════════════════════════════════
 async function rWD(){
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">📚 단어장 관리</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1112,7 +1022,7 @@ let selPack = null; // 현재 선택된 팩 ID
 function rPK(){
   const packs = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
   const cats = [...new Set(packs.map(p=>p.cat))];
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">🛒 마켓 팩 관리</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1720,7 +1630,7 @@ function doImportPack() {
 // ── 레벨 관리 ──
 function rLV(){
   const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🍀',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🫘',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'✨',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#880E4F'},{id:'big',n:'큰 나비',e:'🦋',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'황금 나비',e:'⚡',desc:'God',basis:"GRE + Barron's 3500",c:'#E65100'}];
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">🦋 레벨 관리</h2>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">${lvs.map(l=>`<div style="background:#fff;border-radius:14px;border:2px solid ${l.c}33;padding:16px;text-align:center;cursor:pointer" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)"><div style="font-size:32px;margin-bottom:6px">${l.e}</div><div style="font-size:12px;font-weight:800;color:${l.c}">${l.n}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${l.desc}</div><div id="lc-${l.id}" style="font-size:18px;font-weight:900;color:${l.c};margin-top:8px">-</div><div style="font-size:10px;color:#9CA3AF">단어</div></div>`).join('')}</div>
     <div class="card"><div class="ct">📋 레벨 기준</div><div class="tw"><table><tr><th>레벨</th><th>이름</th><th>대상</th><th>선정 기준</th><th>단어 관리</th></tr>${lvs.map(l=>`<tr><td style="font-size:22px">${l.e}</td><td style="font-weight:700;color:${l.c}">${l.n}</td><td><span class="badge" style="background:${l.c}22;color:${l.c}">${l.desc}</span></td><td style="font-size:12px;color:#6B7280">${l.basis}</td><td><button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)">단어 관리 →</button></td></tr>`).join('')}</table></div></div>`;
@@ -1731,7 +1641,7 @@ function rLV(){
 async function rNT(){
   let ns=[];
   try{const s=await db.collection('notices').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>
       <button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button>
@@ -1773,10 +1683,10 @@ async function delNT(id){if(!confirm('삭제할까요?'))return;try{await db.col
 
 // ── 회원 관리 ──
 async function rUS(){
-  document.getElementById('main').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">회원 데이터 로딩 중...</div>';
+  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">회원 데이터 로딩 중...</div>';
   let us=[];
   try{const s=await db.collection('users').limit(100).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">👥 회원 관리 <span style="font-size:14px;color:#9CA3AF">(${us.length}명)</span></h2>
       <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:260px"><span>🔍</span><input placeholder="닉네임/코드 검색..." oninput="filterUS(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none"></div>
@@ -1800,7 +1710,7 @@ async function toggleBan(id,ban){try{await db.collection('users').doc(id).update
 async function rPO(){
   let ps=[];
   try{const s=await db.collection('pokes').limit(50).get();ps=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2 style="font-size:22px;font-weight:900">👉 콕 찌르기 로그</h2>
       <span class="badge bp2">최근 50개</span>
@@ -1814,7 +1724,7 @@ async function rPO(){
 async function rST(){
   let s={appName:'WordDay',notice:'',maintenanceMode:false,xpMultiplier:1};
   try{const d=await db.collection('settings').doc('app').get();if(d.exists)s={...s,...d.data()};}catch(e){}
-  document.getElementById('main').innerHTML=`
+  document.getElementById('main-inner').innerHTML=`
     <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">⚙️ 앱 설정</h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card"><div class="ct">📱 기본 설정</div>
@@ -1845,364 +1755,7 @@ async function saveST(){
     toast('✅ 설정 저장 완료!','ok');
   }catch(e){toast('오류: '+e.message,'err');}
 }
-
-function parseCsvForPack(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const lines = e.target.result.split('\n').filter(l=>l.trim());
-    const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
-    const words = lines.slice(1).map(line => {
-      const vals = line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
-      const obj = {};
-      headers.forEach((h,i) => { if(vals[i]) obj[h] = vals[i]; });
-      return obj;
-    }).filter(w=>w.en && w.kr);
-    document.getElementById('pk-words').value = JSON.stringify(words, null, 2);
-    alert('✅ CSV 파싱 완료: '+words.length+'개 단어');
-  };
-  reader.readAsText(file, 'UTF-8');
-}
-
-function editMarketPack(packId) {
-  db.collection('word_packs').doc(packId).get().then(doc=>{
-    if(!doc.exists){alert('팩을 찾을 수 없음');return;}
-    const p = doc.data();
-    document.getElementById('pk-id').value = packId;
-    document.getElementById('pk-name').value = p.name||'';
-    document.getElementById('pk-emoji').value = p.emoji||'';
-    document.getElementById('pk-cat').value = p.cat||'';
-    document.getElementById('pk-desc').value = p.desc||'';
-    document.getElementById('pk-words').value = JSON.stringify(p.words||[], null, 2);
-    document.getElementById('pack-add-form').style.display = 'block';
-    document.getElementById('pack-add-form').scrollIntoView({behavior:'smooth'});
-  });
-}
-
-function togglePackActive(packId, currentActive) {
-  db.collection('word_packs').doc(packId).update({active: !currentActive})
-    .then(()=>rMarketAdmin()).catch(e=>alert('오류: '+e.message));
-}
-
-
-// ══════════════════════════════════
-// 🦋 나비 관리
-// ══════════════════════════════════
-async function rBF() {
-  const main = document.getElementById('main');
-  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
-  let bfList = [];
-  try {
-    const snap = await db.collection('butterflies').orderBy('id').get();
-    bfList = snap.docs.map(d => ({id:d.id, ...d.data()}));
-  } catch(e) {}
-
-  main.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2>
-      <div style="display:flex;gap:8px">
-        <span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${bfList.length}종 등록됨</span>
-        <button class="btn bb" onclick="showAddBF()">➕ 나비 추가</button>
-        <button class="btn bg" onclick="downloadBFImages()">📦 이미지 전체 다운로드</button>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-      ${bfList.length ? bfList.map(bf => `
-        <div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;text-align:center">
-          <div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">${bf.id}</div>
-          <div style="margin-bottom:6px;min-height:60px;display:flex;align-items:center;justify-content:center">
-            ${bf.svgCode ? bf.svgCode.replace('width="80"','width="60"').replace('height="80"','height="60"') : '<div style="font-size:36px">🦋</div>'}
-          </div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:3px">${bf.name||'-'}</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">${bf.rare||'⭐⭐'} · ${bf.enName||''}</div>
-          <div style="display:flex;gap:4px">
-            <button class="btn bgr" style="flex:1;font-size:11px;padding:5px" onclick="editBF('${bf.id}')">✏️ 수정</button>
-            <button class="btn br" style="font-size:11px;padding:5px 8px" onclick="deleteBF('${bf.id}','${bf.name||''}')">🗑</button>
-          </div>
-        </div>`).join('') : '<div class="es" style="grid-column:1/-1"><div class="ei">🦋</div><p>등록된 나비가 없어요</p></div>'}
-    </div>`;
-}
-
-function showAddBF(existing) {
-  const mr = document.getElementById('mr') || (() => {
-    const d = document.createElement('div'); d.id='mr';
-    document.body.appendChild(d); return d;
-  })();
-  const bf = existing || {};
-  mr.innerHTML = `<div class="mbg" onclick="this.parentElement.innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:90vh;overflow-y:auto">
-    <div style="background:linear-gradient(135deg,#7C3AED,#5B21B6);padding:16px 20px">
-      <div style="font-size:16px;font-weight:900;color:#fff">${bf.id?'나비 수정':'새 나비 추가'}</div>
-    </div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <input id="bf-id" placeholder="ID (예: b031)" value="${bf.id||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px" ${bf.id?'readonly':''}>
-        <input id="bf-name" placeholder="한글 이름" value="${bf.name||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-        <input id="bf-en" placeholder="영문 이름" value="${bf.enName||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-        <select id="bf-rare" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-          ${['⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'].map(r=>`<option value="${r}" ${bf.rare===r?'selected':''}>${r}</option>`).join('')}
-        </select>
-        <input id="bf-color" placeholder="대표색 (#hex)" value="${bf.color||'#7C3AED'}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-        <input id="bf-status" placeholder="보호상태" value="${bf.status||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-      </div>
-      <textarea id="bf-desc" placeholder="설명 (서식지, 특징 등)" rows="2" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;resize:vertical">${bf.desc||''}</textarea>
-      <textarea id="bf-protect" placeholder="보호 메시지 (앱에 표시)" rows="2" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;resize:vertical">${bf.protect||''}</textarea>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">SVG 코드 (width/height="80" 기준)</div>
-        <textarea id="bf-svg" placeholder='<svg width="80" height="80" viewBox="0 0 80 80">...</svg>' rows="6" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:11px;font-family:monospace;resize:vertical;width:100%;box-sizing:border-box">${bf.svgCode||''}</textarea>
-        <button onclick="document.getElementById('bf-preview').innerHTML=document.getElementById('bf-svg').value" style="margin-top:4px;background:#F5F3FF;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:#7C3AED">👁 미리보기</button>
-        <div id="bf-preview" style="min-height:80px;display:flex;align-items:center;justify-content:center;border:1px dashed #E5E7EB;border-radius:8px;margin-top:6px">${bf.svgCode||''}</div>
-      </div>
-      <button onclick="saveBF('${bf.id||''}')" class="btn bb">💾 저장</button>
-    </div>
-  </div></div>`;
-}
-
-async function saveBF(existingId) {
-  const id = document.getElementById('bf-id').value.trim();
-  const name = document.getElementById('bf-name').value.trim();
-  if(!id||!name) { alert('ID와 이름은 필수입니다'); return; }
-  const data = {
-    id, name,
-    enName: document.getElementById('bf-en').value.trim(),
-    rare: document.getElementById('bf-rare').value,
-    color: document.getElementById('bf-color').value.trim(),
-    status: document.getElementById('bf-status').value.trim(),
-    desc: document.getElementById('bf-desc').value.trim(),
-    protect: document.getElementById('bf-protect').value.trim(),
-    svgCode: document.getElementById('bf-svg').value.trim(),
-    updatedAt: new Date().toISOString(),
-  };
-  try {
-    await db.collection('butterflies').doc(id).set(data, {merge:true});
-    toast('✅ 나비 저장 완료');
-    document.getElementById('mr').innerHTML='';
-    rBF();
-  } catch(e) { alert('저장 오류: '+e.message); }
-}
-
-async function editBF(id) {
-  try {
-    const doc = await db.collection('butterflies').doc(id).get();
-    if(doc.exists) showAddBF({id:doc.id, ...doc.data()});
-  } catch(e) { alert('로드 오류: '+e.message); }
-}
-
-async function deleteBF(id, name) {
-  if(!confirm(name+' 나비를 삭제할까요?')) return;
-  try {
-    await db.collection('butterflies').doc(id).delete();
-    toast('🗑 삭제 완료'); rBF();
-  } catch(e) { alert('삭제 오류: '+e.message); }
-}
-
-async function downloadBFImages() {
-  toast('📦 이미지 준비 중...', 'info');
-  // JSZip 동적 로드
-  if(typeof JSZip === 'undefined') {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    document.head.appendChild(s);
-    await new Promise(res => s.onload = res);
-  }
-  const snap = await db.collection('butterflies').get();
-  const zip = new JSZip();
-  const canvas = document.createElement('canvas');
-  canvas.width = 200; canvas.height = 200;
-  const ctx = canvas.getContext('2d');
-  for(const doc of snap.docs) {
-    const bf = doc.data();
-    if(!bf.svgCode) continue;
-    const svgStr = bf.svgCode.replace(/width="[^"]*"/, 'width="200"').replace(/height="[^"]*"/, 'height="200"');
-    const img = new Image();
-    const blob = new Blob([svgStr], {type:'image/svg+xml'});
-    const url = URL.createObjectURL(blob);
-    await new Promise(res => { img.onload=()=>{ctx.clearRect(0,0,200,200);ctx.drawImage(img,0,0);res();}; img.src=url; });
-    const pngData = canvas.toDataURL('image/png').split(',')[1];
-    zip.file(`${bf.id}_${(bf.name||bf.id).replace(/\s/g,'_')}.png`, pngData, {base64:true});
-    URL.revokeObjectURL(url);
-  }
-  const content = await zip.generateAsync({type:'blob'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(content);
-  a.download = 'butterfly_images.zip';
-  a.click();
-  toast('✅ 다운로드 완료!');
-}
-
-// ══════════════════════════════════
-// 📢 광고 배너 관리
-// ══════════════════════════════════
-async function rAD() {
-  const main = document.getElementById('main');
-  let adConfig = {};
-  try {
-    const doc = await db.collection('config').doc('ad_banner').get();
-    if(doc.exists) adConfig = doc.data();
-  } catch(e) {}
-  main.innerHTML = `
-    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📢 광고 배너 관리</h2>
-    <div class="card">
-      <div class="ct">배너 설정</div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700">
-          <input type="checkbox" id="ad-on" ${adConfig.on?'checked':''} style="width:18px;height:18px">
-          배너 표시 ON/OFF
-        </label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:4px">배경색</div>
-            <input type="color" id="ad-bg" value="${adConfig.bg||'#FFF8E1'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB">
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:4px">텍스트 색상</div>
-            <input type="color" id="ad-tc" value="${adConfig.textColor||'#374151'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB">
-          </div>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:700;margin-bottom:4px">광고 텍스트</div>
-          <input id="ad-text" value="${adConfig.text||''}" placeholder="광고 문구를 입력하세요" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;box-sizing:border-box">
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:700;margin-bottom:4px">링크 URL (선택)</div>
-          <input id="ad-link" value="${adConfig.link||''}" placeholder="https://..." style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px;box-sizing:border-box">
-        </div>
-        <div style="background:var(--bg,${adConfig.bg||'#FFF8E1'});padding:10px;border-radius:8px;text-align:center;font-size:13px;font-weight:700;color:${adConfig.textColor||'#374151'}">
-          미리보기: ${adConfig.text||'광고 텍스트'}
-        </div>
-        <button onclick="saveAdConfig()" class="btn bb">💾 저장</button>
-      </div>
-    </div>`;
-}
-
-async function saveAdConfig() {
-  const data = {
-    on: document.getElementById('ad-on').checked,
-    bg: document.getElementById('ad-bg').value,
-    textColor: document.getElementById('ad-tc').value,
-    text: document.getElementById('ad-text').value.trim(),
-    link: document.getElementById('ad-link').value.trim(),
-    updatedAt: new Date().toISOString(),
-  };
-  try {
-    await db.collection('config').doc('ad_banner').set(data);
-    toast('✅ 광고 배너 저장 완료');
-    rAD();
-  } catch(e) { alert('저장 오류: '+e.message); }
-}
-
-// ══════════════════════════════════
-// 💬 회화 문장 관리
-// ══════════════════════════════════
-async function rCV() {
-  const main = document.getElementById('main');
-  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
-  let cats = [], sentences = [];
-  try {
-    const snap = await db.collection('conversation_sentences').orderBy('cat').orderBy('order').get();
-    sentences = snap.docs.map(d=>({id:d.id,...d.data()}));
-    cats = [...new Set(sentences.map(s=>s.cat||'기타'))];
-  } catch(e) {}
-  const selCat = window._cvCat || cats[0] || '';
-  const filtered = selCat ? sentences.filter(s=>s.cat===selCat) : sentences;
-  main.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">💬 회화 문장 관리</h2>
-      <div style="display:flex;gap:8px">
-        <span style="background:#FDF2F8;color:#BE185D;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${sentences.length}개 등록</span>
-        <button class="btn bb" onclick="showAddCV()">➕ 문장 추가</button>
-        <button class="btn bg" onclick="uploadCVCSV()">📤 CSV 업로드</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-      ${cats.map(cat=>`<button onclick="window._cvCat='${cat}';rCV()" style="background:${selCat===cat?'#BE185D':'#F9FAFB'};color:${selCat===cat?'#fff':'#374151'};border:1.5px solid ${selCat===cat?'#BE185D':'#E5E7EB'};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">${cat}</button>`).join('')}
-    </div>
-    <div class="card">
-      ${filtered.length ? `<div class="tw"><table>
-        <tr><th>#</th><th>카테고리</th><th>영어 문장</th><th>한국어</th><th>난이도</th><th>작업</th></tr>
-        ${filtered.map((s,i)=>`<tr>
-          <td style="color:#9CA3AF;font-size:11px">${i+1}</td>
-          <td><span style="background:#FDF2F8;color:#BE185D;border-radius:20px;padding:2px 8px;font-size:11px">${s.cat||'기타'}</span></td>
-          <td style="font-weight:600;max-width:200px">${s.en||''}</td>
-          <td style="color:#6B7280;max-width:160px">${s.kr||''}</td>
-          <td><span style="font-size:11px">${'⭐'.repeat(s.level||1)}</span></td>
-          <td><div style="display:flex;gap:4px">
-            <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editCV('${s.id}')">✏️</button>
-            <button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteCV('${s.id}')">🗑</button>
-          </div></td>
-        </tr>`).join('')}
-      </table></div>` : '<div class="es"><div class="ei">💬</div><p>등록된 문장이 없어요</p></div>'}
-    </div>`;
-}
-
-function showAddCV(existing) {
-  const mr = document.getElementById('mr') || (() => {
-    const d=document.createElement('div');d.id='mr';document.body.appendChild(d);return d;
-  })();
-  const s = existing || {};
-  const cats=['인사/소개','쇼핑','음식/식당','교통','호텔/숙소','여행','병원/긴급','비즈니스','일상대화','감정표현'];
-  mr.innerHTML=`<div class="mbg" onclick="this.parentElement.innerHTML=''"><div class="modal" onclick="event.stopPropagation()">
-    <div style="font-size:16px;font-weight:900;margin-bottom:14px">${s.id?'문장 수정':'문장 추가'}</div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <select id="cv-cat" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-        ${cats.map(c=>`<option value="${c}" ${s.cat===c?'selected':''}>${c}</option>`).join('')}
-        <option value="기타" ${!cats.includes(s.cat)?'selected':''}>기타</option>
-      </select>
-      <input id="cv-en" placeholder="영어 문장" value="${s.en||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-      <input id="cv-kr" placeholder="한국어 뜻" value="${s.kr||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-      <input id="cv-ph" placeholder="발음 (선택)" value="${s.ph||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-      <select id="cv-lv" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:13px">
-        ${[1,2,3].map(l=>`<option value="${l}" ${s.level===l?'selected':''}>${'⭐'.repeat(l)} 난이도 ${l}</option>`).join('')}
-      </select>
-      <button onclick="saveCV('${s.id||''}')" class="btn bb">💾 저장</button>
-    </div>
-  </div></div>`;
-}
-
-async function saveCV(existingId) {
-  const en=document.getElementById('cv-en').value.trim();
-  const kr=document.getElementById('cv-kr').value.trim();
-  if(!en||!kr){alert('영어/한국어는 필수');return;}
-  const data={cat:document.getElementById('cv-cat').value,en,kr,ph:document.getElementById('cv-ph').value.trim(),level:parseInt(document.getElementById('cv-lv').value),order:Date.now()};
-  try{
-    if(existingId) await db.collection('conversation_sentences').doc(existingId).update(data);
-    else await db.collection('conversation_sentences').add(data);
-    toast('✅ 저장 완료');document.getElementById('mr').innerHTML='';rCV();
-  }catch(e){alert('오류: '+e.message);}
-}
-
-async function editCV(id){
-  try{const doc=await db.collection('conversation_sentences').doc(id).get();if(doc.exists)showAddCV({id:doc.id,...doc.data()});}catch(e){alert('오류: '+e.message);}
-}
-async function deleteCV(id){
-  if(!confirm('삭제할까요?'))return;
-  try{await db.collection('conversation_sentences').doc(id).delete();toast('삭제 완료');rCV();}catch(e){alert('오류: '+e.message);}
-}
-function uploadCVCSV(){
-  const inp=document.createElement('input');inp.type='file';inp.accept='.csv';
-  inp.onchange=async(e)=>{
-    const file=e.target.files[0];if(!file)return;
-    const reader=new FileReader();
-    reader.onload=async(ev)=>{
-      const lines=ev.target.result.split('\n').filter(l=>l.trim());
-      const headers=lines[0].split(',').map(h=>h.trim().toLowerCase());
-      const rows=lines.slice(1).map(line=>{
-        const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
-        const obj={};headers.forEach((h,i)=>{if(vals[i])obj[h]=vals[i];});
-        return obj;
-      }).filter(r=>r.en&&r.kr);
-      const batch=db.batch();
-      rows.forEach(r=>{const ref=db.collection('conversation_sentences').doc();batch.set(ref,{...r,level:parseInt(r.level||1),order:Date.now()});});
-      await batch.commit();
-      toast('✅ '+rows.length+'개 문장 업로드 완료');rCV();
-    };
-    reader.readAsText(file,'UTF-8');
-  };
-  inp.click();
-}
-
-
 </script>
-
+<div id="tw"></div>
 </body>
 </html>

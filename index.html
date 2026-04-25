@@ -2210,33 +2210,41 @@ function showAchievementsModal() {
   const mr=document.getElementById('mr');
   if(!mr)return;
   const done=new Set(S._achievements||[]);
-  const total=ACHIEVEMENTS.length;
   const got=done.size;
-  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:85vh">
-    <div style="background:linear-gradient(135deg,#F6D860,#E65100);padding:16px 20px">
-      <div style="font-size:16px;font-weight:900;color:#fff">🏆 도전 과제</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.8)">${got}/${total} 달성</div>
-      <div style="background:rgba(255,255,255,.3);border-radius:4px;height:4px;margin-top:8px;overflow:hidden">
-        <div style="height:100%;background:#fff;border-radius:4px;width:${Math.round(got/total*100)}%"></div>
+  const total=ACHIEVEMENTS.length;
+
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:85vh;display:flex;flex-direction:column">
+    <!-- 헤더 -->
+    <div style="background:linear-gradient(135deg,#F59E0B,#D97706);padding:16px 20px;flex-shrink:0">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#fff">🏆 도전 과제</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${got}/${total} 달성 · ${Math.round(got/total*100)}%</div>
+        </div>
+        <button onclick="cm()" style="background:rgba(255,255,255,.2);border:none;border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">닫기</button>
+      </div>
+      <div style="background:rgba(255,255,255,.25);border-radius:4px;height:6px;margin-top:10px;overflow:hidden">
+        <div style="height:100%;background:#fff;border-radius:4px;width:${Math.round(got/total*100)}%;transition:width .6s"></div>
       </div>
     </div>
-    <div style="overflow-y:auto;max-height:60vh;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      ${ACHIEVEMENTS.map(a=>{
-        const isDone=done.has(a.id);
-        return `<div style="background:${isDone?'#FFF8E1':'var(--bg-sub,#FFF9ED)'};border:1.5px solid ${isDone?'#F6D860':'var(--border,#F0E6C8)'};border-radius:14px;padding:12px;text-align:center;opacity:${isDone?1:0.5}">
-          <div style="font-size:28px;margin-bottom:4px">${isDone?a.emoji:'❓'}</div>
-          <div style="font-size:11px;font-weight:800;color:var(--text1,#3D2C00)">${isDone?a.name:'???'}</div>
-          <div style="font-size:10px;color:var(--text3,#A08040);margin-top:2px">${isDone?a.desc:'미달성'}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div style="padding:12px;border-top:1px solid var(--border,#F0E6C8)">
-      <button onclick="cm()" class="btn bb">닫기</button>
+    <!-- 목록 -->
+    <div style="overflow-y:auto;padding:12px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${ACHIEVEMENTS.map(a=>{
+          const isDone=done.has(a.id);
+          return `<div style="background:${isDone?'linear-gradient(135deg,#FFFBEB,#FEF3C7)':'#F9FAFB'};border:1.5px solid ${isDone?'#F6D860':'#E5E7EB'};border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;opacity:${isDone?1:0.6}">
+            <div style="font-size:28px;flex-shrink:0">${isDone?a.emoji:'🔒'}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;color:${isDone?'#92400E':'#374151'}">${a.name}</div>
+              <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${a.desc}</div>
+            </div>
+            ${isDone?`<div style="background:#F59E0B;color:#fff;border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;flex-shrink:0">달성!</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
     </div>
   </div></div>`;
 }
-
-// ── 오늘의 도전 ──
 function getDailyChallenge() {
   const t = today();
   const seed = parseInt(t.replace(/-/g,'')) % 7;
@@ -2885,6 +2893,57 @@ const CONV_DEFAULT = [
   {cat:'일상대화',en:'How was your day?',kr:'오늘 어떠셨나요?',level:1},
   {cat:'일상대화',en:'I am looking forward to it.',kr:'기대가 됩니다.',level:2},
 ];
+
+// ── Firebase 나비 로드 (추가 등록 나비 반영) ──
+async function loadFirebaseButterflies() {
+  try {
+    if(typeof db === 'undefined') return;
+    const snap = await db.collection('butterflies').get();
+    if(snap.empty) return;
+    snap.docs.forEach(doc => {
+      const bf = doc.data();
+      if(!bf.id || !bf.name) return;
+      // 이미 있으면 SVG만 업데이트, 없으면 추가
+      const existing = BUTTERFLY_LIST.find(b => b.id === bf.id);
+      if(existing) {
+        if(bf.svgCode) existing.svgCode = bf.svgCode;
+      } else {
+        BUTTERFLY_LIST.push({
+          id: bf.id, name: bf.name, rare: bf.rare||'⭐⭐',
+          color: bf.color||'#7C3AED', bg: '#F5F3FF',
+          desc: bf.desc||'', svgCode: bf.svgCode||'',
+          protect: bf.protect||''
+        });
+      }
+    });
+  } catch(e) {}
+}
+
+function showFriends() {
+  const mr=document.getElementById('mr');if(!mr)return;
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">👥</div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:8px">친구 기능</div>
+    <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px;line-height:1.7">친구 기능은 곧 업데이트될 예정이에요!<br>조금만 기다려주세요 🦋</div>
+    <button onclick="cm()" class="btn bb">확인</button>
+  </div></div>`;
+}
+
+function showGameIntroStep(step, steps, gameId) {
+  const mr=document.getElementById('mr');if(!mr)return;
+  if(step>=steps.length){cm();startGameWithSettings(gameId);return;}
+  const s=steps[step];
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">${s.ic||'🎮'}</div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:8px">${s.title||''}</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:16px;line-height:1.7">${s.desc||''}</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm()" class="btn bgr" style="flex:1">건너뛰기</button>
+      <button onclick="window._introStep=(window._introStep||0)+1;showGameIntroStep(window._introStep,window._introSteps,window._introGameId)" class="btn bb" style="flex:1">${step<steps.length-1?'다음 →':'시작!'}</button>
+    </div>
+  </div></div>`;
+  window._introStep=step;window._introSteps=steps;window._introGameId=gameId;
+}
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
   S.markMap[en] = val;
@@ -3575,6 +3634,7 @@ function startApp() {
   setTimeout(()=>syncProfileToFirebase(), 2000);
   setTimeout(async ()=>{
     await loadMarketPacks();
+    loadFirebaseButterflies(); // Firebase 나비 로드
     // 광고 배너 설정 로드
     try {
       const adDoc = await db.collection('config').doc('ad_banner').get();
@@ -5422,101 +5482,120 @@ function startMode(type) {
 }
 
 function showStreamMode() {
-  // 기존 타이머 정리
-  if(window._streamTimer) { clearInterval(window._streamTimer); window._streamTimer=null; }
-
-  let idx=0, speed=3000;
+  if(window._streamTimer){clearInterval(window._streamTimer);window._streamTimer=null;}
   const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!words.length){toast('단어가 없어요!');return;}
+  const mr=document.getElementById('mr');if(!mr)return;
 
-  const render=()=>{
-    const el=document.getElementById('mode-word');
-    if(!el) return;
-    if(idx>=words.length){clearInterval(timer);if(el)el.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:48px">🎉</div><div style="font-size:16px;font-weight:700;margin:10px 0">스트림 완료!</div><button onclick="cm()" class="btn bb">닫기</button></div>';return;}
+  // ── 전역 상태 (onclick에서 접근 가능) ──
+  window._stIdx=0;
+  window._stSpeed=3000;
+  window._stPlaying=true;
+  window._stWords=words;
+
+  // CSS 파형
+  if(!document.getElementById('stream-wave-css')){
+    const st=document.createElement('style');st.id='stream-wave-css';
+    st.textContent='@keyframes streamWave{0%{transform:scaleY(1)}100%{transform:scaleY(3)}}';
+    document.head.appendChild(st);
+  }
+
+  window._stRender=()=>{
+    const idx=window._stIdx, spd=window._stSpeed;
+    if(idx>=words.length){
+      clearInterval(window._streamTimer);window._streamTimer=null;
+      mr.innerHTML=`<div class="mbg" onclick="cm()"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F0C29,#302B63,#24243E);display:flex;align-items:center;justify-content:center;flex-direction:column">
+        <div style="font-size:56px;margin-bottom:16px">🎉</div>
+        <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">스트리밍 완료!</div>
+        <div style="font-size:14px;color:rgba(255,255,255,.5);margin-bottom:24px">${words.length}개 단어 완료</div>
+        <button onclick="cm()" style="background:rgba(255,255,255,.15);border:none;border-radius:20px;padding:12px 28px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">닫기</button>
+      </div></div>`;
+      return;
+    }
     const w=words[idx];
-    el.innerHTML=`<div style="font-size:80px;margin-bottom:12px">${w.img||'📝'}</div>
-      <div style="font-size:30px;font-weight:900;color:#60A5FA;font-family:monospace;margin-bottom:6px">${w.en}</div>
-      <div style="font-size:18px;color:#E2E8F0;font-weight:700;margin-bottom:6px">${w.kr}</div>
-      <div style="font-size:13px;color:#94A3B8;font-style:italic">"${w.ex||''}"</div>
-      <div style="margin-top:10px;font-size:12px;color:#475569">${idx+1}/${words.length}</div>`;
-  };
-
-  const startTimer=()=>{
-    render();
-    if(window._streamTimer) clearInterval(window._streamTimer);
-    window._streamTimer=setInterval(()=>{
-      idx=(idx+1)%words.length;
-      render();
-    },speed);
-  };
-
-  const stopTimer=()=>{
-    if(window._streamTimer) { clearInterval(window._streamTimer); window._streamTimer=null; }
-  };
-
-  const exitStream=()=>{
-    stopTimer();
-    cm();
-  };
-
-  document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal" style="background:#1A1A2E;border-radius:24px 24px 0 0">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-size:14px;font-weight:800;color:#fff">📻 스트리밍 모드</div>
-      <button id="stream-exit-btn" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:6px 14px;color:#fff;cursor:pointer;font-size:12px;font-weight:700">✕ 종료</button>
-    </div>
-    <div id="mode-word" style="text-align:center;padding:20px 0;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center"></div>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button id="stream-prev" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:10px;flex:1;color:#fff;cursor:pointer;font-size:18px">⏮</button>
-      <button id="stream-play" style="background:#1E5FA5;border:none;border-radius:10px;padding:10px;flex:2;color:#fff;cursor:pointer;font-size:18px">⏸</button>
-      <button id="stream-next" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:10px;flex:1;color:#fff;cursor:pointer;font-size:18px">⏭</button>
-    </div>
-    <div style="margin-top:10px">
-      <div style="font-size:12px;color:#6B7280;margin-bottom:6px;text-align:center">속도</div>
-      <div style="display:flex;gap:6px;justify-content:center">
-        ${[['느리게',5000],['보통',3000],['빠르게',1500]].map(([lb,s])=>`<button class="sp-btn" data-speed="${s}" style="background:${speed===s?'#1E5FA5':'rgba(255,255,255,.1)'};border:none;border-radius:8px;padding:6px 12px;color:#fff;cursor:pointer;font-size:12px;font-weight:700">${lb}</button>`).join('')}
+    const speedLabels={3000:'보통',5000:'느리게',1500:'빠르게',800:'매우빠름'};
+    mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F0C29,#302B63,#24243E);display:flex;flex-direction:column;overflow:hidden">
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;flex-shrink:0">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#fff">⚡ 스트리밍</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">자동 단어 학습</div>
+        </div>
+        <button onclick="clearInterval(window._streamTimer);window._streamTimer=null;window._stPlaying=false;cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
       </div>
-    </div>
-  </div></div>`;
-
-  // 이벤트 바인딩 (getElementById로 직접)
-  let paused = false;
-
-  document.getElementById('stream-exit-btn').onclick = exitStream;
-
-  document.getElementById('stream-prev').onclick = ()=>{
-    idx=(idx-1+words.length)%words.length;
-    startTimer();
+      <!-- 파형 -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:36px;flex-shrink:0">
+        ${[1,2,3,4,5,6,7].map(i=>`<div style="width:3px;background:rgba(147,197,253,.7);border-radius:4px;animation:streamWave ${0.6+i*.08}s ease-in-out infinite alternate;height:${8+Math.sin(i)*10}px"></div>`).join('')}
+      </div>
+      <!-- 단어 -->
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px">
+        <div style="width:100%;text-align:center">
+          <div style="font-size:38px;font-weight:900;color:#fff;font-family:monospace;letter-spacing:-1px;margin-bottom:10px;text-shadow:0 2px 20px rgba(147,197,253,.5)">${w.en}</div>
+          ${w.ph?`<div style="font-size:14px;color:rgba(167,139,250,.9);margin-bottom:8px">${w.ph}</div>`:''}
+          <div style="font-size:22px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:10px">${w.kr}</div>
+          ${w.ex?`<div style="font-size:13px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.7">"${w.ex}"</div>`:''}
+        </div>
+      </div>
+      <!-- 진행 -->
+      <div style="padding:0 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.5);margin-bottom:5px">
+          <span>${idx+1}/${words.length}</span>
+          <span>속도: ${speedLabels[spd]||'보통'}</span>
+        </div>
+        <div style="background:rgba(255,255,255,.15);border-radius:4px;height:3px;overflow:hidden;margin-bottom:12px">
+          <div style="height:100%;background:linear-gradient(90deg,#93C5FD,#A78BFA);width:${Math.round((idx+1)/words.length*100)}%;transition:width .4s"></div>
+        </div>
+      </div>
+      <!-- 컨트롤 -->
+      <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+        <div style="display:flex;gap:8px">
+          <button onclick="window._stIdx=Math.max(0,window._stIdx-1);clearInterval(window._streamTimer);window._streamTimer=null;window._stRender();if(window._stPlaying){window._streamTimer=setInterval(window._stNext,window._stSpeed);}" 
+            style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
+          <button id="st-play-btn" onclick="window._stToggle()"
+            style="flex:2;background:linear-gradient(135deg,#3B82F6,#7C3AED);border:none;border-radius:18px;padding:16px;color:#fff;font-size:22px;cursor:pointer;font-weight:700;box-shadow:0 4px 20px rgba(59,130,246,.4)">⏸</button>
+          <button onclick="window._stNext()"
+            style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:20px;cursor:pointer">⏭</button>
+        </div>
+        <!-- 속도 조절 -->
+        <div style="display:flex;gap:6px">
+          ${[['느리게',5000],['보통',3000],['빠르게',1500],['매우빠름',800]].map(([lb,sp])=>`
+            <button onclick="window._stSpeed=${sp};if(window._streamTimer){clearInterval(window._streamTimer);window._streamTimer=setInterval(window._stNext,window._stSpeed);}window._stRender();"
+              style="flex:1;background:${sp===3000?'rgba(59,130,246,.4)':'rgba(255,255,255,.06)'};border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:7px 4px;color:rgba(255,255,255,.8);font-size:10px;font-weight:700;cursor:pointer">${lb}</button>
+          `).join('')}
+        </div>
+        <button onclick="clearInterval(window._streamTimer);window._streamTimer=null;window._stPlaying=false;cm()"
+          style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:9px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
+      </div>
+    </div></div>`;
+    // 발음
+    if(typeof speechSynthesis!=='undefined'){
+      speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);
+    }
+    logStudy('words');addXP(3);
   };
 
-  document.getElementById('stream-next').onclick = ()=>{
-    idx=(idx+1)%words.length;
-    startTimer();
+  window._stNext=()=>{
+    if(!window._stPlaying)return;
+    window._stIdx++;
+    window._stRender();
   };
 
-  document.getElementById('stream-play').onclick = function(){
-    if(paused){
-      paused=false;
-      this.textContent='⏸';
-      startTimer();
+  window._stToggle=()=>{
+    window._stPlaying=!window._stPlaying;
+    const btn=document.getElementById('st-play-btn');
+    if(window._stPlaying){
+      if(btn)btn.innerHTML='⏸';
+      window._streamTimer=setInterval(window._stNext,window._stSpeed);
     } else {
-      paused=true;
-      this.textContent='▶';
-      stopTimer();
-      render();
+      if(btn)btn.innerHTML='▶';
+      clearInterval(window._streamTimer);window._streamTimer=null;
     }
   };
 
-  document.querySelectorAll('.sp-btn').forEach(btn=>{
-    btn.onclick=function(){
-      speed=+this.dataset.speed;
-      document.querySelectorAll('.sp-btn').forEach(b=>b.style.background='rgba(255,255,255,.1)');
-      this.style.background='#1E5FA5';
-      if(!paused) startTimer();
-    };
-  });
-
-  startTimer();
+  window._stRender();
+  window._streamTimer=setInterval(window._stNext, window._stSpeed);
 }
-
 function showAudioMode() {
   let idx=0, playing=false, timer=null;
   const speakWord=(w)=>{
@@ -5628,55 +5707,91 @@ function showAudioMode() {
 
 // ── 쉐도잉 모드 ──
 function showShadowMode() {
-  const words = S.words.filter(w=>w.ex && w.ex.length>3);
-  if(!words.length){toast('예문이 있는 단어가 없어요! AI로 단어 추가 시 예문이 자동 생성돼요');return;}
-  let idx=0, step=0; // step: 0=보기 1=듣기 2=따라하기 3=결과
+  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!words.length){toast('단어가 없어요!');return;}
+  const mr=document.getElementById('mr');if(!mr)return;
+  let idx=0;
+  let rate=0.75; // 발음 속도
 
-  const renderShadow=()=>{
-    if(idx>=words.length){clearInterval(shadowTimer);if(document.getElementById('shadow-box'))document.getElementById('shadow-box').innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:36px">🎉</div><div style="font-size:15px;font-weight:700;margin:10px 0">쉐도잉 완료!</div><button onclick="cm()" class="btn bb">닫기</button></div>';return;}
+  const speak=(text)=>{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='en-US'; u.rate=rate;
+    speechSynthesis.speak(u);
+  };
+
+  const render=()=>{
+    if(idx>=words.length){
+      mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F2027,#203A43,#2C5364);display:flex;align-items:center;justify-content:center">
+        <div style="text-align:center">
+          <div style="font-size:56px;margin-bottom:16px">🎤</div>
+          <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">쉐도잉 완료!</div>
+          <div style="font-size:14px;color:rgba(255,255,255,.5);margin-bottom:24px">${words.length}개 단어 연습 완료</div>
+          <button onclick="cm()" class="btn bb" style="padding:14px 32px;font-size:15px">닫기</button>
+        </div>
+      </div></div>`;
+      return;
+    }
     const w=words[idx];
-    const prog=idx+1;
-    const steps=['📖 문장 읽기','🔊 원어민 듣기','🎤 따라 말하기'];
-    document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:800;color:#EC4899">🎤 쉐도잉</div>
-        <button onclick="cm()" style="background:#F3F4F6;border:none;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer">종료</button>
+    mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F2027,#203A43,#2C5364);display:flex;flex-direction:column;overflow:hidden">
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;flex-shrink:0">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#fff">🎤 쉐도잉</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5)">${idx+1}/${words.length}</div>
+        </div>
+        <button onclick="speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
       </div>
-      <div style="display:flex;gap:4px;margin-bottom:14px">
-        ${steps.map((s,i)=>`<div style="flex:1;height:4px;border-radius:2px;background:${step>i?'#EC4899':step===i?'#EC4899':'#E5E7EB'};opacity:${step===i?1:.4}"></div>`).join('')}
+      <!-- 단어 카드 -->
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px">
+        <div style="width:100%;text-align:center">
+          <div style="font-size:42px;font-weight:900;color:#fff;font-family:monospace;letter-spacing:-1px;margin-bottom:12px;text-shadow:0 2px 20px rgba(100,210,255,.4)">${w.en}</div>
+          ${w.ph?`<div style="font-size:15px;color:rgba(100,210,255,.9);margin-bottom:10px">${w.ph}</div>`:''}
+          <div style="font-size:20px;font-weight:700;color:rgba(255,255,255,.75);margin-bottom:12px">${w.kr}</div>
+          ${w.ex?`<div style="font-size:13px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.7;max-width:300px;margin:0 auto">"${w.ex}"</div>`:''}
+        </div>
       </div>
-      <div style="text-align:center;margin-bottom:16px">
-        <div style="font-size:36px;margin-bottom:8px">${w.img||'📝'}</div>
-        <div style="font-size:18px;font-weight:900;color:#111;font-family:monospace;margin-bottom:4px">${w.en}</div>
-        <div style="font-size:14px;color:#6B7280;margin-bottom:6px">${w.kr}</div>
-        ${step===0
-          ?`<div style="background:#FDF2F8;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:600;color:#111;line-height:1.7;margin-bottom:4px">"${w.ex}"</div>
-            <div style="font-size:12px;color:#9CA3AF">문장을 눈으로 읽어보세요</div>`
-          :step===1
-          ?`<div style="background:#FDF2F8;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:600;color:#111;line-height:1.7;margin-bottom:4px">"${w.ex}"</div>
-            <div class="wave" style="justify-content:center;margin:8px 0">${[1,2,3,4,5].map(i=>`<div class="wave-bar" style="background:#EC4899;animation-delay:${i*.1}s"></div>`).join('')}</div>
-            <div style="font-size:12px;color:#9CA3AF">원어민 발음을 들어보세요</div>`
-          :`<div style="background:#F3F4F6;border-radius:12px;padding:12px 16px;font-size:15px;color:#9CA3AF;margin-bottom:4px;font-style:italic">"${w.ex}"</div>
-            <div style="background:#FDF2F8;border-radius:12px;padding:12px;font-size:14px;color:#EC4899;font-weight:700;margin-bottom:4px">🎤 위 문장을 그대로 따라 말해보세요!</div>`}
+      <!-- 진행바 -->
+      <div style="padding:0 20px;flex-shrink:0">
+        <div style="background:rgba(255,255,255,.15);border-radius:4px;height:3px;overflow:hidden;margin-bottom:10px">
+          <div style="height:100%;background:linear-gradient(90deg,#64D2FF,#5AC8FA);width:${Math.round((idx+1)/words.length*100)}%;transition:width .4s"></div>
+        </div>
       </div>
-      ${step===0
-        ?`<button onclick="step=1;speak('${w.ex.replace(/'/g,"\\'")}');renderShadow()" class="btn" style="background:#EC4899;color:#fff">🔊 듣기</button>`
-        :step===1
-        ?`<button onclick="step=2;renderShadow()" class="btn" style="background:#EC4899;color:#fff">🎤 따라 말하기</button>`
-        :`<div style="display:flex;gap:8px">
-          <button onclick="speak('${w.ex.replace(/'/g,"\\'")}');renderShadow()" style="flex:1;background:#FDF2F8;border:1.5px solid #F9A8D4;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#EC4899">🔊 다시 듣기</button>
-          <button onclick="step=0;idx++;renderShadow()" class="btn" style="background:#EC4899;color:#fff;flex:1">✅ 다음</button>
-        </div>`}
-      <div style="font-size:11px;color:#9CA3AF;text-align:center;margin-top:10px">${prog}/${Math.min(words.length,10)}번째 · 탭해서 진행</div>
+      <!-- 속도 조절 -->
+      <div style="padding:0 20px 8px;flex-shrink:0">
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:11px;color:rgba(255,255,255,.4);min-width:32px">속도</span>
+          ${[['느리게',0.5],['보통',0.75],['빠르게',1.0],['원속',1.25]].map(([lb,sp])=>`
+            <button id="shadow-rate-${String(sp).replace('.','_')}" onclick="window._shadowRate=${sp};rate=${sp};document.querySelectorAll('[id^=shadow-rate-]').forEach(b=>b.style.background='rgba(255,255,255,.06)');this.style.background='rgba(100,210,255,.3)'" 
+              style="flex:1;background:${sp===0.75?'rgba(100,210,255,.3)':'rgba(255,255,255,.06)'};border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:7px;color:rgba(255,255,255,.8);font-size:11px;font-weight:700;cursor:pointer">${lb}</button>
+          `).join('')}
+        </div>
+      </div>
+      <!-- 버튼 -->
+      <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+        <button onclick="window._shadowSpeak&&window._shadowSpeak()" style="background:linear-gradient(135deg,#0EA5E9,#0284C7);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">🔊 다시 듣기</button>
+        <button onclick="window._shadowNext&&window._shadowNext()" style="background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">✅ 따라했어요! 다음 →</button>
+        <button onclick="speechSynthesis.cancel();cm()" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
+      </div>
     </div></div>`;
 
-    // step 1이면 자동 재생
-    if(step===1) setTimeout(()=>speak(w.ex), 300);
-  };
-  renderShadow();
-}
+    // window 전역에 함수 등록 (onclick에서 호출 가능)
+    window._shadowRate = rate;
+    window._shadowSpeak = ()=>{ speak(w.en); };
+    window._shadowNext = ()=>{
+      rate = window._shadowRate || rate;
+      idx++;
+      render();
+      logStudy('words');
+      addXP(5);
+    };
 
-// ── 말하기 퀴즈 모드 ──
+    // 자동 발음
+    setTimeout(()=>speak(w.en), 300);
+  };
+
+  render();
+}
 function showSpeakQuiz() {
   const words=pick(S.words, Math.min(8,S.words.length));
   let idx=0, score=0;
@@ -5726,34 +5841,39 @@ function showSpeakQuiz() {
 }
 
 function showSleepMode() {
-  let idx=0, sleepTimer=null, autoTimer=null;
-  const render=()=>{
-    if(idx>=S.words.length){clearInterval(null);playing=false;return;}
-    const w=S.words[idx];
-    document.getElementById('sleep-word').innerHTML=`<div style="font-size:56px;margin-bottom:12px;opacity:.6">${w.img||'✨'}</div>
-      <div style="font-size:26px;font-weight:900;color:rgba(255,255,255,.9);font-family:monospace">${w.en}</div>
-      <div style="font-size:16px;color:rgba(255,255,255,.5);margin-top:6px">${w.kr}</div>`;
-  };
-  const start=(mins)=>{
-    clearInterval(sleepTimer); clearTimeout(autoTimer);
-    render();
-    sleepTimer=setInterval(()=>{idx=(idx+1)%S.words.length;render();},5000);
-    if(mins) autoTimer=setTimeout(()=>{clearInterval(sleepTimer);cm();},mins*60000);
-  };
-  document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal" style="background:#0D0D1A;border-radius:24px 24px 0 0;padding-bottom:40px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <div style="font-size:14px;font-weight:800;color:rgba(255,255,255,.6)">😴 수면 모드</div>
-      <button onclick="clearInterval(sleepTimer);clearTimeout(autoTimer);cm()" style="background:rgba(255,255,255,.05);border:none;border-radius:8px;padding:6px 12px;color:rgba(255,255,255,.5);cursor:pointer;font-size:12px">종료</button>
-    </div>
-    <div id="sleep-word" style="text-align:center;min-height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center"></div>
-    <div style="font-size:12px;color:rgba(255,255,255,.3);text-align:center;margin:12px 0">자동 종료</div>
-    <div style="display:flex;gap:6px;justify-content:center">
-      ${[['10분',10],['20분',20],['30분',30],['계속',0]].map(([lb,m])=>`<button onclick="start(${m})" style="background:rgba(255,255,255,.08);border:none;border-radius:8px;padding:8px 14px;color:rgba(255,255,255,.6);cursor:pointer;font-size:12px;font-weight:700">${lb}</button>`).join('')}
-    </div>
-  </div></div>`;
-  start(20);
-}
+  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!words.length){toast('단어가 없어요!');return;}
+  const mr=document.getElementById('mr');if(!mr)return;
+  let idx=0, timer=null;
 
+  const playNext=()=>{
+    if(idx>=words.length){
+      if(timer)clearTimeout(timer);
+      mr.innerHTML=`<div class="mbg" onclick="cm()"><div style="position:fixed;inset:0;background:#0A0A1A;display:flex;align-items:center;justify-content:center;flex-direction:column">
+        <div style="font-size:48px;margin-bottom:12px">🌙</div>
+        <div style="font-size:18px;font-weight:700;color:rgba(255,255,255,.6)">수면 학습 완료</div>
+        <button onclick="cm()" style="margin-top:20px;background:rgba(255,255,255,.1);border:none;border-radius:20px;padding:10px 24px;color:#fff;font-size:13px;cursor:pointer">닫기</button>
+      </div></div>`;
+      return;
+    }
+    const w=words[idx];
+    mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0A0A1A;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
+      <button onclick="if(timer)clearTimeout(timer);cm()" style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:7px 16px;color:rgba(255,255,255,.5);font-size:12px;cursor:pointer">✕ 나가기</button>
+      <div style="font-size:11px;color:rgba(255,255,255,.25);margin-bottom:24px;letter-spacing:2px">SLEEP LEARNING · ${idx+1}/${words.length}</div>
+      <div style="font-size:44px;font-weight:800;color:rgba(255,255,255,.85);font-family:monospace;letter-spacing:-1px;margin-bottom:12px;text-align:center">${w.en}</div>
+      ${w.ph?`<div style="font-size:14px;color:rgba(150,180,255,.7);margin-bottom:10px">${w.ph}</div>`:''}
+      <div style="font-size:20px;color:rgba(255,255,255,.5);margin-bottom:8px">${w.kr}</div>
+      <div style="width:60%;height:1px;background:rgba(255,255,255,.08);margin:16px 0"></div>
+      <div style="font-size:11px;color:rgba(255,255,255,.2)">다음 단어까지 5초...</div>
+    </div></div>`;
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.8;speechSynthesis.speak(u);
+    logStudy('words');addXP(3);
+    idx++;
+    timer=setTimeout(playNext,5000);
+  };
+  playNext();
+}
 function showSRSMode() {
   const now=new Date();
   // 오늘 복습할 단어 (due) + 새 단어 (srsMap에 없는 것 중 최대 5개)
@@ -6351,6 +6471,7 @@ function showGameSettings(gameId, tab) {
 }
 
 function startGameWithSettings(gameId) {
+  S._prevTab = S.tab; // 현재 탭 저장 → 나가기 시 복귀
   const gs = S.gameSettings||{count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false};
 
   // 현재 선택된 단어장 + 시스템 단어장 모두 포함
@@ -7382,7 +7503,7 @@ function rWC(){
       S.wcGuessed=new Set();S.wcWrong=0;go();},800);}
   const alpha='abcdefghijklmnopqrstuvwxyz'.split('');
   const usedWrong=new Set([...S.wcGuessed].filter(i=>!S.wcLetters[i]?.hidden).map(()=>null));
-  return ghdr('🔡 단어 완성하기',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
+  return ghdr('🔡 단어 완성',`${S.gIdx+1}/${S.gWords.length}`)+`<div class="pad">
     ${cbrow(S.wcWrong>=6?'아쉬워! 다음엔 꼭!':allDone?'맞췄어! 🎉':'빈칸의 글자를 채워봐! 🔡',S.lid,allDone?'happy':S.wcWrong>=6?'sad':'normal')}
     <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:20px;padding:20px;text-align:center;border:3px solid #BFDBFE">
       <div style="font-size:64px;margin-bottom:8px">${w.img||'📝'}</div>
@@ -7508,7 +7629,7 @@ function nxtSB(){
 
 function rChain(){
   const prompts=['And then...','Suddenly...','After that...','Finally...'];
-  return ghdr('➡️ 문장 이어가기',`${S.chIdx}/4`)+`<div class="pad">
+  return ghdr('🔗 단어 체인',`${S.chIdx}/4`)+`<div class="pad">
     ${cbrow(S.chDone?'멋진 이야기 완성! 🎉':rnd(['이야기를 이어봐! ✍️','창의적으로! 😊','영어로 도전! 💪']),S.lid,S.chDone?'happy':'normal')}
     <div style="background:linear-gradient(135deg,#FDF4FF,#F3E8FF);border-radius:20px;padding:16px;border:2px solid #E9D5FF"><div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">📖 지금까지의 이야기</div><div style="font-size:14px;color:#111;line-height:1.9;white-space:pre-wrap">${S.chStory}</div></div>
     ${S.chDone?`<div class="card" style="background:#F0FDF4;border-color:#86EFAC;text-align:center">${charSVG(S.lid,56,'happy')}<div style="font-size:15px;font-weight:800;color:#15803D;margin:8px 0">이야기 완성! 🎊</div><button class="btn bb" onclick="SFX.stopBG();go(S._prevTab||'butterfly')">다른 게임</button></div>`:

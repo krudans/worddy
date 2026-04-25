@@ -3423,6 +3423,180 @@ function toast(msg) {
   const t=document.createElement('div'); t.className='toast'; t.textContent=msg; w.appendChild(t);
   setTimeout(()=>t.remove(),2200);
 }
+
+// ── 자동 학습 모드 통합 설정 ──
+window._auto = window._auto || {
+  loop: true,        // 무한 루프 (기본 ON)
+  speed: 4000,       // 단어당 시간 (ms) - 스트리밍/오디오용
+  shadowRate: 0.75,  // 쉐도잉 발음 속도
+  read: 'en+kr',     // 읽기 모드: en/kr/ex/en+kr/en+ex/all
+  voice: 'en-US',    // 영어 음성
+};
+function _autoSpeak(text, lang='en-US') {
+  return new Promise(res => {
+    if(!text) return res();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.rate = lang === 'ko-KR' ? 0.95 : (window._auto.shadowRate || 0.85);
+    u.onend = res; u.onerror = res;
+    setTimeout(res, 6000);
+    speechSynthesis.speak(u);
+  });
+}
+async function _autoReadWord(w) {
+  const m = window._auto.read || 'en+kr';
+  if(m === 'en') {
+    await _autoSpeak(w.en, 'en-US');
+  } else if(m === 'kr') {
+    await _autoSpeak(w.kr, 'ko-KR');
+  } else if(m === 'ex') {
+    if(w.ex) await _autoSpeak(w.ex, 'en-US');
+  } else if(m === 'en+kr') {
+    await _autoSpeak(w.en, 'en-US');
+    await new Promise(r=>setTimeout(r,300));
+    await _autoSpeak(w.kr, 'ko-KR');
+  } else if(m === 'en+ex') {
+    await _autoSpeak(w.en, 'en-US');
+    await new Promise(r=>setTimeout(r,300));
+    if(w.ex) await _autoSpeak(w.ex, 'en-US');
+  } else if(m === 'all') {
+    await _autoSpeak(w.en, 'en-US');
+    await new Promise(r=>setTimeout(r,250));
+    await _autoSpeak(w.kr, 'ko-KR');
+    await new Promise(r=>setTimeout(r,250));
+    if(w.ex) await _autoSpeak(w.ex, 'en-US');
+  }
+}
+
+function showAutoMode() {
+  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!words || !words.length) { toast('단어가 없어요!'); return; }
+  
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  
+  // 상태 초기화
+  window._autoIdx = 0;
+  window._autoPlaying = false;
+  window._autoWords = words;
+  if(!window._auto) window._auto = {loop:true, speed:4000, shadowRate:0.85, read:'en+kr', voice:'en-US'};
+  _LT.start();
+  
+  // 렌더 함수
+  window._autoRender = () => {
+    const w = window._autoWords[window._autoIdx];
+    if(!w) return;
+    const total = window._autoWords.length;
+    const A = window._auto;
+    const pct = Math.round((window._autoIdx+1)/total*100);
+    
+    mr.innerHTML = `<div style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E3A5F);z-index:200;display:flex;flex-direction:column;color:#fff">
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:900">⚡ 자동 학습</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:1px">${window._autoIdx+1}/${total} · ${A.loop?'🔁 무한반복':'1회'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${_LT.barHTML()}<button onclick="window._autoPlaying=false;window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕</button></div>
+      </div>
+      
+      <!-- 진행 -->
+      <div style="padding:0 20px 8px;flex-shrink:0">
+        <div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden">
+          <div style="height:100%;background:linear-gradient(90deg,#60A5FA,#3B82F6);width:${pct}%;transition:width .4s"></div>
+        </div>
+      </div>
+      
+      <!-- 단어 카드 -->
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+        <div style="font-size:42px;font-weight:900;color:#fff;text-align:center;margin-bottom:14px;letter-spacing:0.5px">${w.en||''}</div>
+        <div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-bottom:18px">${w.ph||''}</div>
+        <div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;text-align:center;margin-bottom:18px">${w.kr||''}</div>
+        ${w.ex ? `<div style="font-size:14px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.6;text-align:center;max-width:340px">"${w.ex}"</div>` : ''}
+        <div style="margin-top:18px">${_markBtn(w.en||'')}</div>
+      </div>
+      
+      <!-- 옵션 패널 -->
+      <div style="padding:8px 16px;flex-shrink:0">
+        <!-- 무한루프 토글 + 읽기 모드 -->
+        <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+          <button onclick="window._auto.loop=!window._auto.loop;window._autoRender()" style="background:${A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.loop?'rgba(96,165,250,.6)':'rgba(255,255,255,.15)'};border-radius:18px;padding:6px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">${A.loop?'🔁 무한반복':'➡ 1회만'}</button>
+        </div>
+        <!-- 읽기 모드 -->
+        <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
+          <span style="font-size:10px;color:rgba(255,255,255,.4);min-width:32px">읽기</span>
+          ${[['en','영어'],['kr','한글'],['en+kr','영+한'],['en+ex','영+예'],['all','전체']].map(([v,lb])=>
+            `<button onclick="window._auto.read='${v}';window._autoRender()" style="flex:1;background:${A.read===v?'rgba(96,165,250,.4)':'rgba(255,255,255,.06)'};border:1px solid ${A.read===v?'rgba(96,165,250,.6)':'rgba(255,255,255,.12)'};border-radius:8px;padding:5px 2px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">${lb}</button>`
+          ).join('')}
+        </div>
+        <!-- 속도 -->
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-size:10px;color:rgba(255,255,255,.4);min-width:32px">속도</span>
+          ${[['느림',0.6,5500],['보통',0.85,4000],['빠름',1.0,3000],['최대',1.2,2000]].map(([lb,sr,sp])=>
+            `<button onclick="window._auto.shadowRate=${sr};window._auto.speed=${sp};window._autoRender()" style="flex:1;background:${Math.abs(A.shadowRate-sr)<0.05?'rgba(96,165,250,.4)':'rgba(255,255,255,.06)'};border:1px solid ${Math.abs(A.shadowRate-sr)<0.05?'rgba(96,165,250,.6)':'rgba(255,255,255,.12)'};border-radius:8px;padding:5px 2px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">${lb}</button>`
+          ).join('')}
+        </div>
+      </div>
+      
+      <!-- 컨트롤 버튼 -->
+      <div style="padding:8px 20px 20px;display:flex;gap:8px;flex-shrink:0">
+        <button onclick="window._autoIdx=Math.max(0,window._autoIdx-1);window._autoRender();window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">⏮ 이전</button>
+        <button onclick="window._autoToggle()" style="flex:2;background:${window._autoPlaying?'linear-gradient(135deg,#EF4444,#DC2626)':'linear-gradient(135deg,#10B981,#059669)'};border:none;border-radius:14px;padding:12px;color:#fff;font-size:15px;font-weight:800;cursor:pointer">${window._autoPlaying?'⏸ 정지':'▶ 자동재생'}</button>
+        <button onclick="window._autoIdx=Math.min(window._autoWords.length-1,window._autoIdx+1);window._autoRender();window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">⏭ 다음</button>
+      </div>
+    </div>`;
+  };
+  
+  // 현재 단어 즉시 발음
+  window._autoSpeakNow = async () => {
+    const w = window._autoWords[window._autoIdx];
+    if(w) await _autoReadWord(w);
+  };
+  
+  // 자동 재생 토글
+  window._autoToggle = async () => {
+    if(window._autoPlaying) {
+      window._autoPlaying = false;
+      window.speechSynthesis.cancel();
+      window._autoRender();
+      return;
+    }
+    window._autoPlaying = true;
+    window._autoRender();
+    while(window._autoPlaying) {
+      const w = window._autoWords[window._autoIdx];
+      if(!w) break;
+      await _autoReadWord(w);
+      if(!window._autoPlaying) break;
+      // 단어 간 간격
+      await new Promise(r => setTimeout(r, 600));
+      if(!window._autoPlaying) break;
+      // 다음 단어
+      window._autoIdx++;
+      if(window._autoIdx >= window._autoWords.length) {
+        if(window._auto.loop) {
+          window._autoIdx = 0;
+          toast('🔁 처음부터 다시 시작!');
+        } else {
+          window._autoPlaying = false;
+          toast('🎉 모든 단어 완료!');
+          break;
+        }
+      }
+      window._autoRender();
+      logStudy('words');
+      addXP(2);
+    }
+    window._autoRender();
+  };
+  
+  window._curRender = window._autoRender;
+  window._autoRender();
+  // 첫 단어 즉시 발음
+  setTimeout(()=>window._autoSpeakNow(), 300);
+}
+
 const cm = () => document.getElementById('mr').innerHTML='';
 
 function applyTheme() {
@@ -4268,8 +4442,7 @@ function rLearnTab() {
     <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📚 암기 모드</div>
     <div style="display:flex;flex-direction:column;gap:8px">
       ${[
-        {ic:'🚇',nm:'스트리밍',dc:'이동 중에 · 자동으로 넘어감',fn:"startMode('stream')",c:'#1E5FA5',bg:'#EFF6FF'},
-        {ic:'🎤',nm:'쉐도잉',dc:'예문 따라 읽기 · 발음 훈련',fn:"startMode('shadow')",c:'#EC4899',bg:'#FDF2F8'},
+        {ic:'⚡',nm:'자동 학습',dc:'스트리밍·오디오·쉐도잉 통합 · 무한반복',fn:"startMode('auto')",c:'#1E5FA5',bg:'#EFF6FF'},
         {ic:'📖',nm:'SRS 복습',dc:'집중 공부 · 망각곡선 기반',fn:"startMode('srs')",c:'#E65100',bg:'#FFF8E1'},
       ].map(m=>`<div onclick="${m.fn}" style="background:${m.bg};border-radius:14px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">
         <span style="font-size:28px">${m.ic}</span>
@@ -6464,10 +6637,8 @@ function startMode(type) {
   if(!modeWords.length){toast('현재 단어장에 단어가 없어요! 단어를 먼저 추가해주세요.');return;}
   // 현재 단어장으로 S.words 동기화
   if(modeWords !== S.words) S.words = modeWords;
-  if(type==='stream') showStreamMode();
+  if(type==='stream' || type==='audio' || type==='shadow' || type==='auto') showAutoMode();
   else if(type==='srs') showSRSMode();
-  else if(type==='shadow') showShadowMode();
-  else if(type==='audio') showAudioMode();
   else if(type==='sleep') showSleepMode();
   else if(type==='speak') showSpeakMode();
 }
@@ -6770,7 +6941,7 @@ function showShadowMode() {
         <div style="display:flex;gap:6px;align-items:center">
           <span style="font-size:11px;color:rgba(255,255,255,.4);min-width:32px">속도</span>
           ${[['느리게',0.5],['보통',0.75],['빠르게',1.0],['원속',1.25]].map(([lb,sp])=>`
-            <button id="shadow-rate-${String(sp).replace('.','_')}" onclick="window._shadowRate=${sp};rate=${sp};document.querySelectorAll('[id^=shadow-rate-]').forEach(b=>b.style.background='rgba(255,255,255,.06)');this.style.background='rgba(100,210,255,.3)'" 
+            <button id="shadow-rate-${String(sp).replace('.','_')}" onclick="window._auto.shadowRate=${sp};window._shadowRate=${sp};document.querySelectorAll('[id^=shadow-rate-]').forEach(b=>b.style.background='rgba(255,255,255,.06)');this.style.background='rgba(100,210,255,.3)'" 
               style="flex:1;background:${sp===0.75?'rgba(100,210,255,.3)':'rgba(255,255,255,.06)'};border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:7px;color:rgba(255,255,255,.8);font-size:11px;font-weight:700;cursor:pointer">${lb}</button>
           `).join('')}
         </div>
@@ -6966,8 +7137,8 @@ function showSRSMode() {
       </div>
       <!-- 버튼 -->
       <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
-        <button onclick="${_markBtn(w.en||'')}
-        speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
+        <div style="text-align:center;margin-bottom:8px">${_markBtn(w.en||'')}</div>
+        <div style="display:flex;gap:8px"><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="flex:1;background:rgba(96,165,250,.2);border:1px solid rgba(96,165,250,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🔊 영어</button><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.kr||'').replace(/'/g,"\'")}');u.lang='ko-KR';u.rate=0.95;speechSynthesis.speak(u)" style="flex:1;background:rgba(248,113,113,.2);border:1px solid rgba(248,113,113,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🇰🇷 뜻</button></div><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.ex||w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
         <div style="display:flex;gap:8px">
           <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',2);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(5)" style="flex:1;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:14px;padding:14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">🔄 헷갈려요</button>
           <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(10);logStudy('words')" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
@@ -7796,9 +7967,7 @@ function nxtL(ok){
 
 function rModes() {
   const modes=[
-    {ic:'🚇',nm:'스트리밍',dc:'이동 중 · 자동으로 넘어감',fn:"startMode('stream')",c:'#1E5FA5',bg:'linear-gradient(135deg,#EFF6FF,#DBEAFE)'},
-    {ic:'🏃',nm:'오디오',dc:'운동 중 · 화면 꺼져도 재생',fn:"startMode('audio')",c:'#16A34A',bg:'linear-gradient(135deg,#F0FDF4,#DCFCE7)'},
-    {ic:'🎤',nm:'쉐도잉',dc:'예문 따라 말하기 · 발음 훈련',fn:"startMode('shadow')",c:'#EC4899',bg:'linear-gradient(135deg,#FDF2F8,#FCE7F3)'},
+    {ic:'⚡',nm:'자동 학습 (통합)',dc:'스트리밍·오디오·쉐도잉 · 무한반복 · 한글읽기',fn:"startMode('auto')",c:'#1E5FA5',bg:'linear-gradient(135deg,#EFF6FF,#DBEAFE)'},
     {ic:'🗣️',nm:'말하기 퀴즈',dc:'뜻 보고 영어로 말하기',fn:"startMode('speak')",c:'#7C3AED',bg:'linear-gradient(135deg,#FDF4FF,#F3E8FF)'},
     {ic:'😴',nm:'수면 모드',dc:'자기 전 · 어둡게 자동종료',fn:"startMode('sleep')",c:'#6B7280',bg:'linear-gradient(135deg,#F9FAFB,#F3F4F6)'},
     {ic:'📖',nm:'SRS 암기',dc:'집중 공부 · SM-2 망각곡선',fn:"startMode('srs')",c:'#E65100',bg:'linear-gradient(135deg,#FFF8E1,#FEF3C7)'},
@@ -8225,7 +8394,7 @@ function rGameCenter(){
   parts.push(`<div style="border-top:1.5px solid #E5E7EB;padding-top:14px">
     <div style="font-size:13px;font-weight:700;color:#9CA3AF;margin-bottom:10px">🎧 암기 모드</div>
     <div style="display:flex;gap:8px">
-      ${[['🎤','쉐도잉',"startMode('shadow')",['#FDF2F8','#EC4899']],['🗣️','말하기',"startMode('speak')",['#FDF4FF','#7C3AED']],['📖','SRS',"startMode('srs')",['#FFF8E1','#E65100']],['😴','수면',"startMode('sleep')",['#F9FAFB','#6B7280']]].map(([ic,lb,fn,[bg,c]])=>`
+      ${[['🎤','쉐도잉',"startMode('auto')",['#FDF2F8','#EC4899']],['🗣️','말하기',"startMode('speak')",['#FDF4FF','#7C3AED']],['📖','SRS',"startMode('srs')",['#FFF8E1','#E65100']],['😴','수면',"startMode('sleep')",['#F9FAFB','#6B7280']]].map(([ic,lb,fn,[bg,c]])=>`
       <button onclick="${fn}" style="flex:1;background:${bg};border:1.5px solid ${c}33;border-radius:12px;padding:10px 6px;cursor:pointer;text-align:center">
         <div style="font-size:22px;margin-bottom:3px">${ic}</div>
         <div style="font-size:11px;font-weight:700;color:${c}">${lb}</div>

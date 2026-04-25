@@ -123,7 +123,7 @@ body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(-
 .lbadge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);cursor:pointer}
 .xpbar{height:6px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden}
 .xpfill{height:100%;background:#fff;border-radius:3px;transition:width .5s}
-.body{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;width:100%}
+.body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;width:100%;position:relative}
 .body::-webkit-scrollbar{display:none}
 .nav{background:#fff;border-top:1.5px solid #E5E7EB;display:flex;padding:7px 0 calc(env(safe-area-inset-bottom,0px)+5px);flex-shrink:0}
 .ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:none;background:transparent;cursor:pointer;padding:2px 0}
@@ -3369,7 +3369,7 @@ function sv() {
   localStorage.setItem('wd-dxg', JSON.stringify(S._dailyXpGiven||{}));
   localStorage.setItem('wd-ach', JSON.stringify(S._achievements||[]));
   // Firebase 동기화 (로그인 상태일 때)
-  if(S.user && S.user.uid && typeof db !== 'undefined') {
+  if(S.user && S.user.uid && typeof db !== 'undefined' && !window._svDisabled) {
     const uid = S.user.uid;
     const saveData = {
       lid:S.lid, xp:S.xp, streak:S.streak, nick:S.nick,
@@ -3632,7 +3632,7 @@ function showLogin() {
     return;
   }
 
-  document.getElementById('body').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px 20px;gap:14px;background:#F8F9FA;overflow-y:auto">
+  document.getElementById('body').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100svh;min-height:-webkit-fill-available;padding:24px 20px;gap:14px;background:#F8F9FA;overflow-y:auto">
     <div style="animation:bounce 2s infinite">${charSVG('egg',80)}</div>
     <div style="font-size:28px;font-weight:900;color:#1E5FA5;letter-spacing:1px">Butterfly Word</div>
     <div style="font-size:13px;color:#6B7280;text-align:center;line-height:1.8">🥚알에서 ⚡황금 나비로 성장해요!</div>
@@ -3960,6 +3960,7 @@ function finishAdaptiveTest() {
 
 // ── 앱 시작 ──
 function startApp() {
+  window._svDisabled=false;
   loadSysWords(S.lid);
   setTimeout(checkSharedWordBook, 500);
   if(!localStorage.getItem('wd-pet-color')) {
@@ -9477,7 +9478,7 @@ function showLogoutMenu() {
       <div style="font-size:12px;color:#9CA3AF;margin-top:2px">${S.user?.email||''}</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      <button onclick="cm();auth.signOut()" style="background:#F3F4F6;border:1.5px solid #E5E7EB;border-radius:14px;padding:16px;text-align:left;cursor:pointer;width:100%">
+      <button onclick="cm();window._svDisabled=true;auth.signOut().then(()=>{window._svDisabled=false;showLogin();}).catch(e=>toast('로그아웃 오류: '+e.message))" style="background:#F3F4F6;border:1.5px solid #E5E7EB;border-radius:14px;padding:16px;text-align:left;cursor:pointer;width:100%">
         <div style="font-size:14px;font-weight:700;color:#374151">🚪 로그아웃</div>
         <div style="font-size:12px;color:#9CA3AF;margin-top:2px">데이터는 유지돼요. 다시 로그인하면 그대로예요.</div>
       </button>
@@ -9862,75 +9863,64 @@ auth.getRedirectResult().then(result => {
 auth.onAuthStateChanged(user => {
   S.user = user;
   if(user) {
-    // 로그인됨 → Firebase에서 데이터 로드 후 앱 시작
-    const restoreFromLS = () => {
-      try {
-        const ls = localStorage;
-        if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
-        if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
-        if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
-        const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
-        const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
-        const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
-        const mk=ls.getItem('wd-mk'); if(mk) S.markMap=JSON.parse(mk);
-        const lrn=ls.getItem('wd-lrn'); if(lrn) S.learned=new Set(JSON.parse(lrn));
-        const ach=ls.getItem('wd-ach'); if(ach) S._achievements=JSON.parse(ach);
-        const als=ls.getItem('wd-als'); if(als) S.alStudy=JSON.parse(als);
-        const alg=ls.getItem('wd-alg'); if(alg) S.alGoal=JSON.parse(alg);
-      } catch(e) {}
-    };
-    db.collection('users').doc(user.uid).get().then(doc => {
-      if(doc.exists) {
-        const data = doc.data();
-        const fields = ['xp','lid','streak','nick','words','books','currentBook',
-          'markMap','_achievements','_acc','_equipped','_ownedPacks',
-          'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-          '_dailyDate','_dailyXpGiven','studyLog','fontFamily'];
-        fields.forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
-        if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
-        if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
-        // Firebase에 books 없으면 localStorage에서 보완
-        if(!doc.data().books || !doc.data().books.length) restoreFromLS();
-      } else {
-        // Firebase에 데이터 없음 → localStorage fallback
-        restoreFromLS();
-      }
-      startApp();
-    }).catch(() => { restoreFromLS(); startApp(); });
-  } else {
-    // 미로그인 → localStorage에서 복원
+    // 로그인됨 → 로컬스토리지 먼저 복원 후 즉시 startApp
+    // Firebase는 백그라운드에서 나중에 동기화
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
       if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
       if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
       if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
-      const w = ls.getItem('wd-w'); if(w) S.words = JSON.parse(w);
-      const bks = ls.getItem('wd-bks'); if(bks) S.books = JSON.parse(bks);
-      const cbk = ls.getItem('wd-cbk'); if(cbk) S.currentBook = cbk;
-      const mk = ls.getItem('wd-mk'); if(mk) S.markMap = JSON.parse(mk);
-      const lrn = ls.getItem('wd-lrn'); if(lrn) S.learned = new Set(JSON.parse(lrn));
-      const fav = ls.getItem('wd-fav'); if(fav) S.favorites = new Set(JSON.parse(fav));
-      const srs = ls.getItem('wd-srs'); if(srs) S.srsMap = JSON.parse(srs);
-      const bc = ls.getItem('wd-bc'); if(bc) S.bookcase = JSON.parse(bc);
-      const sl = ls.getItem('wd-sl'); if(sl) S.studyLog = JSON.parse(sl);
-      const als = ls.getItem('wd-als'); if(als) S.alStudy = JSON.parse(als);
-      const alg = ls.getItem('wd-alg'); if(alg) S.alGoal = JSON.parse(alg);
-      const alst = ls.getItem('wd-alst'); if(alst) S.alStreak = JSON.parse(alst);
-      const gs = ls.getItem('wd-gs'); if(gs) S.gameSettings = JSON.parse(gs);
-      const dcc = ls.getItem('wd-dcc'); if(dcc) S._dcClaimed = dcc;
-      // 신규 필드
-      const dg = ls.getItem('wd-dg'); if(dg) S._dailyGoalMin = Number(dg)||30;
-      const dsm = ls.getItem('wd-dsm'); if(dsm) S._dailyStudiedMin = Number(dsm)||0;
-      const dd = ls.getItem('wd-dd'); if(dd) S._dailyDate = dd;
-      const dxg = ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven = JSON.parse(dxg);
-      const ach = ls.getItem('wd-ach'); if(ach) S._achievements = JSON.parse(ach);
-    } catch(e) { console.warn('localStorage 복원 오류', e); }
-    // 로그인 화면 표시
+      const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+      const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
+      const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
+      const mk=ls.getItem('wd-mk'); if(mk) S.markMap=JSON.parse(mk);
+      const lrn=ls.getItem('wd-lrn'); if(lrn) S.learned=new Set(JSON.parse(lrn));
+      const fav=ls.getItem('wd-fav'); if(fav) S.favorites=new Set(JSON.parse(fav));
+      const ach=ls.getItem('wd-ach'); if(ach) S._achievements=JSON.parse(ach);
+      const als=ls.getItem('wd-als'); if(als) S.alStudy=JSON.parse(als);
+      const alg=ls.getItem('wd-alg'); if(alg) S.alGoal=JSON.parse(alg);
+      const alst=ls.getItem('wd-alst'); if(alst) S.alStreak=JSON.parse(alst);
+      const gs=ls.getItem('wd-gs'); if(gs) S.gameSettings=JSON.parse(gs);
+      const dg=ls.getItem('wd-dg'); if(dg) S._dailyGoalMin=Number(dg)||30;
+      const dsm=ls.getItem('wd-dsm'); if(dsm) S._dailyStudiedMin=Number(dsm)||0;
+      const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
+      const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
+    } catch(e) {}
+    // 즉시 앱 시작
+    startApp();
+    // 백그라운드에서 Firebase 동기화 (실패해도 앱에 영향 없음)
+    if(typeof db !== 'undefined') {
+      db.collection('users').doc(user.uid).get().then(doc => {
+        if(doc.exists) {
+          const data = doc.data();
+          ['xp','lid','streak','nick','words','books','currentBook',
+           'markMap','_achievements','_acc','_equipped','_ownedPacks',
+           'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
+           '_dailyDate','_dailyXpGiven','studyLog','fontFamily'
+          ].forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
+          if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
+          if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
+          // 화면 갱신
+          go();
+        }
+      }).catch(()=>{});
+    }
+  } else {
+    // 미로그인 → localStorage 복원 후 로그인 화면
+    try {
+      const ls = localStorage;
+      if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+      if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
+      if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
+      if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
+      const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+      const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
+      const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
+    } catch(e) {}
     showLogin();
   }
-});
-</script>
+});</script>
 <script src="js/wordpacks.js"></script>
 <script src="js/features.js"></script>
 </body>

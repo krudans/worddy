@@ -264,6 +264,11 @@ body.fs-lg{font-size:17px!important}
       </div>
     </div>
     <div class="xpbar"><div class="xpfill" id="xpfill" style="width:0%"></div></div>
+    <div id="study-mini" onclick="showAlarmSettings()" style="margin-top:6px;display:none;background:rgba(255,255,255,.15);border-radius:10px;padding:5px 10px;font-size:11px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span id="study-mini-text">⏱ 0.0 / 30분</span>
+      <span id="study-mini-bar" style="flex:1;height:3px;background:rgba(255,255,255,.2);border-radius:2px;overflow:hidden"><span id="study-mini-fill" style="display:block;height:100%;background:#fff;width:0%;transition:width .5s"></span></span>
+      <span id="study-mini-rem" style="font-weight:700">남음</span>
+    </div>
   </div>
   <div class="body" id="body"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#EFF6FF,#F0FDF4)"><div style="font-size:64px;margin-bottom:16px;animation:float 2s ease-in-out infinite">🦋</div><div style="font-size:18px;font-weight:800;color:#1E5FA5;margin-bottom:8px">Butterfly Word</div><div style="font-size:13px;color:#9CA3AF">로딩 중...</div></div></div>
   <div class="nav" id="nav" style="display:none"></div>
@@ -1045,6 +1050,8 @@ function logStudy(type) {
       else vib(50);
     }
   }
+  // 헤더 미니 카드 업데이트
+  if(typeof updHD==='function') updHD();
   // XP 지급
   if(type==='words') { addXP(10, true); checkXpUsable(); }
   else if(type==='quiz') { addXP(5, true); }
@@ -3031,6 +3038,8 @@ const _LT = {
     this.interval = setInterval(()=>{
       this.elapsed = Math.floor((Date.now()-this._startTime)/1000);
       this._updateUI();
+      // 헤더 미니 카드도 업데이트
+      if(typeof updHD==='function') updHD();
       // 하루 공부시간 연동 (1분마다)
       if(this.elapsed > 0 && this.elapsed % 60 === 0) {
         const todayKey = new Date().toISOString().slice(0,10);
@@ -3436,6 +3445,18 @@ function updHD() {
   document.getElementById('hd').style.display='';
   document.getElementById('lbadge').textContent=`${l.emoji} ${l.name}`;
   document.getElementById('xpfill').style.width=S.xp+'%';
+  // 학습시간 미니 카드 업데이트
+  const studied = (S._dailyStudiedMin||0);
+  const goal = (S._dailyGoalMin||30);
+  const pct = Math.min(100, Math.round(studied/goal*100));
+  const remain = Math.max(0, goal - studied);
+  const mini = document.getElementById('study-mini');
+  if(mini && goal > 0) {
+    mini.style.display='flex';
+    document.getElementById('study-mini-text').textContent = `⏱ ${studied.toFixed(1)} / ${goal}분`;
+    document.getElementById('study-mini-fill').style.width = pct + '%';
+    document.getElementById('study-mini-rem').textContent = pct >= 100 ? '🎉 달성' : remain.toFixed(1)+'분 남음';
+  }
   // 콕 찌르기 알림 뱃지 (Firebase에서 비동기 체크)
   if(S.user?.uid) {
     db.collection('pokes').where('to','==',S.user.uid).where('read','==',false).get()

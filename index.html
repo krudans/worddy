@@ -272,8 +272,16 @@ body.fs-lg{font-size:17px!important}
 <div id="mr"></div>
 <script>
 'use strict';
+window.onerror = function(msg,src,line,col,err) {
+  console.error('[전역에러]',msg,'at',src,line+':'+col);
+  const bd = document.getElementById('body');
+  if(bd) bd.innerHTML='<div style="padding:20px;color:red;font-family:monospace;font-size:12px;word-break:break-all"><b>오류 발생</b><br>'+msg+'<br>'+src+'<br>Line:'+line+'</div>';
+};
+window.addEventListener('unhandledrejection',e=>{
+  console.error('[Promise에러]',e.reason);
+});
 // ── Firebase ──
-firebase.initializeApp({
+try { firebase.initializeApp({
   apiKey:"AIzaSyAjs9nugwoI-S9CiPrtn0Y5UXYOKJ1lJic",
   authDomain:"wordday-75ae0.firebaseapp.com",
   projectId:"wordday-75ae0",
@@ -284,6 +292,10 @@ firebase.initializeApp({
 const auth = firebase.auth();
 const db = firebase.firestore();
 const provider = new firebase.auth.GoogleAuthProvider();
+} catch(e) {
+  document.body.innerHTML='<div style="padding:20px;color:red;font-size:14px">Firebase 초기화 오류: '+e.message+'</div>';
+  throw e;
+}
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 // ── 레벨 정의 ──
@@ -3577,6 +3589,7 @@ function scheduleAlarms() {
   });
 }
 function showLogin() {
+  console.log('[앱] showLogin 호출');
   document.getElementById('hd').style.display='none';
   document.getElementById('nav').style.display='none';
   // 리다이렉트 결과 처리
@@ -3960,6 +3973,7 @@ function finishAdaptiveTest() {
 
 // ── 앱 시작 ──
 function startApp() {
+  console.log('[앱] startApp 호출');
   window._svDisabled=false;
   loadSysWords(S.lid);
   setTimeout(checkSharedWordBook, 500);
@@ -4060,6 +4074,7 @@ function showOnboarding() {
 const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🦋',lb:'나비'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function go(tab,sub) {
+  console.log('[앱] go', tab||S.tab);
   if(tab&&tab!=='game'&&tab!=='ranking') {
     // 학습 탭을 직접 클릭(sub 없이)하면 항상 단어장 선택 첫 화면으로
     if(tab==='study'&&!sub) S.stab='books';
@@ -9861,6 +9876,7 @@ auth.getRedirectResult().then(result => {
 }).catch(e => { console.warn('redirect result:', e.message); });
 
 auth.onAuthStateChanged(user => {
+  console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
   if(user) {
     // 로그인됨 → 로컬스토리지 먼저 복원 후 즉시 startApp

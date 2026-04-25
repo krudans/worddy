@@ -1,4 +1,4 @@
-const CACHE = 'butterfly-word-v1';
+const CACHE = 'butterfly-word-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -27,6 +27,22 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if(e.request.method !== 'GET') return;
+  // manifest.json, sw.js, index.html은 항상 네트워크 우선 (캐시 무시)
+  const url = e.request.url;
+  if(url.includes('manifest.json') || url.includes('sw.js') || url.endsWith('/') || url.endsWith('index.html')) {
+    e.respondWith(
+      fetch(e.request, {cache:'no-store'})
+        .then(r => {
+          if(r && r.status === 200) {
+            const clone = r.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
+          return r;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
   e.respondWith(
     fetch(e.request)
       .then(response => {
@@ -36,10 +52,7 @@ self.addEventListener('fetch', e => {
         }
         return response;
       })
-      .catch(() => {
-        return caches.match(e.request)
-          .then(r => r || caches.match('./index.html'));
-      })
+      .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );
 });
 

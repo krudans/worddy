@@ -930,6 +930,7 @@ const S = {
   _dailyGoalAlarm:{on:false,h:8,m:0}, // 공부시작 알람
   _dailyStudiedMin:0, // 오늘 실제 공부한 분
   _dailyDate:'', // 오늘 날짜 (자정 초기화용)
+  _dailyXpGiven:{}, // 오늘 XP 지급 이력 (10%마다)
   _ownedPacks:[], // 마켓 구매이력
   _matchPlayed:0, // 매칭게임 진행 세트 수
   _hadPerfect:false, // 테스트 100% 달성
@@ -1008,10 +1009,23 @@ function logStudy(type) {
   // 목표 달성 체크
   const goal = S._dailyGoalMin||30;
   const studied = S._dailyStudiedMin||0;
-  if(Math.floor(studied) > Math.floor(studied-0.1) && Math.floor(studied) > 0 && Math.floor(studied) % 10 === 0) {
+  if(Math.floor(studied) > Math.floor(studied-0.1) && Math.floor(studied) > 0) {
     const pct = Math.round(studied/goal*100);
-    if(pct===50) toast('🎉 오늘 목표 50% 달성!', 'ok');
-    if(pct===100) { toast('🏆 오늘 목표 달성! 수고했어요!', 'ok'); vib([100,50,100,50,200]); }
+    const milestone = Math.floor(pct/10)*10;
+    if(!S._dailyXpGiven) S._dailyXpGiven={};
+    if(milestone>0 && milestone<=100 && !S._dailyXpGiven[milestone]) {
+      S._dailyXpGiven[milestone]=true;
+      const xpReward = milestone===100 ? 200 : milestone===50 ? 80 : 30;
+      addXP(xpReward);
+      const msg = milestone===100
+        ? '🏆 목표 100% 달성! +200XP 🎉'
+        : milestone===50
+        ? '🎉 목표 50% 달성! +80XP'
+        : `⭐ 목표 ${milestone}% 달성! +30XP`;
+      toast(msg);
+      if(milestone===100) vib([100,50,100,50,200]);
+      else vib(50);
+    }
   }
   // XP 지급
   if(type==='words') { addXP(10, true); checkXpUsable(); }
@@ -2968,15 +2982,6 @@ async function showConversationMode() {
   window._curRender=window._cvRender;
   window._cvRender();
 }
-function showFriends() {
-  const mr=document.getElementById('mr');if(!mr)return;
-  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
-    <div style="font-size:40px;margin-bottom:12px">👥</div>
-    <div style="font-size:16px;font-weight:800;margin-bottom:8px">친구 기능</div>
-    <div style="font-size:13px;color:#9CA3AF;margin-bottom:16px;line-height:1.7">친구 기능은 곧 업데이트될 예정이에요!<br>조금만 기다려주세요 🦋</div>
-    <button onclick="cm()" class="btn bb">확인</button>
-  </div></div>`;
-}
 
 function showGameIntroStep(step, steps, gameId) {
   const mr=document.getElementById('mr');if(!mr)return;
@@ -3015,10 +3020,25 @@ const _LT = {
         S._dailyStudiedMin = (S._dailyStudiedMin||0) + 1;
         const goal=S._dailyGoalMin||30, studied=S._dailyStudiedMin||0;
         const pct=Math.round(studied/goal*100);
-        if(pct===50) toast('🎉 오늘 목표 50% 달성!');
-        if(pct===100) { toast('🏆 오늘 목표 달성! 대단해요!'); vib([100,50,100,50,200]); }
+        // 10%마다 XP 지급 (각 구간 1회만)
+        if(!S._dailyXpGiven) S._dailyXpGiven={};
+        const milestone = Math.floor(pct/10)*10;
+        if(milestone>0 && milestone<=100 && !S._dailyXpGiven[milestone]) {
+          S._dailyXpGiven[milestone]=true;
+          const xpReward = milestone===100 ? 200 : milestone===50 ? 80 : 30;
+          addXP(xpReward);
+          const msg = milestone===100
+            ? '🏆 목표 100% 달성! +200XP 🎉'
+            : milestone===50
+            ? '🎉 목표 50% 달성! +80XP'
+            : `⭐ 목표 ${milestone}% 달성! +30XP`;
+          toast(msg);
+          if(milestone===100) vib([100,50,100,50,200]);
+          else if(milestone===50) vib([50,30,100]);
+          else vib(50);
+        }
         const rem=Math.max(0,goal-studied);
-        if(rem>0 && rem%10===0) toast('⏱ 목표까지 '+rem+'분 남았어요!');
+        if(rem>0 && rem%10===0 && rem<goal) toast('⏱ 목표까지 '+rem+'분 남았어요!');
         sv();
       }
       // 세션 목표 달성
@@ -3859,7 +3879,7 @@ function startApp() {
     loadFirebaseButterflies(); // Firebase 나비 로드
     // 날짜 초기화 (자정 지나면 공부시간 리셋)
     const _todayKey = new Date().toISOString().slice(0,10);
-    if(S._dailyDate !== _todayKey) { S._dailyStudiedMin=0; S._dailyDate=_todayKey; sv(); }
+    if(S._dailyDate !== _todayKey) { S._dailyStudiedMin=0; S._dailyXpGiven={}; S._dailyDate=_todayKey; sv(); }
     // 알람 재설정
     if(typeof Notification!=='undefined' && Notification.permission==='granted') scheduleAlarms();
     // 광고 배너 설정 로드
@@ -4909,181 +4929,754 @@ function getButterflyCharSVG(bId, sz=60, owned=true) {
 }
 
 const BUTTERFLY_LIST = [
-  {id:'b01',name:'제르세스 블루',en:'Xerces Blue',sci:'Glaucopsyche xerces',
+  {id:'b01',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- 몸통 -->
+  <ellipse cx="40" cy="42" rx="3.5" ry="16" fill="#1a0a3c"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="4" fill="#2d1560"/>
+  <!-- 더듬이 -->
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#1a0a3c" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#1a0a3c" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#1a0a3c"/><circle cx="48" cy="16" r="2" fill="#1a0a3c"/>
+  <!-- 앞날개 -->
+  <path d="M40,30 C30,20 10,22 8,36 C6,46 18,52 38,46 Z" fill="#1E5FA5"/>
+  <path d="M40,30 C50,20 70,22 72,36 C74,46 62,52 42,46 Z" fill="#1E5FA5"/>
+  <!-- 뒷날개 -->
+  <path d="M39,42 C28,42 10,50 12,60 C14,68 28,66 39,56 Z" fill="#2563EB"/>
+  <path d="M41,42 C52,42 70,50 68,60 C66,68 52,66 41,56 Z" fill="#2563EB"/>
+  <!-- 은색 점 -->
+  <circle cx="22" cy="36" r="2.5" fill="rgba(255,255,255,0.7)"/>
+  <circle cx="30" cy="44" r="2" fill="rgba(255,255,255,0.6)"/>
+  <circle cx="58" cy="36" r="2.5" fill="rgba(255,255,255,0.7)"/>
+  <circle cx="50" cy="44" r="2" fill="rgba(255,255,255,0.6)"/>
+  <!-- 광택 -->
+  <path d="M40,30 C35,25 25,26 20,32" stroke="rgba(147,197,253,0.5)" stroke-width="1.5" fill="none"/>
+</svg>`,name:'제르세스 블루',en:'Xerces Blue',sci:'Glaucopsyche xerces',
    rare:'⭐⭐⭐⭐⭐',score:100,color:'#7BA8D4',bg:'#EFF6FF',
    size:'2.5cm',habitat:'미국 샌프란시스코',status:'멸종',
    feature:'은청색 날개, 흰 테두리선',
    story:'1941년 마지막 개체 채집 후 영원히 사라진 미국 최초 멸종 나비. 도시 개발로 서식지가 파괴되었어.',
    protect:'이 나비는 이제 박물관에만 존재해요. 도시 개발이 생태계를 얼마나 위협하는지 보여줘요.'},
-  {id:'b02',name:'알렉산드라 비단제비나비',en:"Queen Alexandra's Birdwing",sci:'Ornithoptera alexandrae',
+  {id:'b02',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="17" fill="#2d1a00"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#3d2200"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#2d1a00" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#2d1a00" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#2d1a00"/><circle cx="49" cy="14" r="2" fill="#2d1a00"/>
+  <!-- 앞날개 큼 -->
+  <path d="M40,28 C28,14 5,18 4,34 C3,46 20,52 38,47 Z" fill="#2D6A4F"/>
+  <path d="M40,28 C52,14 75,18 76,34 C77,46 60,52 42,47 Z" fill="#2D6A4F"/>
+  <!-- 앞날개 초록 광택 -->
+  <path d="M40,28 C32,20 16,22 12,32" stroke="rgba(134,239,172,0.5)" stroke-width="2" fill="none"/>
+  <path d="M40,28 C48,20 64,22 68,32" stroke="rgba(134,239,172,0.5)" stroke-width="2" fill="none"/>
+  <!-- 앞날개 노랑 반점 -->
+  <circle cx="20" cy="34" r="3" fill="#FDE68A" opacity="0.8"/>
+  <circle cx="32" cy="26" r="2.5" fill="#FDE68A" opacity="0.7"/>
+  <circle cx="60" cy="34" r="3" fill="#FDE68A" opacity="0.8"/>
+  <circle cx="48" cy="26" r="2.5" fill="#FDE68A" opacity="0.7"/>
+  <!-- 뒷날개 -->
+  <path d="M39,44 C24,44 8,54 10,64 C12,72 26,70 39,58 Z" fill="#1A4731"/>
+  <path d="M41,44 C56,44 72,54 70,64 C68,72 54,70 41,58 Z" fill="#1A4731"/>
+  <!-- 뒷날개 파랑 반점 -->
+  <circle cx="24" cy="58" r="2.5" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="56" cy="58" r="2.5" fill="#60A5FA" opacity="0.8"/>
+</svg>`,name:'알렉산드라 비단제비나비',en:"Queen Alexandra's Birdwing",sci:'Ornithoptera alexandrae',
    rare:'⭐⭐⭐⭐⭐',score:95,color:'#2D7A5C',bg:'#F0FDF4',
    size:'30cm',habitat:'파푸아뉴기니',status:'멸종위기',
    feature:'세계 최대 나비, 청록/갈색',
    story:'화산 폭발 속에서도 살아남은 정글의 여왕. 현재 밀거래꾼들의 표적이 되어 국제적 보호를 받고 있어.',
    protect:'세계 최대 나비예요. 서식지 보호와 불법 거래 근절이 시급해요.'},
-  {id:'b03',name:'팔로스베르데스 블루',en:'Palos Verdes Blue',sci:'Glaucopsyche lygdamus palosverdesensis',
+  {id:'b03',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="44" rx="3" ry="14" fill="#0c1445"/>
+  <ellipse cx="40" cy="32" rx="2.5" ry="3.5" fill="#1a2070"/>
+  <line x1="40" y1="28" x2="33" y2="18" stroke="#0c1445" stroke-width="1.2"/>
+  <line x1="40" y1="28" x2="47" y2="18" stroke="#0c1445" stroke-width="1.2"/>
+  <circle cx="33" cy="18" r="2" fill="#0c1445"/><circle cx="47" cy="18" r="2" fill="#0c1445"/>
+  <!-- 날개 작음 -->
+  <path d="M40,32 C32,22 14,24 12,36 C10,46 24,50 39,46 Z" fill="#38BDF8"/>
+  <path d="M40,32 C48,22 66,24 68,36 C70,46 56,50 41,46 Z" fill="#38BDF8"/>
+  <path d="M39,44 C30,44 14,52 16,60 C18,66 30,64 39,56 Z" fill="#60CFFF"/>
+  <path d="M41,44 C50,44 66,52 64,60 C62,66 50,64 41,56 Z" fill="#60CFFF"/>
+  <!-- 흰 테두리 느낌 -->
+  <path d="M40,32 C32,22 14,24 12,36" stroke="rgba(255,255,255,0.4)" stroke-width="1" fill="none"/>
+  <circle cx="26" cy="38" r="1.5" fill="rgba(255,255,255,0.6)"/>
+  <circle cx="54" cy="38" r="1.5" fill="rgba(255,255,255,0.6)"/>
+</svg>`,name:'팔로스베르데스 블루',en:'Palos Verdes Blue',sci:'Glaucopsyche lygdamus palosverdesensis',
    rare:'⭐⭐⭐⭐⭐',score:94,color:'#5C8AB8',bg:'#EFF6FF',
    size:'2cm',habitat:'미국 캘리포니아',status:'멸종위기',
    feature:'동전보다 작은 초소형 은청색',
    story:'멸종된 줄 알았다가 1994년 기적적으로 재발견! 현재 철조망과 전문가 24시간 감시로 보호 중.',
    protect:'살아있는 보석이라 불려요. 서식지에 철조망을 치고 24시간 감시할 만큼 귀한 나비예요.'},
-  {id:'b04',name:'상제나비',en:'Parnassius bremeri',sci:'Parnassius bremeri',
+  {id:'b04',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#111"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#222"/>
+  <line x1="40" y1="25" x2="32" y2="14" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="48" y2="14" stroke="#111" stroke-width="1.2"/>
+  <circle cx="32" cy="14" r="2" fill="#111"/><circle cx="48" cy="14" r="2" fill="#111"/>
+  <!-- 흰 날개 -->
+  <path d="M40,28 C28,14 6,18 5,34 C4,48 22,54 39,48 Z" fill="#F0FFF4" stroke="#111" stroke-width="1.5"/>
+  <path d="M40,28 C52,14 74,18 75,34 C76,48 58,54 41,48 Z" fill="#F0FFF4" stroke="#111" stroke-width="1.5"/>
+  <path d="M39,44 C26,44 9,54 11,63 C13,70 27,68 39,58 Z" fill="#E0FFE8" stroke="#111" stroke-width="1.5"/>
+  <path d="M41,44 C54,44 71,54 69,63 C67,70 53,68 41,58 Z" fill="#E0FFE8" stroke="#111" stroke-width="1.5"/>
+  <!-- 검정 줄무늬 -->
+  <path d="M25,24 C22,30 22,40 26,46" stroke="#111" stroke-width="2" fill="none" opacity="0.5"/>
+  <path d="M55,24 C58,30 58,40 54,46" stroke="#111" stroke-width="2" fill="none" opacity="0.5"/>
+</svg>`,name:'상제나비',en:'Parnassius bremeri',sci:'Parnassius bremeri',
    rare:'⭐⭐⭐⭐⭐',score:92,color:'#374151',bg:'#F9FAFB',
    size:'7cm',habitat:'유라시아(한국)',status:'멸종위기1급',
    feature:'흰 날개, 검은 혈관 수묵화 무늬',
    story:'한국에서 절멸했다 극소수 재발견! 흰 날개의 검은 혈관은 동양 수묵화 같은 아름다움을 가졌어.',
    protect:'한국 멸종위기 야생생물 1급이에요. 우리 숲의 건강성을 증명하는 소중한 생명이에요.'},
-  {id:'b05',name:'붉은점모시나비',en:'Clouded Apollo',sci:'Parnassius mnemosyne',
+  {id:'b05',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="15" fill="#2d1a00"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="3.5" fill="#3d2200"/>
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#2d1a00" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#2d1a00" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#2d1a00"/><circle cx="48" cy="16" r="2" fill="#2d1a00"/>
+  <path d="M40,30 C30,18 10,20 8,34 C6,46 20,52 38,47 Z" fill="#F5F0E8" stroke="#888" stroke-width="0.8"/>
+  <path d="M40,30 C50,18 70,20 72,34 C74,46 60,52 42,47 Z" fill="#F5F0E8" stroke="#888" stroke-width="0.8"/>
+  <path d="M39,43 C28,43 12,52 14,62 C16,70 28,67 39,57 Z" fill="#EDE8DC" stroke="#888" stroke-width="0.8"/>
+  <path d="M41,43 C52,43 68,52 66,62 C64,70 52,67 41,57 Z" fill="#EDE8DC" stroke="#888" stroke-width="0.8"/>
+  <!-- 붉은 점 -->
+  <circle cx="22" cy="38" r="4" fill="#DC2626"/>
+  <circle cx="22" cy="38" r="2.5" fill="#EF4444"/>
+  <circle cx="58" cy="38" r="4" fill="#DC2626"/>
+  <circle cx="58" cy="38" r="2.5" fill="#EF4444"/>
+  <circle cx="28" cy="54" r="3" fill="#DC2626"/>
+  <circle cx="28" cy="54" r="1.8" fill="#EF4444"/>
+  <circle cx="52" cy="54" r="3" fill="#DC2626"/>
+  <circle cx="52" cy="54" r="1.8" fill="#EF4444"/>
+</svg>`,name:'붉은점모시나비',en:'Clouded Apollo',sci:'Parnassius mnemosyne',
    rare:'⭐⭐⭐⭐',score:90,color:'#DC2626',bg:'#FEF2F2',
    size:'7.5cm',habitat:'한국 고산지',status:'멸종위기',
    feature:'반투명 날개, 선명한 붉은 점',
    story:'빙하기의 유물! 영하 기온도 견디는 강인함. 지구온난화로 산 정상으로 쫓겨나고 있는 기후위기의 증인.',
    protect:'기후위기의 산증인이에요. 지구 온도가 오를수록 이 나비의 서식지는 점점 줄어들어요.'},
-  {id:'b06',name:'블루 몰포',en:'Blue Morpho',sci:'Morpho peleides',
+  {id:'b06',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#0a0a1a"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#111"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#0a0a1a" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#0a0a1a" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#0a0a1a"/><circle cx="49" cy="14" r="2" fill="#0a0a1a"/>
+  <!-- 메탈릭 파랑 앞날개 -->
+  <defs>
+    <linearGradient id="morpho_g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00BFFF"/>
+      <stop offset="50%" stop-color="#0066FF"/>
+      <stop offset="100%" stop-color="#1E1B8B"/>
+    </linearGradient>
+  </defs>
+  <path d="M40,28 C26,12 4,16 3,34 C2,48 22,55 38,48 Z" fill="url(#morpho_g)"/>
+  <path d="M40,28 C54,12 76,16 77,34 C78,48 58,55 42,48 Z" fill="url(#morpho_g)"/>
+  <path d="M39,44 C24,44 6,54 8,64 C10,72 26,70 39,58 Z" fill="#0044CC"/>
+  <path d="M41,44 C56,44 74,54 72,64 C70,72 54,70 41,58 Z" fill="#0044CC"/>
+  <!-- 광택 하이라이트 -->
+  <path d="M40,28 C34,22 22,24 16,30" stroke="rgba(135,206,255,0.6)" stroke-width="2.5" fill="none"/>
+  <path d="M40,28 C46,22 58,24 64,30" stroke="rgba(135,206,255,0.6)" stroke-width="2.5" fill="none"/>
+  <!-- 검정 테두리 -->
+  <path d="M40,28 C26,12 4,16 3,34 C2,48 22,55 38,48" stroke="#0a0a1a" stroke-width="1.5" fill="none"/>
+</svg>`,name:'블루 몰포',en:'Blue Morpho',sci:'Morpho peleides',
    rare:'⭐⭐⭐⭐',score:85,color:'#1565C0',bg:'#EFF6FF',
    size:'15cm',habitat:'중남미 아마존',status:'생존',
    feature:'메탈릭 블루, 실제 파란 색소 없음',
    story:'날개에 파란 색소가 없어! 빛의 굴절로 눈부신 광택을 내는 자연의 마법. 위협받으면 날개를 접어 갈색 위장색으로 순식간에 사라져.',
    protect:'아마존 열대우림이 사라지면 이 나비도 사라져요. 열대림 보호가 절실해요.'},
-  {id:'b07',name:'쌍꼬리부전나비',en:'Double-tailed Blue',sci:'Cigaritis syama',
+  {id:'b07',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="41" rx="2.5" ry="14" fill="#111"/>
+  <ellipse cx="40" cy="29" rx="2" ry="3.5" fill="#222"/>
+  <line x1="40" y1="25" x2="33" y2="16" stroke="#111" stroke-width="1"/>
+  <line x1="40" y1="25" x2="47" y2="16" stroke="#111" stroke-width="1"/>
+  <circle cx="33" cy="16" r="1.8" fill="#111"/><circle cx="47" cy="16" r="1.8" fill="#111"/>
+  <path d="M40,30 C32,22 16,24 14,36 C12,46 24,50 39,45 Z" fill="#3B82F6"/>
+  <path d="M40,30 C48,22 64,24 66,36 C68,46 56,50 41,45 Z" fill="#3B82F6"/>
+  <path d="M39,42 C30,42 16,50 18,58 C20,64 30,62 39,54 Z" fill="#60A5FA"/>
+  <path d="M41,42 C50,42 64,50 62,58 C60,64 50,62 41,54 Z" fill="#60A5FA"/>
+  <!-- 꼬리 쌍 -->
+  <path d="M33,58 C30,64 26,72 24,78" stroke="#111" stroke-width="1.5" fill="none"/>
+  <path d="M36,60 C34,66 32,72 31,78" stroke="#111" stroke-width="1.5" fill="none"/>
+  <path d="M47,58 C50,64 54,72 56,78" stroke="#111" stroke-width="1.5" fill="none"/>
+  <path d="M44,60 C46,66 48,72 49,78" stroke="#111" stroke-width="1.5" fill="none"/>
+  <!-- 주황 반점 -->
+  <circle cx="36" cy="56" r="2.5" fill="#FB923C"/>
+  <circle cx="44" cy="56" r="2.5" fill="#FB923C"/>
+</svg>`,name:'쌍꼬리부전나비',en:'Double-tailed Blue',sci:'Cigaritis syama',
    rare:'⭐⭐⭐⭐',score:84,color:'#6B7280',bg:'#F9FAFB',
    size:'3.5cm',habitat:'한국 소나무숲',status:'멸종위기',
    feature:'뒷날개 두 개의 가느다란 꼬리',
    story:'개미와 공생하는 전략가! 애벌레가 개미에게 달콤한 액체를 주고, 개미는 천적으로부터 보호해줘. 성충이 되면 개미와 인연을 끊고 소나무 위로 비상!',
    protect:'한국 소나무숲의 터줏대감이에요. 소나무숲 보호가 이 나비를 지키는 길이에요.'},
-  {id:'b08',name:'부엉이나비',en:'Owl Butterfly',sci:'Caligo eurilochus',
+  {id:'b08',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#1a0a00"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#2a1400"/>
+  <line x1="40" y1="25" x2="32" y2="15" stroke="#1a0a00" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="48" y2="15" stroke="#1a0a00" stroke-width="1.2"/>
+  <circle cx="32" cy="15" r="2" fill="#1a0a00"/><circle cx="48" cy="15" r="2" fill="#1a0a00"/>
+  <path d="M40,28 C26,12 4,16 4,34 C4,48 22,56 38,48 Z" fill="#8B4513"/>
+  <path d="M40,28 C54,12 76,16 76,34 C76,48 58,56 42,48 Z" fill="#8B4513"/>
+  <path d="M39,44 C22,44 4,56 6,66 C8,74 26,72 39,60 Z" fill="#A0522D"/>
+  <path d="M41,44 C58,44 76,56 74,66 C72,74 54,72 41,60 Z" fill="#A0522D"/>
+  <!-- 부엉이 눈 문양 -->
+  <circle cx="20" cy="50" r="7" fill="#F5DEB3"/><circle cx="20" cy="50" r="5" fill="#4a2800"/><circle cx="20" cy="50" r="3" fill="#111"/><circle cx="18" cy="48" r="1.2" fill="white"/>
+  <circle cx="60" cy="50" r="7" fill="#F5DEB3"/><circle cx="60" cy="50" r="5" fill="#4a2800"/><circle cx="60" cy="50" r="3" fill="#111"/><circle cx="58" cy="48" r="1.2" fill="white"/>
+  <!-- 갈색 무늬 -->
+  <path d="M40,28 C34,22 22,24 16,32" stroke="rgba(50,25,0,0.4)" stroke-width="2" fill="none"/>
+</svg>`,name:'부엉이나비',en:'Owl Butterfly',sci:'Caligo eurilochus',
    rare:'⭐⭐⭐⭐',score:82,color:'#6D4C41',bg:'#FFF8E1',
    size:'16cm',habitat:'아마존 정글',status:'생존',
    feature:'뒷날개 거대한 부엉이 눈무늬',
    story:'날개의 거대한 눈 무늬로 부엉이 얼굴을 완벽하게 흉내내! 도마뱀을 공포에 빠뜨리는 심리전의 달인.',
    protect:'자연이 만든 최고의 위장술사예요. 아마존 생태계의 균형을 지키는 소중한 존재예요.'},
-  {id:'b09',name:'나뭇잎나비',en:'Dead Leaf Butterfly',sci:'Kallima inachus',
+  {id:'b09',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#2d1a00"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#3a2200"/>
+  <line x1="40" y1="25" x2="32" y2="14" stroke="#2d1a00" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="48" y2="14" stroke="#2d1a00" stroke-width="1.2"/>
+  <circle cx="32" cy="14" r="2" fill="#2d1a00"/><circle cx="48" cy="14" r="2" fill="#2d1a00"/>
+  <!-- 잎 모양 날개 -->
+  <path d="M40,28 C30,16 10,20 8,36 C6,50 22,56 38,48 Z" fill="#795548"/>
+  <path d="M40,28 C50,16 70,20 72,36 C74,50 58,56 42,48 Z" fill="#795548"/>
+  <path d="M39,44 C26,44 10,56 12,65 C14,72 28,70 39,60 Z" fill="#6D4C41"/>
+  <path d="M41,44 C54,44 70,56 68,65 C66,72 52,70 41,60 Z" fill="#6D4C41"/>
+  <!-- 잎맥 패턴 -->
+  <path d="M40,28 C36,36 34,46 35,56" stroke="rgba(0,0,0,0.2)" stroke-width="1.5" fill="none"/>
+  <path d="M40,28 C44,36 46,46 45,56" stroke="rgba(0,0,0,0.2)" stroke-width="1.5" fill="none"/>
+  <path d="M25,38 C30,36 35,38 38,42" stroke="rgba(0,0,0,0.15)" stroke-width="1" fill="none"/>
+  <path d="M15,46 C22,44 30,46 36,50" stroke="rgba(0,0,0,0.15)" stroke-width="1" fill="none"/>
+  <path d="M55,38 C50,36 45,38 42,42" stroke="rgba(0,0,0,0.15)" stroke-width="1" fill="none"/>
+  <!-- 주황 가짜 눈 -->
+  <circle cx="12" cy="40" r="3" fill="#FF8C00" opacity="0.7"/>
+  <circle cx="12" cy="40" r="1.5" fill="#111" opacity="0.7"/>
+  <circle cx="68" cy="40" r="3" fill="#FF8C00" opacity="0.7"/>
+  <circle cx="68" cy="40" r="1.5" fill="#111" opacity="0.7"/>
+</svg>`,name:'나뭇잎나비',en:'Dead Leaf Butterfly',sci:'Kallima inachus',
    rare:'⭐⭐⭐⭐',score:80,color:'#E65100',bg:'#FFF3E0',
    size:'8.5cm',habitat:'동남아시아',status:'생존',
    feature:'접으면 완벽한 마른 잎, 오렌지+파랑',
    story:'날개를 접으면 마른 낙엽! 팡이 핀 자국까지 정교하게 재현. 날개를 펴면 찬란한 오렌지+파랑으로 반전 매력 폭발!',
    protect:'자연계 최고의 위장술사예요. 열대우림의 다양성이 있어야 이 나비가 살아갈 수 있어요.'},
-  {id:'b10',name:'모나크 (왕나비)',en:'Monarch Butterfly',sci:'Danaus plexippus',
+  {id:'b10',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#111"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#222"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#111" stroke-width="1.3"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#111" stroke-width="1.3"/>
+  <circle cx="31" cy="14" r="2.2" fill="#111"/><circle cx="49" cy="14" r="2.2" fill="#111"/>
+  <!-- 주황 앞날개 -->
+  <path d="M40,28 C26,12 4,16 4,34 C4,50 22,56 38,48 Z" fill="#E67E22"/>
+  <path d="M40,28 C54,12 76,16 76,34 C76,50 58,56 42,48 Z" fill="#E67E22"/>
+  <!-- 뒷날개 -->
+  <path d="M39,44 C22,44 4,56 8,67 C12,76 28,73 39,60 Z" fill="#D35400"/>
+  <path d="M41,44 C58,44 76,56 72,67 C68,76 52,73 41,60 Z" fill="#D35400"/>
+  <!-- 검정 줄무늬+테두리 -->
+  <path d="M40,28 C26,12 4,16 4,34 C4,50 22,56 38,48" stroke="#111" stroke-width="2.5" fill="none"/>
+  <path d="M40,28 C54,12 76,16 76,34 C76,50 58,56 42,48" stroke="#111" stroke-width="2.5" fill="none"/>
+  <!-- 흰 점 (검정 테두리 위) -->
+  <circle cx="8" cy="24" r="2" fill="white"/><circle cx="14" cy="18" r="1.8" fill="white"/>
+  <circle cx="20" cy="14" r="1.5" fill="white"/><circle cx="72" cy="24" r="2" fill="white"/>
+  <circle cx="66" cy="18" r="1.8" fill="white"/><circle cx="60" cy="14" r="1.5" fill="white"/>
+  <circle cx="12" cy="58" r="1.8" fill="white"/><circle cx="18" cy="64" r="1.5" fill="white"/>
+  <circle cx="62" cy="58" r="1.8" fill="white"/><circle cx="68" cy="64" r="1.5" fill="white"/>
+  <!-- 검정 내부 줄 -->
+  <path d="M22,28 C20,36 22,46 24,52" stroke="#111" stroke-width="1.5" fill="none" opacity="0.5"/>
+  <path d="M58,28 C60,36 58,46 56,52" stroke="#111" stroke-width="1.5" fill="none" opacity="0.5"/>
+</svg>`,name:'모나크 (왕나비)',en:'Monarch Butterfly',sci:'Danaus plexippus',
    rare:'⭐⭐⭐⭐',score:78,color:'#E65100',bg:'#FFF3E0',
    size:'10cm',habitat:'북미 대륙',status:'이주성',
    feature:'주황/검정맥/흰점, 4000km 이주',
    story:'매년 4,000km 대륙 이동의 주인공! 조상이 갔던 길을 한 번도 본 적 없으면서 유전자의 기억만으로 정확히 찾아가는 기적.',
    protect:'기후변화로 이주 경로가 흔들리고 있어요. 서식지 보호와 기후 행동이 필요해요.'},
-  {id:'b11',name:'공작나비',en:'Peacock Butterfly',sci:'Aglais io',
+  {id:'b11',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#111"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#222"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#111" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#111"/><circle cx="49" cy="14" r="2" fill="#111"/>
+  <path d="M40,28 C26,12 5,17 5,34 C5,50 22,56 38,48 Z" fill="#C0392B"/>
+  <path d="M40,28 C54,12 75,17 75,34 C75,50 58,56 42,48 Z" fill="#C0392B"/>
+  <path d="M39,44 C22,44 5,56 8,67 C11,75 27,72 39,60 Z" fill="#E74C3C"/>
+  <path d="M41,44 C58,44 75,56 72,67 C69,75 53,72 41,60 Z" fill="#E74C3C"/>
+  <!-- 공작 눈 문양 x4 -->
+  <circle cx="18" cy="34" r="8" fill="#1a0a2e"/><circle cx="18" cy="34" r="6" fill="#4a1a8a"/><circle cx="18" cy="34" r="4" fill="#00BFFF"/><circle cx="18" cy="34" r="2" fill="#111"/><circle cx="16" cy="32" r="1" fill="white"/>
+  <circle cx="62" cy="34" r="8" fill="#1a0a2e"/><circle cx="62" cy="34" r="6" fill="#4a1a8a"/><circle cx="62" cy="34" r="4" fill="#00BFFF"/><circle cx="62" cy="34" r="2" fill="#111"/><circle cx="60" cy="32" r="1" fill="white"/>
+  <circle cx="22" cy="54" r="6" fill="#1a0a2e"/><circle cx="22" cy="54" r="4" fill="#4a1a8a"/><circle cx="22" cy="54" r="2.5" fill="#00BFFF"/><circle cx="22" cy="54" r="1.2" fill="#111"/>
+  <circle cx="58" cy="54" r="6" fill="#1a0a2e"/><circle cx="58" cy="54" r="4" fill="#4a1a8a"/><circle cx="58" cy="54" r="2.5" fill="#00BFFF"/><circle cx="58" cy="54" r="1.2" fill="#111"/>
+</svg>`,name:'공작나비',en:'Peacock Butterfly',sci:'Aglais io',
    rare:'⭐⭐⭐⭐',score:75,color:'#8B1A1A',bg:'#FEF2F2',
    size:'6.5cm',habitat:'유라시아',status:'생존',
    feature:'4개의 화려한 공작 눈무늬',
    story:'위협받으면 날개를 활짝 펴 눈무늬를 보이는 동시에 날개를 비벼 소리까지 내! 시각+청각 동시 기만술.',
    protect:'유라시아 전역에 서식하는 아름다운 나비예요. 꽃밭을 가꾸면 이 나비를 만날 수 있어요.'},
-  {id:'b12',name:'오색나비',en:'Oriental Great Purple Emperor',sci:'Sasakia charonda',
+  {id:'b12',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="15" fill="#111"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="3.5" fill="#222"/>
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#111" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#111"/><circle cx="48" cy="16" r="2" fill="#111"/>
+  <path d="M40,30 C28,16 8,20 7,36 C6,50 22,56 38,48 Z" fill="#7C3AED"/>
+  <path d="M40,30 C52,16 72,20 73,36 C74,50 58,56 42,48 Z" fill="#7C3AED"/>
+  <path d="M39,44 C24,44 8,56 10,65 C12,72 26,70 39,58 Z" fill="#DB2777"/>
+  <path d="M41,44 C56,44 72,56 70,65 C68,72 54,70 41,58 Z" fill="#DB2777"/>
+  <!-- 오색 패턴 -->
+  <path d="M25,30 C22,36 22,46 26,52" stroke="#F59E0B" stroke-width="3" fill="none" opacity="0.7"/>
+  <path d="M55,30 C58,36 58,46 54,52" stroke="#F59E0B" stroke-width="3" fill="none" opacity="0.7"/>
+  <circle cx="20" cy="36" r="3" fill="#34D399" opacity="0.8"/>
+  <circle cx="30" cy="28" r="2.5" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="60" cy="36" r="3" fill="#34D399" opacity="0.8"/>
+  <circle cx="50" cy="28" r="2.5" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="24" cy="54" r="3" fill="#FB923C" opacity="0.8"/>
+  <circle cx="56" cy="54" r="3" fill="#FB923C" opacity="0.8"/>
+</svg>`,name:'오색나비',en:'Oriental Great Purple Emperor',sci:'Sasakia charonda',
    rare:'⭐⭐⭐',score:73,color:'#6A1B9A',bg:'#F5F3FF',
    size:'8.5cm',habitat:'한국/일본',status:'생존',
    feature:'보라/청색, 각도따라 5가지 색',
    story:'빛의 각도에 따라 보라에서 진한 청색까지 5가지 색 아우라! 꽃보다 참나무 수액을 좋아하는 개성파.',
    protect:'한국과 일본의 숲을 대표하는 나비예요. 참나무 숲 보호가 이 나비를 지켜요.'},
-  {id:'b13',name:'대왕나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
+  {id:'b13',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#111"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#222"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#111" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#111"/><circle cx="49" cy="14" r="2" fill="#111"/>
+  <path d="M40,28 C24,10 2,14 2,34 C2,52 22,58 38,50 Z" fill="#1D4ED8"/>
+  <path d="M40,28 C56,10 78,14 78,34 C78,52 58,58 42,50 Z" fill="#1D4ED8"/>
+  <path d="M39,46 C20,46 2,60 6,70 C10,78 28,74 39,62 Z" fill="#2563EB"/>
+  <path d="M41,46 C60,46 78,60 74,70 C70,78 52,74 41,62 Z" fill="#2563EB"/>
+  <!-- 흰 테두리 선 -->
+  <path d="M40,28 C24,10 2,14 2,34 C2,52 22,58 38,50" stroke="white" stroke-width="2" fill="none" opacity="0.4"/>
+  <circle cx="16" cy="34" r="3" fill="white" opacity="0.5"/>
+  <circle cx="64" cy="34" r="3" fill="white" opacity="0.5"/>
+  <circle cx="14" cy="62" r="2.5" fill="white" opacity="0.4"/>
+  <circle cx="66" cy="62" r="2.5" fill="white" opacity="0.4"/>
+</svg>`,name:'대왕나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
    rare:'⭐⭐⭐',score:71,color:'#4E342E',bg:'#FFF8E1',
    size:'9.5cm',habitat:'동아시아 산지',status:'생존',
    feature:'흑갈색, 한국 네발나비 중 최대',
    story:'한국 네발나비 중 최대 크기의 지배자! 영역 본능이 어찌나 강한지 작은 새에게도 겁 없이 달려들어 몸싸움을 벌여.',
    protect:'강인한 생명력으로 우리 숲을 지키는 존재예요. 산림 보호가 이 나비의 서식지를 지켜요.'},
-  {id:'b14',name:'유리창나비',en:'Window Butterfly',sci:'Dilipa fenestra',
+  {id:'b14',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="2.5" ry="15" fill="#2d1a00"/>
+  <ellipse cx="40" cy="30" rx="2" ry="3.5" fill="#3a2200"/>
+  <line x1="40" y1="26" x2="33" y2="16" stroke="#2d1a00" stroke-width="1"/>
+  <line x1="40" y1="26" x2="47" y2="16" stroke="#2d1a00" stroke-width="1"/>
+  <circle cx="33" cy="16" r="1.8" fill="#2d1a00"/><circle cx="47" cy="16" r="1.8" fill="#2d1a00"/>
+  <!-- 투명 날개 (유리창) -->
+  <path d="M40,30 C32,20 16,22 14,36 C12,48 24,52 39,46 Z" fill="rgba(200,230,255,0.25)" stroke="#8B4513" stroke-width="2"/>
+  <path d="M40,30 C48,20 64,22 66,36 C68,48 56,52 41,46 Z" fill="rgba(200,230,255,0.25)" stroke="#8B4513" stroke-width="2"/>
+  <path d="M39,43 C30,43 16,52 18,60 C20,66 30,64 39,56 Z" fill="rgba(200,230,255,0.2)" stroke="#8B4513" stroke-width="1.5"/>
+  <path d="M41,43 C50,43 64,52 62,60 C60,66 50,64 41,56 Z" fill="rgba(200,230,255,0.2)" stroke="#8B4513" stroke-width="1.5"/>
+  <!-- 날개 맥 -->
+  <path d="M28,32 C30,36 30,44 28,50" stroke="#8B4513" stroke-width="1" fill="none" opacity="0.6"/>
+  <path d="M52,32 C50,36 50,44 52,50" stroke="#8B4513" stroke-width="1" fill="none" opacity="0.6"/>
+  <!-- 주황 테두리 점 -->
+  <circle cx="14" cy="36" r="3" fill="#F97316"/>
+  <circle cx="66" cy="36" r="3" fill="#F97316"/>
+</svg>`,name:'유리창나비',en:'Window Butterfly',sci:'Dilipa fenestra',
    rare:'⭐⭐⭐',score:69,color:'#5D4037',bg:'#FFF8E1',
    size:'5.5cm',habitat:'동아시아',status:'생존',
    feature:'날개 끝이 유리처럼 투명함',
    story:'날개 끝에 비늘이 없어 유리창처럼 투명하게 속이 비쳐 보여! 숲속에서 날개가 없는 듯한 착시로 포식자를 혼란에 빠뜨리는 닌자.',
    protect:'독특한 투명 날개를 가진 희귀한 나비예요. 동아시아 숲의 보물이에요.'},
-  {id:'b15',name:'청띠신선나비',en:'Blue Admiral',sci:'Kaniska canace',
+  {id:'b15',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="15" fill="#111"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="3.5" fill="#222"/>
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#111" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#111"/><circle cx="48" cy="16" r="2" fill="#111"/>
+  <path d="M40,30 C28,16 8,20 7,36 C6,50 22,54 38,47 Z" fill="#1a1a1a"/>
+  <path d="M40,30 C52,16 72,20 73,36 C74,50 58,54 42,47 Z" fill="#1a1a1a"/>
+  <path d="M39,43 C26,43 10,52 12,62 C14,70 26,67 39,57 Z" fill="#222"/>
+  <path d="M41,43 C54,43 70,52 68,62 C66,70 54,67 41,57 Z" fill="#222"/>
+  <!-- 청띠 -->
+  <path d="M14,40 C20,36 32,36 40,38 C48,36 60,36 66,40" stroke="#00BFFF" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- 흰 점 테두리 -->
+  <circle cx="10" cy="24" r="2" fill="white" opacity="0.7"/>
+  <circle cx="16" cy="20" r="1.8" fill="white" opacity="0.6"/>
+  <circle cx="70" cy="24" r="2" fill="white" opacity="0.7"/>
+  <circle cx="64" cy="20" r="1.8" fill="white" opacity="0.6"/>
+</svg>`,name:'청띠신선나비',en:'Blue Admiral',sci:'Kaniska canace',
    rare:'⭐⭐⭐',score:65,color:'#1565C0',bg:'#EFF6FF',
    size:'7cm',habitat:'동아시아',status:'생존',
    feature:'검정+선명한 푸른 띠',
    story:'검은 상복에 푸른 리본 같은 우아한 외모! 하지만 꽃보다 썩은 과일과 동물의 배설물을 찾아다니는 반전 미식가.',
    protect:'생태계의 청소부 역할을 하는 고마운 나비예요. 다양한 생태계가 이 나비를 살려요.'},
-  {id:'b16',name:'홍점알락나비',en:'Red Spot Butterfly',sci:'Hestina assimilis',
+  {id:'b16',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="15" fill="#111"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="3.5" fill="#222"/>
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#111" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#111"/><circle cx="48" cy="16" r="2" fill="#111"/>
+  <path d="M40,30 C28,16 8,20 7,36 C6,50 22,54 38,47 Z" fill="#1a1a1a"/>
+  <path d="M40,30 C52,16 72,20 73,36 C74,50 58,54 42,47 Z" fill="#1a1a1a"/>
+  <path d="M39,43 C26,43 10,52 12,62 C14,70 26,67 39,57 Z" fill="#222"/>
+  <path d="M41,43 C54,43 70,52 68,62 C66,70 54,67 41,57 Z" fill="#222"/>
+  <!-- 흰 점 -->
+  <circle cx="16" cy="28" r="3" fill="white"/><circle cx="24" cy="22" r="2.5" fill="white"/>
+  <circle cx="30" cy="38" r="3" fill="white"/><circle cx="22" cy="46" r="2.5" fill="white"/>
+  <circle cx="64" cy="28" r="3" fill="white"/><circle cx="56" cy="22" r="2.5" fill="white"/>
+  <circle cx="50" cy="38" r="3" fill="white"/><circle cx="58" cy="46" r="2.5" fill="white"/>
+  <!-- 붉은 점 -->
+  <circle cx="16" cy="54" r="4" fill="#DC2626"/><circle cx="16" cy="54" r="2.5" fill="#EF4444"/>
+  <circle cx="64" cy="54" r="4" fill="#DC2626"/><circle cx="64" cy="54" r="2.5" fill="#EF4444"/>
+</svg>`,name:'홍점알락나비',en:'Red Spot Butterfly',sci:'Hestina assimilis',
    rare:'⭐⭐⭐',score:59,color:'#DC2626',bg:'#FEF2F2',
    size:'8cm',habitat:'한국/중국',status:'생존',
    feature:'흰색+검정줄, 뒷날개 끝 붉은 반점',
    story:'애벌레 시절엔 나무껍질 같은 모습으로 위장, 성충이 되면 화려하고 우아한 모습으로 반전! 생물학적 변신의 경이로움.',
    protect:'변신의 달인이에요. 건강한 숲이 있어야 이 나비가 아름답게 날아오를 수 있어요.'},
-  {id:'b17',name:'은줄팔랑나비',en:'Silver-striped Skipper',sci:'Lobocla bifasciata',
+  {id:'b17',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="44" rx="3" ry="15" fill="#2d1a00"/>
+  <ellipse cx="40" cy="31" rx="2.5" ry="3.5" fill="#3a2200"/>
+  <line x1="40" y1="27" x2="33" y2="17" stroke="#2d1a00" stroke-width="1.2"/>
+  <line x1="40" y1="27" x2="47" y2="17" stroke="#2d1a00" stroke-width="1.2"/>
+  <circle cx="33" cy="17" r="2" fill="#2d1a00"/><circle cx="47" cy="17" r="2" fill="#2d1a00"/>
+  <!-- 팔랑나비 특유의 삼각형 날개 -->
+  <path d="M40,32 C34,26 20,24 14,32 C8,40 16,52 38,48 Z" fill="#8B4513"/>
+  <path d="M40,32 C46,26 60,24 66,32 C72,40 64,52 42,48 Z" fill="#8B4513"/>
+  <path d="M39,44 C30,44 18,52 20,60 C22,66 32,64 39,56 Z" fill="#A0522D"/>
+  <path d="M41,44 C50,44 62,52 60,60 C58,66 48,64 41,56 Z" fill="#A0522D"/>
+  <!-- 은줄 (흰 점 열) -->
+  <circle cx="22" cy="34" r="2" fill="rgba(200,220,255,0.8)"/>
+  <circle cx="28" cy="30" r="1.8" fill="rgba(200,220,255,0.8)"/>
+  <circle cx="34" cy="36" r="2" fill="rgba(200,220,255,0.8)"/>
+  <circle cx="58" cy="34" r="2" fill="rgba(200,220,255,0.8)"/>
+  <circle cx="52" cy="30" r="1.8" fill="rgba(200,220,255,0.8)"/>
+  <circle cx="46" cy="36" r="2" fill="rgba(200,220,255,0.8)"/>
+  <circle cx="26" cy="56" r="2" fill="silver"/>
+  <circle cx="32" cy="60" r="1.8" fill="silver"/>
+  <circle cx="54" cy="56" r="2" fill="silver"/>
+  <circle cx="48" cy="60" r="1.8" fill="silver"/>
+</svg>`,name:'은줄팔랑나비',en:'Silver-striped Skipper',sci:'Lobocla bifasciata',
    rare:'⭐⭐⭐',score:55,color:'#A0785A',bg:'#FFF8E1',
    size:'3.5cm',habitat:'한국 산지',status:'생존',
    feature:'아랫면 선명한 은색 세로줄',
    story:'날개 뒷면의 선명한 은색 줄무늬가 예술적! 숲속에서 은색 광채가 번쩍하며 사라지는 신비로운 광경.',
    protect:'한국 산지의 보물이에요. 빠른 비행 속도로 눈앞에서 사라지는 신비로운 나비예요.'},
-  {id:'b18',name:'청띠제비나비',en:'Common Bluebottle',sci:'Graphium sarpedon',
+  {id:'b18',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="17" fill="#111"/>
+  <ellipse cx="40" cy="28" rx="2.5" ry="4" fill="#222"/>
+  <line x1="40" y1="24" x2="31" y2="13" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="24" x2="49" y2="13" stroke="#111" stroke-width="1.2"/>
+  <circle cx="31" cy="13" r="2" fill="#111"/><circle cx="49" cy="13" r="2" fill="#111"/>
+  <!-- 제비나비 형태 -->
+  <path d="M40,26 C28,10 5,14 4,32 C3,48 20,56 38,48 Z" fill="#111"/>
+  <path d="M40,26 C52,10 75,14 76,32 C77,48 60,56 42,48 Z" fill="#111"/>
+  <path d="M38,46 C22,46 4,60 8,72 C10,78 26,74 38,62 Z" fill="#111"/>
+  <path d="M42,46 C58,46 76,60 72,72 C70,78 54,74 42,62 Z" fill="#111"/>
+  <!-- 꼬리 -->
+  <path d="M31,68 C28,74 26,80 25,80" stroke="#111" stroke-width="2" fill="none"/>
+  <path d="M49,68 C52,74 54,80 55,80" stroke="#111" stroke-width="2" fill="none"/>
+  <!-- 청록 띠 -->
+  <path d="M14,36 C20,30 32,28 40,30 C48,28 60,30 66,36" stroke="#00CED1" stroke-width="6" fill="none" opacity="0.8"/>
+  <!-- 붉은 반점 (뒷날개) -->
+  <circle cx="20" cy="60" r="4" fill="#DC2626" opacity="0.9"/>
+  <circle cx="60" cy="60" r="4" fill="#DC2626" opacity="0.9"/>
+  <!-- 흰 점들 -->
+  <circle cx="8" cy="22" r="1.8" fill="white" opacity="0.8"/>
+  <circle cx="72" cy="22" r="1.8" fill="white" opacity="0.8"/>
+</svg>`,name:'청띠제비나비',en:'Common Bluebottle',sci:'Graphium sarpedon',
    rare:'⭐⭐⭐',score:50,color:'#00796B',bg:'#E0F2F1',
    size:'9cm',habitat:'아시아 온대',status:'생존',
    feature:'검정+에메랄드 청록 띠',
    story:'검은 날개 중앙을 가로지르는 에메랄드 띠가 일품! 여름철 해변에 수백 마리가 모여 집단으로 물을 마시는 장관.',
    protect:'여름 숲이 선사하는 최고의 선물이에요. 청정 계곡과 숲이 있어야 볼 수 있어요.'},
-  {id:'b19',name:'산제비나비',en:"Maack's Swallowtail",sci:'Papilio maackii',
+  {id:'b19',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="17" fill="#0a0a0a"/>
+  <ellipse cx="40" cy="28" rx="2.5" ry="4" fill="#111"/>
+  <line x1="40" y1="24" x2="31" y2="12" stroke="#0a0a0a" stroke-width="1.2"/>
+  <line x1="40" y1="24" x2="49" y2="12" stroke="#0a0a0a" stroke-width="1.2"/>
+  <circle cx="31" cy="12" r="2" fill="#0a0a0a"/><circle cx="49" cy="12" r="2" fill="#0a0a0a"/>
+  <path d="M40,26 C26,10 4,14 3,32 C2,50 20,56 38,48 Z" fill="#0f0f0f"/>
+  <path d="M40,26 C54,10 76,14 77,32 C78,50 60,56 42,48 Z" fill="#0f0f0f"/>
+  <path d="M38,46 C20,46 2,60 6,72 C9,78 24,74 38,62 Z" fill="#111"/>
+  <path d="M42,46 C60,46 78,60 74,72 C71,78 56,74 42,62 Z" fill="#111"/>
+  <!-- 꼬리 -->
+  <path d="M30,68 C27,74 25,80 24,80" stroke="#111" stroke-width="2.5" fill="none"/>
+  <path d="M50,68 C53,74 55,80 56,80" stroke="#111" stroke-width="2.5" fill="none"/>
+  <!-- 청록 반점 -->
+  <circle cx="22" cy="32" r="3.5" fill="#00BCD4" opacity="0.8"/>
+  <circle cx="30" cy="26" r="3" fill="#00BCD4" opacity="0.7"/>
+  <circle cx="58" cy="32" r="3.5" fill="#00BCD4" opacity="0.8"/>
+  <circle cx="50" cy="26" r="3" fill="#00BCD4" opacity="0.7"/>
+  <!-- 붉은 점 -->
+  <circle cx="18" cy="60" r="4.5" fill="#EF4444"/>
+  <circle cx="62" cy="60" r="4.5" fill="#EF4444"/>
+  <!-- 흰 점 -->
+  <circle cx="8" cy="18" r="2" fill="white" opacity="0.7"/>
+  <circle cx="72" cy="18" r="2" fill="white" opacity="0.7"/>
+</svg>`,name:'산제비나비',en:"Maack's Swallowtail",sci:'Papilio maackii',
    rare:'⭐⭐⭐',score:45,color:'#26A69A',bg:'#E0F2F1',
    size:'청록 광택, 뒷날개 붉은 반달',habitat:'동아시아 산지',status:'생존',
    feature:'청록 금속 광택, 붉은 반달 무늬',
    story:'물가에 수십 마리의 산제비나비가 내려앉아 검은 보석처럼 반짝이는 모습은 보는 이의 넋을 놓게 만들어.',
    protect:'오염되지 않은 청정 자연이 선사하는 최고의 선물이에요.'},
-  {id:'b20',name:'호랑나비',en:'Asian Swallowtail',sci:'Papilio xuthus',
+  {id:'b20',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#111"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#222"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#111" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#111"/><circle cx="49" cy="14" r="2" fill="#111"/>
+  <!-- 노랑 날개 -->
+  <path d="M40,28 C28,12 6,16 5,34 C4,50 22,56 38,48 Z" fill="#FBBF24"/>
+  <path d="M40,28 C52,12 74,16 75,34 C76,50 58,56 42,48 Z" fill="#FBBF24"/>
+  <path d="M38,46 C22,46 5,58 8,68 C11,76 26,72 38,60 Z" fill="#F59E0B"/>
+  <path d="M42,46 C58,46 75,58 72,68 C69,76 54,72 42,60 Z" fill="#F59E0B"/>
+  <!-- 꼬리 -->
+  <path d="M31,66 C28,72 26,78 25,80" stroke="#111" stroke-width="2" fill="none"/>
+  <path d="M49,66 C52,72 54,78 55,80" stroke="#111" stroke-width="2" fill="none"/>
+  <!-- 검정 줄무늬 -->
+  <path d="M40,28 C28,12 6,16 5,34 C4,50 22,56 38,48" stroke="#111" stroke-width="2.5" fill="none"/>
+  <path d="M40,28 C52,12 74,16 75,34 C76,50 58,56 42,48" stroke="#111" stroke-width="2.5" fill="none"/>
+  <path d="M15,28 C14,36 14,46 16,54" stroke="#111" stroke-width="2.5" fill="none"/>
+  <path d="M65,28 C66,36 66,46 64,54" stroke="#111" stroke-width="2.5" fill="none"/>
+  <path d="M22,22 C22,30 22,42 22,50" stroke="#111" stroke-width="2" fill="none" opacity="0.7"/>
+  <path d="M58,22 C58,30 58,42 58,50" stroke="#111" stroke-width="2" fill="none" opacity="0.7"/>
+  <!-- 파랑+빨강 꼬리 점 -->
+  <circle cx="26" cy="62" r="3.5" fill="#3B82F6"/>
+  <circle cx="26" cy="62" r="2" fill="#1D4ED8"/>
+  <circle cx="54" cy="62" r="3.5" fill="#3B82F6"/>
+  <circle cx="54" cy="62" r="2" fill="#1D4ED8"/>
+  <circle cx="22" cy="68" r="2.5" fill="#EF4444"/>
+  <circle cx="58" cy="68" r="2.5" fill="#EF4444"/>
+</svg>`,name:'호랑나비',en:'Asian Swallowtail',sci:'Papilio xuthus',
    rare:'⭐⭐',score:40,color:'#F9A825',bg:'#FFF8E1',
    size:'10cm',habitat:'동아시아',status:'생존',
    feature:'노란+검정 호랑이 무늬',
    story:'나비의 대명사! 당당한 날갯짓과 화려한 무늬는 예로부터 선조들의 민화와 공예품 속 영혼의 상징으로 귀하게 대접받았어.',
    protect:'우리 민족이 가장 사랑하는 나비예요. 꽃이 있는 곳에 호랑나비가 찾아와요.'},
-  {id:'b21',name:'배추흰나비',en:'Small White',sci:'Pieris rapae',
+  {id:'b21',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="2.5" ry="15" fill="#444"/>
+  <ellipse cx="40" cy="30" rx="2" ry="3.5" fill="#555"/>
+  <line x1="40" y1="26" x2="33" y2="16" stroke="#444" stroke-width="1"/>
+  <line x1="40" y1="26" x2="47" y2="16" stroke="#444" stroke-width="1"/>
+  <circle cx="33" cy="16" r="1.8" fill="#444"/><circle cx="47" cy="16" r="1.8" fill="#444"/>
+  <path d="M40,30 C30,18 12,20 10,34 C8,46 22,52 38,46 Z" fill="#F9FAFB" stroke="#D1D5DB" stroke-width="1"/>
+  <path d="M40,30 C50,18 68,20 70,34 C72,46 58,52 42,46 Z" fill="#F9FAFB" stroke="#D1D5DB" stroke-width="1"/>
+  <path d="M39,43 C28,43 12,52 14,61 C16,68 28,65 39,55 Z" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+  <path d="M41,43 C52,43 68,52 66,61 C64,68 52,65 41,55 Z" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+  <!-- 검은 점 -->
+  <circle cx="22" cy="28" r="4" fill="#374151" opacity="0.8"/>
+  <circle cx="22" cy="28" r="2.5" fill="#111" opacity="0.8"/>
+  <circle cx="58" cy="28" r="4" fill="#374151" opacity="0.8"/>
+  <circle cx="58" cy="28" r="2.5" fill="#111" opacity="0.8"/>
+</svg>`,name:'배추흰나비',en:'Small White',sci:'Pieris rapae',
    rare:'⭐⭐',score:30,color:'#9E9E9E',bg:'#F9FAFB',
    size:'6cm',habitat:'전 세계',status:'생존',
    feature:'유백색, 둥글고 부드러운 날개',
    story:'인류 역사상 나비를 처음 가르쳐준 선생님! 아이들이 처음으로 채집망을 들고 쫓아가는 순수한 추억의 주인공.',
    protect:'가장 친근한 나비지만 꽃가루를 옮겨주는 소중한 공로자예요. 꽃밭을 지켜주세요.'},
-  {id:'b22',name:'노랑나비',en:'Eastern Pale Clouded Yellow',sci:'Colias erate',
+  {id:'b22',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="44" rx="2.5" ry="14" fill="#1a1200"/>
+  <ellipse cx="40" cy="32" rx="2" ry="3" fill="#2a1e00"/>
+  <line x1="40" y1="29" x2="34" y2="19" stroke="#1a1200" stroke-width="1"/>
+  <line x1="40" y1="29" x2="46" y2="19" stroke="#1a1200" stroke-width="1"/>
+  <circle cx="34" cy="19" r="1.8" fill="#1a1200"/><circle cx="46" cy="19" r="1.8" fill="#1a1200"/>
+  <path d="M40,32 C32,22 16,24 14,36 C12,46 24,50 39,46 Z" fill="#FDE047"/>
+  <path d="M40,32 C48,22 64,24 66,36 C68,46 56,50 41,46 Z" fill="#FDE047"/>
+  <path d="M39,44 C30,44 16,52 18,60 C20,66 30,64 39,56 Z" fill="#FACC15"/>
+  <path d="M41,44 C50,44 64,52 62,60 C60,66 50,64 41,56 Z" fill="#FACC15"/>
+  <!-- 주황 테두리 -->
+  <path d="M40,32 C32,22 16,24 14,36 C12,46 24,50 39,46" stroke="#F97316" stroke-width="1.5" fill="none" opacity="0.6"/>
+  <!-- 검은 점 -->
+  <circle cx="20" cy="34" r="2.5" fill="#111" opacity="0.7"/>
+  <circle cx="60" cy="34" r="2.5" fill="#111" opacity="0.7"/>
+</svg>`,name:'노랑나비',en:'Eastern Pale Clouded Yellow',sci:'Colias erate',
    rare:'⭐⭐',score:20,color:'#F9A825',bg:'#FFFDE7',
    size:'5.5cm',habitat:'전 세계',status:'생존',
    feature:'밝은 노란색, 봄을 알리는 날개',
    story:'봄의 전령! 밝은 노란 날개로 들판을 누비며 생명의 활기를 전하는 모습은 누구에게나 미소를 짓게 만들어.',
    protect:'봄의 상징이에요. 초원과 꽃밭이 사라지면 이 노란 날개도 볼 수 없게 돼요.'},
-  {id:'b23',name:'네발나비',en:'Yellow Comma',sci:'Polygonia c-aureum',
+  {id:'b23',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="15" fill="#111"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="3.5" fill="#222"/>
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#111" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#111" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#111"/><circle cx="48" cy="16" r="2" fill="#111"/>
+  <path d="M40,30 C28,16 8,20 7,36 C6,50 22,54 38,47 Z" fill="#EA580C"/>
+  <path d="M40,30 C52,16 72,20 73,36 C74,50 58,54 42,47 Z" fill="#EA580C"/>
+  <path d="M39,43 C26,43 10,52 12,62 C14,70 26,67 39,57 Z" fill="#C2410C"/>
+  <path d="M41,43 C54,43 70,52 68,62 C66,70 54,67 41,57 Z" fill="#C2410C"/>
+  <!-- 검은 무늬 -->
+  <rect x="5" y="28" width="8" height="8" rx="1" fill="#111" opacity="0.8"/>
+  <rect x="67" y="28" width="8" height="8" rx="1" fill="#111" opacity="0.8"/>
+  <path d="M40,30 C28,16 8,20 7,36" stroke="#111" stroke-width="2" fill="none"/>
+  <path d="M40,30 C52,16 72,20 73,36" stroke="#111" stroke-width="2" fill="none"/>
+  <!-- 흰 점 -->
+  <circle cx="12" cy="22" r="2" fill="white" opacity="0.8"/>
+  <circle cx="18" cy="18" r="1.8" fill="white" opacity="0.8"/>
+  <circle cx="68" cy="22" r="2" fill="white" opacity="0.8"/>
+  <circle cx="62" cy="18" r="1.8" fill="white" opacity="0.8"/>
+</svg>`,name:'네발나비',en:'Yellow Comma',sci:'Polygonia c-aureum',
    rare:'⭐⭐',score:10,color:'#E65100',bg:'#FFF3E0',
    size:'5.5cm',habitat:'한국 전역',status:'생존',
    feature:'황갈색, 앞다리 퇴화해 4개로 걸음',
    story:'앞다리 두 개가 퇴화해 4개로만 걷는 독특한 진화! 성충으로 추운 겨울을 견디며 한겨울에도 햇볕을 쬐는 지혜로운 나비.',
    protect:'한국 어디서나 만날 수 있는 우리 주변의 나비예요. 도시 숲과 공원을 지켜주세요.'},
-  {id:'b24',name:'왕오색나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
+  {id:'b24',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#2d0a2d"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#3d1a3d"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#2d0a2d" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#2d0a2d" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#2d0a2d"/><circle cx="49" cy="14" r="2" fill="#2d0a2d"/>
+  <defs>
+    <linearGradient id="royal_g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="40%" stop-color="#2563EB"/>
+      <stop offset="70%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <path d="M40,28 C26,12 4,16 3,34 C2,50 22,56 38,48 Z" fill="url(#royal_g)"/>
+  <path d="M40,28 C54,12 76,16 77,34 C78,50 58,56 42,48 Z" fill="url(#royal_g)"/>
+  <path d="M39,44 C22,44 4,56 8,68 C12,76 28,72 39,60 Z" fill="#6D28D9"/>
+  <path d="M41,44 C58,44 76,56 72,68 C68,76 52,72 41,60 Z" fill="#6D28D9"/>
+  <!-- 광채 하이라이트 -->
+  <path d="M40,28 C34,22 22,24 16,32" stroke="rgba(167,139,250,0.7)" stroke-width="2" fill="none"/>
+  <circle cx="18" cy="36" r="3" fill="rgba(255,255,255,0.3)"/>
+  <circle cx="62" cy="36" r="3" fill="rgba(255,255,255,0.3)"/>
+</svg>`,name:'왕오색나비',en:'Great Purple Emperor',sci:'Sasakia charonda',
    rare:'⭐⭐⭐',score:72,color:'#4A148C',bg:'#F3E5F5',
    size:'대형',habitat:'동아시아',status:'생존',
    feature:'보라/청색 대형, 화려한 광택',
    story:'왕이라는 이름처럼 당당하고 화려한 보라빛 대형 나비. 숲의 상층부에서 군주처럼 자신의 영역을 지배해.',
    protect:'숲의 왕이에요. 오래된 숲과 참나무가 있어야 이 나비가 살아갈 수 있어요.'},
-  {id:'b25',name:'긴꼬리제비나비',en:'Red Helen',sci:'Papilio helenus',
+  {id:'b25',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="41" rx="2.5" ry="16" fill="#0f0f0f"/>
+  <ellipse cx="40" cy="27" rx="2" ry="3.5" fill="#111"/>
+  <line x1="40" y1="23" x2="32" y2="12" stroke="#0f0f0f" stroke-width="1.2"/>
+  <line x1="40" y1="23" x2="48" y2="12" stroke="#0f0f0f" stroke-width="1.2"/>
+  <circle cx="32" cy="12" r="2" fill="#0f0f0f"/><circle cx="48" cy="12" r="2" fill="#0f0f0f"/>
+  <path d="M40,26 C28,12 7,16 6,32 C5,48 22,54 38,46 Z" fill="#111"/>
+  <path d="M40,26 C52,12 73,16 74,32 C75,48 58,54 42,46 Z" fill="#111"/>
+  <path d="M38,44 C22,44 5,58 8,70 C10,78 25,73 38,62 Z" fill="#1a1a1a"/>
+  <path d="M42,44 C58,44 75,58 72,70 C70,78 55,73 42,62 Z" fill="#1a1a1a"/>
+  <!-- 매우 긴 꼬리 -->
+  <path d="M28,66 C24,72 20,78 17,80" stroke="#111" stroke-width="3" fill="none"/>
+  <path d="M52,66 C56,72 60,78 63,80" stroke="#111" stroke-width="3" fill="none"/>
+  <!-- 청록+주황 반점 -->
+  <circle cx="20" cy="34" r="3" fill="#00BCD4" opacity="0.8"/>
+  <circle cx="60" cy="34" r="3" fill="#00BCD4" opacity="0.8"/>
+  <circle cx="16" cy="62" r="3.5" fill="#F97316"/>
+  <circle cx="64" cy="62" r="3.5" fill="#F97316"/>
+</svg>`,name:'긴꼬리제비나비',en:'Red Helen',sci:'Papilio helenus',
    rare:'⭐⭐⭐',score:60,color:'#212121',bg:'#F5F5F5',
    size:'검정+흰점, 긴 꼬리',habitat:'동아시아',status:'생존',
    feature:'검정 날개, 흰 점열, 긴 꼬리',
    story:'길고 우아한 꼬리가 돋보이는 제비나비의 귀공자. 검정 날개 위 흰 점들이 밤하늘의 별처럼 빛나.',
    protect:'아름다운 꼬리를 가진 나비예요. 남쪽 숲과 제주도에서 만날 수 있어요.'},
-  {id:'b26',name:'제비나비',en:'Spangle',sci:'Papilio protenor',
+  {id:'b26',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#0f0f0f"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#111"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#0f0f0f" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#0f0f0f" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#0f0f0f"/><circle cx="49" cy="14" r="2" fill="#0f0f0f"/>
+  <path d="M40,28 C28,12 7,16 6,34 C5,50 22,56 38,48 Z" fill="#111"/>
+  <path d="M40,28 C52,12 73,16 74,34 C75,50 58,56 42,48 Z" fill="#111"/>
+  <path d="M38,46 C22,46 5,58 8,68 C11,76 26,72 38,62 Z" fill="#1E40AF"/>
+  <path d="M42,46 C58,46 75,58 72,68 C69,76 54,72 42,62 Z" fill="#1E40AF"/>
+  <!-- 꼬리 -->
+  <path d="M30,66 C27,72 25,78 24,80" stroke="#0f0f0f" stroke-width="2.5" fill="none"/>
+  <path d="M50,66 C53,72 55,78 56,80" stroke="#0f0f0f" stroke-width="2.5" fill="none"/>
+  <!-- 파란 반점 -->
+  <circle cx="20" cy="58" r="3" fill="#60A5FA"/>
+  <circle cx="60" cy="58" r="3" fill="#60A5FA"/>
+</svg>`,name:'제비나비',en:'Spangle',sci:'Papilio protenor',
    rare:'⭐⭐',score:48,color:'#212121',bg:'#F5F5F5',
    size:'검정 날개',habitat:'동아시아',status:'생존',
    feature:'순수 검정 날개, 청록 광택',
    story:'검정 날개에 은은한 청록 광택이 도는 세련된 나비. 아랫날개의 붉은 반점이 포인트야.',
    protect:'우리 주변 숲에서 볼 수 있는 아름다운 나비예요.'},
-  {id:'b27',name:'남방제비나비',en:'Great Mormon',sci:'Papilio memnon',
+  {id:'b27',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="16" fill="#0f0f0f"/>
+  <ellipse cx="40" cy="29" rx="2.5" ry="4" fill="#111"/>
+  <line x1="40" y1="25" x2="31" y2="14" stroke="#0f0f0f" stroke-width="1.2"/>
+  <line x1="40" y1="25" x2="49" y2="14" stroke="#0f0f0f" stroke-width="1.2"/>
+  <circle cx="31" cy="14" r="2" fill="#0f0f0f"/><circle cx="49" cy="14" r="2" fill="#0f0f0f"/>
+  <path d="M40,28 C28,12 7,16 6,34 C5,50 22,56 38,48 Z" fill="#111"/>
+  <path d="M40,28 C52,12 73,16 74,34 C75,50 58,56 42,48 Z" fill="#111"/>
+  <path d="M38,46 C22,46 5,58 8,68 C11,76 26,72 38,62 Z" fill="#1a1a1a"/>
+  <path d="M42,46 C58,46 75,58 72,68 C69,76 54,72 42,62 Z" fill="#1a1a1a"/>
+  <!-- 꼬리 -->
+  <path d="M30,66 C27,72 25,78 24,80" stroke="#0f0f0f" stroke-width="2" fill="none"/>
+  <path d="M50,66 C53,72 55,78 56,80" stroke="#0f0f0f" stroke-width="2" fill="none"/>
+  <!-- 붉은 반점 -->
+  <circle cx="16" cy="56" r="4.5" fill="#EF4444"/>
+  <circle cx="64" cy="56" r="4.5" fill="#EF4444"/>
+  <circle cx="22" cy="64" r="3" fill="#F97316"/>
+  <circle cx="58" cy="64" r="3" fill="#F97316"/>
+</svg>`,name:'남방제비나비',en:'Great Mormon',sci:'Papilio memnon',
    rare:'⭐⭐',score:43,color:'#1A237E',bg:'#E8EAF6',
    size:'검정+파란 광택',habitat:'동아시아',status:'생존',
    feature:'검정 날개, 강렬한 파란 광택',
    story:'검정 날개에 강렬한 파란 광택이 도는 남방의 귀족. 붉은 반점이 포인트야.',
    protect:'따뜻한 남쪽 지방에 사는 나비예요. 기후변화로 북쪽으로 서식지가 확장되고 있어요.'},
-  {id:'b28',name:'애호랑나비',en:"Puzillo's Swallowtail",sci:'Luehdorfia puziloi',
+  {id:'b28',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="2.5" ry="15" fill="#2d1a00"/>
+  <ellipse cx="40" cy="30" rx="2" ry="3.5" fill="#3a2200"/>
+  <line x1="40" y1="26" x2="33" y2="16" stroke="#2d1a00" stroke-width="1"/>
+  <line x1="40" y1="26" x2="47" y2="16" stroke="#2d1a00" stroke-width="1"/>
+  <circle cx="33" cy="16" r="1.8" fill="#2d1a00"/><circle cx="47" cy="16" r="1.8" fill="#2d1a00"/>
+  <path d="M40,30 C30,18 14,20 12,34 C10,46 22,50 38,46 Z" fill="#FEF9C3"/>
+  <path d="M40,30 C50,18 66,20 68,34 C70,46 58,50 42,46 Z" fill="#FEF9C3"/>
+  <path d="M39,43 C28,43 14,52 16,60 C18,66 28,64 39,56 Z" fill="#FEF08A"/>
+  <path d="M41,43 C52,43 66,52 64,60 C62,66 52,64 41,56 Z" fill="#FEF08A"/>
+  <!-- 검정 줄무늬 (얇게) -->
+  <path d="M40,30 C30,18 14,20 12,34" stroke="#111" stroke-width="2" fill="none"/>
+  <path d="M40,30 C50,18 66,20 68,34" stroke="#111" stroke-width="2" fill="none"/>
+  <path d="M18,30 C18,38 18,46 18,52" stroke="#111" stroke-width="2" fill="none" opacity="0.6"/>
+  <path d="M62,30 C62,38 62,46 62,52" stroke="#111" stroke-width="2" fill="none" opacity="0.6"/>
+  <!-- 붉은 점 -->
+  <circle cx="22" cy="52" r="3" fill="#EF4444"/>
+  <circle cx="58" cy="52" r="3" fill="#EF4444"/>
+</svg>`,name:'애호랑나비',en:"Puzillo's Swallowtail",sci:'Luehdorfia puziloi',
    rare:'⭐⭐',score:35,color:'#F9A825',bg:'#FFFDE7',
    size:'노란+검정, 호랑나비보다 작음',habitat:'한국',status:'생존',
    feature:'노란+검정, 봄에 가장 먼저 나타남',
    story:'한국 봄의 전령! 가장 먼저 나타나는 봄나비로 산속에서 짝짓기 춤을 추는 모습이 아름다워.',
    protect:'봄의 첫 손님이에요. 산벚꽃과 현호색이 있어야 이 나비를 만날 수 있어요.'},
-  {id:'b29',name:'큰줄흰나비',en:'Large Striped White',sci:'Pieris melete',
+  {id:'b29',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="2.5" ry="15" fill="#333"/>
+  <ellipse cx="40" cy="30" rx="2" ry="3.5" fill="#444"/>
+  <line x1="40" y1="26" x2="33" y2="16" stroke="#333" stroke-width="1"/>
+  <line x1="40" y1="26" x2="47" y2="16" stroke="#333" stroke-width="1"/>
+  <circle cx="33" cy="16" r="1.8" fill="#333"/><circle cx="47" cy="16" r="1.8" fill="#333"/>
+  <path d="M40,30 C30,18 12,20 10,34 C8,46 22,52 38,46 Z" fill="white" stroke="#555" stroke-width="1"/>
+  <path d="M40,30 C50,18 68,20 70,34 C72,46 58,52 42,46 Z" fill="white" stroke="#555" stroke-width="1"/>
+  <path d="M39,43 C28,43 12,52 14,61 C16,68 28,65 39,56 Z" fill="#F8FAFC" stroke="#555" stroke-width="1"/>
+  <path d="M41,43 C52,43 68,52 66,61 C64,68 52,65 41,56 Z" fill="#F8FAFC" stroke="#555" stroke-width="1"/>
+  <!-- 검정 줄 (큰줄) -->
+  <path d="M20,24 C18,32 18,44 20,52" stroke="#111" stroke-width="3.5" fill="none"/>
+  <path d="M60,24 C62,32 62,44 60,52" stroke="#111" stroke-width="3.5" fill="none"/>
+  <circle cx="22" cy="26" r="3" fill="#111"/>
+  <circle cx="58" cy="26" r="3" fill="#111"/>
+</svg>`,name:'큰줄흰나비',en:'Large Striped White',sci:'Pieris melete',
    rare:'⭐⭐',score:25,color:'#9E9E9E',bg:'#F9FAFB',
    size:'흰색+검은 줄',habitat:'동아시아',status:'생존',
    feature:'흰색 날개에 굵은 검은 줄',
    story:'배추흰나비보다 크고 검은 줄이 선명한 사촌 나비. 산속 청정 지역에서 주로 볼 수 있어.',
    protect:'청정 산지 환경을 좋아하는 나비예요. 깨끗한 자연을 지켜주세요.'},
-  {id:'b30',name:'긴은줄표범나비',en:'Silver-washed Fritillary',sci:'Argynnis paphia',
+  {id:'b30',svgCode:`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="40" cy="43" rx="3" ry="15" fill="#2d1a00"/>
+  <ellipse cx="40" cy="30" rx="2.5" ry="3.5" fill="#3a2200"/>
+  <line x1="40" y1="26" x2="32" y2="16" stroke="#2d1a00" stroke-width="1.2"/>
+  <line x1="40" y1="26" x2="48" y2="16" stroke="#2d1a00" stroke-width="1.2"/>
+  <circle cx="32" cy="16" r="2" fill="#2d1a00"/><circle cx="48" cy="16" r="2" fill="#2d1a00"/>
+  <path d="M40,30 C28,16 8,20 7,36 C6,50 22,54 38,47 Z" fill="#F97316"/>
+  <path d="M40,30 C52,16 72,20 73,36 C74,50 58,54 42,47 Z" fill="#F97316"/>
+  <path d="M39,43 C26,43 10,52 12,62 C14,70 26,67 39,57 Z" fill="#EA580C"/>
+  <path d="M41,43 C54,43 70,52 68,62 C66,70 54,67 41,57 Z" fill="#EA580C"/>
+  <!-- 표범 무늬 (검은 점 패턴) -->
+  <circle cx="16" cy="28" r="3" fill="#111" opacity="0.7"/>
+  <circle cx="24" cy="22" r="2.5" fill="#111" opacity="0.7"/>
+  <circle cx="22" cy="36" r="3" fill="#111" opacity="0.7"/>
+  <circle cx="32" cy="30" r="2.5" fill="#111" opacity="0.7"/>
+  <circle cx="64" cy="28" r="3" fill="#111" opacity="0.7"/>
+  <circle cx="56" cy="22" r="2.5" fill="#111" opacity="0.7"/>
+  <circle cx="58" cy="36" r="3" fill="#111" opacity="0.7"/>
+  <circle cx="48" cy="30" r="2.5" fill="#111" opacity="0.7"/>
+  <!-- 은줄 (뒷날개) -->
+  <path d="M14,56 C18,52 24,52 28,54 C32,56 36,58 39,58" stroke="silver" stroke-width="2" fill="none"/>
+  <path d="M66,56 C62,52 56,52 52,54 C48,56 44,58 41,58" stroke="silver" stroke-width="2" fill="none"/>
+  <circle cx="16" cy="60" r="2" fill="silver"/>
+  <circle cx="64" cy="60" r="2" fill="silver"/>
+</svg>`,name:'긴은줄표범나비',en:'Silver-washed Fritillary',sci:'Argynnis paphia',
    rare:'⭐⭐',score:22,color:'#E65100',bg:'#FFF3E0',
    size:'주황+검정 점',habitat:'유라시아',status:'생존',
    feature:'주황 날개, 은색 줄무늬',

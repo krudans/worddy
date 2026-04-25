@@ -926,6 +926,10 @@ const S = {
   _acc:[], // 보유 장식품 목록
   _equipped:'', // 현재 장착 장식품
   _adConfig:null, // 광고 배너 설정
+  _dailyGoalMin:30, // 하루 목표 공부시간(분) 기본 30분
+  _dailyGoalAlarm:{on:false,h:8,m:0}, // 공부시작 알람
+  _dailyStudiedMin:0, // 오늘 실제 공부한 분
+  _dailyDate:'', // 오늘 날짜 (자정 초기화용)
   _ownedPacks:[], // 마켓 구매이력
   _matchPlayed:0, // 매칭게임 진행 세트 수
   _hadPerfect:false, // 테스트 100% 달성
@@ -996,6 +1000,19 @@ function checkAttend() {
 }
 
 function logStudy(type) {
+  // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
+  const todayKey = new Date().toISOString().slice(0,10);
+  if(S._dailyDate !== todayKey) { S._dailyStudiedMin=0; S._dailyDate=todayKey; }
+  if(type==='words') S._dailyStudiedMin = (S._dailyStudiedMin||0) + 0.1; // 단어당 6초
+  else if(type==='quiz') S._dailyStudiedMin = (S._dailyStudiedMin||0) + 0.05;
+  // 목표 달성 체크
+  const goal = S._dailyGoalMin||30;
+  const studied = S._dailyStudiedMin||0;
+  if(Math.floor(studied) > Math.floor(studied-0.1) && Math.floor(studied) > 0 && Math.floor(studied) % 10 === 0) {
+    const pct = Math.round(studied/goal*100);
+    if(pct===50) toast('🎉 오늘 목표 50% 달성!', 'ok');
+    if(pct===100) { toast('🏆 오늘 목표 달성! 수고했어요!', 'ok'); vib([100,50,100,50,200]); }
+  }
   // XP 지급
   if(type==='words') { addXP(10, true); checkXpUsable(); }
   else if(type==='quiz') { addXP(5, true); }
@@ -1637,7 +1654,7 @@ function addToCollectionConfirm(petData) {
   const mr=document.getElementById('mr');
   if(!mr)return;
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
-    <div style="font-size:48px;margin-bottom:10px;animation:float 3s ease-in-out infinite;display:inline-block">${data.emoji}</div>
+    <div style="margin-bottom:10px;display:inline-block">${charSVGAnimated(data.lid||'egg',80,'happy')}</div>
     <div style="font-size:17px;font-weight:800;margin-bottom:6px">도감에 담을까요?</div>
     <div style="font-size:13px;color:#6B7280;margin-bottom:4px">${data.level} · ${lv(S.lid).desc}</div>
     <div style="font-size:12px;color:#9CA3AF;margin-bottom:20px">${data.addedAt}</div>
@@ -1674,7 +1691,7 @@ function showReplaceCollection(newData) {
     <div style="font-size:12px;color:#6B7280;margin-bottom:14px;text-align:center">뺄 캐릭터를 선택해주세요 (${MAX_COLLECTION}/${MAX_COLLECTION})</div>
     <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
       ${col.map((item,idx)=>`<div onclick="replaceCollection(${idx},this)" data-new="${JSON.stringify(newData).replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:#F9FAFB;border:1.5px solid #E5E7EB;cursor:pointer">
-        <span style="font-size:28px">${item.emoji||'🥚'}</span>
+        ${charSVGAnimated(item.lid||item.lvId||'egg',56,'happy')}
         <div style="flex:1">
           <div style="font-size:13px;font-weight:700">${item.level||item.lid||'알'}</div>
           <div style="font-size:11px;color:#9CA3AF">${item.addedAt||''}</div>
@@ -1800,7 +1817,7 @@ function showCollectionDetail(colId) {
   const mr=document.getElementById('mr');
   if(!mr) return;
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
-    <div style="font-size:56px;margin-bottom:8px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">${item.emoji||'🥚'}</div>
+    <div style="display:inline-block;margin-bottom:8px">${charSVGAnimated(item.lid||item.lvId||'egg',72,'happy')}</div>
     <div style="font-size:18px;font-weight:900;margin-bottom:4px">${item.level||'알'}</div>
     <div style="font-size:12px;color:#6B7280;margin-bottom:4px">${item.addedAt||''} 수집</div>
     <div style="display:flex;gap:8px;margin:12px 0">
@@ -2614,49 +2631,126 @@ function charClickable(svgHtml, size) {
 function showAlarmSettings() {
   const mr = document.getElementById('mr');
   if(!mr) return;
+  // 기본값 보장
   if(!S.alStudy)  S.alStudy  = {on:false, h:8,  m:0};
   if(!S.alGoal)   S.alGoal   = {on:false, h:20, m:0};
   if(!S.alStreak) S.alStreak = {on:false, h:21, m:0};
-  const alarms = [
-    {key:'alStudy',  emoji:'📚', label:'공부 알림',   desc:'매일 공부할 시간'},
-    {key:'alGoal',   emoji:'🎯', label:'퀴즈 알림',   desc:'퀴즈 도전 시간'},
-    {key:'alStreak', emoji:'🦋', label:'놀아주기 알림', desc:'캐릭터 돌봐줄 시간'},
-  ];
-  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden">
-    <div style="background:linear-gradient(135deg,#7C3AED,#5B21B6);padding:16px 20px">
-      <div style="font-size:16px;font-weight:900;color:#fff">🔔 알람 설정</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.7)">공부 습관을 위한 알림을 설정하세요</div>
+  if(!S._dailyGoalAlarm) S._dailyGoalAlarm = {on:false, h:8, m:0};
+  if(!S._dailyGoalMin) S._dailyGoalMin = 30;
+
+  // 오늘 공부시간 계산 (분)
+  const todayKey = new Date().toISOString().slice(0,10);
+  if(S._dailyDate !== todayKey) { S._dailyStudiedMin=0; S._dailyDate=todayKey; }
+  const studied = S._dailyStudiedMin || 0;
+  const goal = S._dailyGoalMin || 30;
+  const pct = Math.min(100, Math.round(studied/goal*100));
+  const remaining = Math.max(0, goal - studied);
+
+  // 알람 토글 함수 (전역)
+  window._alToggle = (key)=>{
+    S[key].on = !S[key].on;
+    sv();
+    scheduleAlarms();
+    showAlarmSettings();
+  };
+  window._alSave = (key,h,m)=>{
+    S[key].h=parseInt(h);S[key].m=parseInt(m);
+    sv();scheduleAlarms();
+    toast('알람 저장됨');
+    showAlarmSettings();
+  };
+
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:90vh;display:flex;flex-direction:column">
+    <!-- 헤더 -->
+    <div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);padding:16px 20px;flex-shrink:0">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#fff">⏰ 공부 목표 & 알람</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px">하루 공부 목표를 설정하고 알림을 받으세요</div>
+        </div>
+        <button onclick="cm()" style="background:rgba(255,255,255,.15);border:none;border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;cursor:pointer">닫기</button>
+      </div>
     </div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-      ${alarms.map(al=>{
-        const cfg=S[al.key];
-        return `<div style="background:var(--bg-sub,#FFF9ED);border-radius:14px;padding:14px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div>
-              <div style="font-size:14px;font-weight:700">${al.emoji} ${al.label}</div>
-              <div style="font-size:11px;color:#9CA3AF">${al.desc}</div>
-            </div>
-            <div onclick="S['${al.key}'].on=!S['${al.key}'].on;sv();scheduleAlarms();showAlarmSettings()" style="width:44px;height:24px;border-radius:12px;background:${cfg.on?'#7C3AED':'#D1D5DB'};cursor:pointer;position:relative;transition:background .2s">
-              <div style="position:absolute;top:2px;left:${cfg.on?'22':'2'}px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s"></div>
-            </div>
+    <div style="overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+
+      <!-- 오늘 달성 현황 -->
+      <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-radius:16px;padding:14px;border:1.5px solid #86EFAC">
+        <div style="font-size:12px;font-weight:700;color:#15803D;margin-bottom:8px">📊 오늘 공부 현황</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px">
+          <div>
+            <div style="font-size:28px;font-weight:900;color:#15803D;line-height:1">${studied}분</div>
+            <div style="font-size:11px;color:#6B7280;margin-top:2px">/ 목표 ${goal}분</div>
           </div>
-          ${cfg.on?`<div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:#6B7280">시간:</span>
-            <input type="number" min="0" max="23" value="${cfg.h}" onchange="S['${al.key}'].h=parseInt(this.value);sv();scheduleAlarms()" style="width:50px;padding:4px;border-radius:8px;border:1.5px solid #E5E7EB;text-align:center;font-size:14px;font-weight:700">
-            <span>:</span>
-            <input type="number" min="0" max="59" value="${String(cfg.m).padStart(2,'0')}" onchange="S['${al.key}'].m=parseInt(this.value);sv();scheduleAlarms()" style="width:50px;padding:4px;border-radius:8px;border:1.5px solid #E5E7EB;text-align:center;font-size:14px;font-weight:700">
-          </div>`:''}
-        </div>`;
-      }).join('')}
-      <button onclick="if(Notification.permission!=='granted')Notification.requestPermission().then(p=>{if(p==='granted'){scheduleAlarms();toast('알람 권한 허용됨!');}else toast('알람 권한이 필요해요');})" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">
-        🔔 알림 권한 확인
-      </button>
-      <button onclick="cm()" class="btn bb">저장</button>
+          <div style="text-align:right">
+            ${pct>=100
+              ? '<div style="font-size:24px">🎉</div><div style="font-size:12px;font-weight:700;color:#15803D">목표 달성!</div>'
+              : `<div style="font-size:20px">⏱</div><div style="font-size:12px;font-weight:700;color:#6B7280">${remaining}분 남음</div>`
+            }
+          </div>
+        </div>
+        <div style="background:rgba(0,0,0,.08);border-radius:6px;height:8px;overflow:hidden">
+          <div style="height:100%;background:linear-gradient(90deg,#34D399,#10B981);border-radius:6px;width:${pct}%;transition:width .6s"></div>
+        </div>
+      </div>
+
+      <!-- 하루 목표 시간 설정 -->
+      <div style="background:#fff;border-radius:16px;padding:14px;border:1.5px solid #E5E7EB">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">🎯 하루 목표 시간</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+          ${[15,30,60,90].map(min=>`
+            <button onclick="S._dailyGoalMin=${min};sv();showAlarmSettings()" 
+              style="padding:10px 4px;border-radius:10px;border:1.5px solid ${goal===min?'#1E5FA5':'#E5E7EB'};background:${goal===min?'#EFF6FF':'#F9FAFB'};color:${goal===min?'#1E5FA5':'#374151'};font-size:12px;font-weight:700;cursor:pointer">
+              ${min>=60?Math.floor(min/60)+'시간'+(min%60?min%60+'분':''):min+'분'}
+            </button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="goal-custom" placeholder="직접 입력 (분)" min="5" max="480" value="${goal}"
+            style="flex:1;padding:9px 12px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:13px;text-align:center">
+          <button onclick="const v=parseInt(document.getElementById('goal-custom').value);if(v>=5&&v<=480){S._dailyGoalMin=v;sv();showAlarmSettings();toast('목표: '+v+'분 설정!');}" 
+            class="btn bb" style="flex-shrink:0">설정</button>
+        </div>
+      </div>
+
+      <!-- 공부 시작 알람 -->
+      <div style="background:#fff;border-radius:16px;padding:14px;border:1.5px solid #E5E7EB">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">🔔 알람 설정</div>
+        ${[
+          {key:'alStudy',  emoji:'📚', label:'공부 시작', desc:'지금 공부할 시간이에요!'},
+          {key:'alGoal',   emoji:'🎯', label:'퀴즈 도전', desc:'퀴즈로 실력을 확인해요!'},
+          {key:'alStreak', emoji:'🦋', label:'놀아주기',  desc:'캐릭터가 기다리고 있어요!'},
+        ].map(al=>{
+          const cfg=S[al.key];
+          return `<div style="padding:10px 0;border-bottom:1px solid #F3F4F6">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${cfg.on?'8':'0'}px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:18px">${al.emoji}</span>
+                <div>
+                  <div style="font-size:13px;font-weight:700">${al.label}</div>
+                  <div style="font-size:10px;color:#9CA3AF">${al.desc}</div>
+                </div>
+              </div>
+              <div onclick="window._alToggle('${al.key}')" style="width:44px;height:24px;border-radius:12px;background:${cfg.on?'#1E5FA5':'#D1D5DB'};cursor:pointer;position:relative;transition:background .2s;flex-shrink:0">
+                <div style="position:absolute;top:2px;left:${cfg.on?'22':'2'}px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div>
+              </div>
+            </div>
+            ${cfg.on?`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#F8FAFC;border-radius:8px">
+              <span style="font-size:11px;color:#6B7280">시간</span>
+              <input type="number" min="0" max="23" value="${cfg.h}" onchange="window._alSave('${al.key}',this.value,document.getElementById('al-m-${al.key}').value)" style="width:48px;padding:4px;border-radius:6px;border:1.5px solid #E5E7EB;text-align:center;font-size:13px;font-weight:700">
+              <span style="color:#9CA3AF">:</span>
+              <input id="al-m-${al.key}" type="number" min="0" max="59" value="${String(cfg.m).padStart(2,'0')}" onchange="window._alSave('${al.key}',document.querySelector('[onchange*=al-m-${al.key}]').previousElementSibling.previousElementSibling.value,this.value)" style="width:48px;padding:4px;border-radius:6px;border:1.5px solid #E5E7EB;text-align:center;font-size:13px;font-weight:700">
+              <span style="font-size:11px;color:#6B7280">에 알림</span>
+            </div>`:''}
+          </div>`;
+        }).join('')}
+        <button onclick="if(Notification.permission!=='granted'){Notification.requestPermission().then(p=>{if(p==='granted'){scheduleAlarms();toast('알람 권한 허용됨!');showAlarmSettings();}else toast('알람 권한이 필요해요');});}else{scheduleAlarms();toast('알람이 설정됐어요!');}" 
+          style="width:100%;margin-top:10px;background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">
+          🔔 알림 권한 확인 / 적용
+        </button>
+      </div>
+
     </div>
   </div></div>`;
 }
-
-// ── 광고 배너 ──
 function renderAdBanner() {
   const ad = S._adConfig;
   if(!ad || !ad.on) return '';
@@ -2692,7 +2786,7 @@ function showSpeakMode() {
           <div style="font-size:16px;font-weight:900;color:#fff">🎤 말하기 연습</div>
           <div style="font-size:11px;color:rgba(255,255,255,.5)">${idx+1}/${words.length}</div>
         </div>
-        <button onclick="speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+        ${_LT.barHTML()}<button onclick="speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕</button>
       </div>
       <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px">
         <div style="width:100%;text-align:center">
@@ -2708,6 +2802,7 @@ function showSpeakMode() {
         </div>
       </div>
       <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+        <div style="text-align:center;margin-bottom:4px">${_markBtn(w.en)}</div>
         <button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(window._spkWords[window._spkIdx].en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" 
           style="background:linear-gradient(135deg,#0EA5E9,#0284C7);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">🔊 원어민 발음 듣기</button>
         <button onclick="window._spkIdx++;window._spkRender();logStudy('words');addXP(5)"
@@ -2719,6 +2814,7 @@ function showSpeakMode() {
     setTimeout(()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);},300);
   };
 
+  window._curRender=window._spkRender;
   window._spkRender();
 }
 function saveMyCharacter() {
@@ -2837,7 +2933,7 @@ async function showConversationMode() {
           <div style="font-size:16px;font-weight:900;color:#fff">💬 회화 모드</div>
           <div style="font-size:11px;color:rgba(255,255,255,.5)">${selCat} · ${window._cvIdx+1}/${filtered.length}</div>
         </div>
-        <button onclick="speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+        ${_LT.barHTML()}<button onclick="speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕</button>
       </div>
       <!-- 진행바 -->
       <div style="padding:0 20px 4px;flex-shrink:0">
@@ -2851,6 +2947,7 @@ async function showConversationMode() {
       <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px">
         <div onclick="window._cvFlip=!window._cvFlip;window._cvRender()" style="width:100%;max-width:360px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px 24px;text-align:center;cursor:pointer;min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
           <div style="font-size:11px;color:rgba(99,179,237,.8);font-weight:700">${'⭐'.repeat(s.level||1)} 난이도 ${s.level||1}</div>
+          <div>${s.en?_markBtn(s.en):''}</div>
           <div style="font-size:22px;font-weight:900;color:#fff;line-height:1.4">${s.en||''}</div>
           ${s.ph?`<div style="font-size:13px;color:rgba(167,139,250,.9)">${s.ph}</div>`:''}
           ${cvFlip?`<div style="width:100%;height:1px;background:rgba(255,255,255,.1)"></div><div style="font-size:17px;font-weight:700;color:rgba(255,255,255,.85)">${s.kr||''}</div>`:`<div style="font-size:12px;color:rgba(255,255,255,.3)">탭해서 뜻 보기 👆</div>`}
@@ -2868,6 +2965,7 @@ async function showConversationMode() {
     setTimeout(()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(s.en||'');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);},300);
   };
 
+  window._curRender=window._cvRender;
   window._cvRender();
 }
 function showFriends() {
@@ -2894,6 +2992,178 @@ function showGameIntroStep(step, steps, gameId) {
     </div>
   </div></div>`;
   window._introStep=step;window._introSteps=steps;window._introGameId=gameId;
+}
+
+// ── 전역 학습 타이머 ──
+const _LT = {
+  elapsed: 0,       // 경과 초
+  goal: 0,          // 목표 초 (0=무제한)
+  running: false,
+  interval: null,
+
+  start() {
+    if(this.running) return;
+    this.running = true;
+    if(!this._startTime) this._startTime = Date.now() - this.elapsed*1000;
+    this.interval = setInterval(()=>{
+      this.elapsed = Math.floor((Date.now()-this._startTime)/1000);
+      this._updateUI();
+      // 하루 공부시간 연동 (1분마다)
+      if(this.elapsed > 0 && this.elapsed % 60 === 0) {
+        const todayKey = new Date().toISOString().slice(0,10);
+        if(S._dailyDate !== todayKey) { S._dailyStudiedMin=0; S._dailyDate=todayKey; }
+        S._dailyStudiedMin = (S._dailyStudiedMin||0) + 1;
+        const goal=S._dailyGoalMin||30, studied=S._dailyStudiedMin||0;
+        const pct=Math.round(studied/goal*100);
+        if(pct===50) toast('🎉 오늘 목표 50% 달성!');
+        if(pct===100) { toast('🏆 오늘 목표 달성! 대단해요!'); vib([100,50,100,50,200]); }
+        const rem=Math.max(0,goal-studied);
+        if(rem>0 && rem%10===0) toast('⏱ 목표까지 '+rem+'분 남았어요!');
+        sv();
+      }
+      // 세션 목표 달성
+      if(this.goal > 0 && this.elapsed >= this.goal) {
+        this.stop();
+        toast('🎉 목표 시간 달성! 수고했어요!');
+        vib([100,50,100,50,200]);
+      }
+    }, 1000);
+  },
+
+  stop() {
+    this.running = false;
+    clearInterval(this.interval);
+    this.interval = null;
+  },
+
+  reset() {
+    this.stop();
+    this.elapsed = 0;
+    this._startTime = null;
+    this._updateUI();
+  },
+
+  fmt(s) {
+    const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+    if(h>0) return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+    return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+  },
+
+  _updateUI() {
+    document.querySelectorAll('._lt-display').forEach(el=>{
+      const pct = this.goal>0 ? Math.min(100, Math.round(this.elapsed/this.goal*100)) : 0;
+      const color = this.goal>0 && pct>=100 ? '#34D399' : this.goal>0 && pct>=80 ? '#FBBF24' : '#63B3ED';
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:13px;font-weight:800;color:${color};font-family:monospace">${this.fmt(this.elapsed)}</div>
+          ${this.goal>0?`<div style="font-size:10px;color:rgba(255,255,255,.4)">/ ${this.fmt(this.goal)}</div>`:''}
+          <button onclick="showTimerSettings()" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:3px 8px;color:rgba(255,255,255,.6);font-size:10px;cursor:pointer">⏱</button>
+        </div>
+        ${this.goal>0?`<div style="background:rgba(255,255,255,.12);border-radius:2px;height:2px;overflow:hidden;margin-top:3px"><div style="height:100%;background:${color};width:${pct}%;transition:width .5s"></div></div>`:''}
+      `;
+    });
+  },
+
+  barHTML() {
+    const pct = this.goal>0 ? Math.min(100, Math.round(this.elapsed/this.goal*100)) : 0;
+    const color = this.goal>0 && pct>=100 ? '#34D399' : this.goal>0 && pct>=80 ? '#FBBF24' : '#63B3ED';
+    return `<div class="_lt-display" style="min-width:80px"></div>`;
+  }
+};
+
+// 타이머 설정 모달
+function showTimerSettings() {
+  const mr=document.getElementById('mr');if(!mr)return;
+  const goals=[
+    [0,'무제한','∞'],
+    [10*60,'10분','🔥'],
+    [20*60,'20분','⚡'],
+    [30*60,'30분','💪'],
+    [60*60,'1시간','🏆'],
+  ];
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);padding:16px 20px">
+      <div style="font-size:16px;font-weight:900;color:#fff">⏱ 학습 타이머</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">오늘 공부 목표 시간을 설정하세요</div>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <!-- 현재 상태 -->
+      <div style="background:#F8FAFC;border-radius:12px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:11px;color:#9CA3AF;font-weight:600">경과 시간</div>
+          <div style="font-size:24px;font-weight:900;font-family:monospace;color:#1E3A5F">${_LT.fmt(_LT.elapsed)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:#9CA3AF;font-weight:600">목표</div>
+          <div style="font-size:18px;font-weight:800;color:#1E5FA5">${_LT.goal>0?_LT.fmt(_LT.goal):'무제한'}</div>
+        </div>
+      </div>
+      <!-- 목표 선택 -->
+      <div style="font-size:12px;font-weight:700;color:#374151">목표 시간 선택</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        ${goals.map(([s,lb,ic])=>`
+          <button onclick="_LT.goal=${s};_LT._updateUI();sv();cm();toast('목표: ${lb} 설정!')" 
+            style="background:${_LT.goal===s?'#1E5FA5':'#F8FAFC'};color:${_LT.goal===s?'#fff':'#374151'};border:1.5px solid ${_LT.goal===s?'#1E5FA5':'#E5E7EB'};border-radius:12px;padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer">
+            <div style="font-size:20px;margin-bottom:4px">${ic}</div>${lb}
+          </button>
+        `).join('')}
+      </div>
+      <!-- 직접 입력 -->
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" id="timer-custom" placeholder="직접 입력 (분)" min="1" max="300" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:13px;text-align:center">
+        <button onclick="const v=parseInt(document.getElementById('timer-custom').value);if(v>0){_LT.goal=v*60;_LT._updateUI();sv();cm();toast('목표: '+v+'분 설정!');}" class="btn bb" style="flex-shrink:0">설정</button>
+      </div>
+      <!-- 컨트롤 -->
+      <div style="display:flex;gap:8px">
+        <button onclick="_LT.reset();cm();toast('타이머 초기화')" style="flex:1;background:#F1F5F9;color:#374151;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">🔄 초기화</button>
+        <button onclick="${_LT.running?'_LT.stop()':'_LT.start()'};cm()" class="btn bb" style="flex:1">${_LT.running?'⏸ 일시정지':'▶ 시작'}</button>
+      </div>
+    </div>
+  </div></div>`;
+}
+
+// ── 학습모드 공통 헤더 ──
+function _studyHeader(title, subtitle, onExit, extraBtns='') {
+  _LT.start(); // 타이머 자동 시작
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:15px;font-weight:900;color:#fff">${title}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:1px">${subtitle}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      ${_LT.barHTML()}
+      ${extraBtns}
+      <button onclick="${onExit}" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕</button>
+    </div>
+  </div>`;
+}
+
+// ── 암기 체크 버튼 ──
+function _markBtn(wordEn) {
+  const m = getMark(wordEn);
+  const labels = {0:'○ 체크',1:'✅ 외움',2:'🔄 복습'};
+  const colors = {0:'rgba(255,255,255,.08)',1:'rgba(16,185,129,.3)',2:'rgba(239,68,68,.2)'};
+  const borders = {0:'rgba(255,255,255,.15)',1:'rgba(52,211,153,.5)',2:'rgba(239,68,68,.4)'};
+  const next = {0:1,1:2,2:0};
+  return `<button onclick="setMark('${wordEn.replace(/'/g,"\\'")}',${next[m]||1});window._curRender&&window._curRender()"
+    style="background:${colors[m]};border:1px solid ${borders[m]};border-radius:20px;padding:5px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s">${labels[m]}</button>`;
+}
+
+function showLevelUpPopup(newLv) {
+  const l = lv(newLv||S.lid);
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  vib([100,50,100,50,200]);
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:28px">
+    <div style="font-size:56px;margin-bottom:10px;animation:float-happy 1.5s ease-in-out infinite">${l.emoji}</div>
+    <div style="font-size:11px;font-weight:700;color:#7C3AED;letter-spacing:1px;margin-bottom:6px">LEVEL UP!</div>
+    <div style="font-size:22px;font-weight:900;margin-bottom:6px">${l.name}</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">${l.desc}</div>
+    <div style="background:${l.bg};border-radius:12px;padding:10px;margin-bottom:16px;font-size:12px;color:${l.color};font-weight:700">
+      ⚡ 누적 XP: ${S.xp||0}
+    </div>
+    <button onclick="cm()" class="btn bb">계속하기 🎉</button>
+  </div></div>`;
 }
 function getMark(en) { return S.markMap[en]||0; }
 function setMark(en, val) {
@@ -3160,38 +3430,39 @@ function scheduleAlarms() {
   if(!('Notification' in window)) return;
   if(Notification.permission !== 'granted') return;
   const l = lv(S.lid);
-  const msg = rnd(l.alarm);
-  const alarms = [
-    {cfg:S.alStudy, title:`${l.emoji} Vocabug 공부 알람`, body:msg},
 
-    {cfg:S.alGoal, title:`${l.emoji} Vocabug 목표 알람`, body:'오늘 목표 아직 미완료! 빨리!'},
-    {cfg:S.alStreak, title:`${l.emoji} Vocabug 스트릭 알람`, body:`${S.streak}일 연속 기록이 끊기기 직전!`},
+  // 기존 알람 제거
+  if(window._alarmTimers) window._alarmTimers.forEach(t=>clearTimeout(t));
+  window._alarmTimers = [];
+
+  const now = new Date();
+  const alarms = [
+    {cfg:S.alStudy,  title:`${l.emoji} 공부 시작!`,   body:`오늘 목표 ${S._dailyGoalMin||30}분 중 ${Math.floor(S._dailyStudiedMin||0)}분 완료. 지금 시작해요!`},
+    {cfg:S.alGoal,   title:`${l.emoji} 퀴즈 도전!`,   body:'퀴즈로 오늘 실력을 확인해봐요!'},
+    {cfg:S.alStreak, title:`${l.emoji} 캐릭터 돌보기`, body:`${l.name}가 기다리고 있어요!`},
   ];
+
   alarms.forEach(({cfg, title, body}) => {
-    if(!cfg.on) return;
-    const now = new Date();
-    const target = new Date();
-    target.setHours(cfg.h, cfg.m, 0, 0);
-    if(target <= now) target.setDate(target.getDate()+1);
-    const delay = target - now;
-    if('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({type:'SCHEDULE_ALARM', title, body, delay, tag:title});
-    }
+    if(!cfg || !cfg.on) return;
+    const alarmTime = new Date();
+    alarmTime.setHours(cfg.h, cfg.m, 0, 0);
+    if(alarmTime <= now) alarmTime.setDate(alarmTime.getDate()+1); // 내일로
+    const delay = alarmTime - now;
+    const t = setTimeout(()=>{
+      // 남은 공부시간 메시지
+      const studied = S._dailyStudiedMin||0;
+      const goal = S._dailyGoalMin||30;
+      const remain = Math.max(0, goal-studied);
+      const finalBody = remain>0
+        ? body + ` 오늘 목표까지 ${Math.ceil(remain)}분 남았어요!`
+        : body + ' 오늘 목표 이미 달성! 👑';
+      new Notification(title, {body:finalBody, icon:'/icons/icon-192.png'});
+      // 매일 반복
+      scheduleAlarms();
+    }, delay);
+    window._alarmTimers.push(t);
   });
 }
-
-// ── Firebase 인증 ──
-firebase.auth().onAuthStateChanged(u => {
-  if(u) {
-    S.user=u; load(); updStreak();
-    if(!S.nick) showNick();
-    else if(!S.surveyDone) showSurvey();
-    else if(!localStorage.getItem('wd-tested')) showTestIntro();
-    else startApp();
-  } else showLogin();
-});
-
-// ── 로그인 (리다이렉트 방식) ──
 function showLogin() {
   document.getElementById('hd').style.display='none';
   document.getElementById('nav').style.display='none';
@@ -3586,6 +3857,11 @@ function startApp() {
   setTimeout(async ()=>{
     await loadMarketPacks();
     loadFirebaseButterflies(); // Firebase 나비 로드
+    // 날짜 초기화 (자정 지나면 공부시간 리셋)
+    const _todayKey = new Date().toISOString().slice(0,10);
+    if(S._dailyDate !== _todayKey) { S._dailyStudiedMin=0; S._dailyDate=_todayKey; sv(); }
+    // 알람 재설정
+    if(typeof Notification!=='undefined' && Notification.permission==='granted') scheduleAlarms();
     // 광고 배너 설정 로드
     try {
       const adDoc = await db.collection('config').doc('ad_banner').get();
@@ -3719,6 +3995,7 @@ function rLearnTab() {
   const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
   const curLvLearn = LEVELS.find(lx=>lx.id===S.lid);
+  const isFinalLv = curLvLearn?.isFinal || S.lid==='god';
   const xpForNext = (curLvLearn && !curLvLearn.isFinal) ? (curLvLearn.xp||100) : 9999;
   const xpProgress = curLvLearn?.isFinal ? 100 : Math.min(100, Math.round((S.xp||0)/xpForNext*100));
   // 현재 단어장
@@ -3731,8 +4008,10 @@ function rLearnTab() {
   // ── 상단: 캐릭터 + 레벨 + 진행 ──
   html+=`<div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:18px;color:#fff">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
-      <div style="position:absolute;top:12px;right:12px" onclick="showPomodoroTimer()" title="집중 타이머">
-        <div style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;color:#fff;cursor:pointer">🍅 타이머</div>
+      <div style="position:absolute;top:12px;right:12px;display:flex;gap:6px">
+        <div onclick="showTimerSettings()" style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;color:#fff;cursor:pointer">⏱ \${_LT.fmt(_LT.elapsed)}</div>
+        <div onclick="showPomodoroTimer()" title="집중 타이머" style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;color:#fff;cursor:pointer">🍅</div>
+        <div onclick="go('profile')" style="background:rgba(255,255,255,.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;color:#fff;cursor:pointer">🔔</div>
       </div>
       <div style="flex-shrink:0;animation:float 3.5s ease-in-out infinite;display:inline-block">
         ${charSVG(S.lid,56,'normal')}
@@ -4278,8 +4557,16 @@ function rGameTab() {
       </div>
     </div>
     <!-- 하단 버튼 -->
-    <div onclick="S.stab='petcare';go('butterfly')" style="background:rgba(255,255,255,.15);border-radius:12px;padding:10px;text-align:center;cursor:pointer;font-size:13px;font-weight:700;color:#fff">
-      🐛 돌보기 →
+    <div style="display:flex;gap:8px;margin-top:2px">
+      <div onclick="addToCollectionConfirm({id:'col_'+Date.now(),lid:S.lid,level:lv(S.lid).name,emoji:lv(S.lid).emoji,addedAt:new Date().toISOString().slice(0,10)})" style="flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff">
+        📥 도감 담기
+      </div>
+      <div onclick="saveMyCharacter()" style="flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff">
+        📸 이미지 저장
+      </div>
+      <div onclick="S.stab='petcare';go('butterfly')" style="flex:1;background:rgba(255,255,255,.15);border-radius:12px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff">
+        🐛 돌보기 →
+      </div>
     </div>
   </div>`;
 
@@ -4374,7 +4661,7 @@ function rGameTab() {
     ${myCol.length>0?`<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px">수집한 캐릭터 (${myCol.length}/${MAX_COLLECTION})</div>
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
       ${myCol.map(item=>`<div onclick="showCollectionDetail('${item.id}')" style="text-align:center;padding:6px;border-radius:10px;background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);cursor:pointer">
-        <div style="font-size:20px;animation:float 3s ease-in-out infinite;display:inline-block">${item.emoji||'🥚'}</div>
+        <div style="display:inline-block">${charSVGAnimated(item.lid||item.lvId||'egg',36,'normal')}</div>
         <div style="font-size:8px;font-weight:700;color:#7C3AED">${item.level||'알'}</div>
         <div style="font-size:8px;color:#9CA3AF">${item.addedAt||''}</div>
       </div>`).join('')}
@@ -5119,6 +5406,26 @@ function rHome() {
     </div>`);
   }
 
+  // ── 오늘 공부 현황 ──
+  const todayDateKey = today();
+  if(S._dailyDate !== todayDateKey) { S._dailyStudiedMin=0; S._dailyDate=todayDateKey; }
+  const _dailyStudied = S._dailyStudiedMin||0;
+  const _dailyGoal = S._dailyGoalMin||30;
+  const _dailyPct = Math.min(100, Math.round(_dailyStudied/_dailyGoal*100));
+  const _dailyRemain = Math.max(0, _dailyGoal - _dailyStudied);
+  if(_dailyGoal > 0) {
+    html += `<div onclick="showAlarmSettings()" style="background:#fff;border-radius:16px;border:1.5px solid ${_dailyPct>=100?'#86EFAC':'var(--border,#F0E6C8)'};padding:14px;cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:700">⏱ 오늘 공부시간</div>
+        <div style="font-size:12px;font-weight:800;color:${_dailyPct>=100?'#15803D':'#1E5FA5'}">${Math.floor(_dailyStudied)}분 / ${_dailyGoal}분</div>
+      </div>
+      <div style="background:#F1F5F9;border-radius:6px;height:8px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;background:${_dailyPct>=100?'linear-gradient(90deg,#34D399,#10B981)':'linear-gradient(90deg,#60A5FA,#3B82F6)'};border-radius:6px;width:${_dailyPct}%;transition:width .6s"></div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF">${_dailyPct>=100?'🎉 오늘 목표 달성! 대단해요!':'목표까지 '+Math.ceil(_dailyRemain)+'분 남았어요 💪'}</div>
+    </div>`;
+  }
+
   // ── XP 배너 ──
   if((S.xp||0)>=30) {
     parts.push(`<div id="xp-banner" onclick="S.stab='petcare';go('butterfly')" style="background:linear-gradient(135deg,#7C3AED,#5B21B6);border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
@@ -5472,7 +5779,7 @@ function showStreamMode() {
           <div style="font-size:16px;font-weight:900;color:#fff">⚡ 스트리밍</div>
           <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">자동 단어 학습</div>
         </div>
-        <button onclick="clearInterval(window._streamTimer);window._streamTimer=null;window._stPlaying=false;cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+        ${_LT.barHTML()}<button onclick="clearInterval(window._streamTimer);window._streamTimer=null;window._stPlaying=false;cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕</button>
       </div>
       <!-- 파형 -->
       <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:36px;flex-shrink:0">
@@ -5485,6 +5792,7 @@ function showStreamMode() {
           ${w.ph?`<div style="font-size:14px;color:rgba(167,139,250,.9);margin-bottom:8px">${w.ph}</div>`:''}
           <div style="font-size:22px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:10px">${w.kr}</div>
           ${w.ex?`<div style="font-size:13px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.7">"${w.ex}"</div>`:''}
+          <div style="margin-top:12px">${_markBtn(w.en)}</div>
         </div>
       </div>
       <!-- 진행 -->
@@ -5544,6 +5852,7 @@ function showStreamMode() {
     }
   };
 
+  window._curRender=window._stRender;
   window._stRender();
   window._streamTimer=setInterval(window._stNext, window._stSpeed);
 }
@@ -5564,13 +5873,15 @@ function showAudioMode() {
     document.head.appendChild(st);
   }
 
-  window._audSpeak = (text)=>{
+  window._audSpeak = (text)=>window._audSpeak2(text,'en-US');
+  window._audSpeak2 = (text,lang='en-US')=>{
     window.speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
-    u.lang='en-US'; u.rate=0.85;
+    u.lang=lang; u.rate=lang==='ko-KR'?0.9:0.85;
     window.speechSynthesis.speak(u);
-    return new Promise(res=>{ u.onend=res; u.onerror=res; setTimeout(res,3000); });
+    return new Promise(res=>{ u.onend=res; u.onerror=res; setTimeout(res,5000); });
   };
+  window._audReadMode = window._audReadMode||'en'; // 기본: 영어만
 
   window._audUpdateUI = ()=>{
     const idx=window._audIdx, words=window._audWords;
@@ -5594,7 +5905,18 @@ function showAudioMode() {
     const idx=window._audIdx, words=window._audWords;
     if(idx>=words.length){window._audPlaying=false;return;}
     window._audUpdateUI();
-    await window._audSpeak(words[idx].en);
+    const mode=window._audReadMode||'en';
+    const w=words[idx];
+    // 읽기 모드에 따라 발음
+    const toSpeak=[];
+    if(mode==='en'||mode==='en+kr'||mode==='en+ex') toSpeak.push({text:w.en,lang:'en-US'});
+    if(mode==='kr') toSpeak.push({text:w.kr,lang:'ko-KR'});
+    if(mode==='en+kr') toSpeak.push({text:w.kr,lang:'ko-KR'});
+    if(mode==='ex'||mode==='en+ex') { if(w.ex) toSpeak.push({text:w.ex,lang:'en-US'}); }
+    for(const item of toSpeak) {
+      await window._audSpeak2(item.text, item.lang);
+      await new Promise(res=>setTimeout(res,400));
+    }
     logStudy('words');addXP(3);
     window._audIdx++;
     if(window._audPlaying) window._audPlay();
@@ -5618,7 +5940,7 @@ function showAudioMode() {
         <div style="font-size:16px;font-weight:900;color:#fff">🎧 오디오 모드</div>
         <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">듣고 암기하기</div>
       </div>
-      <button onclick="window._audPlaying=false;window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;cursor:pointer;font-size:13px;font-weight:700">✕ 나가기</button>
+      ${_LT.barHTML()}<button onclick="window._audPlaying=false;window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;cursor:pointer;font-size:13px;font-weight:700">✕ 나가기</button>
     </div>
     <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;flex-shrink:0">
       ${[1,2,3,4,5,6,7].map(i=>`<div style="width:3px;background:rgba(99,179,237,.8);border-radius:4px;animation:audioWave ${0.6+i*.08}s ease-in-out infinite alternate;height:${8+Math.sin(i)*12}px"></div>`).join('')}
@@ -5640,6 +5962,13 @@ function showAudioMode() {
         <button id="audio-play-btn" onclick="window._audToggle()" style="background:linear-gradient(135deg,#4299E1,#7C3AED);border:none;border-radius:18px;padding:18px;flex:2;color:#fff;cursor:pointer;font-size:24px;font-weight:700;box-shadow:0 4px 20px rgba(66,153,225,.4)">⏸</button>
         <button onclick="window._audPlaying=false;window.speechSynthesis.cancel();window._audIdx=Math.min(window._audWords.length-1,window._audIdx+1);window._audPlaying=true;window._audPlay()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px;flex:1;color:#fff;cursor:pointer;font-size:22px">⏭</button>
       </div>
+      <!-- 읽기 옵션 -->
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <div style="font-size:10px;color:rgba(255,255,255,.4);align-self:center;white-space:nowrap">읽기:</div>
+        ${[['en','영어만'],['kr','한글만'],['ex','예문'],['en+kr','영어+한글'],['en+ex','영어+예문']].map(([v,lb])=>
+          `<button onclick="window._audReadMode='${v}'" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 2px;color:rgba(255,255,255,.6);font-size:9px;font-weight:700;cursor:pointer">${lb}</button>`
+        ).join('')}
+      </div>
       <div style="display:flex;gap:8px">
         <button onclick="window._audPlaying=false;window.speechSynthesis.cancel();window._audIdx=0;window._audPlaying=true;window._audPlay()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;color:rgba(255,255,255,.7);font-size:12px;cursor:pointer">🔄 처음부터</button>
         <button onclick="window._audPlaying=false;window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
@@ -5647,6 +5976,7 @@ function showAudioMode() {
     </div>
   </div></div>`;
 
+  window._curRender=window._audUpdateUI;
   window._audUpdateUI();
   window._audPlay();
 }
@@ -5655,6 +5985,7 @@ function showShadowMode() {
   if(!words.length){toast('단어가 없어요!');return;}
   const mr=document.getElementById('mr');if(!mr)return;
   window._sdIdx=0;window._sdWords=words;
+  window._curRender=window._sdRender;
   let rate=0.75; // 발음 속도
 
   const speak=(text)=>{
@@ -5684,7 +6015,7 @@ function showShadowMode() {
           <div style="font-size:16px;font-weight:900;color:#fff">🎤 쉐도잉</div>
           <div style="font-size:11px;color:rgba(255,255,255,.5)">${(window._sdIdx||0)+1}/${(window._sdWords||[]).length}</div>
         </div>
-        <button onclick="speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+        ${_LT.barHTML()}<button onclick="speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕</button>
       </div>
       <!-- 단어 카드 -->
       <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px">
@@ -5713,7 +6044,8 @@ function showShadowMode() {
       </div>
       <!-- 버튼 -->
       <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
-        <button onclick="window._shadowSpeak&&window._shadowSpeak()" style="background:linear-gradient(135deg,#0EA5E9,#0284C7);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">🔊 다시 듣기</button>
+        <div style="text-align:center;margin-bottom:8px">${_markBtn(w.en)}</div>
+      <button onclick="window._shadowSpeak&&window._shadowSpeak()" style="background:linear-gradient(135deg,#0EA5E9,#0284C7);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">🔊 다시 듣기</button>
         <button onclick="window._shadowNext&&window._shadowNext()" style="background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">✅ 따라했어요! 다음 →</button>
         <button onclick="speechSynthesis.cancel();cm()" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
       </div>
@@ -5805,7 +6137,7 @@ function showSleepMode() {
     }
     const w=words[idx];
     mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#050510;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
-      <button onclick="clearTimeout(window._slpTimer);document.getElementById('mr').innerHTML=''" style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:7px 16px;color:rgba(255,255,255,.4);font-size:12px;cursor:pointer">✕ 나가기</button>
+      <div style="position:absolute;top:20px;right:20px;display:flex;align-items:center;gap:8px">${_LT.barHTML()}<button onclick="clearTimeout(window._slpTimer);document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:7px 16px;color:rgba(255,255,255,.4);font-size:12px;cursor:pointer">✕</button></div>
       <div style="font-size:10px;color:rgba(255,255,255,.2);margin-bottom:28px;letter-spacing:2px;text-transform:uppercase">Sleep Learning · ${idx+1}/${words.length}</div>
       <!-- 진행바 -->
       <div style="position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,255,255,.08)">
@@ -5815,7 +6147,8 @@ function showSleepMode() {
       ${w.ph?`<div style="font-size:14px;color:rgba(150,180,255,.6);margin-bottom:10px">${w.ph}</div>`:''}
       <div style="font-size:20px;color:rgba(255,255,255,.45);margin-bottom:8px">${w.kr}</div>
       ${w.ex?`<div style="font-size:12px;color:rgba(255,255,255,.2);font-style:italic;line-height:1.7;text-align:center;max-width:280px">"${w.ex}"</div>`:''}
-      <div style="margin-top:28px;font-size:11px;color:rgba(255,255,255,.15)">5초 후 다음 단어...</div>
+      <div style="margin-top:16px">${_markBtn(w.en)}</div>
+      <div style="margin-top:10px;font-size:11px;color:rgba(255,255,255,.15)">5초 후 다음 단어...</div>
     </div></div>`;
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.8;speechSynthesis.speak(u);
@@ -5824,6 +6157,7 @@ function showSleepMode() {
     window._slpTimer=setTimeout(window._slpPlay,5000);
   };
 
+  window._curRender=window._slpPlay;
   window._slpPlay();
 }
 function showSRSMode() {
@@ -5869,7 +6203,7 @@ function showSRSMode() {
           <div style="font-size:16px;font-weight:900;color:#fff">🧠 SRS 복습</div>
           <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">망각 곡선 기반 · 헷갈리는 단어 우선</div>
         </div>
-        <button onclick="document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+        ${_LT.barHTML()}<button onclick="document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕</button>
       </div>
       <!-- 파형 -->
       <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:32px;flex-shrink:0">
@@ -5899,7 +6233,8 @@ function showSRSMode() {
       </div>
       <!-- 버튼 -->
       <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
-        <button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
+        <button onclick="${_markBtn(w.en||'')}
+        speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
         <div style="display:flex;gap:8px">
           <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',2);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(5)" style="flex:1;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:14px;padding:14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">🔄 헷갈려요</button>
           <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(10);logStudy('words')" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
@@ -5912,6 +6247,7 @@ function showSRSMode() {
   };
 
   window._srsFlipped=false;
+  window._curRender=window._srsRender;
   window._srsRender();
 }
 function srsFeedback(en, quality) {
@@ -7953,7 +8289,7 @@ function rProfile(){
     </div>
   </div>`);
 
-  parts.push('<button class="btn" onclick="showAlarmSettings()" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">🔔 알람 설정</button>');
+  parts.push('<button class="btn" onclick="showAlarmSettings()" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">⏰ 목표 & 알람</button>');
   parts.push('<button class="btn" onclick="showAchievementsModal()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">🏆 도전 과제</button>');
   parts.push('<button class="btn" onclick="showAppGuide()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📖 앱 사용법</button>');
   parts.push('<button class="btn" onclick="showGameIntro(true)" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">🎬 첫 화면 다시보기</button>');

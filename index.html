@@ -265,7 +265,7 @@ body.fs-lg{font-size:17px!important}
     </div>
     <div class="xpbar"><div class="xpfill" id="xpfill" style="width:0%"></div></div>
   </div>
-  <div class="body" id="body"></div>
+  <div class="body" id="body"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#EFF6FF,#F0FDF4)"><div style="font-size:64px;margin-bottom:16px;animation:float 2s ease-in-out infinite">🦋</div><div style="font-size:18px;font-weight:800;color:#1E5FA5;margin-bottom:8px">Butterfly Word</div><div style="font-size:13px;color:#9CA3AF">로딩 중...</div></div></div>
   <div class="nav" id="nav" style="display:none"></div>
 </div>
 <div class="tw" id="tw"></div>
@@ -3565,6 +3565,10 @@ function showLogin() {
       return;
     }
     auth.signInWithPopup(provider)
+      .then(result => {
+        // 로그인 성공 - onAuthStateChanged가 자동 처리
+        S.user = result.user;
+      })
       .catch(e => {
         if(e.code === 'auth/popup-blocked') {
           auth.signInWithRedirect(provider);
@@ -9821,51 +9825,43 @@ function reqNotif(){
 }
 
 // ── 시작 ──
+// 리다이렉트 로그인 결과 처리 (모바일)
+auth.getRedirectResult().then(result => {
+  if(result && result.user) {
+    // 리다이렉트 성공 - onAuthStateChanged가 처리함
+  }
+}).catch(e => { console.warn('redirect result:', e.message); });
+
 auth.onAuthStateChanged(user => {
   S.user = user;
   if(user) {
-    // Firebase에서 사용자 데이터 로드
+    // 로그인됨 → Firebase에서 데이터 로드 후 앱 시작
     db.collection('users').doc(user.uid).get().then(doc => {
       if(doc.exists) {
         const data = doc.data();
-        // 저장된 데이터 복원
-        if(data.xp !== undefined) S.xp = data.xp;
-        if(data.lid) S.lid = data.lid;
-        if(data.streak !== undefined) S.streak = data.streak;
-        if(data.nick) S.nick = data.nick;
-        if(data.words) S.words = data.words;
-        if(data.books) S.books = data.books;
-        if(data.currentBook) S.currentBook = data.currentBook;
-        if(data.markMap) S.markMap = data.markMap;
-        if(data._achievements) S._achievements = data._achievements;
-        if(data._acc) S._acc = data._acc;
-        if(data._equipped) S._equipped = data._equipped;
-        if(data._ownedPacks) S._ownedPacks = data._ownedPacks;
-        if(data.alStudy) S.alStudy = data.alStudy;
-        if(data.alGoal) S.alGoal = data.alGoal;
-        if(data.alStreak) S.alStreak = data.alStreak;
-        if(data._dailyGoalMin !== undefined) S._dailyGoalMin = data._dailyGoalMin;
-        if(data._dailyStudiedMin !== undefined) S._dailyStudiedMin = data._dailyStudiedMin;
-        if(data._dailyDate) S._dailyDate = data._dailyDate;
-        if(data._dailyXpGiven) S._dailyXpGiven = data._dailyXpGiven;
-        if(data.studyLog) S.studyLog = data.studyLog;
-        if(data.fontFamily) S.fontFamily = data.fontFamily;
+        const fields = ['xp','lid','streak','nick','words','books','currentBook',
+          'markMap','_achievements','_acc','_equipped','_ownedPacks',
+          'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
+          '_dailyDate','_dailyXpGiven','studyLog','fontFamily'];
+        fields.forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
+        if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
+        if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
       }
       startApp();
     }).catch(() => startApp());
   } else {
-    // 비로그인 → 로컬 스토리지에서 로드 후 시작
+    // 미로그인 → 로컬 스토리지에서 로드
     try {
       const saved = localStorage.getItem('bw-state');
       if(saved) {
         const parsed = JSON.parse(saved);
         Object.assign(S, parsed);
-        // Set 복원
         if(Array.isArray(parsed.learned)) S.learned = new Set(parsed.learned);
         if(Array.isArray(parsed.favorites)) S.favorites = new Set(parsed.favorites);
       }
     } catch(e) {}
-    startApp();
+    // 로그인 화면 표시
+    showLogin();
   }
 });
 </script>

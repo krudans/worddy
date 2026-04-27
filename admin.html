@@ -3,1759 +3,197 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WordDay 관리자</title>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
-
-// ── Google 로그인 ──
-async function doGoogleLogin(){
-  try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithPopup(provider);
-  } catch(e) { showErr(e.message); }
-}
-
-// ── 나비 관리 ──
-async function rBF() {
-  const main = document.getElementById('main-inner');
-  main.innerHTML = '<div style="text-align:center;padding:40px;color:#9CA3AF">로딩 중...</div>';
-  let bfList = [];
-  try { const snap = await db.collection('butterflies').orderBy('id').get(); bfList = snap.docs.map(d=>({id:d.id,...d.data()})); } catch(e) {}
-  main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2><div style="display:flex;gap:8px"><span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${bfList.length}종</span><button class="btn bb" onclick="showAddBF()">➕ 추가</button><button class="btn bg" onclick="downloadBFImages()">📦 ZIP</button></div></div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">${bfList.length?bfList.map(bf=>`<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px;text-align:center"><div style="font-size:10px;color:#9CA3AF">${bf.id}</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">${bf.svgCode?bf.svgCode.replace(/width="[^"]*"/,'width="48"').replace(/height="[^"]*"/,'height="48"'):'🦋'}</div><div style="font-size:12px;font-weight:700">${bf.name||'-'}</div><div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">${bf.rare||''}</div><div style="display:flex;gap:4px"><button class="btn bgr" style="flex:1;font-size:11px;padding:4px" onclick="editBF('${bf.id}')">✏️</button><button class="btn br" style="font-size:11px;padding:4px" onclick="deleteBF('${bf.id}','${bf.name||''}')">🗑</button></div></div>`).join(''):'<div class="es" style="grid-column:1/-1"><div class="ei">🦋</div><p>등록된 나비 없음</p></div>'}</div>`;
-}
-function showAddBF(bf){
-  bf=bf||{};
-  const mr=document.getElementById('mr');
-  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto"><div style="font-size:16px;font-weight:900;margin-bottom:14px">${bf.id?'수정':'추가'}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"><input id="bf-id" placeholder="ID(b031)" value="${bf.id||''}" ${bf.id?'readonly':''} style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><input id="bf-name" placeholder="한글명" value="${bf.name||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><input id="bf-en" placeholder="영문명" value="${bf.enName||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><select id="bf-rare" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB">${['⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'].map(r=>`<option value="${r}" ${bf.rare===r?'selected':''}>${r}</option>`).join('')}</select></div><textarea id="bf-desc" placeholder="설명" rows="2" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px;resize:vertical">${bf.desc||''}</textarea><div style="font-size:12px;font-weight:700;margin-bottom:4px">SVG 코드</div><textarea id="bf-svg" rows="5" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:11px;font-family:monospace;resize:vertical;margin-bottom:6px">${bf.svgCode||''}</textarea><button onclick="document.getElementById('bf-preview').innerHTML=document.getElementById('bf-svg').value" style="background:#F5F3FF;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:#7C3AED;margin-bottom:6px">👁 미리보기</button><div id="bf-preview" style="min-height:60px;display:flex;align-items:center;justify-content:center;border:1px dashed #E5E7EB;border-radius:8px;margin-bottom:12px">${bf.svgCode||''}</div><button onclick="saveBF('${bf.id||''}')" class="btn bb">💾 저장</button></div></div>`;
-}
-async function saveBF(id){const bid=document.getElementById('bf-id').value.trim();const name=document.getElementById('bf-name').value.trim();if(!bid||!name){toast('ID와 이름 필수','err');return;}const data={id:bid,name,enName:document.getElementById('bf-en').value.trim(),rare:document.getElementById('bf-rare').value,desc:document.getElementById('bf-desc').value.trim(),svgCode:document.getElementById('bf-svg').value.trim(),updatedAt:new Date().toISOString()};try{await db.collection('butterflies').doc(bid).set(data,{merge:true});toast('✅ 저장');cm();rBF();}catch(e){toast('오류: '+e.message,'err');}}
-async function editBF(id){try{const d=await db.collection('butterflies').doc(id).get();if(d.exists)showAddBF({id:d.id,...d.data()});}catch(e){toast('오류','err');}}
-async function deleteBF(id,name){if(!confirm(name+' 삭제?'))return;try{await db.collection('butterflies').doc(id).delete();toast('삭제');rBF();}catch(e){toast('오류','err');}}
-async function downloadBFImages(){toast('준비 중...');if(typeof JSZip==='undefined'){const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';document.head.appendChild(s);await new Promise(res=>s.onload=res);}const snap=await db.collection('butterflies').get();const zip=new JSZip();const canvas=document.createElement('canvas');canvas.width=200;canvas.height=200;const ctx=canvas.getContext('2d');for(const doc of snap.docs){const bf=doc.data();if(!bf.svgCode)continue;const svgStr=bf.svgCode.replace(/width="[^"]*"/,'width="200"').replace(/height="[^"]*"/,'height="200"');const img=new Image();const blob=new Blob([svgStr],{type:'image/svg+xml'});const url=URL.createObjectURL(blob);await new Promise(res=>{img.onload=()=>{ctx.clearRect(0,0,200,200);ctx.drawImage(img,0,0);res();};img.src=url;});zip.file(`${bf.id}_${(bf.name||bf.id).replace(/\s/g,'_')}.png`,canvas.toDataURL('image/png').split(',')[1],{base64:true});URL.revokeObjectURL(url);}const content=await zip.generateAsync({type:'blob'});const a=document.createElement('a');a.href=URL.createObjectURL(content);a.download='butterfly_images.zip';a.click();toast('✅ 완료');}
-
-// ── 광고 배너 ──
-async function rAD(){const main=document.getElementById('main-inner');let ad={};try{const d=await db.collection('config').doc('ad_banner').get();if(d.exists)ad=d.data();}catch(e){}main.innerHTML=`<h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📢 광고 배너</h2><div class="card"><div class="ct">배너 설정</div><div style="display:flex;flex-direction:column;gap:12px"><label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ad-on" ${ad.on?'checked':''} style="width:18px;height:18px"> ON/OFF</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">배경색</div><input type="color" id="ad-bg" value="${ad.bg||'#FFF8E1'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB"></div><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">텍스트 색</div><input type="color" id="ad-tc" value="${ad.textColor||'#374151'}" style="width:100%;height:36px;border-radius:8px;border:1.5px solid #E5E7EB"></div></div><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">광고 텍스트</div><input id="ad-text" value="${ad.text||''}" placeholder="광고 문구" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"></div><div><div style="font-size:12px;font-weight:700;margin-bottom:4px">링크 URL</div><input id="ad-link" value="${ad.link||''}" placeholder="https://..." style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"></div><button onclick="saveAdConfig()" class="btn bb">💾 저장</button></div></div>`;}
-async function saveAdConfig(){const data={on:document.getElementById('ad-on').checked,bg:document.getElementById('ad-bg').value,textColor:document.getElementById('ad-tc').value,text:document.getElementById('ad-text').value.trim(),link:document.getElementById('ad-link').value.trim()};try{await db.collection('config').doc('ad_banner').set(data);toast('✅ 저장');rAD();}catch(e){toast('오류','err');}}
-
-// ── 회화 문장 ──
-async function rCV(){const main=document.getElementById('main-inner');main.innerHTML='<div style="text-align:center;padding:40px;color:#9CA3AF">로딩...</div>';let sentences=[];try{const snap=await db.collection('conversation_sentences').orderBy('cat').get();sentences=snap.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}const cats=[...new Set(sentences.map(s=>s.cat||'기타'))];const selCat=window._cvCat||cats[0]||'';const filtered=selCat?sentences.filter(s=>s.cat===selCat):sentences;main.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="font-size:22px;font-weight:900">💬 회화 문장</h2><div style="display:flex;gap:8px"><span style="background:#FDF2F8;color:#BE185D;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${sentences.length}개</span><button class="btn bb" onclick="showAddCV()">➕ 추가</button><button class="btn bg" onclick="uploadCVCSV()">📤 CSV</button></div></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${cats.map(cat=>`<button onclick="window._cvCat='${cat}';rCV()" style="background:${selCat===cat?'#BE185D':'#F9FAFB'};color:${selCat===cat?'#fff':'#374151'};border:1.5px solid ${selCat===cat?'#BE185D':'#E5E7EB'};border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">${cat}</button>`).join('')}</div><div class="card"><div class="tw"><table><tr><th>카테고리</th><th>영어</th><th>한국어</th><th>난이도</th><th></th></tr>${filtered.map(s=>`<tr><td><span style="background:#FDF2F8;color:#BE185D;border-radius:10px;padding:2px 8px;font-size:11px">${s.cat||''}</span></td><td style="font-weight:600;max-width:180px">${s.en||''}</td><td style="color:#6B7280;max-width:140px">${s.kr||''}</td><td>${'⭐'.repeat(s.level||1)}</td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editCV('${s.id}')">✏️</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteCV('${s.id}')">🗑</button></div></td></tr>`).join('')}</table></div></div>`;}
-function showAddCV(s){s=s||{};const cats=['인사/소개','쇼핑','음식/식당','교통','호텔/숙소','병원/긴급','비즈니스','일상대화'];const mr=document.getElementById('mr');mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:16px;font-weight:900;margin-bottom:14px">${s.id?'수정':'추가'}</div><select id="cv-cat" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px">${cats.map(c=>`<option value="${c}" ${s.cat===c?'selected':''}>${c}</option>`).join('')}</select><input id="cv-en" placeholder="영어 문장" value="${s.en||''}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px"><input id="cv-kr" placeholder="한국어 뜻" value="${s.kr||''}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px"><select id="cv-lv" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:12px">${[1,2,3].map(l=>`<option value="${l}" ${s.level===l?'selected':''}>${'⭐'.repeat(l)} 난이도${l}</option>`).join('')}</select><button onclick="saveCV('${s.id||''}')" class="btn bb">💾 저장</button></div></div>`;}
-async function saveCV(id){const en=document.getElementById('cv-en').value.trim();const kr=document.getElementById('cv-kr').value.trim();if(!en||!kr){toast('영어/한국어 필수','err');return;}const data={cat:document.getElementById('cv-cat').value,en,kr,level:parseInt(document.getElementById('cv-lv').value),order:Date.now()};try{if(id)await db.collection('conversation_sentences').doc(id).update(data);else await db.collection('conversation_sentences').add(data);toast('✅ 저장');cm();rCV();}catch(e){toast('오류','err');}}
-async function editCV(id){try{const d=await db.collection('conversation_sentences').doc(id).get();if(d.exists)showAddCV({id:d.id,...d.data()});}catch(e){}}
-async function deleteCV(id){if(!confirm('삭제?'))return;try{await db.collection('conversation_sentences').doc(id).delete();toast('삭제');rCV();}catch(e){toast('오류','err');}}
-function uploadCVCSV(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=async e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async ev=>{const lines=ev.target.result.split('\n').filter(l=>l.trim());const headers=lines[0].split(',').map(h=>h.trim().toLowerCase());const rows=lines.slice(1).map(line=>{const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));const obj={};headers.forEach((h,i)=>{if(vals[i])obj[h]=vals[i];});return obj;}).filter(r=>r.en&&r.kr);const batch=db.batch();rows.forEach(r=>{const ref=db.collection('conversation_sentences').doc();batch.set(ref,{...r,level:parseInt(r.level||1),order:Date.now()});});await batch.commit();toast('✅ '+rows.length+'개 업로드');rCV();};reader.readAsText(file,'UTF-8');};inp.click();}
-
-</script>
+<title>Butterfly Word - 관리자 센터</title>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
-
-:root {
-  --primary: #1E40AF;
-  --primary-light: #3B82F6;
-  --primary-dark: #1E3A8A;
-  --accent: #06B6D4;
-  --success: #10B981;
-  --warning: #F59E0B;
-  --danger: #EF4444;
-  --purple: #7C3AED;
-  --bg: #F0F4F8;
-  --bg-card: #FFFFFF;
-  --bg-sidebar: #0F172A;
-  --bg-header: #1E293B;
-  --text-1: #0F172A;
-  --text-2: #475569;
-  --text-3: #94A3B8;
-  --border: #E2E8F0;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
-  --shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -2px rgba(0,0,0,.05);
-  --radius: 12px;
-  --radius-lg: 16px;
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; font-size: 14px; line-height: 1.5; }
-
-/* ── 로그인 ── */
-#login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;
-  background: linear-gradient(135deg, #0F172A 0%, #1E3A5F 50%, #0E7490 100%); }
-.login-box { background: rgba(255,255,255,.97); border-radius: 24px; padding: 40px 36px; width: 100%; max-width: 400px;
-  box-shadow: 0 25px 50px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05); }
-.login-logo { text-align: center; margin-bottom: 28px; }
-.login-logo .ic { font-size: 52px; margin-bottom: 8px; display: block; }
-.login-logo h1 { font-size: 22px; font-weight: 800; color: var(--primary-dark); letter-spacing: -0.5px; }
-.login-logo p { font-size: 12px; color: var(--text-3); margin-top: 4px; }
-.login-tab { display: flex; background: #F1F5F9; border-radius: 10px; padding: 4px; margin-bottom: 22px; gap: 4px; }
-.login-tab button { flex:1; padding:8px; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; background:transparent; color:#64748B; font-family:inherit; }
-.login-tab button.on { background:#fff; color: var(--primary); box-shadow: var(--shadow-sm); }
-.lf { display: flex; flex-direction: column; gap: 12px; }
-.lf-group label { font-size: 11px; font-weight: 700; color: var(--text-2); display: block; margin-bottom: 5px; letter-spacing: .3px; text-transform: uppercase; }
-.lf-group input { border: 1.5px solid var(--border); border-radius: 10px; padding: 11px 14px; font-size: 14px; width: 100%; background: #F8FAFC; transition: all .15s; font-family: inherit; color: var(--text-1); }
-.lf-group input:focus { outline: none; border-color: var(--primary-light); background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
-.btn-login { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-weight: 800; cursor: pointer; width: 100%; font-family: inherit; transition: all .2s; letter-spacing: -0.2px; }
-.btn-login:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(30,64,175,.35); }
-.btn-login:active { transform: translateY(0); }
-.login-err { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--danger); display: none; }
-.login-err.show { display: block; }
-
-/* ── 앱 레이아웃 ── */
-#app-screen { display: none; min-height: 100vh; }
-.hd { position: fixed; top: 0; left: 220px; right: 0; height: 56px; background: var(--bg-header); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 100; border-bottom: 1px solid rgba(255,255,255,.06); }
-.hd h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
-.hd-right { display: flex; align-items: center; gap: 10px; }
-.hd-badge { background: rgba(255,255,255,.1); border-radius: 20px; padding: 4px 10px; font-size: 11px; color: rgba(255,255,255,.7); font-weight: 600; }
-
-/* ── 사이드바 ── */
-.sidebar { position: fixed; top: 0; left: 0; width: 220px; height: 100vh; background: var(--bg-sidebar); display: flex; flex-direction: column; z-index: 200; overflow-y: auto; }
-.sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,.07); flex-shrink: 0; }
-.sidebar-logo .logo-icon { font-size: 28px; margin-bottom: 4px; }
-.sidebar-logo .logo-title { font-size: 14px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
-.sidebar-logo .logo-sub { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
-.sidebar nav { flex: 1; padding: 10px 8px; overflow-y: auto; }
-.ss { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.3); letter-spacing: 1.2px; text-transform: uppercase; padding: 14px 10px 6px; }
-.ni { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.55); transition: all .15s; margin-bottom: 1px; }
-.ni:hover { background: rgba(255,255,255,.07); color: rgba(255,255,255,.9); }
-.ni.on { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; box-shadow: 0 3px 10px rgba(30,64,175,.4); }
-.ni .ic { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
-.sidebar-bottom { padding: 10px 8px 16px; border-top: 1px solid rgba(255,255,255,.07); flex-shrink: 0; }
-#au-info { padding: 10px 12px; margin-bottom: 6px; }
-#au-info .au-name { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.8); }
-#au-info .au-role { font-size: 10px; color: rgba(255,255,255,.35); margin-top: 2px; }
-.ni-logout { color: rgba(239,68,68,.6) !important; }
-.ni-logout:hover { background: rgba(239,68,68,.1) !important; color: rgba(239,68,68,.9) !important; }
-
-/* ── 메인 콘텐츠 ── */
-#main { margin-left: 220px; padding-top: 56px; min-height: 100vh; }
-.main-inner { padding: 28px; max-width: 1100px; }
-
-/* ── 카드 ── */
-.card { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 16px; overflow: hidden; }
-.ct { font-size: 13px; font-weight: 700; color: var(--text-2); padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background: #FAFBFC; }
-.card > *:not(.ct) { padding: 16px 20px; }
-.card > .ct + * { padding-top: 16px; }
-
-/* ── 페이지 헤더 ── */
-.page-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.page-hd h2 { font-size: 20px; font-weight: 800; color: var(--text-1); letter-spacing: -0.5px; }
-.page-hd .page-hd-actions { display: flex; gap: 8px; align-items: center; }
-
-/* ── 버튼 ── */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 14px; border-radius: 9px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s; font-family: inherit; white-space: nowrap; }
-.btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
-.bb { background: var(--primary); color: #fff; }
-.bb:hover { background: var(--primary-light); }
-.bg { background: var(--success); color: #fff; }
-.bgr { background: #F1F5F9; color: var(--text-2); border: 1px solid var(--border); }
-.br { background: #FEF2F2; color: var(--danger); border: 1px solid #FECACA; }
-.bp { background: #F5F3FF; color: var(--purple); border: 1px solid #E9D5FF; }
-
-/* ── 통계 그리드 ── */
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.stat-card { background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px; box-shadow: var(--shadow-sm); }
-.stat-card .s-icon { font-size: 24px; margin-bottom: 8px; }
-.stat-card .s-val { font-size: 24px; font-weight: 800; letter-spacing: -1px; }
-.stat-card .s-lb { font-size: 11px; color: var(--text-3); font-weight: 600; margin-top: 3px; text-transform: uppercase; letter-spacing: .3px; }
-
-/* ── 테이블 ── */
-.tw { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--text-3); background: #F8FAFC; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
-td { padding: 12px 14px; border-bottom: 1px solid #F1F5F9; color: var(--text-1); vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: #F8FAFC; }
-
-/* ── 뱃지 ── */
-.badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-.badge-blue { background: #EFF6FF; color: #2563EB; }
-.badge-green { background: #ECFDF5; color: #059669; }
-.badge-red { background: #FEF2F2; color: #DC2626; }
-.badge-yellow { background: #FFFBEB; color: #D97706; }
-.badge-purple { background: #F5F3FF; color: #7C3AED; }
-.badge-gray { background: #F1F5F9; color: #64748B; }
-
-/* ── 빈 상태 ── */
-.es { text-align: center; padding: 48px 20px; color: var(--text-3); }
-.ei { font-size: 48px; margin-bottom: 12px; opacity: .5; }
-.es p { font-size: 14px; font-weight: 600; color: var(--text-2); }
-.es small { font-size: 12px; color: var(--text-3); }
-
-/* ── 입력 ── */
-.input { border: 1.5px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 13px; font-family: inherit; background: #F8FAFC; width: 100%; transition: all .15s; color: var(--text-1); }
-.input:focus { outline: none; border-color: var(--primary-light); background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
-select.input { cursor: pointer; }
-textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
-
-/* ── 바 차트 ── */
-.bi { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.bl { font-size: 12px; min-width: 80px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
-.bt { flex: 1; height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; }
-.bf { height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-light)); border-radius: 4px; transition: width .6s ease; }
-.bv { font-size: 11px; color: var(--text-3); min-width: 60px; text-align: right; font-weight: 600; }
-
-/* ── 모달 ── */
-#mr { position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
-#mr > * { pointer-events: all; }
-.mbg { position: fixed; inset: 0; background: rgba(15,23,42,.6); display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
-.modal { background: #fff; border-radius: 20px; padding: 24px; width: 100%; max-width: 480px; box-shadow: 0 25px 50px rgba(0,0,0,.25); }
-.modal h3 { font-size: 16px; font-weight: 800; margin-bottom: 16px; color: var(--text-1); }
-
-/* ── 토스트 ── */
-#tw { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.toast { background: #1E293B; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); animation: toastIn .3s ease; white-space: nowrap; }
-.toast.tok { background: var(--success); }
-.toast.terr { background: var(--danger); }
-@keyframes toastIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
-
-/* ── 구분선 ── */
-.divider { height: 1px; background: var(--border); margin: 8px 0; }
-
-/* ── 반응형 ── */
-@media(max-width:768px) {
-  .hd { left: 0; }
-  .sidebar { transform: translateX(-100%); transition: transform .25s; }
-  .sidebar.open { transform: translateX(0); }
-  #main { margin-left: 0; }
-  .stat-grid { grid-template-columns: repeat(2,1fr); }
-}
-
-/* ── 스크롤바 ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+  :root { --primary: #1E5FA5; --bg: #F3F4F6; --card: #FFFFFF; --text: #1F2937; }
+  body { font-family: 'Pretendard', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; line-height: 1.8; }
+  .nav { background: var(--primary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+  .container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
+  .tabs { display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px; }
+  .tab-btn { padding: 10px 20px; background: #E5E7EB; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; white-space: nowrap; transition: 0.2s; }
+  .tab-btn.active { background: var(--primary); color: white; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+  input, textarea, select { width: 100%; padding: 12px; border: 1px solid #D1D5DB; border-radius: 8px; margin-top: 8px; box-sizing: border-box; }
+  button { cursor: pointer; border: none; border-radius: 8px; transition: 0.3s; }
+  .btn-main { background: var(--primary); color: white; padding: 12px 24px; font-weight: 700; }
+  .btn-del { background: #EF4444; color: white; padding: 6px 12px; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .bf-item { border: 1px solid #E5E7EB; padding: 15px; border-radius: 10px; position: relative; }
+  .svg-preview { width: 60px; height: 60px; background: #F9FAFB; border-radius: 50%; padding: 5px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
 
-<!-- ── 로그인 화면 ── -->
-<div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="ic">⚡</div>
-      <h1>WordDay 관리자</h1>
-      <p>관리자 계정으로 로그인하세요</p>
-    </div>
-    <div class="login-tab">
-      <button class="on" id="lt-login" onclick="switchLoginTab('login')">🔐 로그인</button>
-      <button id="lt-reg" onclick="switchLoginTab('reg')">📝 관리자 등록</button>
-    </div>
-
-    <!-- 로그인 폼 -->
-    <div id="lf-login" class="lf">
-      <div class="lf-group">
-        <label>관리자 ID (이메일)</label>
-        <input type="email" id="li-id" placeholder="admin@wordday.com" autocomplete="username">
-      </div>
-      <div class="lf-group">
-        <label>비밀번호</label>
-        <input type="password" id="li-pw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
-        <button class="pw-toggle" onclick="togglePw('li-pw',this)" type="button">👁️</button>
-      </div>
-      <div class="login-err" id="li-err"></div>
-      <button class="login-btn" onclick="doLogin()" id="li-btn">로그인</button>
-      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-top:8px">비밀번호를 잊었다면 슈퍼 관리자에게 문의하세요</div>
-    </div>
-
-    <!-- 관리자 등록 폼 -->
-    <div id="lf-reg" class="lf" style="display:none">
-      <div style="background:#FFF8E1;border-radius:10px;padding:10px 14px;font-size:12px;color:#E65100;font-weight:600;margin-bottom:4px">
-        ⚠️ 등록 후 슈퍼 관리자 승인이 필요합니다
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="lf-group">
-          <label>이름 *</label>
-          <input type="text" id="rg-name" placeholder="홍길동">
-        </div>
-        <div class="lf-group">
-          <label>전화번호 *</label>
-          <input type="tel" id="rg-phone" placeholder="010-0000-0000">
-        </div>
-      </div>
-      <div class="lf-group">
-        <label>주소</label>
-        <input type="text" id="rg-addr" placeholder="서울시 강남구...">
-      </div>
-      <div class="lf-group">
-        <label>관리자 ID (이메일) *</label>
-        <input type="email" id="rg-id" placeholder="admin@wordday.com" autocomplete="username">
-      </div>
-      <div class="lf-group">
-        <label>비밀번호 * (8자 이상)</label>
-        <input type="password" id="rg-pw" placeholder="••••••••" autocomplete="new-password">
-        <button class="pw-toggle" onclick="togglePw('rg-pw',this)" type="button">👁️</button>
-      </div>
-      <div class="lf-group">
-        <label>비밀번호 확인 *</label>
-        <input type="password" id="rg-pw2" placeholder="••••••••" autocomplete="new-password">
-        <button class="pw-toggle" onclick="togglePw('rg-pw2',this)" type="button">👁️</button>
-      </div>
-      <div class="lf-group">
-        <label>소속/직책</label>
-        <input type="text" id="rg-role" placeholder="예: 콘텐츠팀 / 단어장 관리자">
-      </div>
-      <div class="lf-group">
-        <label>등록 코드 (슈퍼 관리자에게 받기)</label>
-        <input type="text" id="rg-code" placeholder="WORDDAY-ADMIN-XXXX">
-      </div>
-      <div class="login-err" id="rg-err"></div>
-      <button class="login-btn" onclick="doRegister()" id="rg-btn" style="background:linear-gradient(135deg,#7C3AED,#A855F7)">관리자 등록 신청</button>
-    </div>
-  </div>
+<div class="nav">
+  <div style="font-weight:900; font-size:1.2rem;">🦋 Butterfly Admin</div>
+  <div id="user-info" style="font-size:14px;"></div>
 </div>
 
-<!-- ── 앱 화면 ── -->
-<div id="app-screen">
-  <!-- 사이드바 -->
-  <aside class="sidebar" id="sb">
-    <div class="sidebar-logo">
-      <div class="logo-icon">🦋</div>
-      <div class="logo-title">Butterfly Word</div>
-      <div class="logo-sub">관리자 콘솔</div>
-    </div>
-    <nav>
-      <div class="ss">메인</div>
-      <div class="ni on" onclick="T('db')" id="ni-db"><span class="ic">📊</span>대시보드</div>
-      <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>이용 분석</div>
-      <div class="ss">콘텐츠</div>
-      <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어 관리</div>
-      <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
-      <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">📝</span>시스템 단어</div>
-      <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
-      <div class="ss">나비 & 게임</div>
-      <div class="ni" onclick="T('bf')" id="ni-bf"><span class="ic">🦋</span>나비 관리</div>
-      <div class="ni" onclick="T('cv')" id="ni-cv"><span class="ic">💬</span>회화 문장</div>
-      <div class="ss">사용자</div>
-      <div class="ni" onclick="T('us')" id="ni-us"><span class="ic">👥</span>회원 관리</div>
-      <div class="ni" onclick="T('nt')" id="ni-nt"><span class="ic">📢</span>공지사항</div>
-      <div class="ni" onclick="T('po')" id="ni-po"><span class="ic">👋</span>콕 찌르기</div>
-      <div class="ss">설정</div>
-      <div class="ni" onclick="T('ad')" id="ni-ad"><span class="ic">🎯</span>광고 배너</div>
-      <div class="ni" onclick="T('adm')" id="ni-adm"><span class="ic">🔐</span>관리자 관리</div>
-    </nav>
-    <div class="sidebar-bottom">
-      <div id="au-info">
-        <div class="au-name" id="au">관리자</div>
-        <div class="au-role" id="au-role"></div>
-      </div>
-      <div class="ni ni-logout" onclick="doLogout()"><span class="ic">🚪</span>로그아웃</div>
-    </div>
-  </aside>
+<div class="container" id="login-section" style="display:none; text-align:center; margin-top:100px;">
+  <h1>관리자 전용</h1>
+  <p>이 페이지에 접근하려면 관리자 계정으로 로그인해야 한다.</p>
+  <button class="btn-main" onclick="doGoogleLogin()">Google 계정으로 로그인</button>
+</div>
 
-  <!-- 헤더 -->
-  <header class="hd">
-    <div style="display:flex;align-items:center;gap:10px">
-      <button onclick="document.getElementById('sb').classList.toggle('open')" style="display:none;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:7px 10px;cursor:pointer;color:#fff;font-size:16px" id="menu-btn">☰</button>
-      <h1 id="page-title">대시보드</h1>
-    </div>
-    <div class="hd-right">
-      <span id="at" class="hd-badge" style="font-family:monospace"></span>
-    </div>
-  </header>
-
-  <!-- 메인 -->
-  <div id="main">
-    <div class="main-inner" id="main-inner"></div>
+<div class="container" id="admin-section" style="display:none;">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('bf', this)">🦋 나비 관리</button>
+    <button class="tab-btn" onclick="switchTab('word', this)">📚 단어 업로드</button>
+    <button class="tab-btn" onclick="switchTab('settings', this)">⚙️ 앱 설정</button>
   </div>
+
+  <div id="tab-content">
+    </div>
 </div>
 
 <script>
-firebase.initializeApp({apiKey:"AIzaSyAjs9nugwoI-S9CiPrtn0Y5UXYOKJ1lJic",authDomain:"wordday-75ae0.firebaseapp.com",projectId:"wordday-75ae0",storageBucket:"wordday-75ae0.firebasestorage.app",messagingSenderId:"959781543804",appId:"1:959781543804:web:63630bb49b91c9b3908ef9"});
-const auth=firebase.auth(), db=firebase.firestore();
+// ── Firebase 설정 (본인의 키로 교체 필요) ──
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
 
-// 슈퍼 관리자 이메일 (Firebase 콘솔에서 직접 생성한 계정)
-const SUPER_ADMINS=['krudans@gmail.com'];
-// 등록 코드 (실제 운영 시 변경 권장)
-const REG_CODE='WORDDAY-ADMIN-2025';
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
 
-const LIDS=['egg','baby','crown','coco','shine','small','big','god'];
-const LI={egg:{n:'알',e:'🥚',c:'#F9A825'},baby:{n:'아기 벌거지',e:'🐛',c:'#43A047'},crown:{n:'왕관 벌거지',e:'🍀',c:'#2E7D32'},coco:{n:'번데기',e:'🫘',c:'#5D4037'},shine:{n:'빛나는 번데기',e:'✨',c:'#E65100'},small:{n:'작은 나비',e:'🦋',c:'#880E4F'},big:{n:'큰 나비',e:'🦋',c:'#6A1B9A'},god:{n:'황금 나비',e:'⚡',c:'#E65100'}};
-let selLv='egg', currentAdmin=null;
+// ── 상태 관리 ──
+let currentUser = null;
+let currentTab = 'bf';
 
-// ── 시계 ──
-setInterval(()=>{const e=document.getElementById('at');if(e)e.textContent=new Date().toLocaleTimeString('ko-KR',{hour12:false});},1000);
-
-// ── 인증 상태 감지 ──
-auth.onAuthStateChanged(async u=>{
-  if(!u){
-    showLoginScreen();
-    return;
-  }
-  // Firestore에서 관리자 정보 확인
-  try{
-    const doc=await db.collection('admins').doc(u.uid).get();
-    if(!doc.exists){
-      // 슈퍼 관리자이면 자동 허용
-      if(SUPER_ADMINS.includes(u.email)){
-        currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
-      } else {
-        showErr('승인 대기 중인 계정입니다. 슈퍼 관리자에게 문의하세요.');
-        auth.signOut();
-        return;
-      }
+// ── 인증 로직 ──
+auth.onAuthStateChanged(async user => {
+  if (user) {
+    const adminDoc = await db.collection('admins').doc(user.uid).get();
+    if (adminDoc.exists) {
+      currentUser = user;
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('admin-section').style.display = 'block';
+      document.getElementById('user-info').innerText = `${user.displayName} 관리자님`;
+      renderCurrentTab();
     } else {
-      const data=doc.data();
-      if(!data.approved && !SUPER_ADMINS.includes(u.email)){
-        showErr('아직 승인되지 않은 계정입니다. 슈퍼 관리자 승인 후 이용 가능합니다.');
-        auth.signOut();
-        return;
-      }
-      currentAdmin={uid:u.uid,email:u.email,...data};
-    }
-    showAppScreen();
-  }catch(e){
-    if(SUPER_ADMINS.includes(u.email)){
-      currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
-      showAppScreen();
-    } else {
-      showErr('오류: '+e.message);
+      alert("관리자 권한이 없는 계정이다.");
       auth.signOut();
     }
+  } else {
+    document.getElementById('login-section').style.display = 'block';
+    document.getElementById('admin-section').style.display = 'none';
   }
 });
 
-function showLoginScreen(){
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('app-screen').style.display='none';
-}
-function showAppScreen(){
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app-screen').style.display='block';
-  document.getElementById('au').textContent=currentAdmin?.name||currentAdmin?.email?.split('@')[0]||'관리자';
-  document.getElementById('au-role').textContent=currentAdmin?.role||'관리자';
-  T('db');
-}
-function showErr(msg){
-  const el=document.getElementById('li-err');
-  if(el){el.textContent=msg;el.classList.add('show');}
+async function doGoogleLogin() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try { await auth.signInWithPopup(provider); } catch(e) { alert(e.message); }
 }
 
-// ── 탭 전환 ──
-function switchLoginTab(tab){
-  document.getElementById('lt-login').classList.toggle('on',tab==='login');
-  document.getElementById('lt-reg').classList.toggle('on',tab==='reg');
-  document.getElementById('lf-login').style.display=tab==='login'?'flex':'none';
-  document.getElementById('lf-reg').style.display=tab==='reg'?'flex':'none';
-  document.getElementById('li-err').classList.remove('show');
-  document.getElementById('rg-err').classList.remove('show');
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderCurrentTab();
 }
 
-function togglePw(id,btn){
-  const inp=document.getElementById(id);
-  if(inp.type==='password'){inp.type='text';btn.textContent='🙈';}
-  else{inp.type='password';btn.textContent='👁️';}
-}
+async function renderCurrentTab() {
+  const content = document.getElementById('tab-content');
+  content.innerHTML = '<p>불러오는 중...</p>';
 
-// ── 로그인 ──
-async function doLogin(){
-  const id=document.getElementById('li-id').value.trim();
-  const pw=document.getElementById('li-pw').value;
-  const err=document.getElementById('li-err');
-  const btn=document.getElementById('li-btn');
-  err.classList.remove('show');
-  if(!id||!pw){err.textContent='이메일과 비밀번호를 입력하세요';err.classList.add('show');return;}
-  btn.textContent='로그인 중...';btn.disabled=true;
-  try{
-    await auth.signInWithEmailAndPassword(id,pw);
-    // onAuthStateChanged가 처리
-  }catch(e){
-    const msg={
-      'auth/user-not-found':'등록되지 않은 이메일입니다',
-      'auth/wrong-password':'비밀번호가 틀렸습니다',
-      'auth/invalid-email':'이메일 형식이 올바르지 않습니다',
-      'auth/too-many-requests':'로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요',
-      'auth/invalid-credential':'이메일 또는 비밀번호가 올바르지 않습니다',
-    }[e.code]||'로그인 실패: '+e.message;
-    err.textContent=msg;err.classList.add('show');
-  }
-  btn.textContent='로그인';btn.disabled=false;
-}
-
-// ── 관리자 등록 ──
-async function doRegister(){
-  const name=document.getElementById('rg-name').value.trim();
-  const phone=document.getElementById('rg-phone').value.trim();
-  const addr=document.getElementById('rg-addr').value.trim();
-  const id=document.getElementById('rg-id').value.trim();
-  const pw=document.getElementById('rg-pw').value;
-  const pw2=document.getElementById('rg-pw2').value;
-  const role=document.getElementById('rg-role').value.trim();
-  const code=document.getElementById('rg-code').value.trim().toUpperCase();
-  const err=document.getElementById('rg-err');
-  const btn=document.getElementById('rg-btn');
-  err.classList.remove('show');
-
-  if(!name||!phone||!id||!pw){err.textContent='필수 항목을 모두 입력하세요';err.classList.add('show');return;}
-  if(pw.length<8){err.textContent='비밀번호는 8자 이상이어야 합니다';err.classList.add('show');return;}
-  if(pw!==pw2){err.textContent='비밀번호가 일치하지 않습니다';err.classList.add('show');return;}
-  if(code && code!==REG_CODE){err.textContent='등록 코드가 올바르지 않습니다';err.classList.add('show');return;}
-
-  btn.textContent='등록 중...';btn.disabled=true;
-  try{
-    // Firebase Auth에 계정 생성
-    const cred=await auth.createUserWithEmailAndPassword(id,pw);
-    // Firestore에 관리자 정보 저장
-    await db.collection('admins').doc(cred.user.uid).set({
-      name,phone,addr:addr||'',email:id,role:role||'관리자',
-      approved:code===REG_CODE, // 코드 있으면 자동 승인
-      isSuperAdmin:false,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-      registeredAt:new Date().toISOString(),
-    });
-    if(code!==REG_CODE){
-      toast('✅ 등록 신청 완료! 슈퍼 관리자 승인 후 로그인 가능합니다','ok');
-      auth.signOut();
-      switchLoginTab('login');
-    }
-    // 코드 있으면 onAuthStateChanged가 자동으로 앱 화면으로 이동
-  }catch(e){
-    const msg={
-      'auth/email-already-in-use':'이미 등록된 이메일입니다',
-      'auth/invalid-email':'이메일 형식이 올바르지 않습니다',
-      'auth/weak-password':'비밀번호가 너무 약합니다 (8자 이상, 영문+숫자)',
-    }[e.code]||'등록 실패: '+e.message;
-    err.textContent=msg;err.classList.add('show');
-  }
-  btn.textContent='관리자 등록 신청';btn.disabled=false;
-}
-
-function doLogout(){
-  if(confirm('로그아웃 하시겠습니까?')){
-    auth.signOut().then(()=>{currentAdmin=null;});
-  }
-}
-
-// ── 유틸 ──
-function toast(m,t=''){const w=document.getElementById('tw'),el=document.createElement('div');el.className='toast '+(t==='ok'?'tok':t==='err'?'terr':'');el.textContent=m;w.appendChild(el);setTimeout(()=>el.remove(),2800);}
-const cm=()=>document.getElementById('ma').innerHTML='';
-const today=()=>new Date().toISOString().slice(0,10);
-const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?.isSuperAdmin;
-
-function T(tab){
-  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
-  const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'시스템 단어',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장'};
-  const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV})[tab]?.();
-}
-
-// ══════════════════════════════════
-// 📊 대시보드
-// ══════════════════════════════════
-async function rDB(){
-  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
-  let uc=0,tu=0,wu=0,pc=0,ac=0;
-  const td=today(),wa=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
-  try{const s=await db.collection('users').get();uc=s.size;s.forEach(d=>{const x=d.data();if(x.updatedAt?.toDate?.()?.toISOString().slice(0,10)===td)tu++;if(x.updatedAt?.toDate?.()?.toISOString().slice(0,10)>=wa)wu++;});}catch(e){}
-  try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
-  try{const as=await db.collection('admins').get();ac=as.size;}catch(e){}
-  const packs=typeof WORD_PACKS!=='undefined'?WORD_PACKS:[];
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">📊 대시보드</h2>
-      <div style="font-size:13px;color:#9CA3AF">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</div>
-    </div>
-    <div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);border-radius:16px;padding:18px;color:#fff;margin-bottom:20px;display:flex;align-items:center;gap:14px">
-      <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border:2px solid rgba(255,255,255,.4);flex-shrink:0">${(currentAdmin?.name||'A')[0].toUpperCase()}</div>
-      <div><div style="font-size:16px;font-weight:800">${currentAdmin?.name||'관리자'}</div><div style="font-size:12px;opacity:.8">${currentAdmin?.role||'관리자'} · ${currentAdmin?.email||''}</div></div>
-      <div style="margin-left:auto;font-size:12px;opacity:.7">${isSuperAdmin()?'👑 슈퍼 관리자':''}</div>
-    </div>
-    <div class="sg">
-      <div class="st"><div class="v" style="color:#1E5FA5">${uc}</div><div class="l">총 회원수</div></div>
-      <div class="st"><div class="v" style="color:#16A34A">${tu}</div><div class="l">오늘 활동</div></div>
-      <div class="st"><div class="v" style="color:#D97706">${wu}</div><div class="l">이번 주 활성</div></div>
-      <div class="st"><div class="v" style="color:#EC4899">${pc}</div><div class="l">미확인 콕</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  if (currentTab === 'bf') {
+    const snap = await db.collection('butterflies').orderBy('id').get();
+    let html = `
       <div class="card">
-        <div class="ct">📚 레벨별 단어수</div>
-        ${LIDS.map(l=>`<div class="bi"><div class="bl">${LI[l].e} ${LI[l].n.split(' ')[0]}</div><div class="bt"><div class="bf" id="bf-${l}" style="width:0%;background:#1E5FA5"></div></div><div class="bv" id="bv-${l}">-</div></div>`).join('')}
+        <h3>새 나비 추가</h3>
+        <input id="new-bf-name" placeholder="나비 이름 (예: 호랑나비)">
+        <input id="new-bf-rare" placeholder="희귀도 (Common, Rare, Epic 등)">
+        <textarea id="new-bf-svg" placeholder="SVG 코드 입력"></textarea>
+        <button class="btn-main" onclick="saveButterfly()" style="margin-top:10px">저장하기</button>
       </div>
+      <div class="grid">`;
+    snap.forEach(doc => {
+      const data = doc.data();
+      html += `
+        <div class="card bf-item">
+          <div class="svg-preview">${data.svg || ''}</div>
+          <div style="font-weight:700">${data.name}</div>
+          <div style="font-size:12px; color:#6B7280">${data.rarity}</div>
+          <button class="btn-del" onclick="deleteDoc('butterflies','${doc.id}')" style="margin-top:10px">삭제</button>
+        </div>`;
+    });
+    html += `</div>`;
+    content.innerHTML = html;
+  } else if (currentTab === 'word') {
+    content.innerHTML = `
       <div class="card">
-        <div class="ct">⚡ 빠른 작업</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn bb" onclick="T('wd')" style="justify-content:flex-start">📚 단어 추가/관리</button>
-          <button class="btn bg" onclick="T('us')" style="justify-content:flex-start">👥 회원 관리</button>
-          <button class="btn bp" onclick="T('nt')" style="justify-content:flex-start">📢 공지사항 작성</button>
-          <button class="btn bo" onclick="T('an')" style="justify-content:flex-start">📈 이용 분석</button>
-          ${isSuperAdmin()?`<button class="btn" style="background:#1E3A5F;color:#fff;justify-content:flex-start" onclick="T('adm')">🔐 관리자 관리 (${ac}명)</button>`:''}
-          <hr style="border:none;border-top:1px solid #E5E7EB">
-          <button class="btn bgr" onclick="window.open('index.html','_blank')" style="justify-content:flex-start">🔗 앱 열기</button>
-        </div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="ct">🛒 마켓 팩 현황</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-        ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(c=>{const cnt=packs.filter(p=>p.cat===c).length;return `<div style="background:#F9FAFB;border-radius:10px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:900;color:#1E5FA5">${cnt}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${c}</div></div>`;}).join('')}
-      </div>
-    </div>`;
-  let mx=1;const wcs={};
-  await Promise.all(LIDS.map(async l=>{try{const d=await db.collection('words').doc(l).get();wcs[l]=d.exists?(d.data().list||[]).length:0;if(wcs[l]>mx)mx=wcs[l];}catch(e){wcs[l]=0;}}));
-  LIDS.forEach(l=>{const be=document.getElementById('bf-'+l),bv=document.getElementById('bv-'+l);if(be){be.style.width=Math.round(wcs[l]/mx*100)+'%';be.style.background=wcs[l]>0?'#1E5FA5':'#E5E7EB';}if(bv)bv.textContent=wcs[l]+'개';});
-}
-
-// ══════════════════════════════════
-// 🔐 관리자 관리 (슈퍼 관리자 전용)
-// ══════════════════════════════════
-async function rADM(){
-  if(!isSuperAdmin()){document.getElementById('main-inner').innerHTML='<div class="es"><div class="ei">🚫</div><p>슈퍼 관리자만 접근 가능합니다</p></div>';return;}
-  let admins=[];
-  try{const s=await db.collection('admins').get();admins=s.docs.map(d=>({uid:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">🔐 관리자 관리</h2>
-      <div style="display:flex;gap:8px">
-        <span class="badge bp2">슈퍼 관리자 전용</span>
-        <button class="btn bb" onclick="showAddAdmin()">➕ 관리자 직접 추가</button>
-      </div>
-    </div>
-    <div class="sg" style="grid-template-columns:repeat(3,1fr)">
-      <div class="st"><div class="v" style="color:#1E5FA5">${admins.length}</div><div class="l">전체 관리자</div></div>
-      <div class="st"><div class="v" style="color:#16A34A">${admins.filter(a=>a.approved).length}</div><div class="l">승인됨</div></div>
-      <div class="st"><div class="v" style="color:#D97706">${admins.filter(a=>!a.approved).length}</div><div class="l">승인 대기</div></div>
-    </div>
-    ${admins.filter(a=>!a.approved).length>0?`<div style="background:#FFF8E1;border-radius:14px;padding:14px;border:1.5px solid #FFE082;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:800;color:#E65100;margin-bottom:8px">⏳ 승인 대기 중 (${admins.filter(a=>!a.approved).length}명)</div>
-      ${admins.filter(a=>!a.approved).map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #FFE082">
-        <div style="flex:1"><div style="font-size:13px;font-weight:700">${a.name}</div><div style="font-size:11px;color:#9CA3AF">${a.email} · ${a.phone||'-'}</div></div>
-        <button class="btn bg" style="font-size:11px;padding:5px 10px" onclick="approveAdmin('${a.uid}','${a.name}')">✅ 승인</button>
-        <button class="btn br" style="font-size:11px;padding:5px 10px" onclick="rejectAdmin('${a.uid}','${a.name}')">❌ 거절</button>
-      </div>`).join('')}
-    </div>`:''}
-    <div class="card">
-      <div class="ct">👤 전체 관리자 목록</div>
-      ${admins.length?`<div class="tw"><table>
-        <tr><th></th><th>이름</th><th>이메일(ID)</th><th>전화번호</th><th>주소</th><th>직책</th><th>등록일</th><th>상태</th><th>작업</th></tr>
-        ${admins.map(a=>`<tr>
-          <td><div style="width:36px;height:36px;border-radius:50%;background:#EFF6FF;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#1E5FA5">${(a.name||'A')[0].toUpperCase()}</div></td>
-          <td><strong>${a.name||'-'}</strong>${a.isSuperAdmin?'<span class="badge bp2" style="margin-left:4px">👑</span>':''}</td>
-          <td style="font-family:monospace;font-size:12px">${a.email||'-'}</td>
-          <td style="font-size:12px">${a.phone||'-'}</td>
-          <td style="font-size:12px;color:#6B7280;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.addr||'-'}</td>
-          <td><span class="badge bb2">${a.role||'관리자'}</span></td>
-          <td style="font-size:11px;color:#9CA3AF">${a.registeredAt?new Date(a.registeredAt).toLocaleDateString('ko-KR'):'-'}</td>
-          <td><span class="badge ${a.approved?'bg2':'by'}">${a.approved?'✅ 승인':'⏳ 대기'}</span></td>
-          <td><div style="display:flex;gap:4px">
-            <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editAdmin('${a.uid}')">✏️</button>
-            ${!a.isSuperAdmin?`<button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deleteAdmin('${a.uid}','${a.name||''}')">🗑</button>`:''}
-          </div></td>
-        </tr>`).join('')}
-      </table></div>`:'<div class="es"><div class="ei">👤</div><p>등록된 관리자가 없어요</p></div>'}
-    </div>
-    <div class="card">
-      <div class="ct">🔑 등록 코드 안내</div>
-      <div style="background:#F9FAFB;border-radius:10px;padding:14px;display:flex;align-items:center;justify-content:space-between">
-        <div><div style="font-size:13px;font-weight:700;color:#374151">현재 등록 코드</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">신규 관리자에게 이 코드를 주면 자동 승인됩니다</div></div>
-        <div style="font-size:20px;font-weight:900;color:#7C3AED;font-family:monospace;letter-spacing:2px;background:#FDF4FF;padding:8px 16px;border-radius:10px">${REG_CODE}</div>
-      </div>
-      <div style="font-size:12px;color:#9CA3AF;margin-top:8px">코드 변경은 admin.html의 REG_CODE 값을 수정하세요.</div>
-    </div>`;
-}
-
-async function approveAdmin(uid,name){
-  try{
-    await db.collection('admins').doc(uid).update({approved:true,approvedAt:firebase.firestore.FieldValue.serverTimestamp(),approvedBy:currentAdmin?.email});
-    toast(`✅ ${name} 승인 완료`,'ok');rADM();
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-async function rejectAdmin(uid,name){
-  if(!confirm(`${name}의 등록 신청을 거절하고 삭제할까요?`))return;
-  try{
-    // Firebase Auth 계정 삭제는 Admin SDK 필요, Firestore 문서만 삭제
-    await db.collection('admins').doc(uid).delete();
-    toast(`🗑 ${name} 거절 및 삭제`,'ok');rADM();
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-function showAddAdmin(){
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">➕ 관리자 직접 추가</div>
-    <div style="background:#EFF6FF;border-radius:10px;padding:10px 14px;font-size:12px;color:#1E5FA5;margin-bottom:14px">이미 Firebase Auth에 등록된 계정의 UID를 입력하거나, 이메일/비밀번호로 신규 생성합니다</div>
-    <div class="fg"><label>이름 *</label><input id="aa-name" placeholder="홍길동"></div>
-    <div class="fg"><label>전화번호</label><input id="aa-phone" placeholder="010-0000-0000"></div>
-    <div class="fg"><label>주소</label><input id="aa-addr" placeholder="서울시..."></div>
-    <div class="fg"><label>이메일(ID) *</label><input type="email" id="aa-email" placeholder="admin@wordday.com"></div>
-    <div class="fg"><label>비밀번호 * (8자 이상)</label><input type="password" id="aa-pw" placeholder="초기 비밀번호"></div>
-    <div class="fg"><label>직책/소속</label><input id="aa-role" placeholder="콘텐츠팀 / 단어장 관리자"></div>
-    <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn bb" onclick="saveAddAdmin()" style="flex:1">추가</button>
-      <button class="btn bgr" onclick="cm()">취소</button>
-    </div>
-    <div id="aa-err" style="margin-top:8px;color:#DC2626;font-size:12px;font-weight:600;display:none"></div>
-  </div></div>`;
-}
-
-async function saveAddAdmin(){
-  const name=document.getElementById('aa-name')?.value.trim();
-  const email=document.getElementById('aa-email')?.value.trim();
-  const pw=document.getElementById('aa-pw')?.value;
-  const errEl=document.getElementById('aa-err');
-  if(!name||!email||!pw){if(errEl){errEl.textContent='필수 항목을 입력하세요';errEl.style.display='block';}return;}
-  if(pw.length<8){if(errEl){errEl.textContent='비밀번호는 8자 이상이어야 합니다';errEl.style.display='block';}return;}
-  try{
-    // 새 계정 생성 (현재 로그인은 유지됨 - Firebase 특성상 일시적으로 해당 계정으로 전환됨)
-    // 실제로는 Admin SDK가 필요하지만, 클라이언트에서 임시로 처리
-    const oldUser=auth.currentUser;
-    const cred=await auth.createUserWithEmailAndPassword(email,pw);
-    await db.collection('admins').doc(cred.user.uid).set({
-      name,email,
-      phone:document.getElementById('aa-phone')?.value.trim()||'',
-      addr:document.getElementById('aa-addr')?.value.trim()||'',
-      role:document.getElementById('aa-role')?.value.trim()||'관리자',
-      approved:true,
-      isSuperAdmin:false,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-      registeredAt:new Date().toISOString(),
-      createdBy:currentAdmin?.email,
-    });
-    // 다시 원래 계정으로 로그인
-    await auth.signOut();
-    toast(`✅ ${name} 관리자 추가 완료! 다시 로그인해주세요.`,'ok');
-    currentAdmin=null;
-    cm();
-    showLoginScreen();
-  }catch(e){
-    const msg={'auth/email-already-in-use':'이미 등록된 이메일입니다','auth/weak-password':'비밀번호가 너무 약합니다'}[e.code]||e.message;
-    if(errEl){errEl.textContent='오류: '+msg;errEl.style.display='block';}
-  }
-}
-
-async function editAdmin(uid){
-  let a={};
-  try{const d=await db.collection('admins').doc(uid).get();a=d.data()||{};}catch(e){}
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✏️ 관리자 수정</div>
-    <div class="fg"><label>이름</label><input id="ea-name" value="${a.name||''}"></div>
-    <div class="fg"><label>전화번호</label><input id="ea-phone" value="${a.phone||''}"></div>
-    <div class="fg"><label>주소</label><input id="ea-addr" value="${a.addr||''}"></div>
-    <div class="fg"><label>직책/소속</label><input id="ea-role" value="${a.role||'관리자'}"></div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <input type="checkbox" id="ea-ap" ${a.approved?'checked':''} style="width:18px;height:18px">
-      <label style="display:inline;margin-bottom:0;font-size:13px;cursor:pointer" for="ea-ap">승인 상태</label>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="saveEditAdmin('${uid}')" style="flex:1">저장</button>
-      <button class="btn bgr" onclick="cm()">취소</button>
-    </div>
-  </div></div>`;
-}
-
-async function saveEditAdmin(uid){
-  try{
-    await db.collection('admins').doc(uid).update({
-      name:document.getElementById('ea-name').value.trim(),
-      phone:document.getElementById('ea-phone').value.trim(),
-      addr:document.getElementById('ea-addr').value.trim(),
-      role:document.getElementById('ea-role').value.trim(),
-      approved:document.getElementById('ea-ap').checked,
-      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    toast('✅ 수정 완료','ok');cm();rADM();
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-async function deleteAdmin(uid,name){
-  if(!confirm(`${name} 관리자를 삭제할까요?\n(Firebase Auth 계정은 유지됩니다)`))return;
-  try{await db.collection('admins').doc(uid).delete();toast(`🗑 ${name} 관리자 삭제`,'ok');rADM();}catch(e){toast('오류: '+e.message,'err');}
-}
-
-// ══════════════════════════════════
-// 📈 분석
-// ══════════════════════════════════
-async function rAN(){
-  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">분석 데이터 로딩 중...</div>';
-  let users=[],ld={};
-  try{const s=await db.collection('users').get();s.forEach(d=>{const x=d.data();users.push(x);if(x.lid||x.level){const k=x.lid||x.level;ld[k]=(ld[k]||0)+1;}});}catch(e){}
-  const LN={egg:'🥚 알',baby:'🐛 벌거지',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛나는',small:'🦋 작은',big:'🦋 큰',god:'⚡ 황금'};
-  const rd=Array.from({length:7},(_,i)=>{const d=new Date(Date.now()-(6-i)*86400000);return d.toISOString().slice(0,10);});
-  document.getElementById('main-inner').innerHTML=`
-    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📈 이용 분석</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card"><div class="ct">🦋 레벨 분포</div>
-        ${LIDS.map(l=>{const cnt=ld[l]||0;const p=users.length?Math.round(cnt/users.length*100):0;return `<div class="bi"><div class="bl" style="font-size:11px">${LN[l]}</div><div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div><div class="bv">${cnt}명</div></div>`;}).join('')}
-        <div style="font-size:12px;color:#9CA3AF;margin-top:10px">총 ${users.length}명</div>
-      </div>
-      <div class="card"><div class="ct">📊 통계 요약</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          ${[['총 회원수',users.length+'명','#1E5FA5'],['평균 streak',Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/Math.max(users.length,1))+'일','#16A34A'],['마켓 팩 수',(typeof WORD_PACKS!=='undefined'?WORD_PACKS.length:0)+'개','#D97706'],['게임 종류','12종','#7C3AED']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:10px"><span style="font-size:13px;font-weight:600;color:#374151">${l}</span><span style="font-size:16px;font-weight:900;color:${c}">${v}</span></div>`).join('')}
-        </div>
-      </div>
-    </div>
-    <div class="card"><div class="ct">📅 최근 7일 활동</div>
-      <div style="display:flex;gap:8px;align-items:flex-end;height:80px">
-        ${rd.map(d=>{const cnt=users.filter(u=>u.updatedAt?.toDate?.()?.toISOString().slice(0,10)===d).length;const h=Math.max(cnt*20,4);const it=d===today();return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:10px;color:#1E5FA5;font-weight:700">${cnt||''}</div><div style="width:100%;background:${it?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${h}px;min-height:4px"></div><div style="font-size:10px;color:${it?'#1E5FA5':'#9CA3AF'};font-weight:${it?700:400}">${d.slice(5)}</div></div>`;}).join('')}
-      </div>
-    </div>`;
-}
-
-// ══════════════════════════════════
-// 📚 단어장 관리
-// ══════════════════════════════════
-async function rWD(){
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-      <h2 style="font-size:22px;font-weight:900">📚 단어장 관리</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn bg" onclick="showAddW()">➕ 단어 추가</button>
-        <button class="btn bp" onclick="document.getElementById('csv-ul').click()">📤 CSV 업로드</button>
-        <button class="btn bo" onclick="aiGenW()">✨ AI 생성</button>
-        <button class="btn bgr" onclick="exportW()">📥 내보내기</button>
-        <input type="file" id="csv-ul" accept=".csv,.txt" style="display:none" onchange="uploadCSV(this)">
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-      ${LIDS.map(l=>`<button onclick="selLv='${l}';loadW('${l}');document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l}'?'#fff':'#6B7280';})" class="lb" data-l="${l}" style="padding:7px 14px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:${l===selLv?LI[l].c:'#F3F4F6'};color:${l===selLv?'#fff':'#6B7280'}">${LI[l].e} ${LI[l].n.split(' ')[0]}</button>`).join('')}
-    </div>
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-        <div id="wc" style="font-size:13px;font-weight:700;color:#374151">로딩 중...</div>
-        <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:240px"><span>🔍</span><input id="ws" placeholder="단어 검색..." oninput="filterW(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none"></div>
-      </div>
-      <div class="tw" id="wt"><div style="color:#9CA3AF;padding:20px;text-align:center">로딩 중...</div></div>
-    </div>`;
-  loadW(selLv);
-}
-
-async function loadW(l){
-  const el=document.getElementById('wt'),ce=document.getElementById('wc');if(!el)return;
-  el.innerHTML='<div style="color:#9CA3AF;padding:20px;text-align:center">로딩 중...</div>';
-  try{
-    const doc=await db.collection('words').doc(l).get();const ws=doc.exists?(doc.data().list||[]):[];
-    if(ce)ce.textContent=`${LI[l].e} ${LI[l].n} · 총 ${ws.length}개`;
-    if(!ws.length){el.innerHTML='<div class="es"><div class="ei">📚</div><p>단어가 없어요</p><small>추가하거나 CSV를 업로드해주세요</small></div>';return;}
-    el.innerHTML=`<table id="wtb"><tr><th></th><th>영단어</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:100px">작업</th></tr>
-    ${ws.map((w,i)=>`<tr><td style="font-size:18px;text-align:center">${w.img||'📝'}</td><td><strong style="font-family:monospace">${w.en}</strong></td><td>${w.kr}</td><td style="font-size:11px;color:#9CA3AF">${w.ph||''}</td><td style="font-size:12px;color:#6B7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.ex||''}</td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editW('${l}',${i})">✏️</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delW('${l}',${i})">🗑</button></div></td></tr>`).join('')}
-    </table>`;
-  }catch(e){el.innerHTML=`<div style="color:#DC2626;padding:20px;text-align:center">로드 실패: ${e.message}</div>`;}
-}
-
-function filterW(v){document.querySelectorAll('#wtb tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
-
-function showAddW(){
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">➕ 단어 추가 <span style="font-size:13px;color:#9CA3AF">${LI[selLv].e} ${LI[selLv].n}</span></div>
-    <div class="fg"><label>영단어 *</label><input id="we" placeholder="apple"></div>
-    <div class="fg"><label>한국어 뜻 *</label><input id="wk" placeholder="사과"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="fg"><label>발음기호</label><input id="wp" placeholder="[ˈæpl]"></div>
-      <div class="fg"><label>이모지</label><input id="wi" placeholder="🍎"></div>
-    </div>
-    <div class="fg"><label>예문</label><input id="wx" placeholder="I eat an apple."></div>
-    <div class="fg"><label>암기 팁</label><input id="wt2" placeholder="에이플 = 사과!"></div>
-    <div style="margin-bottom:14px"><button class="btn bp" style="width:100%" onclick="aiAF()">✨ AI 자동완성</button></div>
-    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveW()" style="flex:1">추가</button><button class="btn bgr" onclick="cm()">취소</button></div>
-  </div></div>`;
-}
-
-// ── AI 호출 공통 함수 (관리자용) ──
-async function callAI(prompt, maxTokens=300) {
-  // admin.html은 Anthropic 앱 내에서 실행 → API 키 없이 호출
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      messages: [{role:'user', content: prompt}]
-    })
-  });
-  if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const d = await resp.json();
-  return (d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-}
-
-async function aiAF(){
-  const en=document.getElementById('we')?.value.trim();
-  if(!en){toast('영단어를 입력하세요','err');return;}
-  toast('AI 자동완성 중...');
-  try{
-    const text = await callAI(`"${en}" 단어 정보를 JSON으로만 반환. 다른 텍스트 없이 JSON만:
-{"kr":"뜻1,뜻2","ph":"[발음기호]","ex":"짧은 예문 10단어 이내","tip":"한국어 암기팁","img":"관련 이모지 하나"}`);
-    const p=JSON.parse(text);
-    if(p.kr)document.getElementById('wk').value=p.kr;
-    if(p.ph)document.getElementById('wp').value=p.ph;
-    if(p.ex)document.getElementById('wx').value=p.ex;
-    if(p.tip)document.getElementById('wt2').value=p.tip;
-    if(p.img)document.getElementById('wi').value=p.img;
-    toast('✅ AI 자동완성 완료!','ok');
-  }catch(e){
-    // 실패 시 수동 안내
-    toast('AI 자동완성 실패. 직접 입력해주세요.','err');
-    console.error('AI Error:', e);
-  }
-}
-
-async function saveW(){
-  const en=document.getElementById('we')?.value.trim(),kr=document.getElementById('wk')?.value.trim();
-  if(!en||!kr){toast('영단어와 뜻은 필수입니다','err');return;}
-  try{
-    const doc=await db.collection('words').doc(selLv).get();const ws=doc.exists?(doc.data().list||[]):[];
-    if(ws.find(w=>w.en.toLowerCase()===en.toLowerCase())){toast('이미 있는 단어입니다','err');return;}
-    ws.push({en,kr,ph:document.getElementById('wp')?.value.trim()||'',ex:document.getElementById('wx')?.value.trim()||en+'.',img:document.getElementById('wi')?.value.trim()||'📝',tip:document.getElementById('wt2')?.value.trim()||'',meanings:[kr]});
-    await db.collection('words').doc(selLv).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast(`✅ "${en}" 추가 완료!`,'ok');cm();loadW(selLv);
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-async function editW(l,i){
-  try{
-    const doc=await db.collection('words').doc(l).get();const w=(doc.data().list||[])[i];
-    document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-      <div class="mt">✏️ 단어 수정</div>
-      <div class="fg"><label>영단어</label><input id="ee" value="${w.en.replace(/"/g,'&quot;')}"></div>
-      <div class="fg"><label>한국어 뜻</label><input id="ek" value="${w.kr.replace(/"/g,'&quot;')}"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="fg"><label>발음기호</label><input id="ep" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
-        <div class="fg"><label>이모지</label><input id="ei" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
-      </div>
-      <div class="fg"><label>예문</label><input id="ex2" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fg"><label>암기 팁</label><input id="et" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
-      <div style="display:flex;gap:8px;margin-top:4px"><button class="btn bb" onclick="saveEW('${l}',${i})" style="flex:1">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
-    </div></div>`;
-  }catch(e){toast('오류','err');}
-}
-
-async function saveEW(l,i){
-  try{
-    const doc=await db.collection('words').doc(l).get();const ws=doc.data().list||[];
-    ws[i]={...ws[i],en:document.getElementById('ee').value.trim(),kr:document.getElementById('ek').value.trim(),ph:document.getElementById('ep').value.trim(),ex:document.getElementById('ex2').value.trim(),img:document.getElementById('ei').value.trim(),tip:document.getElementById('et').value.trim(),meanings:[document.getElementById('ek').value.trim()]};
-    await db.collection('words').doc(l).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast('✅ 수정 완료','ok');cm();loadW(l);
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-async function delW(l,i){
-  if(!confirm('삭제할까요?'))return;
-  try{
-    const doc=await db.collection('words').doc(l).get();const ws=doc.data().list||[];const en=ws[i]?.en;ws.splice(i,1);
-    await db.collection('words').doc(l).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast(`🗑 "${en}" 삭제 완료`,'ok');loadW(l);
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-async function uploadCSV(input){
-  const file=input.files[0];if(!file)return;
-  const text=await file.text();const lines=text.split('\n').filter(l=>l.trim());
-  const ws=[];const start=lines[0].toLowerCase().includes('en')||lines[0].toLowerCase().includes('영')?1:0;
-  lines.slice(start).forEach(line=>{const p=line.split(',').map(x=>x.trim().replace(/^"|"$/g,''));if(p.length>=2&&p[0]&&p[1])ws.push({en:p[0],kr:p[1],ph:p[2]||'',ex:p[3]||p[0]+'.',img:p[4]||'📝',tip:p[5]||'',meanings:[p[1]]});});
-  if(!ws.length){toast('유효한 데이터가 없어요','err');return;}
-  if(!confirm(`${ws.length}개 단어를 "${LI[selLv].n}"에 추가할까요?`))return;
-  try{
-    const doc=await db.collection('words').doc(selLv).get();const ex=doc.exists?(doc.data().list||[]):[];let added=0;const mg=[...ex];
-    ws.forEach(w=>{if(!mg.find(e=>e.en.toLowerCase()===w.en.toLowerCase())){mg.push(w);added++;}});
-    await db.collection('words').doc(selLv).set({list:mg,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast(`✅ ${added}개 추가! (중복 ${ws.length-added}개 제외)`,'ok');loadW(selLv);
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-
-function exportW(){
-  (async()=>{
-    try{
-      const doc=await db.collection('words').doc(selLv).get();const ws=doc.exists?(doc.data().list||[]):[];
-      if(!ws.length){toast('단어가 없어요','err');return;}
-      const rows=['en,kr,ph,ex,img,tip'];ws.forEach(w=>rows.push([w.en,w.kr,w.ph||'',w.ex||'',w.img||'',w.tip||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
-      const blob=new Blob(['\uFEFF'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`WordDay_${selLv}_${today()}.csv`;a.click();
-      toast('✅ 내보내기 완료','ok');
-    }catch(e){toast('오류: '+e.message,'err');}
-  })();
-}
-
-function aiGenW(){
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✨ AI 단어 생성</div>
-    <div class="fg"><label>생성 기준/테마</label><input id="ag-t" placeholder="예: 수능 빈출 동사 20개, 프렌즈 드라마 일상 표현"></div>
-    <div class="fg"><label>개수</label><input id="ag-c" type="number" value="20" min="5" max="50"></div>
-    <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">대상: ${LI[selLv].e} ${LI[selLv].n}</div>
-    <div style="display:flex;gap:8px"><button class="btn bp" onclick="doAG()" style="flex:1">✨ 생성</button><button class="btn bgr" onclick="cm()">취소</button></div>
-    <div id="ag-r" style="margin-top:12px"></div>
-  </div></div>`;
-}
-
-async function doAG(){
-  const th=document.getElementById('ag-t')?.value.trim();
-  const cnt=document.getElementById('ag-c')?.value||20;
-  const re=document.getElementById('ag-r');
-  if(!th){toast('테마를 입력해주세요','err');return;}
-  re.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:16px">AI 생성 중... ⏳<br><small>약 10~20초 소요</small></div>';
-  try{
-    const text = await callAI(
-      `영어 단어 ${cnt}개를 JSON 배열로만 반환. 다른 텍스트 없이 순수 JSON만.
-테마: "${th}"
-형식: [{"en":"word","kr":"뜻","ph":"[발음기호]","ex":"짧은 예문","img":"이모지","tip":"한국어 암기팁"}]
-조건: 실제 많이 쓰는 단어, 뜻은 간결하게, 예문 10단어 이내`, 3000
-    );
-    const ws=JSON.parse(text);
-    re.innerHTML=`<div style="background:#F0FDF4;border-radius:10px;padding:12px;margin-bottom:10px">
-      <div style="font-size:13px;font-weight:700;color:#16A34A;margin-bottom:8px">✅ ${ws.length}개 생성 완료</div>
-      <div style="font-size:12px;color:#374151;max-height:120px;overflow-y:auto">
-        ${ws.slice(0,5).map(w=>`• ${w.en} - ${w.kr}`).join('<br>')}
-        ${ws.length>5?`<br>... 외 ${ws.length-5}개`:''}
-      </div>
-    </div>
-    <button class="btn bg" style="width:100%" onclick="saveAG(${JSON.stringify(ws).replace(/"/g,'&quot;')})">📥 단어장에 저장</button>`;
-  }catch(e){
-    re.innerHTML=`<div style="color:#DC2626;padding:10px;background:#FEF2F2;border-radius:8px">
-      ❌ 생성 실패: ${e.message}<br>
-      <small style="color:#9CA3AF">• 인터넷 연결을 확인해주세요<br>• GitHub Pages에서 실행 중이라면 CORS 제한으로 AI 기능이 제한될 수 있어요</small>
-    </div>`;
-  }
-}
-
-async function saveAG(wj){
-  try{
-    const ws=typeof wj==='string'?JSON.parse(wj.replace(/&quot;/g,'"')):wj;
-    const doc=await db.collection('words').doc(selLv).get();const ex=doc.exists?(doc.data().list||[]):[];let added=0;const mg=[...ex];
-    ws.forEach(w=>{const ww={en:w.en,kr:w.kr,ph:w.ph||'',ex:w.ex||w.en+'.',img:w.img||'📝',tip:w.tip||'',meanings:[w.kr]};if(!mg.find(e=>e.en.toLowerCase()===w.en.toLowerCase())){mg.push(ww);added++;}});
-    await db.collection('words').doc(selLv).set({list:mg,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    toast(`✅ ${added}개 저장 완료!`,'ok');cm();loadW(selLv);
-  }catch(e){toast('저장 오류: '+e.message,'err');}
-}
-
-// ── 마켓 팩 관리 ──
-let selPack = null; // 현재 선택된 팩 ID
-
-function rPK(){
-  const packs = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
-  const cats = [...new Set(packs.map(p=>p.cat))];
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-      <h2 style="font-size:22px;font-weight:900">🛒 마켓 팩 관리</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn bg" onclick="showAddPack()">➕ 새 팩 만들기</button>
-        <button class="btn bp" onclick="showImportPack()">📤 CSV/JSON 가져오기</button>
-      </div>
-    </div>
-    <div class="sg">
-      <div class="st"><div class="v" style="color:#1E5FA5">${packs.length}</div><div class="l">전체 팩</div></div>
-      <div class="st"><div class="v" style="color:#16A34A">${packs.reduce((a,p)=>a+(p.words?.length||0),0)}</div><div class="l">총 단어수</div></div>
-      <div class="st"><div class="v" style="color:#EC4899">${packs.filter(p=>p.isPopular).length}</div><div class="l">인기 팩 🔥</div></div>
-      <div class="st"><div class="v" style="color:#D97706">${cats.length}</div><div class="l">카테고리</div></div>
-    </div>
-    <div class="card">
-      <div class="ct">📦 전체 팩 목록</div>
-      <div style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px">
-          <span>🔍</span>
-          <input placeholder="팩 이름 검색..." id="pk-search" oninput="filterPacks(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1">
-        </div>
-      </div>
-      <div class="tw">
-        <table id="pk-table">
-          <tr><th></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>뱃지</th><th>작업</th></tr>
-          ${packs.map(p=>`<tr>
-            <td style="font-size:22px;text-align:center">${p.emoji}</td>
-            <td>
-              <strong>${p.name}</strong>
-              <div style="font-size:11px;color:#9CA3AF">${(p.desc||'').slice(0,30)}...</div>
-            </td>
-            <td><span class="badge bb2">${p.cat}</span></td>
-            <td>
-              <strong style="color:#1E5FA5">${p.words?.length||0}</strong>
-              <span style="font-size:11px;color:#9CA3AF">/${p.count||0}</span>
-            </td>
-            <td>
-              ${p.isPopular?'<span class="badge by">🔥</span> ':''}
-              ${p.addedAt?'<span class="badge bg2">NEW</span>':''}
-            </td>
-            <td>
-              <div style="display:flex;gap:4px;flex-wrap:wrap">
-                <button class="btn bb" style="font-size:11px;padding:4px 8px" onclick="showPackWords('${p.id}')">📝 단어</button>
-                <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="showEditPack('${p.id}')">✏️ 수정</button>
-                <button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deletePack('${p.id}')">🗑</button>
-              </div>
-            </td>
-          </tr>`).join('')}
-        </table>
-      </div>
-    </div>`;
-}
-
-function filterPacks(v) {
-  document.querySelectorAll('#pk-table tr:not(:first-child)').forEach(tr=>{
-    tr.style.display = tr.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
-  });
-}
-
-// 새 팩 만들기
-function showAddPack() {
-  const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">➕ 새 팩 만들기</div>
-    <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:12px">
-      <div class="fg"><label>이모지</label><input id="pk-emoji" value="📚" style="text-align:center;font-size:20px"></div>
-      <div class="fg"><label>팩 이름 *</label><input id="pk-name" placeholder="여행 필수 영어"></div>
-    </div>
-    <div class="fg"><label>카테고리</label>
-      <select id="pk-cat">${cats.map(c=>`<option>${c}</option>`).join('')}</select>
-    </div>
-    <div class="fg"><label>설명</label><input id="pk-desc" placeholder="여행에서 꼭 필요한 영어 단어 모음"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="fg"><label>팩 ID (영문)</label><input id="pk-id" placeholder="travel_basic_2"></div>
-      <div class="fg"><label>목표 단어 수</label><input id="pk-count" type="number" value="100"></div>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:14px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="pk-popular"> 🔥 인기 팩
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-left:12px">
-        <input type="checkbox" id="pk-new" checked> ✨ NEW 뱃지
-      </label>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="saveNewPack()" style="flex:1">만들기</button>
-      <button class="btn bgr" onclick="cm()">취소</button>
-    </div>
-  </div></div>`;
-}
-
-function saveNewPack() {
-  const name = document.getElementById('pk-name')?.value.trim();
-  const id = document.getElementById('pk-id')?.value.trim();
-  if(!name||!id){toast('이름과 ID를 입력하세요','err');return;}
-  if(typeof WORD_PACKS === 'undefined'){toast('WORD_PACKS를 찾을 수 없어요','err');return;}
-  if(WORD_PACKS.find(p=>p.id===id)){toast('이미 있는 ID예요','err');return;}
-  const newPack = {
-    id, name,
-    emoji: document.getElementById('pk-emoji')?.value||'📚',
-    cat: document.getElementById('pk-cat')?.value||'기타',
-    desc: document.getElementById('pk-desc')?.value||'',
-    count: +(document.getElementById('pk-count')?.value||100),
-    isPopular: document.getElementById('pk-popular')?.checked||false,
-    addedAt: document.getElementById('pk-new')?.checked ? new Date().toISOString().slice(0,10) : null,
-    words: []
-  };
-  WORD_PACKS.push(newPack);
-  toast(`✅ "${name}" 팩 생성!`,'ok');
-  cm();
-  rPK();
-  // 바로 단어 관리로 이동
-  setTimeout(()=>showPackWords(id), 300);
-}
-
-// 팩 수정
-function showEditPack(packId) {
-  const p = WORD_PACKS.find(x=>x.id===packId);
-  if(!p) return;
-  const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✏️ 팩 수정: ${p.name}</div>
-    <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:12px">
-      <div class="fg"><label>이모지</label><input id="ep-emoji" value="${p.emoji}" style="text-align:center;font-size:20px"></div>
-      <div class="fg"><label>팩 이름</label><input id="ep-name" value="${p.name}"></div>
-    </div>
-    <div class="fg"><label>카테고리</label>
-      <select id="ep-cat">${cats.map(c=>`<option ${p.cat===c?'selected':''}>${c}</option>`).join('')}</select>
-    </div>
-    <div class="fg"><label>설명</label><input id="ep-desc" value="${p.desc||''}"></div>
-    <div class="fg"><label>목표 단어 수</label><input id="ep-count" type="number" value="${p.count||100}"></div>
-    <div style="display:flex;gap:12px;margin-bottom:14px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="ep-popular" ${p.isPopular?'checked':''}> 🔥 인기 팩
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="ep-new" ${p.addedAt?'checked':''}> ✨ NEW 뱃지
-      </label>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="saveEditPack('${packId}')" style="flex:1">저장</button>
-      <button class="btn bgr" onclick="cm()">취소</button>
-    </div>
-  </div></div>`;
-}
-
-function saveEditPack(packId) {
-  const p = WORD_PACKS.find(x=>x.id===packId);
-  if(!p) return;
-  p.emoji = document.getElementById('ep-emoji')?.value||p.emoji;
-  p.name = document.getElementById('ep-name')?.value.trim()||p.name;
-  p.cat = document.getElementById('ep-cat')?.value||p.cat;
-  p.desc = document.getElementById('ep-desc')?.value||p.desc;
-  p.count = +(document.getElementById('ep-count')?.value||p.count);
-  p.isPopular = document.getElementById('ep-popular')?.checked||false;
-  p.addedAt = document.getElementById('ep-new')?.checked ? (p.addedAt||new Date().toISOString().slice(0,10)) : null;
-  toast(`✅ "${p.name}" 수정 완료`,'ok');
-  cm(); rPK();
-}
-
-// 팩 삭제
-function deletePack(packId) {
-  const p = WORD_PACKS.find(x=>x.id===packId);
-  if(!confirm(`"${p?.name}" 팩을 삭제할까요?\n단어 ${p?.words?.length||0}개가 모두 삭제됩니다.`)) return;
-  const idx = WORD_PACKS.findIndex(x=>x.id===packId);
-  if(idx>=0) WORD_PACKS.splice(idx,1);
-  toast('🗑 팩 삭제됨','ok');
-  rPK();
-}
-
-// ── 팩 단어 관리 ──
-function showPackWords(packId) {
-  selPack = packId;
-  const p = WORD_PACKS.find(x=>x.id===packId);
-  if(!p) return;
-  const words = p.words||[];
-
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:92vh;display:flex;flex-direction:column;max-width:600px">
-    <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:16px;font-weight:800">${p.emoji} ${p.name}</div>
-        <div style="font-size:12px;color:#9CA3AF">${words.length}개 / 목표 ${p.count||100}개</div>
-      </div>
-      <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
-    </div>
-
-    <!-- 탭 -->
-    <div style="display:flex;border-bottom:1px solid #E5E7EB;flex-shrink:0">
-      <div id="pwt-add" onclick="showPackWordTab('add')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#1E5FA5;border-bottom:2px solid #1E5FA5">➕ 단어 추가</div>
-      <div id="pwt-list" onclick="showPackWordTab('list')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">📋 단어 목록</div>
-      <div id="pwt-dup" onclick="showPackWordTab('dup')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">🔍 중복 필터</div>
-    </div>
-
-    <div id="pw-content" style="flex:1;overflow-y:auto;padding:16px"></div>
-  </div></div>`;
-
-  showPackWordTab('add');
-}
-
-function showPackWordTab(tab) {
-  const p = WORD_PACKS.find(x=>x.id===selPack);
-  if(!p) return;
-  const words = p.words||[];
-
-  // 탭 활성화
-  ['add','list','dup'].forEach(t=>{
-    const el = document.getElementById('pwt-'+t);
-    if(!el) return;
-    el.style.color = t===tab ? '#1E5FA5' : '#9CA3AF';
-    el.style.borderBottomColor = t===tab ? '#1E5FA5' : 'transparent';
-  });
-
-  const cont = document.getElementById('pw-content');
-  if(!cont) return;
-
-  if(tab==='add') {
-    cont.innerHTML=`
-      <!-- 방법 탭 -->
-      <div style="display:flex;gap:6px;margin-bottom:14px;background:#F3F4F6;border-radius:10px;padding:4px">
-        <button onclick="showAddMethod('single')" id="am-single" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#1E5FA5">✏️ 직접 입력</button>
-        <button onclick="showAddMethod('bulk')" id="am-bulk" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">📋 대량 입력</button>
-        <button onclick="showAddMethod('csv')" id="am-csv" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">📄 CSV</button>
-        <button onclick="showAddMethod('ai')" id="am-ai" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">✨ AI</button>
-      </div>
-      <div id="add-method-content"></div>`;
-    showAddMethod('single');
-  }
-
-  else if(tab==='list') {
-    if(!words.length) {
-      cont.innerHTML='<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:36px">📭</div><p>단어가 없어요</p></div>';
-      return;
-    }
-    cont.innerHTML=`
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <input placeholder="단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;font-size:13px">
-        <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){WORD_PACKS.find(x=>x.id===selPack).words=[];showPackWordTab('list')}">전체삭제</button>
-      </div>
-      <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">${words.length}개</div>
-      <div id="pack-word-list" style="display:flex;flex-direction:column;gap:6px">
-        ${words.map((w,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#F9FAFB;border-radius:10px">
-          <span style="font-size:18px">${w.img||'📝'}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;font-family:monospace">${w.en}</div>
-            <div style="font-size:11px;color:#6B7280">${w.kr}</div>
-          </div>
-          <button onclick="editPackWord('${selPack}',${i})" style="background:none;border:none;font-size:14px;cursor:pointer;color:#9CA3AF">✏️</button>
-          <button onclick="deletePackWord('${selPack}',${i})" style="background:none;border:none;font-size:14px;cursor:pointer;color:#FCA5A5">×</button>
-        </div>`).join('')}
+        <h3>CSV 파일로 단어장 업로드</h3>
+        <p style="font-size:13px; color:#6B7280">형식: 단어(en), 뜻(kr), 발음(ph), 예문(ex), 이모지(img)</p>
+        <input type="file" id="csv-file" accept=".csv">
+        <input id="pack-name" placeholder="단어장 세트 이름 (예: 초급 필수 500)">
+        <select id="pack-cat"><option>여행</option><option>비즈니스</option><option>수능</option></select>
+        <button class="btn-main" onclick="handleCSV()" style="margin-top:15px">업로드 시작</button>
+      </div>`;
+  } else if (currentTab === 'settings') {
+    const doc = await db.collection('settings').doc('app').get();
+    const s = doc.data() || {};
+    content.innerHTML = `
+      <div class="card">
+        <h3>전체 앱 설정</h3>
+        <label>공지사항</label>
+        <textarea id="set-notice">${s.notice || ''}</textarea>
+        <label>배너 광고 활성화</label>
+        <select id="set-banner"><option value="true" ${s.useBanner?'selected':''}>ON</option><option value="false" ${!s.useBanner?'selected':''}>OFF</option></select>
+        <button class="btn-main" onclick="saveSettings()" style="margin-top:15px">설정 저장</button>
       </div>`;
   }
+}
 
-  else if(tab==='dup') {
-    // 중복 단어 찾기 (팩 내부 + 다른 팩과의 중복)
-    const enSet = new Set();
-    const dups = [];
-    words.forEach((w,i)=>{
-      if(enSet.has(w.en.toLowerCase())) dups.push({w,i,type:'내부'});
-      else enSet.add(w.en.toLowerCase());
+async function saveButterfly() {
+  const name = document.getElementById('new-bf-name').value;
+  const rarity = document.getElementById('new-bf-rare').value;
+  const svg = document.getElementById('new-bf-svg').value;
+  if(!name || !svg) return alert("내용을 모두 입력해라.");
+  await db.collection('butterflies').add({ name, rarity, svg, id: Date.now() });
+  alert("저장되었다.");
+  renderCurrentTab();
+}
+
+async function deleteDoc(col, id) {
+  if(!confirm("정말 삭제하겠는가?")) return;
+  await db.collection(col).doc(id).delete();
+  renderCurrentTab();
+}
+
+async function saveSettings() {
+  const notice = document.getElementById('set-notice').value;
+  const useBanner = document.getElementById('set-banner').value === 'true';
+  await db.collection('settings').doc('app').set({ notice, useBanner }, { merge: true });
+  alert("설정이 반영되었다.");
+}
+
+async function handleCSV() {
+  const file = document.getElementById('csv-file').files[0];
+  const name = document.getElementById('pack-name').value;
+  if(!file || !name) return alert("파일과 이름을 확인해라.");
+  
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const text = e.target.result;
+    const lines = text.split('\n').filter(l => l.trim());
+    const words = lines.map(line => {
+      const [en, kr, ph, ex, img] = line.split(',');
+      return { en, kr, ph, ex, img };
     });
-
-    // 다른 팩과의 중복 확인
-    const otherPacks = WORD_PACKS.filter(x=>x.id!==selPack);
-    const crossDups = words.filter(w=>otherPacks.some(op=>(op.words||[]).find(ow=>ow.en.toLowerCase()===w.en.toLowerCase())));
-
-    cont.innerHTML=`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div style="background:#FEF2F2;border-radius:12px;padding:12px;text-align:center">
-          <div style="font-size:24px;font-weight:900;color:#DC2626">${dups.length}</div>
-          <div style="font-size:12px;color:#9CA3AF">팩 내 중복</div>
-        </div>
-        <div style="background:#FFF8E1;border-radius:12px;padding:12px;text-align:center">
-          <div style="font-size:24px;font-weight:900;color:#E65100">${crossDups.length}</div>
-          <div style="font-size:12px;color:#9CA3AF">다른 팩과 중복</div>
-        </div>
-      </div>
-      ${dups.length>0?`
-        <div style="margin-bottom:14px">
-          <div style="font-size:13px;font-weight:700;color:#DC2626;margin-bottom:8px">🔴 팩 내부 중복 (${dups.length}개)</div>
-          ${dups.map(({w,i})=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:#FEF2F2;border-radius:8px;margin-bottom:4px">
-            <span style="font-size:13px;font-family:monospace">${w.en} - ${w.kr}</span>
-            <button onclick="deletePackWord('${selPack}',${i});showPackWordTab('dup')" class="btn br" style="font-size:11px;padding:3px 8px">삭제</button>
-          </div>`).join('')}
-          <button onclick="removeInternalDups('${selPack}')" class="btn br" style="width:100%;margin-top:6px;font-size:12px">🧹 내부 중복 모두 제거</button>
-        </div>`:'<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A;margin-bottom:14px">✅ 내부 중복 없음!</div>'}
-      ${crossDups.length>0?`
-        <div>
-          <div style="font-size:13px;font-weight:700;color:#E65100;margin-bottom:8px">🟡 다른 팩과 중복 (${crossDups.length}개)</div>
-          <div style="max-height:200px;overflow-y:auto">
-            ${crossDups.slice(0,20).map(w=>{
-              const inPacks = otherPacks.filter(op=>(op.words||[]).find(ow=>ow.en.toLowerCase()===w.en.toLowerCase())).map(op=>op.name).join(', ');
-              return `<div style="padding:6px 8px;background:#FFF8E1;border-radius:8px;margin-bottom:4px;font-size:12px">
-                <strong>${w.en}</strong> - ${w.kr}<br>
-                <span style="color:#9CA3AF">→ ${inPacks}</span>
-              </div>`;
-            }).join('')}
-          </div>
-          ${crossDups.length>20?`<div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:4px">외 ${crossDups.length-20}개</div>`:''}
-        </div>`:'<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A">✅ 다른 팩과 중복 없음!</div>'}`;
-  }
-}
-
-function filterPackWords(v) {
-  document.querySelectorAll('#pack-word-list > div').forEach(el=>{
-    el.style.display = el.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
-  });
-}
-
-function showAddMethod(method) {
-  ['single','bulk','csv','ai'].forEach(m=>{
-    const el=document.getElementById('am-'+m);
-    if(el){el.style.background=m===method?'#fff':'transparent';el.style.color=m===method?'#1E5FA5':'#6B7280';}
-  });
-  const cont = document.getElementById('add-method-content');
-  if(!cont) return;
-  const p = WORD_PACKS.find(x=>x.id===selPack);
-  if(!p) return;
-
-  if(method==='single') {
-    cont.innerHTML=`
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">영단어 *</label><input id="pw-en" placeholder="apple" style="font-family:monospace;font-weight:700"></div>
-          <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">한국어 뜻 *</label><input id="pw-kr" placeholder="사과"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">발음기호</label><input id="pw-ph" placeholder="[ˈæpl]"></div>
-          <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">이모지</label><input id="pw-img" placeholder="🍎"></div>
-        </div>
-        <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">예문</label><input id="pw-ex" placeholder="I eat an apple."></div>
-        <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">암기 팁</label><input id="pw-tip" placeholder="에이플 = 사과"></div>
-        <button class="btn bp" onclick="aiPackWordFill()" style="font-size:12px">✨ AI 자동완성</button>
-        <button class="btn bb" onclick="addPackWord()" style="width:100%">➕ 추가</button>
-        <div id="pw-msg"></div>
-      </div>`;
-  }
-
-  else if(method==='bulk') {
-    cont.innerHTML=`
-      <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">한 줄에 하나씩 입력 (영단어,뜻 형식)</div>
-      <textarea id="bulk-input" placeholder="apple,사과\nbook,책\ncomputer,컴퓨터" style="min-height:160px;resize:vertical;font-family:monospace;font-size:12px"></textarea>
-      <div style="font-size:11px;color:#9CA3AF;margin:6px 0">형식: 영단어,뜻  또는  영단어,뜻,발음,예문,이모지</div>
-      <button class="btn bb" onclick="saveBulkWords()" style="width:100%;margin-top:8px">📥 일괄 추가</button>
-      <div id="bulk-msg" style="margin-top:8px"></div>`;
-  }
-
-  else if(method==='csv') {
-    cont.innerHTML=`
-      <div style="background:#EFF6FF;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#1E5FA5">
-        📋 CSV 형식: en,kr,ph,ex,img,tip (첫 줄 헤더 자동 인식)
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input type="file" id="pack-csv" accept=".csv,.txt" style="flex:1;font-size:12px">
-      </div>
-      <button class="btn bb" onclick="uploadPackCSV()" style="width:100%">📤 CSV 업로드</button>
-      <div id="csv-msg" style="margin-top:8px"></div>
-      <div style="margin-top:14px;border-top:1px solid #E5E7EB;padding-top:12px">
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📥 현재 팩 내보내기</div>
-        <button class="btn bgr" onclick="exportPackCSV('${selPack}')" style="width:100%;font-size:12px">CSV로 내보내기</button>
-      </div>`;
-  }
-
-  else if(method==='ai') {
-    cont.innerHTML=`
-      <div class="fg"><label>생성 테마/기준</label><input id="pak-theme" placeholder="예: 프렌즈 시즌1 일상 표현 30개"></div>
-      <div class="fg"><label>생성 개수</label><input id="pak-cnt" type="number" value="20" min="5" max="50"></div>
-      <button class="btn bp" onclick="aiGenPackWords()" style="width:100%">✨ AI로 생성</button>
-      <div id="pai-result" style="margin-top:12px"></div>`;
-  }
-}
-
-// 단어 추가 함수들
-function addPackWord() {
-  const en=document.getElementById('pw-en')?.value.trim();
-  const kr=document.getElementById('pw-kr')?.value.trim();
-  const msg=document.getElementById('pw-msg');
-  if(!en||!kr){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">영단어와 뜻을 입력하세요</div>';return;}
-  const p=WORD_PACKS.find(x=>x.id===selPack);
-  if(!p){return;}
-  if(!p.words) p.words=[];
-  if(p.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){
-    if(msg)msg.innerHTML='<div style="color:#E65100;font-size:12px">⚠️ 이미 있는 단어예요</div>';return;
-  }
-  p.words.push({en,kr,ph:document.getElementById('pw-ph')?.value.trim()||'',ex:document.getElementById('pw-ex')?.value.trim()||en+'.',img:document.getElementById('pw-img')?.value.trim()||'📝',tip:document.getElementById('pw-tip')?.value.trim()||'',meanings:[kr]});
-  ['pw-en','pw-kr','pw-ph','pw-ex','pw-img','pw-tip'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ "${en}" 추가! (총 ${p.words.length}개)</div>`;
-  document.getElementById('pw-en')?.focus();
-}
-
-async function aiPackWordFill() {
-  const en=document.getElementById('pw-en')?.value.trim();
-  if(!en){toast('영단어를 입력하세요','err');return;}
-  const msg=document.getElementById('pw-msg');
-  if(msg)msg.innerHTML='<div style="color:#9CA3AF;font-size:12px">AI 자동완성 중...</div>';
-  try{
-    const text=await callAI(`"${en}" 단어 정보를 JSON으로만: {"kr":"뜻","ph":"[발음기호]","ex":"예문","tip":"암기팁","img":"이모지"}`);
-    const p=JSON.parse(text);
-    if(p.kr)document.getElementById('pw-kr').value=p.kr;
-    if(p.ph)document.getElementById('pw-ph').value=p.ph;
-    if(p.ex)document.getElementById('pw-ex').value=p.ex;
-    if(p.tip)document.getElementById('pw-tip').value=p.tip;
-    if(p.img)document.getElementById('pw-img').value=p.img;
-    if(msg)msg.innerHTML='<div style="color:#16A34A;font-size:12px">✅ AI 자동완성!</div>';
-  }catch(e){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">AI 실패. 직접 입력해주세요</div>';}
-}
-
-function saveBulkWords() {
-  const text=document.getElementById('bulk-input')?.value.trim();
-  const msg=document.getElementById('bulk-msg');
-  if(!text){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">내용을 입력하세요</div>';return;}
-  const p=WORD_PACKS.find(x=>x.id===selPack);
-  if(!p.words)p.words=[];
-  const lines=text.split('\n').filter(l=>l.trim());
-  let added=0,dup=0;
-  lines.forEach(line=>{
-    const parts=line.split(',').map(s=>s.trim());
-    if(parts.length<2||!parts[0]||!parts[1])return;
-    if(p.words.find(w=>w.en.toLowerCase()===parts[0].toLowerCase())){dup++;return;}
-    p.words.push({en:parts[0],kr:parts[1],ph:parts[2]||'',ex:parts[3]||parts[0]+'.',img:parts[4]||'📝',tip:parts[5]||'',meanings:[parts[1]]});
-    added++;
-  });
-  if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
-  if(added>0)document.getElementById('bulk-input').value='';
-}
-
-function uploadPackCSV() {
-  const file=document.getElementById('pack-csv')?.files[0];
-  const msg=document.getElementById('csv-msg');
-  if(!file){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">파일을 선택하세요</div>';return;}
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const p=WORD_PACKS.find(x=>x.id===selPack);
-    if(!p.words)p.words=[];
-    const lines=e.target.result.split('\n').filter(l=>l.trim());
-    const start=lines[0].toLowerCase().includes('en')||lines[0].toLowerCase().startsWith('영')?1:0;
-    let added=0,dup=0;
-    lines.slice(start).forEach(line=>{
-      const parts=line.split(',').map(s=>s.trim().replace(/^"|"$/g,''));
-      if(parts.length<2||!parts[0]||!parts[1])return;
-      if(p.words.find(w=>w.en.toLowerCase()===parts[0].toLowerCase())){dup++;return;}
-      p.words.push({en:parts[0],kr:parts[1],ph:parts[2]||'',ex:parts[3]||parts[0]+'.',img:parts[4]||'📝',tip:parts[5]||'',meanings:[parts[1]]});
-      added++;
-    });
-    if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
+    await db.collection('wordpacks').add({ name, words, cat: document.getElementById('pack-cat').value, createdAt: new Date() });
+    alert(`${words.length}개의 단어가 성공적으로 등록되었다.`);
   };
-  reader.readAsText(file,'UTF-8');
-}
-
-function exportPackCSV(packId) {
-  const p=WORD_PACKS.find(x=>x.id===packId);
-  if(!p||!p.words?.length){toast('단어가 없어요','err');return;}
-  const rows=['en,kr,ph,ex,img,tip'];
-  p.words.forEach(w=>rows.push([w.en,w.kr,w.ph||'',w.ex||'',w.img||'',w.tip||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
-  const blob=new Blob(['\uFEFF'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${packId}_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  toast('✅ CSV 내보내기 완료','ok');
-}
-
-async function aiGenPackWords() {
-  const th=document.getElementById('pak-theme')?.value.trim();
-  const cnt=document.getElementById('pak-cnt')?.value||20;
-  const re=document.getElementById('pai-result');
-  if(!th){toast('테마를 입력하세요','err');return;}
-  if(re)re.innerHTML='<div style="text-align:center;padding:16px;color:#9CA3AF">AI 생성 중... ⏳</div>';
-  try{
-    const p=WORD_PACKS.find(x=>x.id===selPack);
-    const existing=(p?.words||[]).map(w=>w.en).slice(0,20).join(', ');
-    const text=await callAI(`영어 단어 ${cnt}개를 JSON 배열로만 반환. 다른 텍스트 없이 순수 JSON만.
-테마: "${th}"
-${existing?`이미 있는 단어(중복 금지): ${existing}`:''}
-형식: [{"en":"word","kr":"뜻","ph":"[발음기호]","ex":"예문","img":"이모지","tip":"암기팁"}]`, 3000);
-    const ws=JSON.parse(text);
-    // 중복 제거
-    const existSet=new Set((p?.words||[]).map(w=>w.en.toLowerCase()));
-    const newWs=ws.filter(w=>!existSet.has(w.en.toLowerCase()));
-    if(re)re.innerHTML=`
-      <div style="background:#F0FDF4;border-radius:10px;padding:12px;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700;color:#16A34A">✅ ${newWs.length}개 생성 (중복 ${ws.length-newWs.length}개 제외)</div>
-        <div style="font-size:12px;color:#374151;max-height:100px;overflow-y:auto;margin-top:6px">
-          ${newWs.slice(0,8).map(w=>`• ${w.en} - ${w.kr}`).join('<br>')}
-          ${newWs.length>8?`<br>... 외 ${newWs.length-8}개`:''}
-        </div>
-      </div>
-      <button class="btn bg" style="width:100%" onclick="saveAIPackWords(${JSON.stringify(newWs).replace(/"/g,'&quot;')})">📥 팩에 저장</button>`;
-  }catch(e){
-    if(re)re.innerHTML=`<div style="color:#DC2626;padding:10px;background:#FEF2F2;border-radius:8px;font-size:12px">❌ 생성 실패: ${e.message}</div>`;
-  }
-}
-
-function saveAIPackWords(wsJson) {
-  try{
-    const ws=typeof wsJson==='string'?JSON.parse(wsJson.replace(/&quot;/g,'"')):wsJson;
-    const p=WORD_PACKS.find(x=>x.id===selPack);
-    if(!p.words)p.words=[];
-    const existSet=new Set(p.words.map(w=>w.en.toLowerCase()));
-    let added=0;
-    ws.forEach(w=>{
-      if(!existSet.has(w.en.toLowerCase())){
-        p.words.push({en:w.en,kr:w.kr,ph:w.ph||'',ex:w.ex||w.en+'.',img:w.img||'📝',tip:w.tip||'',meanings:[w.kr]});
-        added++;
-      }
-    });
-    toast(`✅ ${added}개 저장 완료!`,'ok');
-    showPackWordTab('list');
-  }catch(e){toast('저장 실패: '+e.message,'err');}
-}
-
-function deletePackWord(packId, idx) {
-  const p=WORD_PACKS.find(x=>x.id===packId);
-  if(!p||!p.words)return;
-  p.words.splice(idx,1);
-  showPackWordTab('list');
-}
-
-function editPackWord(packId, idx) {
-  const p=WORD_PACKS.find(x=>x.id===packId);
-  if(!p||!p.words)return;
-  const w=p.words[idx];
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✏️ 단어 수정</div>
-    <div class="fg"><label>영단어</label><input id="epw-en" value="${w.en.replace(/"/g,'&quot;')}"></div>
-    <div class="fg"><label>뜻</label><input id="epw-kr" value="${w.kr.replace(/"/g,'&quot;')}"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="fg"><label>발음기호</label><input id="epw-ph" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fg"><label>이모지</label><input id="epw-img" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
-    </div>
-    <div class="fg"><label>예문</label><input id="epw-ex" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
-    <div class="fg"><label>암기 팁</label><input id="epw-tip" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="saveEditPackWord('${packId}',${idx})" style="flex:1">저장</button>
-      <button class="btn bgr" onclick="showPackWords('${packId}')">취소</button>
-    </div>
-  </div></div>`;
-}
-
-function saveEditPackWord(packId, idx) {
-  const p=WORD_PACKS.find(x=>x.id===packId);
-  if(!p||!p.words)return;
-  p.words[idx]={
-    en:document.getElementById('epw-en').value.trim(),
-    kr:document.getElementById('epw-kr').value.trim(),
-    ph:document.getElementById('epw-ph').value.trim(),
-    ex:document.getElementById('epw-ex').value.trim(),
-    img:document.getElementById('epw-img').value.trim()||'📝',
-    tip:document.getElementById('epw-tip').value.trim(),
-    meanings:[document.getElementById('epw-kr').value.trim()]
-  };
-  toast('✅ 수정 완료','ok');
-  showPackWords(packId);
-}
-
-function removeInternalDups(packId) {
-  const p=WORD_PACKS.find(x=>x.id===packId);
-  if(!p||!p.words)return;
-  const seen=new Set();
-  const before=p.words.length;
-  p.words=p.words.filter(w=>{
-    const key=w.en.toLowerCase();
-    if(seen.has(key))return false;
-    seen.add(key);return true;
-  });
-  toast(`✅ ${before-p.words.length}개 중복 제거!`,'ok');
-  showPackWordTab('dup');
-}
-
-// CSV/JSON 가져오기 (팩 전체)
-function showImportPack() {
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">📤 팩 가져오기</div>
-    <div style="background:#EFF6FF;border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;color:#1E5FA5">
-      JSON 형식: {"id":"..","name":"..","cat":"..","words":[{"en":"..","kr":".."},...]}
-    </div>
-    <div class="fg"><label>JSON 파일</label><input type="file" id="import-json" accept=".json"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="doImportPack()" style="flex:1">가져오기</button>
-      <button class="btn bgr" onclick="cm()">취소</button>
-    </div>
-    <div id="import-msg" style="margin-top:8px"></div>
-  </div></div>`;
-}
-
-function doImportPack() {
-  const file=document.getElementById('import-json')?.files[0];
-  const msg=document.getElementById('import-msg');
-  if(!file){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">파일을 선택하세요</div>';return;}
-  const reader=new FileReader();
-  reader.onload=e=>{
-    try{
-      const data=JSON.parse(e.target.result);
-      const pack=Array.isArray(data)?data[0]:data;
-      if(!pack.id||!pack.name){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">올바른 형식이 아니에요</div>';return;}
-      if(WORD_PACKS.find(p=>p.id===pack.id)){
-        if(!confirm(`"${pack.name}" (${pack.id})가 이미 있어요. 덮어쓸까요?`))return;
-        const idx=WORD_PACKS.findIndex(p=>p.id===pack.id);
-        WORD_PACKS[idx]={...WORD_PACKS[idx],...pack};
-      } else {
-        WORD_PACKS.push({emoji:'📚',cat:'기타',count:100,words:[],...pack});
-      }
-      toast(`✅ "${pack.name}" 가져오기 완료!`,'ok');
-      cm(); rPK();
-    }catch(err){if(msg)msg.innerHTML=`<div style="color:#DC2626;font-size:12px">파싱 실패: ${err.message}</div>`;}
-  };
-  reader.readAsText(file,'UTF-8');
-}
-
-// ── 레벨 관리 ──
-function rLV(){
-  const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🍀',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🫘',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'✨',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#880E4F'},{id:'big',n:'큰 나비',e:'🦋',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'황금 나비',e:'⚡',desc:'God',basis:"GRE + Barron's 3500",c:'#E65100'}];
-  document.getElementById('main-inner').innerHTML=`
-    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">🦋 레벨 관리</h2>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">${lvs.map(l=>`<div style="background:#fff;border-radius:14px;border:2px solid ${l.c}33;padding:16px;text-align:center;cursor:pointer" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)"><div style="font-size:32px;margin-bottom:6px">${l.e}</div><div style="font-size:12px;font-weight:800;color:${l.c}">${l.n}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${l.desc}</div><div id="lc-${l.id}" style="font-size:18px;font-weight:900;color:${l.c};margin-top:8px">-</div><div style="font-size:10px;color:#9CA3AF">단어</div></div>`).join('')}</div>
-    <div class="card"><div class="ct">📋 레벨 기준</div><div class="tw"><table><tr><th>레벨</th><th>이름</th><th>대상</th><th>선정 기준</th><th>단어 관리</th></tr>${lvs.map(l=>`<tr><td style="font-size:22px">${l.e}</td><td style="font-weight:700;color:${l.c}">${l.n}</td><td><span class="badge" style="background:${l.c}22;color:${l.c}">${l.desc}</span></td><td style="font-size:12px;color:#6B7280">${l.basis}</td><td><button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)">단어 관리 →</button></td></tr>`).join('')}</table></div></div>`;
-  lvs.forEach(async l=>{try{const d=await db.collection('words').doc(l.id).get();const e=document.getElementById('lc-'+l.id);if(e)e.textContent=d.exists?(d.data().list||[]).length:0;}catch(e){}});
-}
-
-// ── 공지사항 ──
-async function rNT(){
-  let ns=[];
-  try{const s=await db.collection('notices').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>
-      <button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button>
-    </div>
-    <div class="card">${ns.length?`<div class="tw"><table><tr><th>제목</th><th>유형</th><th>작성일</th><th>상태</th><th>작업</th></tr>${ns.map(n=>`<tr><td><strong>${n.title}</strong></td><td><span class="badge ${n.type==='update'?'bb2':n.type==='event'?'by':'bg2'}">${{update:'업데이트',event:'이벤트',notice:'공지'}[n.type]||'공지'}</span></td><td style="font-size:12px;color:#9CA3AF">${n.createdAt?.toDate?.()?.toLocaleDateString('ko-KR')||'-'}</td><td><span class="badge ${n.active?'bg2':'br2'}">${n.active?'게시중':'숨김'}</span></td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="toggleNT('${n.id}',${!n.active})">${n.active?'숨김':'게시'}</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delNT('${n.id}')">삭제</button></div></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">📢</div><p>공지사항이 없어요</p></div>'}
-    </div>`;
-}
-
-function showAddNT(){
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✏️ 공지 작성</div>
-    <div class="fg"><label>제목</label><input id="ntitle" placeholder="공지 제목"></div>
-    <div class="fg"><label>유형</label><select id="ntype"><option value="notice">📢 공지</option><option value="update">🆕 업데이트</option><option value="event">🎉 이벤트</option></select></div>
-    <div class="fg"><label>내용</label><textarea id="nbody" style="min-height:100px;resize:vertical" placeholder="공지 내용..."></textarea></div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><input type="checkbox" id="nactive" checked style="width:18px;height:18px"><label style="display:inline;margin-bottom:0;font-size:13px;cursor:pointer" for="nactive">즉시 게시</label></div>
-    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveNT()" style="flex:1">작성</button><button class="btn bgr" onclick="cm()">취소</button></div>
-  </div></div>`;
-}
-
-async function saveNT(){
-  const t=document.getElementById('ntitle')?.value.trim();
-  const b=document.getElementById('nbody')?.value.trim();
-  if(!t||!b){toast('제목과 내용을 입력하세요','err');return;}
-  try{
-    await db.collection('notices').add({
-      title:t, body:b,
-      type:document.getElementById('ntype')?.value||'notice',
-      active:document.getElementById('nactive')?.checked!==false,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy:currentAdmin?.email
-    });
-    toast('✅ 공지 작성 완료','ok');
-    cm();
-    rNT();
-  }catch(e){toast('오류: '+e.message,'err');}
-}
-async function toggleNT(id,active){try{await db.collection('notices').doc(id).update({active});toast(active?'✅ 게시됨':'🙈 숨김','ok');rNT();}catch(e){toast('오류','err');}}
-async function delNT(id){if(!confirm('삭제할까요?'))return;try{await db.collection('notices').doc(id).delete();toast('🗑 삭제 완료','ok');rNT();}catch(e){toast('오류','err');}}
-
-// ── 회원 관리 ──
-async function rUS(){
-  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">회원 데이터 로딩 중...</div>';
-  let us=[];
-  try{const s=await db.collection('users').limit(100).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-      <h2 style="font-size:22px;font-weight:900">👥 회원 관리 <span style="font-size:14px;color:#9CA3AF">(${us.length}명)</span></h2>
-      <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:260px"><span>🔍</span><input placeholder="닉네임/코드 검색..." oninput="filterUS(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none"></div>
-    </div>
-    <div class="card">${us.length?`<div class="tw"><table id="utb"><tr><th>닉네임</th><th>레벨</th><th>streak</th><th>코드</th><th>상태</th><th>작업</th></tr>${us.map(u=>`<tr><td><strong>${u.nick||'-'}</strong><div style="font-size:11px;color:#9CA3AF">${u.id.slice(0,8)}</div></td><td>${LI[u.lid||u.level||'egg']?.e||'🥚'} <span class="badge bb2">${u.lid||u.level||'egg'}</span></td><td style="font-weight:700;color:#E65100">🔥 ${u.streak||0}일</td><td style="font-family:monospace;font-size:12px;color:#7C3AED">${u.code||'-'}</td><td><span class="badge ${u.banned?'br2':'bg2'}">${u.banned?'정지':'정상'}</span></td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editUS('${u.id}','${u.lid||u.level||'egg'}','${(u.nick||'').replace(/'/g,"\\'")}')">수정</button><button class="btn ${u.banned?'bg':'br'}" style="font-size:11px;padding:4px 8px" onclick="toggleBan('${u.id}',${!u.banned})">${u.banned?'해제':'정지'}</button></div></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">👥</div><p>회원이 없거나 users 컬렉션이 없어요</p></div>'}
-    </div>`;
-}
-function filterUS(v){document.querySelectorAll('#utb tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
-function editUS(id,lv,nick){
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">회원 수정</div>
-    <div class="fg"><label>닉네임</label><input id="un" value="${nick}"></div>
-    <div class="fg"><label>레벨</label><select id="ul">${LIDS.map(l=>`<option value="${l}" ${l===lv?'selected':''}>${LI[l].e} ${LI[l].n}</option>`).join('')}</select></div>
-    <div style="display:flex;gap:8px;margin-top:4px"><button class="btn bb" onclick="saveUS('${id}')" style="flex:1">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
-  </div></div>`;
-}
-async function saveUS(id){try{await db.collection('users').doc(id).update({nick:document.getElementById('un').value.trim(),lid:document.getElementById('ul').value});toast('✅ 수정 완료','ok');cm();rUS();}catch(e){toast('오류: '+e.message,'err');}}
-async function toggleBan(id,ban){try{await db.collection('users').doc(id).update({banned:ban});toast(ban?'🚫 정지 처리':'✅ 정지 해제','ok');rUS();}catch(e){toast('오류','err');}}
-
-// ── 콕 찌르기 ──
-async function rPO(){
-  let ps=[];
-  try{const s=await db.collection('pokes').limit(50).get();ps=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">👉 콕 찌르기 로그</h2>
-      <span class="badge bp2">최근 50개</span>
-    </div>
-    <div class="sg" style="grid-template-columns:repeat(3,1fr)"><div class="st"><div class="v" style="color:#7C3AED">${ps.length}</div><div class="l">전체</div></div><div class="st"><div class="v" style="color:#DC2626">${ps.filter(p=>!p.read).length}</div><div class="l">미읽음</div></div><div class="st"><div class="v" style="color:#16A34A">${ps.filter(p=>p.read).length}</div><div class="l">읽음</div></div></div>
-    <div class="card">${ps.length?`<div class="tw"><table><tr><th>보낸 사람</th><th>메시지</th><th>시간</th><th>상태</th></tr>${ps.map(p=>`<tr><td><strong>${p.fromNick||'?'}</strong></td><td style="font-size:12px;color:#6B7280">${p.msg||'-'}</td><td style="font-size:12px;color:#9CA3AF">${p.at?new Date(p.at).toLocaleString('ko-KR'):'-'}</td><td><span class="badge ${p.read?'bg2':'br2'}">${p.read?'읽음':'미읽음'}</span></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">👉</div><p>기록이 없어요</p></div>'}
-    </div>`;
-}
-
-// ── 앱 설정 ──
-async function rST(){
-  let s={appName:'WordDay',notice:'',maintenanceMode:false,xpMultiplier:1};
-  try{const d=await db.collection('settings').doc('app').get();if(d.exists)s={...s,...d.data()};}catch(e){}
-  document.getElementById('main-inner').innerHTML=`
-    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">⚙️ 앱 설정</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card"><div class="ct">📱 기본 설정</div>
-        <div class="fg"><label>앱 이름</label><input id="sn" value="${s.appName}"></div>
-        <div class="fg"><label>XP 배율</label><input id="sx" type="number" value="${s.xpMultiplier}" min="0.5" max="10" step="0.5"></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:12px;background:#FEF2F2;border-radius:10px">
-          <input type="checkbox" id="sm" ${s.maintenanceMode?'checked':''} style="width:18px;height:18px">
-          <div><label style="display:inline;margin-bottom:0;font-size:13px;font-weight:700;color:#DC2626" for="sm">🚧 점검 모드</label><div style="font-size:11px;color:#9CA3AF">활성화 시 일반 사용자 접근 차단</div></div>
-        </div>
-        <button class="btn bb" onclick="saveST()" style="width:100%">설정 저장</button>
-      </div>
-      <div class="card"><div class="ct">📢 앱 내 공지</div>
-        <div class="fg"><label>공지 메시지</label><textarea id="so" style="min-height:100px;resize:none" placeholder="앱에 표시할 공지사항...">${s.notice||''}</textarea></div>
-        <div class="fg"><label>공지 유형</label><select id="sot"><option value="info">ℹ️ 안내</option><option value="warning">⚠️ 경고</option><option value="event">🎉 이벤트</option></select></div>
-        <button class="btn bg" onclick="saveST()" style="width:100%">공지 저장</button>
-      </div>
-    </div>
-    <div class="card"><div class="ct">🗄️ Firestore 컬렉션 구조</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${[['users','회원 정보'],['words','레벨별 단어장'],['admins','관리자 계정'],['pokes','콕 찌르기'],['notices','공지사항'],['settings','앱 설정']].map(([c,d])=>`<div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:13px;font-weight:700;color:#1E5FA5;font-family:monospace">${c}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${d}</div></div>`).join('')}
-      </div>
-    </div>`;
-}
-
-async function saveST(){
-  try{
-    await db.collection('settings').doc('app').set({appName:document.getElementById('sn').value,notice:document.getElementById('so').value,noticeType:document.getElementById('sot').value,xpMultiplier:+document.getElementById('sx').value,maintenanceMode:document.getElementById('sm').checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    toast('✅ 설정 저장 완료!','ok');
-  }catch(e){toast('오류: '+e.message,'err');}
+  reader.readAsText(file);
 }
 </script>
-<div id="tw"></div>
+
 </body>
 </html>

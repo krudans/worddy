@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Butterfly Word - 관리자 센터</title>
+<title>Butterfly Word - 통합 관리자 센터</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -17,227 +17,122 @@
   .tab-btn.active { background: var(--primary); color: white; }
   .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
   input, textarea, select { width: 100%; padding: 12px; border: 1px solid #D1D5DB; border-radius: 8px; margin-top: 8px; box-sizing: border-box; }
-  button { cursor: pointer; border: none; border-radius: 8px; transition: 0.3s; }
-  .btn-main { background: var(--primary); color: white; padding: 12px 24px; font-weight: 700; }
-  .btn-del { background: #EF4444; color: white; padding: 6px 12px; font-size: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-  .bf-item { border: 1px solid #E5E7EB; padding: 15px; border-radius: 10px; position: relative; }
-  .svg-preview { width: 60px; height: 60px; background: #F9FAFB; border-radius: 50%; padding: 5px; margin-bottom: 10px; }
+  button { cursor: pointer; border: none; border-radius: 8px; transition: 0.3s; padding: 10px 20px; font-weight: 700; }
+  .btn-main { background: var(--primary); color: white; }
+  .btn-del { background: #EF4444; color: white; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
+  .item-card { border: 1px solid #E5E7EB; padding: 15px; border-radius: 10px; background: #fff; }
 </style>
 </head>
 <body>
 
 <div class="nav">
-  <div style="font-weight:900; font-size:1.2rem;">🦋 Butterfly Admin</div>
-  <div id="user-info" style="font-size:14px;"></div>
+  <div style="font-weight:900; font-size:1.2rem;">🦋 Butterfly 통합 관리</div>
+  <div id="user-info"></div>
 </div>
 
-<div class="container" id="login-section" style="display:none; text-align:center; margin-top:100px;">
-  <h1>관리자 전용</h1>
-  <p>이 페이지에 접근하려면 관리자 계정으로 로그인해야 한다.</p>
-  <button class="btn-main" onclick="doGoogleLogin()">Google 계정으로 로그인</button>
-</div>
-
-<div class="container" id="admin-section" style="display:none;">
+<div class="container" id="admin-section">
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('bf', this)">🦋 나비 관리</button>
-    <button class="tab-btn" onclick="switchTab('word', this)">📚 단어 및 마켓 관리</button>
-    <button class="tab-btn" onclick="switchTab('settings', this)">⚙️ 앱 설정</button>
+    <button class="tab-btn active" onclick="switchTab('bf', this)">나비 캐릭터</button>
+    <button class="tab-btn" onclick="switchTab('market', this)">마켓 단어장</button>
+    <button class="tab-btn" onclick="switchTab('settings', this)">앱 공지/설정</button>
   </div>
 
-  <div id="tab-content">
-    </div>
+  <div id="tab-content"></div>
 </div>
 
 <script>
-// ── Firebase 설정 (본인의 키로 교체 필요) ──
+// [필독] 본인의 Firebase 설정값을 반드시 아래에 붙여넣어야 한다.
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "YOUR_KEY",
+  authDomain: "YOUR_DOMAIN",
+  projectId: "YOUR_ID",
+  storageBucket: "YOUR_BUCKET",
+  messagingSenderId: "YOUR_SENDER",
+  appId: "YOUR_APP"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-let currentUser = null;
 let currentTab = 'bf';
 
-auth.onAuthStateChanged(async user => {
-  if (user) {
-    const adminDoc = await db.collection('admins').doc(user.uid).get();
-    if (adminDoc.exists) {
-      currentUser = user;
-      document.getElementById('login-section').style.display = 'none';
-      document.getElementById('admin-section').style.display = 'block';
-      document.getElementById('user-info').innerText = `${user.displayName} 관리자님`;
-      renderCurrentTab();
-    } else {
-      alert("관리자 권한이 없는 계정이다.");
-      auth.signOut();
-    }
-  } else {
-    document.getElementById('login-section').style.display = 'block';
-    document.getElementById('admin-section').style.display = 'none';
-  }
-});
-
-async function doGoogleLogin() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  try { await auth.signInWithPopup(provider); } catch(e) { alert(e.message); }
-}
-
-function switchTab(tab, el) {
+// 탭 전환 및 데이터 로드
+async function switchTab(tab, el) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  renderCurrentTab();
+  if(el) el.classList.add('active');
+  render();
 }
 
-async function renderCurrentTab() {
-  const content = document.getElementById('tab-content');
-  content.innerHTML = '<p>데이터를 불러오는 중이다...</p>';
+async function render() {
+  const area = document.getElementById('tab-content');
+  area.innerHTML = '<p>데이터 동기화 중...</p>';
 
   if (currentTab === 'bf') {
-    const snap = await db.collection('butterflies').orderBy('id').get();
-    let html = `
-      <div class="card">
-        <h3>새 나비 추가</h3>
-        <input id="new-bf-name" placeholder="나비 이름 (예: 호랑나비)">
-        <input id="new-bf-rare" placeholder="희귀도 (Common, Rare, Epic 등)">
-        <textarea id="new-bf-svg" placeholder="SVG 코드 입력"></textarea>
-        <button class="btn-main" onclick="saveButterfly()" style="margin-top:10px">저장하기</button>
-      </div>
-      <div class="grid">`;
+    const snap = await db.collection('butterflies').get();
+    let html = `<div class="card"><h3>새 나비 등록</h3>
+      <input id="bf-n" placeholder="나비 이름"><input id="bf-r" placeholder="희귀도"><textarea id="bf-s" placeholder="SVG 코드"></textarea>
+      <button class="btn-main" onclick="addBF()">등록하기</button></div><div class="grid">`;
     snap.forEach(doc => {
-      const data = doc.data();
-      html += `
-        <div class="card bf-item">
-          <div class="svg-preview">${data.svg || ''}</div>
-          <div style="font-weight:700">${data.name}</div>
-          <div style="font-size:12px; color:#6B7280">${data.rarity}</div>
-          <button class="btn-del" onclick="deleteDoc('butterflies','${doc.id}')" style="margin-top:10px">삭제</button>
-        </div>`;
+      const d = doc.data();
+      html += `<div class="item-card"><div style="width:50px">${d.svg}</div><b>${d.name}</b><p>${d.rarity}</p>
+      <button class="btn-del" onclick="delDoc('butterflies','${doc.id}')">삭제</button></div>`;
     });
-    html += `</div>`;
-    content.innerHTML = html;
+    area.innerHTML = html + `</div>`;
 
-  } else if (currentTab === 'word') {
-    const snap = await db.collection('wordpacks').orderBy('createdAt', 'desc').get();
-    let html = `
-      <div class="card">
-        <h3>새로운 단어장 마켓에 등록 (CSV 업로드)</h3>
-        <p style="font-size:13px; color:#6B7280">형식: 단어(en), 뜻(kr), 발음(ph), 예문(ex), 이모지(img)</p>
-        <input type="file" id="csv-file" accept=".csv">
-        <input id="pack-name" placeholder="단어장 세트 이름 (예: 초급 필수 500)">
-        <select id="pack-cat">
-          <option>여행</option>
-          <option>비즈니스</option>
-          <option>수능</option>
-          <option>미디어</option>
-          <option>취미문화</option>
-        </select>
-        <button class="btn-main" onclick="handleCSV()" style="margin-top:15px">업로드 시작</button>
-      </div>
-      
-      <div class="card">
-        <h3>서버에 등록된 마켓 단어장 목록</h3>
-        <p style="font-size:13px; color:#EF4444;">* 시스템 파일에 기본 내장된 데이터는 이곳에 표시되지 않는다.</p>
-        <div class="grid">`;
-    
-    if (snap.empty) {
-      html += `<p style="font-size:14px; color:#6B7280;">현재 서버(파이어베이스)에 업로드된 단어장이 없다.</p>`;
-    } else {
-      snap.forEach(doc => {
-        const data = doc.data();
-        const wordCount = data.words ? data.words.length : 0;
-        const dateStr = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleDateString() : '날짜 없음';
-        html += `
-          <div class="bf-item">
-            <div style="font-weight:900; color:#1E5FA5; font-size:18px;">${data.name}</div>
-            <div style="font-size:13px; color:#4B5563; margin-top:5px;">카테고리: ${data.cat}</div>
-            <div style="font-size:13px; color:#4B5563;">단어 개수: ${wordCount}개</div>
-            <div style="font-size:12px; color:#9CA3AF; margin-top:5px;">등록일: ${dateStr}</div>
-            <button class="btn-del" onclick="deleteDoc('wordpacks','${doc.id}')" style="margin-top:10px; width:100%;">삭제</button>
-          </div>`;
-      });
-    }
-    
-    html += `</div></div>`;
-    content.innerHTML = html;
-
-  } else if (currentTab === 'settings') {
-    const doc = await db.collection('settings').doc('app').get();
-    const s = doc.data() || {};
-    content.innerHTML = `
-      <div class="card">
-        <h3>전체 앱 설정</h3>
-        <label>공지사항 메시지</label>
-        <textarea id="set-notice">${s.notice || ''}</textarea>
-        <label>배너 광고 활성화</label>
-        <select id="set-banner">
-          <option value="true" ${s.useBanner ? 'selected' : ''}>ON</option>
-          <option value="false" ${!s.useBanner ? 'selected' : ''}>OFF</option>
-        </select>
-        <button class="btn-main" onclick="saveSettings()" style="margin-top:15px">설정 저장</button>
-      </div>`;
+  } else if (currentTab === 'market') {
+    const snap = await db.collection('wordpacks').orderBy('createdAt','desc').get();
+    let html = `<div class="card"><h3>신규 단어장 CSV 업로드</h3>
+      <input type="file" id="csv-f" accept=".csv"><input id="pk-n" placeholder="단어장 제목">
+      <select id="pk-c"><option>여행</option><option>비즈니스</option><option>수능</option></select>
+      <button class="btn-main" onclick="upCSV()">서버 업로드</button></div>
+      <div class="card"><h3>현재 마켓에 등록된 리스트 (${snap.size}개)</h3><div class="grid">`;
+    snap.forEach(doc => {
+      const d = doc.data();
+      html += `<div class="item-card"><b>${d.name}</b><br><small>${d.cat} | ${d.words.length}단어</small><br>
+      <button class="btn-del" onclick="delDoc('wordpacks','${doc.id}')" style="margin-top:10px">마켓에서 삭제</button></div>`;
+    });
+    area.innerHTML = html + `</div></div>`;
   }
 }
 
-async function saveButterfly() {
-  const name = document.getElementById('new-bf-name').value;
-  const rarity = document.getElementById('new-bf-rare').value;
-  const svg = document.getElementById('new-bf-svg').value;
-  if(!name || !svg) return alert("내용을 모두 입력해라.");
+async function addBF() {
+  const name = document.getElementById('bf-n').value;
+  const rarity = document.getElementById('bf-r').value;
+  const svg = document.getElementById('bf-s').value;
   await db.collection('butterflies').add({ name, rarity, svg, id: Date.now() });
-  alert("나비 정보가 저장되었다.");
-  renderCurrentTab();
+  render();
 }
 
-async function deleteDoc(col, id) {
-  if(!confirm("정말 이 데이터를 삭제하겠는가?")) return;
-  await db.collection(col).doc(id).delete();
-  alert("성공적으로 삭제되었다.");
-  renderCurrentTab();
+async function delDoc(col, id) {
+  if(confirm("삭제하시겠습니까?")) {
+    await db.collection(col).doc(id).delete();
+    render();
+  }
 }
 
-async function saveSettings() {
-  const notice = document.getElementById('set-notice').value;
-  const useBanner = document.getElementById('set-banner').value === 'true';
-  await db.collection('settings').doc('app').set({ notice, useBanner }, { merge: true });
-  alert("앱 설정이 반영되었다.");
-}
-
-async function handleCSV() {
-  const file = document.getElementById('csv-file').files[0];
-  const name = document.getElementById('pack-name').value;
-  if(!file || !name) return alert("파일과 단어장 이름을 확인해라.");
-  
+async function upCSV() {
+  const file = document.getElementById('csv-f').files[0];
+  const name = document.getElementById('pk-n').value;
+  if(!file || !name) return alert("파일과 이름을 확인해라.");
   const reader = new FileReader();
   reader.onload = async (e) => {
-    const text = e.target.result;
-    const lines = text.split('\n').filter(l => l.trim());
+    const lines = e.target.result.split('\n').filter(l => l.trim());
     const words = lines.map(line => {
       const [en, kr, ph, ex, img] = line.split(',');
-      return { en: en||'', kr: kr||'', ph: ph||'', ex: ex||'', img: img||'' };
+      return { en, kr, ph, ex, img };
     });
-    
-    await db.collection('wordpacks').add({ 
-      name, 
-      words, 
-      cat: document.getElementById('pack-cat').value, 
-      createdAt: new Date() 
-    });
-    alert(`${words.length}개의 단어가 성공적으로 마켓 서버에 등록되었다.`);
-    renderCurrentTab();
+    await db.collection('wordpacks').add({ name, words, cat: document.getElementById('pk-c').value, createdAt: new Date() });
+    alert("업로드 완료");
+    render();
   };
   reader.readAsText(file);
 }
-</script>
 
+// 초기 실행
+auth.onAuthStateChanged(user => { if(user) render(); else auth.signInAnonymously(); });
+</script>
 </body>
 </html>

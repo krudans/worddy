@@ -41,7 +41,7 @@
 <div class="container" id="admin-section" style="display:none;">
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('bf', this)">🦋 나비 관리</button>
-    <button class="tab-btn" onclick="switchTab('word', this)">📚 단어 업로드</button>
+    <button class="tab-btn" onclick="switchTab('word', this)">📚 단어 및 마켓 관리</button>
     <button class="tab-btn" onclick="switchTab('settings', this)">⚙️ 앱 설정</button>
   </div>
 
@@ -64,11 +64,9 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-// ── 상태 관리 ──
 let currentUser = null;
 let currentTab = 'bf';
 
-// ── 인증 로직 ──
 auth.onAuthStateChanged(async user => {
   if (user) {
     const adminDoc = await db.collection('admins').doc(user.uid).get();
@@ -102,7 +100,7 @@ function switchTab(tab, el) {
 
 async function renderCurrentTab() {
   const content = document.getElementById('tab-content');
-  content.innerHTML = '<p>불러오는 중...</p>';
+  content.innerHTML = '<p>데이터를 불러오는 중이다...</p>';
 
   if (currentTab === 'bf') {
     const snap = await db.collection('butterflies').orderBy('id').get();
@@ -127,26 +125,64 @@ async function renderCurrentTab() {
     });
     html += `</div>`;
     content.innerHTML = html;
+
   } else if (currentTab === 'word') {
-    content.innerHTML = `
+    const snap = await db.collection('wordpacks').orderBy('createdAt', 'desc').get();
+    let html = `
       <div class="card">
-        <h3>CSV 파일로 단어장 업로드</h3>
+        <h3>새로운 단어장 마켓에 등록 (CSV 업로드)</h3>
         <p style="font-size:13px; color:#6B7280">형식: 단어(en), 뜻(kr), 발음(ph), 예문(ex), 이모지(img)</p>
         <input type="file" id="csv-file" accept=".csv">
         <input id="pack-name" placeholder="단어장 세트 이름 (예: 초급 필수 500)">
-        <select id="pack-cat"><option>여행</option><option>비즈니스</option><option>수능</option></select>
+        <select id="pack-cat">
+          <option>여행</option>
+          <option>비즈니스</option>
+          <option>수능</option>
+          <option>미디어</option>
+          <option>취미문화</option>
+        </select>
         <button class="btn-main" onclick="handleCSV()" style="margin-top:15px">업로드 시작</button>
-      </div>`;
+      </div>
+      
+      <div class="card">
+        <h3>서버에 등록된 마켓 단어장 목록</h3>
+        <p style="font-size:13px; color:#EF4444;">* 시스템 파일에 기본 내장된 데이터는 이곳에 표시되지 않는다.</p>
+        <div class="grid">`;
+    
+    if (snap.empty) {
+      html += `<p style="font-size:14px; color:#6B7280;">현재 서버(파이어베이스)에 업로드된 단어장이 없다.</p>`;
+    } else {
+      snap.forEach(doc => {
+        const data = doc.data();
+        const wordCount = data.words ? data.words.length : 0;
+        const dateStr = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleDateString() : '날짜 없음';
+        html += `
+          <div class="bf-item">
+            <div style="font-weight:900; color:#1E5FA5; font-size:18px;">${data.name}</div>
+            <div style="font-size:13px; color:#4B5563; margin-top:5px;">카테고리: ${data.cat}</div>
+            <div style="font-size:13px; color:#4B5563;">단어 개수: ${wordCount}개</div>
+            <div style="font-size:12px; color:#9CA3AF; margin-top:5px;">등록일: ${dateStr}</div>
+            <button class="btn-del" onclick="deleteDoc('wordpacks','${doc.id}')" style="margin-top:10px; width:100%;">삭제</button>
+          </div>`;
+      });
+    }
+    
+    html += `</div></div>`;
+    content.innerHTML = html;
+
   } else if (currentTab === 'settings') {
     const doc = await db.collection('settings').doc('app').get();
     const s = doc.data() || {};
     content.innerHTML = `
       <div class="card">
         <h3>전체 앱 설정</h3>
-        <label>공지사항</label>
+        <label>공지사항 메시지</label>
         <textarea id="set-notice">${s.notice || ''}</textarea>
         <label>배너 광고 활성화</label>
-        <select id="set-banner"><option value="true" ${s.useBanner?'selected':''}>ON</option><option value="false" ${!s.useBanner?'selected':''}>OFF</option></select>
+        <select id="set-banner">
+          <option value="true" ${s.useBanner ? 'selected' : ''}>ON</option>
+          <option value="false" ${!s.useBanner ? 'selected' : ''}>OFF</option>
+        </select>
         <button class="btn-main" onclick="saveSettings()" style="margin-top:15px">설정 저장</button>
       </div>`;
   }
@@ -158,13 +194,14 @@ async function saveButterfly() {
   const svg = document.getElementById('new-bf-svg').value;
   if(!name || !svg) return alert("내용을 모두 입력해라.");
   await db.collection('butterflies').add({ name, rarity, svg, id: Date.now() });
-  alert("저장되었다.");
+  alert("나비 정보가 저장되었다.");
   renderCurrentTab();
 }
 
 async function deleteDoc(col, id) {
-  if(!confirm("정말 삭제하겠는가?")) return;
+  if(!confirm("정말 이 데이터를 삭제하겠는가?")) return;
   await db.collection(col).doc(id).delete();
+  alert("성공적으로 삭제되었다.");
   renderCurrentTab();
 }
 
@@ -172,13 +209,13 @@ async function saveSettings() {
   const notice = document.getElementById('set-notice').value;
   const useBanner = document.getElementById('set-banner').value === 'true';
   await db.collection('settings').doc('app').set({ notice, useBanner }, { merge: true });
-  alert("설정이 반영되었다.");
+  alert("앱 설정이 반영되었다.");
 }
 
 async function handleCSV() {
   const file = document.getElementById('csv-file').files[0];
   const name = document.getElementById('pack-name').value;
-  if(!file || !name) return alert("파일과 이름을 확인해라.");
+  if(!file || !name) return alert("파일과 단어장 이름을 확인해라.");
   
   const reader = new FileReader();
   reader.onload = async (e) => {
@@ -186,10 +223,17 @@ async function handleCSV() {
     const lines = text.split('\n').filter(l => l.trim());
     const words = lines.map(line => {
       const [en, kr, ph, ex, img] = line.split(',');
-      return { en, kr, ph, ex, img };
+      return { en: en||'', kr: kr||'', ph: ph||'', ex: ex||'', img: img||'' };
     });
-    await db.collection('wordpacks').add({ name, words, cat: document.getElementById('pack-cat').value, createdAt: new Date() });
-    alert(`${words.length}개의 단어가 성공적으로 등록되었다.`);
+    
+    await db.collection('wordpacks').add({ 
+      name, 
+      words, 
+      cat: document.getElementById('pack-cat').value, 
+      createdAt: new Date() 
+    });
+    alert(`${words.length}개의 단어가 성공적으로 마켓 서버에 등록되었다.`);
+    renderCurrentTab();
   };
   reader.readAsText(file);
 }

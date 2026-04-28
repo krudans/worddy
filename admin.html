@@ -19,18 +19,69 @@ async function rBF() {
   const main = document.getElementById('main-inner');
   main.innerHTML = '<div style="text-align:center;padding:40px;color:#9CA3AF">로딩 중...</div>';
   let bfList = [];
+  // Firebase 나비
   try { const snap = await db.collection('butterflies').orderBy('id').get(); bfList = snap.docs.map(d=>({id:d.id,...d.data()})); } catch(e) {}
-  main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2><div style="display:flex;gap:8px"><span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${bfList.length}종</span><button class="btn bb" onclick="showAddBF()">➕ 추가</button><button class="btn bg" onclick="downloadBFImages()">📦 ZIP</button></div></div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">${bfList.length?bfList.map(bf=>`<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px;text-align:center"><div style="font-size:10px;color:#9CA3AF">${bf.id}</div><div style="min-height:50px;display:flex;align-items:center;justify-content:center">${bf.svgCode?bf.svgCode.replace(/width="[^"]*"/,'width="48"').replace(/height="[^"]*"/,'height="48"'):'🦋'}</div><div style="font-size:12px;font-weight:700">${bf.name||'-'}</div><div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">${bf.rare||''}</div><div style="display:flex;gap:4px"><button class="btn bgr" style="flex:1;font-size:11px;padding:4px" onclick="editBF('${bf.id}')">✏️</button><button class="btn br" style="font-size:11px;padding:4px" onclick="deleteBF('${bf.id}','${bf.name||''}')">🗑</button></div></div>`).join(''):'<div class="es" style="grid-column:1/-1"><div class="ei">🦋</div><p>등록된 나비 없음</p></div>'}</div>`;
+  // 앱 내장 나비 30종 추가 (Firebase에 없는 것만)
+  const BUILTIN_BF = [
+    {id:'b01',name:'제르세스 블루',enName:'Xerces Blue',rare:'⭐⭐⭐⭐⭐',color:'#4A90D9',desc:'멸종된 파랑 부전나비. 미국 샌프란시스코 서식'},
+    {id:'b02',name:'알렉산드라 비단제비나비',enName:"Queen Alexandra's Birdwing",rare:'⭐⭐⭐⭐⭐',color:'#2D7A5C',desc:'세계 최대 나비. 파푸아뉴기니 서식'},
+    {id:'b03',name:'팔로스베르데스 블루',enName:'Palos Verdes Blue',rare:'⭐⭐⭐⭐⭐',color:'#38BDF8',desc:'캘리포니아 멸종위기종'},
+    {id:'b04',name:'상제나비',enName:'Korean White Butterfly',rare:'⭐⭐⭐⭐⭐',color:'#E5E7EB',desc:'한국 고유종. 멸종위기 1급'},
+    {id:'b05',name:'붉은점모시나비',enName:'Red-spot Apollo',rare:'⭐⭐⭐⭐',color:'#DC2626',desc:'한국 멸종위기종. 빨간 반점 특징'},
+    {id:'b06',name:'블루 몰포',enName:'Blue Morpho',rare:'⭐⭐⭐⭐',color:'#0066FF',desc:'메탈릭 파랑 날개. 남미 열대우림'},
+    {id:'b07',name:'쌍꼬리부전나비',enName:'Double-tailed Hairstreak',rare:'⭐⭐⭐⭐',color:'#3B82F6',desc:'꼬리 두 쌍이 특징'},
+    {id:'b08',name:'부엉이나비',enName:'Owl Butterfly',rare:'⭐⭐⭐⭐',color:'#8B5E3C',desc:'뒷날개 부엉이 눈 문양'},
+    {id:'b09',name:'나뭇잎나비',enName:'Dead Leaf Butterfly',rare:'⭐⭐⭐⭐',color:'#795548',desc:'날개 접으면 완벽한 낙엽 위장'},
+    {id:'b10',name:'모나크 (왕나비)',enName:'Monarch Butterfly',rare:'⭐⭐⭐⭐',color:'#E67E22',desc:'주황+검정. 대이동 4천km'},
+    {id:'b11',name:'공작나비',enName:'Peacock Butterfly',rare:'⭐⭐⭐⭐',color:'#C62828',desc:'공작 눈 문양 4개'},
+    {id:'b12',name:'오색나비',enName:'Five-striped Swallowtail',rare:'⭐⭐⭐',color:'#7C3AED',desc:'5가지 색 화려한 날개'},
+    {id:'b13',name:'대왕나비',enName:'Giant Swallowtail',rare:'⭐⭐⭐',color:'#1D4ED8',desc:'북미 최대 나비'},
+    {id:'b14',name:'유리창나비',enName:'Clearwing Butterfly',rare:'⭐⭐⭐',color:'#F97316',desc:'날개 가운데 투명한 창'},
+    {id:'b15',name:'청띠신선나비',enName:'Blue-banded Butterfly',rare:'⭐⭐⭐',color:'#007ACC',desc:'검정 날개에 선명한 파랑 띠'},
+    {id:'b16',name:'홍점알락나비',enName:'Red-spot Butterfly',rare:'⭐⭐⭐',color:'#DC2626',desc:'검정에 붉은 점 패턴'},
+    {id:'b17',name:'은줄팔랑나비',enName:'Silver-streak Skipper',rare:'⭐⭐⭐',color:'#8B6914',desc:'삼각형 날개, 은색 줄 특징'},
+    {id:'b18',name:'청띠제비나비',enName:'Citrus Swallowtail',rare:'⭐⭐⭐',color:'#00BCD4',desc:'청록 띠와 꼬리'},
+    {id:'b19',name:'산제비나비',enName:"Maack's Swallowtail",rare:'⭐⭐⭐',color:'#00ACC1',desc:'청록 반점과 붉은 반점'},
+    {id:'b20',name:'호랑나비',enName:'Asian Swallowtail',rare:'⭐⭐',color:'#FBBF24',desc:'노란 날개에 검정 줄무늬'},
+    {id:'b21',name:'배추흰나비',enName:'Cabbage White',rare:'⭐⭐',color:'#F5F5F5',desc:'흰 날개, 검정 반점 2개'},
+    {id:'b22',name:'노랑나비',enName:'Common Clouded Yellow',rare:'⭐⭐',color:'#FDE047',desc:'밝은 노랑, 주황 테두리'},
+    {id:'b23',name:'네발나비',enName:'Asian Comma',rare:'⭐⭐',color:'#E8730E',desc:'앞쪽 검정+주황 날개'},
+    {id:'b24',name:'왕오색나비',enName:'Emperor Butterfly',rare:'⭐⭐⭐',color:'#6B21A8',desc:'보라+파랑+초록 광채'},
+    {id:'b25',name:'긴꼬리제비나비',enName:'Long-tailed Swallowtail',rare:'⭐⭐⭐',color:'#0f0f0f',desc:'매우 긴 꼬리 4개'},
+    {id:'b26',name:'제비나비',enName:'Chinese Peacock',rare:'⭐⭐',color:'#1E40AF',desc:'검정+뒷날개 파랑 광택'},
+    {id:'b27',name:'남방제비나비',enName:'Southern Swallowtail',rare:'⭐⭐',color:'#1a1a1a',desc:'검정+붉은 반점'},
+    {id:'b28',name:'애호랑나비',enName:"Puziloi's Swallowtail",rare:'⭐⭐',color:'#FEF9C3',desc:'연한 노랑+가는 검정 줄'},
+    {id:'b29',name:'큰줄흰나비',enName:'Large White',rare:'⭐⭐',color:'#F8F8F5',desc:'흰 날개에 굵은 검정 줄 2개'},
+    {id:'b30',name:'긴은줄표범나비',enName:'Silver-washed Fritillary',rare:'⭐⭐',color:'#E8820A',desc:'주황 표범무늬+은색 줄'},
+  ];
+  const fbIds = new Set(bfList.map(b=>b.id));
+  const merged = [...bfList, ...BUILTIN_BF.filter(b=>!fbIds.has(b.id)).map(b=>({...b, _builtin:true}))];
+  bfList = merged.sort((a,b)=>a.id.localeCompare(b.id));
+  main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2><div style="display:flex;gap:8px"><span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">전체 ${bfList.length}종 (DB ${bfList.filter(b=>!b._builtin).length}종)</span><button class="btn bb" onclick="showAddBF()">➕ 추가</button><button class="btn bg" onclick="downloadBFImages()">📦 ZIP</button></div></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">${bfList.length?bfList.map(bf=>`<div style="background:#fff;border-radius:14px;border:1.5px solid ${bf._builtin?'#DBEAFE':'#E5E7EB'};padding:12px;text-align:center;position:relative">
+          ${bf._builtin?'<div style="position:absolute;top:6px;right:6px;font-size:9px;background:#EFF6FF;color:#1E40AF;border-radius:6px;padding:1px 5px">기본</div>':''}
+          <div style="font-size:10px;color:#9CA3AF">${bf.id}</div>
+          <div style="min-height:60px;display:flex;align-items:center;justify-content:center;padding:4px">
+            ${bf.svgCode ? bf.svgCode.replace(/viewBox="[^"]*"/,'viewBox="0 0 120 90"').replace(/<svg /,'<svg width="56" height="42" ') : '<div style="font-size:36px">🦋</div>'}
+          </div>
+          <div style="font-size:12px;font-weight:800;margin-bottom:2px">${bf.name||'-'}</div>
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">${bf.enName||''}</div>
+          <div style="font-size:10px;margin-bottom:6px">${bf.rare||''}</div>
+          <div style="font-size:10px;color:#6B7280;min-height:24px;margin-bottom:6px;line-height:1.4">${(bf.desc||'').slice(0,30)}${(bf.desc||'').length>30?'...':''}</div>
+          <div style="display:flex;gap:4px">
+            <button class="btn bgr" style="flex:1;font-size:11px;padding:4px" onclick="editBF('${bf.id}')">✏️</button>
+            ${bf._builtin?'':`<button class="btn br" style="font-size:11px;padding:4px" onclick="deleteBF('${bf.id}','${bf.name||''}')">🗑</button>`}
+          </div>
+        </div>`).join(''):'<div class="es" style="grid-column:1/-1"><div class="ei">🦋</div><p>등록된 나비 없음</p></div>'}</div>`;
 }
 function showAddBF(bf){
   bf=bf||{};
   const mr=document.getElementById('mr');
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto"><div style="font-size:16px;font-weight:900;margin-bottom:14px">${bf.id?'수정':'추가'}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"><input id="bf-id" placeholder="ID(b031)" value="${bf.id||''}" ${bf.id?'readonly':''} style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><input id="bf-name" placeholder="한글명" value="${bf.name||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><input id="bf-en" placeholder="영문명" value="${bf.enName||''}" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB"><select id="bf-rare" style="padding:8px;border-radius:8px;border:1.5px solid #E5E7EB">${['⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'].map(r=>`<option value="${r}" ${bf.rare===r?'selected':''}>${r}</option>`).join('')}</select></div><textarea id="bf-desc" placeholder="설명" rows="2" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;margin-bottom:8px;resize:vertical">${bf.desc||''}</textarea><div style="font-size:12px;font-weight:700;margin-bottom:4px">SVG 코드</div><textarea id="bf-svg" rows="5" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:11px;font-family:monospace;resize:vertical;margin-bottom:6px">${bf.svgCode||''}</textarea><button onclick="document.getElementById('bf-preview').innerHTML=document.getElementById('bf-svg').value" style="background:#F5F3FF;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:#7C3AED;margin-bottom:6px">👁 미리보기</button><div id="bf-preview" style="min-height:60px;display:flex;align-items:center;justify-content:center;border:1px dashed #E5E7EB;border-radius:8px;margin-bottom:12px">${bf.svgCode||''}</div><button onclick="saveBF('${bf.id||''}')" class="btn bb">💾 저장</button></div></div>`;
 }
-async function saveBF(id){const bid=document.getElementById('bf-id').value.trim();const name=document.getElementById('bf-name').value.trim();if(!bid||!name){toast('ID와 이름 필수','err');return;}const data={id:bid,name,enName:document.getElementById('bf-en').value.trim(),rare:document.getElementById('bf-rare').value,desc:document.getElementById('bf-desc').value.trim(),svgCode:document.getElementById('bf-svg').value.trim(),updatedAt:new Date().toISOString()};try{await db.collection('butterflies').doc(bid).set(data,{merge:true});toast('✅ 저장');cm();rBF();}catch(e){toast('오류: '+e.message,'err');}}
-async function editBF(id){try{const d=await db.collection('butterflies').doc(id).get();if(d.exists)showAddBF({id:d.id,...d.data()});}catch(e){toast('오류','err');}}
-async function deleteBF(id,name){if(!confirm(name+' 삭제?'))return;try{await db.collection('butterflies').doc(id).delete();toast('삭제');rBF();}catch(e){toast('오류','err');}}
+async async function saveBF(id){const bid=document.getElementById('bf-id').value.trim();const name=document.getElementById('bf-name').value.trim();if(!bid||!name){toast('ID와 이름 필수','err');return;}const data={id:bid,name,enName:document.getElementById('bf-en').value.trim(),rare:document.getElementById('bf-rare').value,desc:document.getElementById('bf-desc').value.trim(),svgCode:document.getElementById('bf-svg').value.trim(),updatedAt:new Date().toISOString()};try{await db.collection('butterflies').doc(bid).set(data,{merge:true});toast('✅ 저장');cm();rBF();}catch(e){toast('오류: '+e.message,'err');}}
+async async function editBF(id){try{const d=await db.collection('butterflies').doc(id).get();if(d.exists)showAddBF({id:d.id,...d.data()});}catch(e){toast('오류','err');}}
+async async function deleteBF(id,name){if(!confirm(name+' 삭제?'))return;try{await db.collection('butterflies').doc(id).delete();toast('삭제');rBF();}catch(e){toast('오류','err');}}
 async function downloadBFImages(){toast('준비 중...');if(typeof JSZip==='undefined'){const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';document.head.appendChild(s);await new Promise(res=>s.onload=res);}const snap=await db.collection('butterflies').get();const zip=new JSZip();const canvas=document.createElement('canvas');canvas.width=200;canvas.height=200;const ctx=canvas.getContext('2d');for(const doc of snap.docs){const bf=doc.data();if(!bf.svgCode)continue;const svgStr=bf.svgCode.replace(/width="[^"]*"/,'width="200"').replace(/height="[^"]*"/,'height="200"');const img=new Image();const blob=new Blob([svgStr],{type:'image/svg+xml'});const url=URL.createObjectURL(blob);await new Promise(res=>{img.onload=()=>{ctx.clearRect(0,0,200,200);ctx.drawImage(img,0,0);res();};img.src=url;});zip.file(`${bf.id}_${(bf.name||bf.id).replace(/\s/g,'_')}.png`,canvas.toDataURL('image/png').split(',')[1],{base64:true});URL.revokeObjectURL(url);}const content=await zip.generateAsync({type:'blob'});const a=document.createElement('a');a.href=URL.createObjectURL(content);a.download='butterfly_images.zip';a.click();toast('✅ 완료');}
 
 // ── 광고 배너 ──

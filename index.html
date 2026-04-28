@@ -595,10 +595,10 @@ const ok = () => {
   S._combo = (S._combo||0)+1;
   S._maxCombo = Math.max(S._maxCombo||0, S._combo);
   // 콤보 보너스 XP + 연출
-  if(S._combo===3)  { addXP(10,true); showComboFlash(3,  '+10XP'); }
-  if(S._combo===5)  { addXP(20,true); showComboFlash(5,  '+20XP 🔥'); SFX.play('combo'); }
-  if(S._combo===10) { addXP(50,true); showComboFlash(10, '+50XP ⚡'); }
-  if(S._combo===20) { addXP(100,true); showComboFlash(20, '+100XP 🌟'); }
+  if(S._combo===3)  { addXP(xp('combo_3'),true); showComboFlash(3, '+'+xp('combo_3')+'XP'); }
+  if(S._combo===5)  { addXP(xp('combo_5'),true); showComboFlash(5, '+'+xp('combo_5')+'XP 🔥'); SFX.play('combo'); }
+  if(S._combo===10) { addXP(xp('combo_10'),true); showComboFlash(10, '+'+xp('combo_10')+'XP ⚡'); }
+  if(S._combo===20) { addXP(xp('combo_20'),true); showComboFlash(20, '+'+xp('combo_20')+'XP 🌟'); }
 };
 const ng = () => {
   SFX.play('wrong'); vib([100,50,100]);
@@ -1053,8 +1053,8 @@ function logStudy(type) {
   // 헤더 미니 카드 업데이트
   if(typeof updHD==='function') updHD();
   // XP 지급
-  if(type==='words') { addXP(10, true); checkXpUsable(); }
-  else if(type==='quiz') { addXP(5, true); }
+  if(type==='words') { addXP(xp('daily_first'), true); checkXpUsable(); }
+  else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
   const t = today();
   if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0};
   S.studyLog[t][type]++;
@@ -1300,7 +1300,68 @@ function getTodayWord() {
 }
 
 // ── XP 획득 시스템 ──
-const GAME_XP = {
+
+// ── XP 설정 (관리자에서 Firebase settings/xpConfig 로 관리) ──
+const XP_DEFAULT = {
+  word_learn:    3,   // 단어 1개 학습
+  word_flip:     2,   // 플래시카드 넘기기
+  quiz_correct:  5,   // 퀴즈 정답
+  srs_hard:      5,   // SRS 헷갈림
+  srs_good:     10,   // SRS 완료
+  speak_word:    5,   // 발음 듣기
+  daily_first:  10,   // 하루 첫 학습 (logStudy words)
+  chain_step:   10,   // 체인스토리 1단계
+  challenge:    10,   // 일일 챌린지
+  pomodoro:     30,   // 뽀모도로 완료
+  achievement:  30,   // 업적 달성
+  test_60:      30,   // 테스트 60% 이상
+  test_80:      50,   // 테스트 80% 이상
+  test_90:      80,   // 테스트 90% 이상
+  test_100:    120,   // 테스트 100%
+  combo_3:      10,   // 콤보 x3
+  combo_5:      20,   // 콤보 x5
+  combo_10:     50,   // 콤보 x10
+  combo_20:    100,   // 콤보 x20
+  game_quiz_base:    10,  game_quiz_perfect:    20,
+  game_fill_base:    10,  game_fill_perfect:    20,
+  game_typing_base:  15,  game_typing_perfect:  25,
+  game_listen_base:  15,  game_listen_perfect:  25,
+  game_match_base:   10,  game_match_perfect:   20,
+  game_sentence_base:20,  game_sentence_perfect:35,
+  game_wordfind_base:10,  game_wordfind_perfect:20,
+  game_wordle_base:  30,  game_wordle_perfect:  60,
+  game_chain_base:   15,  game_chain_perfect:   25,
+  game_wc_base:      10,  game_wc_perfect:      20,
+  game_ssort_base:   15,  game_ssort_perfect:   25,
+  xpMultiplier: 1.0,  // 전체 배율
+};
+window._XPC = {...XP_DEFAULT};
+
+async function loadXPConfig() {
+  try {
+    if(typeof db === 'undefined') return;
+    const doc = await db.collection('settings').doc('xpConfig').get();
+    if(doc.exists) {
+      const data = doc.data();
+      window._XPC = {...XP_DEFAULT, ...data};
+    }
+  } catch(e) {}
+  // GAME_XP 동기화
+  const x = window._XPC;
+  GAME_XP.quiz     = {base: x.game_quiz_base,     perfect: x.game_quiz_perfect};
+  GAME_XP.fill     = {base: x.game_fill_base,     perfect: x.game_fill_perfect};
+  GAME_XP.typing   = {base: x.game_typing_base,   perfect: x.game_typing_perfect};
+  GAME_XP.listen   = {base: x.game_listen_base,   perfect: x.game_listen_perfect};
+  GAME_XP.match    = {base: x.game_match_base,    perfect: x.game_match_perfect};
+  GAME_XP.sentence = {base: x.game_sentence_base, perfect: x.game_sentence_perfect};
+  GAME_XP.wordfind = {base: x.game_wordfind_base, perfect: x.game_wordfind_perfect};
+  GAME_XP.wordle   = {base: x.game_wordle_base,   perfect: x.game_wordle_perfect};
+  GAME_XP.chain    = {base: x.game_chain_base,    perfect: x.game_chain_perfect};
+  GAME_XP.wc       = {base: x.game_wc_base,       perfect: x.game_wc_perfect};
+  GAME_XP.ssort    = {base: x.game_ssort_base,    perfect: x.game_ssort_perfect};
+}
+function xp(key) { return Math.round((window._XPC[key]||0) * (window._XPC.xpMultiplier||1)); }
+AME_XP = {
   quiz:     {base:10, perfect:20},
   fill:     {base:10, perfect:20},
   typing:   {base:15, perfect:25},
@@ -1353,15 +1414,15 @@ function earnWordXP() {
 
 // 테스트 결과 XP
 function earnTestXP(pct) {
-  let xp = 0;
-  if(pct===100) xp=120;
-  else if(pct>=90) xp=80;
-  else if(pct>=80) xp=50;
-  else if(pct>=60) xp=30;
+  let base = 0;
+  if(pct===100) base=xp('test_100');
+  else if(pct>=90) base=xp('test_90');
+  else if(pct>=80) base=xp('test_80');
+  else if(pct>=60) base=xp('test_60');
   const streak=S.streak||0;
   const mult=streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0;
-  xp = Math.round(xp*mult);
-  if(xp>0) earnXP(xp, '테스트 통과');
+  const total = Math.round(base*mult);
+  if(total>0) earnXP(total, '테스트 통과');
 }
 
 function charSVGAnimated(lid, size=60, mood='normal') {
@@ -2403,8 +2464,8 @@ function showPomodoroTimer() {
         if(secs===0){if(mins===0){
           clearInterval(interval); running=false;
           SFX.play('levelup'); vib([200,100,200,100,400]);
-          addXP(30); checkAchievements(); sv();
-          toast('🍅 집중 완료! +30XP 획득!');
+          addXP(xp('pomodoro')); checkAchievements(); sv();
+          toast('🍅 집중 완료! +'+xp('pomodoro')+'XP 획득!');
           render(); return;
         }mins--;secs=59;}else secs--;
         render();
@@ -2844,7 +2905,7 @@ function showSpeakMode() {
         <div style="text-align:center;margin-bottom:4px">${_markBtn(w.en)}</div>
         <button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(window._spkWords[window._spkIdx].en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" 
           style="background:linear-gradient(135deg,#0EA5E9,#0284C7);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">🔊 원어민 발음 듣기</button>
-        <button onclick="window._spkIdx++;window._spkRender();logStudy('words');addXP(5)"
+        <button onclick="window._spkIdx++;window._spkRender();logStudy('words');addXP(xp('speak_word'))"
           style="background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">✅ 말했어요! 다음 →</button>
         <button onclick="speechSynthesis.cancel();cm()"
           style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
@@ -3599,7 +3660,7 @@ function showAutoMode() {
       }
       window._autoRender();
       logStudy('words');
-      addXP(2);
+      addXP(xp('word_flip'));
     }
     window._autoRender();
   };
@@ -4185,6 +4246,7 @@ function finishAdaptiveTest() {
 
 // ── 앱 시작 ──
 function startApp() {
+  loadXPConfig(); // XP 설정 Firebase 로드
   console.log('[앱] startApp 호출');
   window._appStartTime = Date.now();
   window._svDisabled=false;
@@ -4685,7 +4747,7 @@ function checkMiniQuiz() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${choices.map(ch=>`<button onclick="
           const isOk='${ch.en}'==='${w.en}';
-          if(isOk){ok();addXP(5,true);document.getElementById('mr').innerHTML='';toast('정답! +5XP ⚡');}
+          if(isOk){ok();addXP(xp('quiz_correct'),true);document.getElementById('mr').innerHTML='';toast('정답! +'+xp('quiz_correct')+'XP ⚡');}
           else{ng();document.getElementById('mr').innerHTML='<div class=\'mbg\'><div class=\'modal\' style=\'text-align:center;padding:20px\'><div style=\'font-size:48px\'>❌</div><div style=\'font-size:14px;font-weight:700;margin:10px 0\'>정답은 ${w.kr}</div><button onclick=\'cm()\' class=\'btn bb\'>확인</button></div></div>';}
         " style="background:var(--bg-sub,#FFF9ED);border:1.5px solid var(--border,#F0E6C8);border-radius:12px;padding:12px 8px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text1,#3D2C00)">${ch.kr}</button>`).join('')}
       </div>
@@ -7211,7 +7273,7 @@ function showStreamMode() {
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);
     }
-    logStudy('words');addXP(3);
+    logStudy('words');addXP(xp('word_learn'));
   };
 
   window._stNext=()=>{
@@ -7616,8 +7678,8 @@ function showSRSMode() {
         <div style="text-align:center;margin-bottom:8px">${_markBtn(w.en||'')}</div>
         <div style="display:flex;gap:8px"><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="flex:1;background:rgba(96,165,250,.2);border:1px solid rgba(96,165,250,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🔊 영어</button><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.kr||'').replace(/'/g,"\'")}');u.lang='ko-KR';u.rate=0.95;speechSynthesis.speak(u)" style="flex:1;background:rgba(248,113,113,.2);border:1px solid rgba(248,113,113,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🇰🇷 뜻</button></div><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.ex||w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
         <div style="display:flex;gap:8px">
-          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',2);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(5)" style="flex:1;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:14px;padding:14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">🔄 헷갈려요</button>
-          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(10);logStudy('words')" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
+          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',2);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_hard'))" style="flex:1;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:14px;padding:14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">🔄 헷갈려요</button>
+          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_good'));logStudy('words')" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
         </div>
         <button onclick="speechSynthesis.cancel();window._curRender=null;document.getElementById('mr').innerHTML=''" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:9px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
       </div>
@@ -9336,7 +9398,7 @@ function rChain(){
     <button class="btn bb" onclick="svChain()" ${!S.chIn.trim()?'disabled':''}>이어가기 →</button>`}
   </div>`;
 }
-function svChain(){if(!S.chIn.trim())return;S.chStory+='\n'+S.chIn.trim();S.chIdx++;S.chIn='';S.gScore+=100;addXP(10);ok();if(S.chIdx>=4)S.chDone=true;go();}
+function svChain(){if(!S.chIn.trim())return;S.chStory+='\n'+S.chIn.trim();S.chIdx++;S.chIn='';S.gScore+=100;addXP(xp('chain_step'));ok();if(S.chIdx>=4)S.chDone=true;go();}
 
 function buildWF(src){
   // 단어 수에 따라 그리드 크기 결정

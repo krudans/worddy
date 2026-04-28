@@ -159,6 +159,8 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
 /* ── 모달 ── */
 #mr { position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
 #mr > * { pointer-events: all; }
+#ma { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
+#ma > * { pointer-events: all; }
 .mbg { position: fixed; inset: 0; background: rgba(15,23,42,.6); display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
 .modal { background: #fff; border-radius: 20px; padding: 24px; width: 100%; max-width: 480px; box-shadow: 0 25px 50px rgba(0,0,0,.25); }
 .modal h3 { font-size: 16px; font-weight: 800; margin-bottom: 16px; color: var(--text-1); }
@@ -310,6 +312,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('nt')" id="ni-nt"><span class="ic">📢</span>공지사항</div>
       <div class="ni" onclick="T('po')" id="ni-po"><span class="ic">👋</span>콕 찌르기</div>
       <div class="ss">설정</div>
+      <div class="ni" onclick="T('xp')" id="ni-xp"><span class="ic">⚡</span>XP 설정</div>
       <div class="ni" onclick="T('ad')" id="ni-ad"><span class="ic">🎯</span>광고 배너</div>
       <div class="ni" onclick="T('adm')" id="ni-adm"><span class="ic">🔐</span>관리자 관리</div>
     </nav>
@@ -1528,9 +1531,9 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'시스템 단어',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'시스템 단어',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -2880,21 +2883,256 @@ async function rST(){
         <div class="fg"><label>XP 배율</label><input id="sx" type="number" value="${s.xpMultiplier}" min="0.5" max="10" step="0.5"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:12px;background:#FEF2F2;border-radius:10px">
           <input type="checkbox" id="sm" ${s.maintenanceMode?'checked':''} style="width:18px;height:18px">
-          <div><label style="display:inline;margin-bottom:0;font-size:13px;font-weight:700;color:#DC2626" for="sm">🚧 점검 모드</label><div style="font-size:11px;color:#9CA3AF">활성화 시 일반 사용자 접근 차단</div></div>
+          <div><label style="display:inline;margin-bottom:0;font-size:13px;font-weight:700;color:#DC2626" for="sm">🚧 점검 모드</label></div>
         </div>
         <button class="btn bb" onclick="saveST()" style="width:100%">설정 저장</button>
       </div>
       <div class="card"><div class="ct">📢 앱 내 공지</div>
         <div class="fg"><label>공지 메시지</label><textarea id="so" style="min-height:100px;resize:none" placeholder="앱에 표시할 공지사항...">${s.notice||''}</textarea></div>
-        <div class="fg"><label>공지 유형</label><select id="sot"><option value="info">ℹ️ 안내</option><option value="warning">⚠️ 경고</option><option value="event">🎉 이벤트</option></select></div>
+        <div class="fg"><label>공지 유형</label><select id="sot"><option value="info">ℹ️ 안내</option><option value="warning">⚠️ 경고</option><option value="error">🚨 긴급</option></select></div>
         <button class="btn bg" onclick="saveST()" style="width:100%">공지 저장</button>
       </div>
-    </div>
-    <div class="card"><div class="ct">🗄️ Firestore 컬렉션 구조</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${[['users','회원 정보'],['words','레벨별 단어장'],['admins','관리자 계정'],['pokes','콕 찌르기'],['notices','공지사항'],['settings','앱 설정']].map(([c,d])=>`<div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:13px;font-weight:700;color:#1E5FA5;font-family:monospace">${c}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${d}</div></div>`).join('')}
+    </div>`;
+}
+
+
+async function rXP(){
+  const main = document.getElementById('main-inner');
+  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">XP 설정 로딩 중...</div>';
+
+  // XP 기본값
+  const XP_DEFAULT = {
+    word_learn:2, word_flip:2, quiz_correct:5, srs_hard:5, srs_good:10,
+    speak_word:5, daily_first:10, chain_step:10, challenge:10, pomodoro:30,
+    achievement:30, test_60:30, test_80:50, test_90:80, test_100:120,
+    combo_3:10, combo_5:20, combo_10:50, combo_20:100,
+    game_quiz_base:10, game_quiz_perfect:20,
+    game_fill_base:10, game_fill_perfect:20,
+    game_typing_base:15, game_typing_perfect:25,
+    game_listen_base:15, game_listen_perfect:25,
+    game_match_base:10, game_match_perfect:20,
+    game_sentence_base:20, game_sentence_perfect:35,
+    game_wordfind_base:10, game_wordfind_perfect:20,
+    game_wordle_base:30, game_wordle_perfect:60,
+    game_chain_base:15, game_chain_perfect:25,
+    game_wc_base:10, game_wc_perfect:20,
+    game_ssort_base:15, game_ssort_perfect:25,
+    xpMultiplier: 1.0,
+  };
+
+  let cfg = {...XP_DEFAULT};
+  try {
+    const doc = await db.collection('settings').doc('xpConfig').get();
+    if(doc.exists) cfg = {...XP_DEFAULT, ...doc.data()};
+  } catch(e) {}
+
+  const row = (id, label, desc, step=1) =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F3F4F6">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#111">${label}</div>
+        <div style="font-size:11px;color:#9CA3AF">${desc}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="this.nextElementSibling.value=Math.max(0,parseInt(this.nextElementSibling.value)-${step});xpPreview('${id}',this.nextElementSibling.value)" style="width:28px;height:28px;border-radius:6px;border:1.5px solid #E5E7EB;background:#F9FAFB;font-size:14px;font-weight:700;cursor:pointer;color:#374151">−</button>
+        <input id="xpf-${id}" type="number" value="${cfg[id]||0}" min="0" max="9999" step="${step}" oninput="xpPreview('${id}',this.value)" style="width:65px;text-align:center;font-size:14px;font-weight:800;border:1.5px solid #E5E7EB;border-radius:8px;padding:4px">
+        <button onclick="this.previousElementSibling.value=Math.min(9999,parseInt(this.previousElementSibling.value)+${step});xpPreview('${id}',this.previousElementSibling.value)" style="width:28px;height:28px;border-radius:6px;border:1.5px solid #E5E7EB;background:#F9FAFB;font-size:14px;font-weight:700;cursor:pointer;color:#374151">+</button>
       </div>
     </div>`;
+
+  const gameRow = (id, label) =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F3F4F6">
+      <div style="font-size:13px;font-weight:700;color:#111;min-width:80px">${label}</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div>
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">기본</div>
+          <input id="xpf-game_${id}_base" type="number" value="${cfg['game_'+id+'_base']||10}" min="0" max="999" style="width:55px;text-align:center;font-size:13px;font-weight:700;border:1.5px solid #E5E7EB;border-radius:8px;padding:4px">
+        </div>
+        <div>
+          <div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">퍼펙트</div>
+          <input id="xpf-game_${id}_perfect" type="number" value="${cfg['game_'+id+'_perfect']||20}" min="0" max="999" style="width:55px;text-align:center;font-size:13px;font-weight:700;border:1.5px solid #E5E7EB;border-radius:8px;padding:4px">
+        </div>
+      </div>
+    </div>`;
+
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:22px;font-weight:900">⚡ XP 설정</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn bg" onclick="saveXP()">💾 저장 & 앱 적용</button>
+        <button class="btn bgr" onclick="resetXP()">↩️ 기본값 복원</button>
+      </div>
+    </div>
+
+    <div style="background:#FFF8E1;border:1.5px solid #FDE68A;border-radius:12px;padding:12px;margin-bottom:20px;font-size:12px;color:#92400E">
+      ⚠️ 저장하면 즉시 앱에 반영됩니다. 앱을 새로고침한 사용자부터 적용돼요.
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+      <!-- 전체 배율 -->
+      <div class="card" style="grid-column:1/-1">
+        <div class="ct">🎯 전체 XP 배율</div>
+        <div style="display:flex;align-items:center;gap:16px;padding:8px 0">
+          <div>
+            <div style="font-size:13px;font-weight:700">xpMultiplier</div>
+            <div style="font-size:11px;color:#9CA3AF">모든 XP에 곱해지는 전체 배율 (1.0 = 100%)</div>
+          </div>
+          <input id="xpf-xpMultiplier" type="number" value="${cfg.xpMultiplier||1}" min="0.1" max="10" step="0.1" style="width:80px;text-align:center;font-size:16px;font-weight:800;border:2px solid #FDE68A;border-radius:8px;padding:6px;background:#FFFBEB">
+          <div id="xp-mult-preview" style="font-size:12px;color:#92400E;font-weight:700">예: 단어학습 ${Math.round(cfg.word_learn*(cfg.xpMultiplier||1))}XP</div>
+        </div>
+      </div>
+
+      <!-- 학습 활동 -->
+      <div class="card">
+        <div class="ct">📚 학습 활동</div>
+        ${row('word_learn',   '단어 1개 학습',       '오토플레이/수동/SRS 학습 완료')}
+        ${row('word_flip',    '플래시카드 넘기기',    '플래시카드 한 장 넘길 때')}
+        ${row('speak_word',   '발음 듣기',            '스피크 모드 단어 완료')}
+        ${row('daily_first',  '하루 첫 학습',         '오늘 첫 번째 단어 학습 시')}
+        ${row('srs_hard',     'SRS 헷갈림',           'SRS에서 "헷갈려요" 선택')}
+        ${row('srs_good',     'SRS 완료',             'SRS에서 "외웠어요!" 선택')}
+      </div>
+
+      <!-- 퀴즈/게임 활동 -->
+      <div class="card">
+        <div class="ct">🎯 퀴즈 & 특수 활동</div>
+        ${row('quiz_correct',  '퀴즈 정답',           '퀴즈/회화퀴즈 정답')}
+        ${row('chain_step',    '체인스토리 1단계',    '스토리 한 문장 완성')}
+        ${row('challenge',     '일일 챌린지',         '챌린지 완료 보상 (ch.reward 덮어씀)')}
+        ${row('pomodoro',      '뽀모도로 완료',       '집중 타이머 세션 완료')}
+        ${row('achievement',   '업적 달성',           '업적 잠금 해제')}
+      </div>
+
+      <!-- 테스트 -->
+      <div class="card">
+        <div class="ct">📝 테스트 결과</div>
+        ${row('test_100', '100% 정답', '완벽한 테스트')}
+        ${row('test_90',  '90% 이상',  '우수한 성적')}
+        ${row('test_80',  '80% 이상',  '양호한 성적')}
+        ${row('test_60',  '60% 이상',  '통과 기준')}
+      </div>
+
+      <!-- 콤보 -->
+      <div class="card">
+        <div class="ct">🔥 콤보 보너스</div>
+        ${row('combo_3',  'x3 콤보', '3연속 정답')}
+        ${row('combo_5',  'x5 콤보', '5연속 정답')}
+        ${row('combo_10', 'x10 콤보','10연속 정답')}
+        ${row('combo_20', 'x20 콤보','20연속 정답')}
+      </div>
+
+    </div>
+
+    <!-- 게임별 XP -->
+    <div class="card">
+      <div class="ct">🎮 게임별 XP (기본 / 퍼펙트)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
+        <div>
+          ${gameRow('quiz',     '퀴즈')}
+          ${gameRow('fill',     '빈칸 채우기')}
+          ${gameRow('typing',   '타이핑')}
+          ${gameRow('listen',   '듣기')}
+          ${gameRow('match',    '매칭')}
+          ${gameRow('sentence', '문장 완성')}
+        </div>
+        <div>
+          ${gameRow('wordfind', '단어 찾기')}
+          ${gameRow('wordle',   '워들')}
+          ${gameRow('chain',    '체인')}
+          ${gameRow('wc',       '단어 조합')}
+          ${gameRow('ssort',    '문장 정렬')}
+        </div>
+      </div>
+    </div>
+
+    <!-- 미리보기 -->
+    <div class="card" style="margin-top:16px">
+      <div class="ct">👀 현재 설정 요약</div>
+      <div id="xp-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:12px"></div>
+    </div>
+  `;
+
+  renderXPSummary(cfg);
+}
+
+function xpPreview(id, val) {
+  const mult = parseFloat(document.getElementById('xpf-xpMultiplier')?.value)||1;
+  const v = parseInt(val)||0;
+  const preview = document.getElementById('xp-mult-preview');
+  if(preview) preview.textContent = '예: 단어학습 '+Math.round((parseInt(document.getElementById('xpf-word_learn')?.value)||3)*mult)+'XP';
+  renderXPSummaryCurrent();
+}
+
+function renderXPSummary(cfg) {
+  const el = document.getElementById('xp-summary');
+  if(!el) return;
+  const m = cfg.xpMultiplier||1;
+  const items = [
+    ['단어학습', cfg.word_learn], ['퀴즈정답', cfg.quiz_correct],
+    ['SRS완료', cfg.srs_good], ['일일챌린지', cfg.challenge],
+    ['뽀모도로', cfg.pomodoro], ['테스트100%', cfg.test_100],
+    ['콤보x3', cfg.combo_3], ['게임퀴즈기본', cfg.game_quiz_base],
+  ];
+  el.innerHTML = items.map(([lb,v])=>`
+    <div style="background:#F9FAFB;border-radius:10px;padding:8px;text-align:center">
+      <div style="font-size:10px;color:#9CA3AF">${lb}</div>
+      <div style="font-size:14px;font-weight:800;color:#1E5FA5">⚡${Math.round(v*m)}</div>
+      <div style="font-size:9px;color:#9CA3AF">(${v} × ${m})</div>
+    </div>`).join('');
+}
+
+function renderXPSummaryCurrent() {
+  const get = id => parseInt(document.getElementById('xpf-'+id)?.value)||0;
+  const m = parseFloat(document.getElementById('xpf-xpMultiplier')?.value)||1;
+  const cfg = {
+    word_learn: get('word_learn'), quiz_correct: get('quiz_correct'),
+    srs_good: get('srs_good'), challenge: get('challenge'),
+    pomodoro: get('pomodoro'), test_100: get('test_100'),
+    combo_3: get('combo_3'), game_quiz_base: get('game_quiz_base'),
+    xpMultiplier: m
+  };
+  renderXPSummary(cfg);
+}
+
+async function saveXP() {
+  const get = id => {
+    const el = document.getElementById('xpf-'+id);
+    return el ? (id==='xpMultiplier' ? parseFloat(el.value)||1 : parseInt(el.value)||0) : null;
+  };
+  const keys = [
+    'word_learn','word_flip','quiz_correct','srs_hard','srs_good','speak_word',
+    'daily_first','chain_step','challenge','pomodoro','achievement',
+    'test_60','test_80','test_90','test_100',
+    'combo_3','combo_5','combo_10','combo_20',
+    'game_quiz_base','game_quiz_perfect','game_fill_base','game_fill_perfect',
+    'game_typing_base','game_typing_perfect','game_listen_base','game_listen_perfect',
+    'game_match_base','game_match_perfect','game_sentence_base','game_sentence_perfect',
+    'game_wordfind_base','game_wordfind_perfect','game_wordle_base','game_wordle_perfect',
+    'game_chain_base','game_chain_perfect','game_wc_base','game_wc_perfect',
+    'game_ssort_base','game_ssort_perfect','xpMultiplier',
+  ];
+  const data = {};
+  for(const k of keys) {
+    const v = get(k);
+    if(v !== null) data[k] = v;
+  }
+  try {
+    await db.collection('settings').doc('xpConfig').set({...data, updatedAt: firebase.firestore.FieldValue.serverTimestamp()});
+    toast('✅ XP 설정 저장 완료! 앱에 즉시 반영됩니다.', 'ok');
+  } catch(e) {
+    toast('오류: '+e.message, 'err');
+  }
+}
+
+async function resetXP() {
+  if(!confirm('모든 XP 설정을 기본값으로 되돌릴까요?')) return;
+  try {
+    await db.collection('settings').doc('xpConfig').delete();
+    toast('✅ 기본값으로 복원됐어요', 'ok');
+    rXP();
+  } catch(e) {
+    toast('오류: '+e.message, 'err');
+  }
 }
 
 async function saveST(){

@@ -3818,7 +3818,7 @@ function showLogin() {
       </div></div>`;
       return;
     }
-    auth.signInWithPopup(provider)
+    window._authPending=true; auth.signInWithPopup(provider)
       .then(result => {
         // 로그인 성공 - onAuthStateChanged가 자동 처리
         S.user = result.user;
@@ -10382,12 +10382,40 @@ if(auth) auth.getRedirectResult().then(result => {
 if(!auth) {
   console.warn('[앱] auth 없음 - 비로그인 모드로 시작');
   showLogin();
-} else auth.onAuthStateChanged(user => {
+} else // Google 팝업 로그인 중 일시적 null 상태 무시를 위한 플래그
+window._authInitialized = false;
+window._authPending = false;
+
+auth.onAuthStateChanged(user => {
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
+
+  // Google 팝업 로그인 중 일시적으로 null이 오는 경우 무시
+  // _authPending=true 상태(팝업 진행 중)이고 user=null이면 skip
+  if(!user && window._authPending) {
+    console.log('[앱] 팝업 로그인 중 일시 null - 무시');
+    return;
+  }
+
+  // 이미 로그인 상태에서 null이 오면 300ms 대기 후 다시 확인
+  // (Google 팝업 로그인 완료 직전 일시적 null 방어)
+  if(!user && window._authInitialized && S.user) {
+    console.log('[앱] 일시적 비로그인 감지 - 300ms 대기');
+    setTimeout(() => {
+      if(!auth.currentUser) {
+        console.log('[앱] 확인됨: 비로그인 → showLogin');
+        S.user = null;
+        showLogin();
+      }
+    }, 300);
+    return;
+  }
+
+  window._authInitialized = true;
   S.user = user;
+
   if(user) {
-    // 로그인됨 → 로컬스토리지 먼저 복원 후 즉시 startApp
-    // Firebase는 백그라운드에서 나중에 동기화
+    window._authPending = false;
+    // 로컬스토리지 복원
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
@@ -10412,7 +10440,7 @@ if(!auth) {
     } catch(e) {}
     // 즉시 앱 시작
     startApp();
-    // 백그라운드에서 Firebase 동기화 (실패해도 앱에 영향 없음)
+    // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
       db.collection('users').doc(user.uid).get().then(doc => {
         if(doc.exists) {
@@ -10424,13 +10452,12 @@ if(!auth) {
           ].forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
           if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
           if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
-          // 화면 갱신
           go();
         }
       }).catch(()=>{});
     }
   } else {
-    // 미로그인 → localStorage 복원 후 로그인 화면
+    // 완전한 비로그인
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');

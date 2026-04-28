@@ -1229,9 +1229,9 @@ async function rBF() {
       ${bf._builtin?'<span style="position:absolute;top:4px;right:4px;font-size:8px;background:#EFF6FF;color:#1E40AF;border-radius:4px;padding:1px 4px">기본</span>':''}
       <div style="font-size:9px;color:#9CA3AF;margin-bottom:2px">${bf.id}</div>
       <!-- SVG 미리보기 -->
-      <div style="height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:4px">
+      <div style="width:100%;aspect-ratio:4/3;max-height:72px;display:flex;align-items:center;justify-content:center;margin-bottom:4px;overflow:hidden">
         ${bf.svgCode
-          ? bf.svgCode.replace('<svg ','<svg width="80" height="60" ').replace(/viewBox="[^"]*"/,'viewBox="0 0 120 90"')
+          ? bf.svgCode.replace(/<svg([^>]*?)(?:width="[^"]*")?([^>]*?)(?:height="[^"]*")?([^>]*)>/,'<svg$1$2$3 width="100%" height="100%" preserveAspectRatio="xMidYMid meet" viewBox="0 0 120 90" style="max-width:100%;max-height:72px">').replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 90"')
           : '<div style="font-size:32px;opacity:0.4">🦋</div>'}
       </div>
       <div style="font-size:12px;font-weight:800;margin-bottom:2px">${bf.name||'-'}</div>
@@ -1300,7 +1300,7 @@ function showAddBF(bf){
     </div>
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-start">
       <div id="bf-preview" style="width:90px;height:68px;flex-shrink:0;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#FAFAFA;overflow:hidden">
-        ${bf.svgCode?bf.svgCode.replace('<svg ','<svg width="88" height="66" '):'<span style="font-size:28px;opacity:0.3">🦋</span>'}
+        ${bf.svgCode?bf.svgCode.replace(/<svg[^>]*>/,()=>'<svg width="88" height="66" viewBox="0 0 120 90" preserveAspectRatio="xMidYMid meet">'):'<span style="font-size:28px;opacity:0.3">🦋</span>'}
       </div>
       <div style="flex:1">
         <textarea id="bf-svg" rows="4" placeholder="<svg viewBox=&quot;0 0 120 90&quot; ...>...</svg>" style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:10px;font-family:monospace;resize:vertical" oninput="document.getElementById('bf-preview').innerHTML=this.value?this.value.replace('<svg ','<svg width=\'88\' height=\'66\' '):'<span style=\'font-size:28px;opacity:0.3\'>🦋</span>'">${bf.svgCode||''}</textarea>
@@ -1367,10 +1367,12 @@ if(auth) auth.getRedirectResult().then(r=>{
 }).catch(()=>{});
 
 auth.onAuthStateChanged(async u=>{
+  console.log('[admin] onAuthStateChanged', u ? '로그인:'+u.email : '비로그인');
   if(!u){
     showLoginScreen();
     return;
   }
+  console.log('[admin] SUPER_ADMINS 체크:', SUPER_ADMINS.includes(u.email));
   // Firestore에서 관리자 정보 확인
   try{
     const doc=await db.collection('admins').doc(u.uid).get();
@@ -1394,6 +1396,7 @@ auth.onAuthStateChanged(async u=>{
     }
     showAppScreen();
   }catch(e){
+    console.log('[admin] Firestore 오류:', e.message, '/ SUPER_ADMINS:', SUPER_ADMINS.includes(u.email));
     if(SUPER_ADMINS.includes(u.email)){
       currentAdmin={uid:u.uid,email:u.email,name:u.email.split('@')[0],role:'슈퍼 관리자',approved:true};
       showAppScreen();
@@ -1517,7 +1520,7 @@ function doLogout(){
 
 // ── 유틸 ──
 function toast(m,t=''){const w=document.getElementById('tw'),el=document.createElement('div');el.className='toast '+(t==='ok'?'tok':t==='err'?'terr':'');el.textContent=m;w.appendChild(el);setTimeout(()=>el.remove(),2800);}
-const cm=()=>document.getElementById('ma').innerHTML='';
+const cm=()=>{const ma=document.getElementById('ma');if(ma)ma.innerHTML='';const mr=document.getElementById('mr');if(mr)mr.innerHTML='';};
 const today=()=>new Date().toISOString().slice(0,10);
 const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?.isSuperAdmin;
 

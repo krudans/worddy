@@ -4186,8 +4186,6 @@ function finishAdaptiveTest() {
 // ── 앱 시작 ──
 function startApp() {
   console.log('[앱] startApp 호출');
-  if(window._appStarted) { console.log('[앱] startApp 중복 호출 무시'); return; }
-  window._appStarted = true;
   window._appStartTime = Date.now();
   window._svDisabled=false;
   loadSysWords(S.lid);
@@ -10383,14 +10381,9 @@ window._authPending = false;
 
 auth.onAuthStateChanged(user => {
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
-  
+  S.user = user;
+
   if(user) {
-    // 로그인 - 이미 실행 중이면 스킵
-    if(window._appStarted && S.user && S.user.uid === user.uid) {
-      console.log('[앱] 동일 유저 재인증 - 스킵');
-      return;
-    }
-    S.user = user;
     // localStorage 복원
     try {
       const ls = localStorage;
@@ -10414,49 +10407,36 @@ auth.onAuthStateChanged(user => {
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
     } catch(e) {}
-    // 앱 시작 (중복 방지는 startApp 내부에서 처리)
     startApp();
     // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
       db.collection('users').doc(user.uid).get().then(doc => {
-        if(doc.exists && window._appStarted) {
+        if(doc.exists) {
           const data = doc.data();
           ['xp','lid','streak','nick','words','books','currentBook',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily'
-          ].forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
-          if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
-          if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
-          // go() 호출 없이 헤더만 갱신
+          ].forEach(k => { if(data[k]!==undefined) S[k]=data[k]; });
+          if(Array.isArray(data.learned)) S.learned=new Set(data.learned);
+          if(Array.isArray(data.favorites)) S.favorites=new Set(data.favorites);
           try { if(typeof updHD==='function') updHD(); } catch(e) {}
         }
       }).catch(()=>{});
     }
   } else {
-    // 비로그인 - _appStarted 상태면 진짜 로그아웃인지 확인
-    if(window._appStarted && window._logoutRequested) {
-      // 명시적 로그아웃
-      window._appStarted = false;
-      window._logoutRequested = false;
-      S.user = null;
-      showLogin();
-    } else if(!window._appStarted) {
-      // 초기 비로그인
-      S.user = null;
-      try {
-        const ls = localStorage;
-        if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
-        if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
-        if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
-        if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
-        const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
-        const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
-        const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
-      } catch(e) {}
-      showLogin();
-    }
-    // 앱 실행 중 일시적 null은 무시
+    S.user = null;
+    try {
+      const ls = localStorage;
+      if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+      if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
+      if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
+      if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
+      const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+      const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
+      const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
+    } catch(e) {}
+    showLogin();
   }
 });
 </script>

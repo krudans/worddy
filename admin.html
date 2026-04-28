@@ -337,6 +337,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
   <div id="main">
     <div class="main-inner" id="main-inner"></div>
   </div>
+  <div id="mr"></div>
 </div>
 
 <script>
@@ -344,7 +345,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
 async function doGoogleLogin(){
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithPopup(provider);
+    await auth.signInWithRedirect(provider);
   } catch(e) { showErr(e.message); }
 }
 
@@ -1214,6 +1215,7 @@ async function rBF() {
   ];
   const existingIds = new Set(bfList.map(b=>b.id));
   const allBF = [...bfList, ...BUILTIN_BF.filter(b=>!existingIds.has(b.id)).map(b=>({...b,_builtin:true}))].sort((a,b)=>a.id.localeCompare(b.id));
+  window._adminAllBF = allBF;
   window._adminAllBF = allBF; // editBF에서 참조
   main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
     <h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2>
@@ -1299,6 +1301,10 @@ let selLv='egg', currentAdmin=null;
 setInterval(()=>{const e=document.getElementById('at');if(e)e.textContent=new Date().toLocaleTimeString('ko-KR',{hour12:false});},1000);
 
 // ── 인증 상태 감지 ──
+if(auth) auth.getRedirectResult().then(r=>{
+  if(r&&r.user) console.log('[admin] redirect 로그인:',r.user.email);
+}).catch(()=>{});
+
 auth.onAuthStateChanged(async u=>{
   if(!u){
     showLoginScreen();

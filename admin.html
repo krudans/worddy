@@ -2051,9 +2051,6 @@ let selPack = null; // 현재 선택된 팩 ID
 
 async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
-  try{const snap=await db.collection('packs').get();const fbP=snap.docs.map(d=>({id:d.id,...d.data()}));const lP=typeof WORD_PACKS!=='undefined'?WORD_PACKS:[];const fbIds=new Set(fbP.map(p=>p.id));window._adminPacks=[...fbP,...lP.filter(p=>!fbIds.has(p.id))];}catch(e){window._adminPacks=typeof WORD_PACKS!=='undefined'?WORD_PACKS:[];}
-  const packs=window._adminPacks||[];
-  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
     const snap = await db.collection('packs').get();
     const fbPacks = snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -2063,7 +2060,8 @@ async function rPK(){
   } catch(e) {
     window._adminPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
   }
-    const cats = [...new Set(packs.map(p=>p.cat))];
+  const packs = window._adminPacks||[];
+  const cats = [...new Set(packs.map(p=>p.cat))];
   document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">🛒 마켓 팩 관리</h2>
@@ -2247,8 +2245,9 @@ async function deletePack(packId) {
 // ── 팩 단어 관리 ──
 function showPackWords(packId) {
   selPack = packId;
-  const p = packs.find(x=>x.id===packId);
-  if(!p) return;
+  const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const p = _packs.find(x=>x.id===packId);
+  if(!p) { toast('팩을 찾을 수 없어요','err'); return; }
   const words = p.words||[];
 
   document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:92vh;display:flex;flex-direction:column;max-width:600px">
@@ -2274,7 +2273,8 @@ function showPackWords(packId) {
 }
 
 function showPackWordTab(tab) {
-  const p = WORD_PACKS.find(x=>x.id===selPack);
+  const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const p = _packs.find(x=>x.id===selPack);
   if(!p) return;
   const words = p.words||[];
 
@@ -2310,7 +2310,7 @@ function showPackWordTab(tab) {
     cont.innerHTML=`
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <input placeholder="단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;font-size:13px">
-        <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){WORD_PACKS.find(x=>x.id===selPack).words=[];showPackWordTab('list')}">전체삭제</button>
+        <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){(window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).find(x=>x.id===selPack).words=[];showPackWordTab('list')}">전체삭제</button>
       </div>
       <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">${words.length}개</div>
       <div id="pack-word-list" style="display:flex;flex-direction:column;gap:6px">
@@ -2336,7 +2336,8 @@ function showPackWordTab(tab) {
     });
 
     // 다른 팩과의 중복 확인
-    const otherPacks = WORD_PACKS.filter(x=>x.id!==selPack);
+    const _allPacks = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+    const otherPacks = _allPacks.filter(x=>x.id!==selPack);
     const crossDups = words.filter(w=>otherPacks.some(op=>(op.words||[]).find(ow=>ow.en.toLowerCase()===w.en.toLowerCase())));
 
     cont.innerHTML=`
@@ -2389,7 +2390,7 @@ function showAddMethod(method) {
   });
   const cont = document.getElementById('add-method-content');
   if(!cont) return;
-  const p = WORD_PACKS.find(x=>x.id===selPack);
+  const p = (window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).find(x=>x.id===selPack);
   if(!p) return;
 
   if(method==='single') {
@@ -2449,7 +2450,7 @@ function showAddMethod(method) {
 }
 
 // 단어 추가 함수들
-function addPackWord() {
+async function addPackWord() {
   const en=document.getElementById('pw-en')?.value.trim();
   const kr=document.getElementById('pw-kr')?.value.trim();
   const msg=document.getElementById('pw-msg');
@@ -2465,6 +2466,8 @@ function addPackWord() {
   ['pw-en','pw-kr','pw-ph','pw-ex','pw-img','pw-tip'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ "${en}" 추가! (총 ${p.words.length}개)</div>`;
   document.getElementById('pw-en')?.focus();
+  // Firebase 자동 저장
+  try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e) {}
 }
 
 async function aiPackWordFill() {
@@ -2484,7 +2487,7 @@ async function aiPackWordFill() {
   }catch(e){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">AI 실패. 직접 입력해주세요</div>';}
 }
 
-function saveBulkWords() {
+async function saveBulkWords() {
   const text=document.getElementById('bulk-input')?.value.trim();
   const msg=document.getElementById('bulk-msg');
   if(!text){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">내용을 입력하세요</div>';return;}
@@ -2501,31 +2504,36 @@ function saveBulkWords() {
     added++;
   });
   if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
-  if(added>0)document.getElementById('bulk-input').value='';
+  if(added>0){
+    document.getElementById('bulk-input').value='';
+    // Firebase 자동 저장
+    try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+  }
 }
 
-function uploadPackCSV() {
+async function uploadPackCSV() {
   const file=document.getElementById('pack-csv')?.files[0];
   const msg=document.getElementById('csv-msg');
   if(!file){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">파일을 선택하세요</div>';return;}
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   const p=packs.find(x=>x.id===selPack);
-    if(!p.words)p.words=[];
-    const lines=e.target.result.split('\n').filter(l=>l.trim());
-    const start=lines[0].toLowerCase().includes('en')||lines[0].toLowerCase().startsWith('영')?1:0;
-    let added=0,dup=0;
-    lines.slice(start).forEach(line=>{
-      const parts=line.split(',').map(s=>s.trim().replace(/^"|"$/g,''));
-      if(parts.length<2||!parts[0]||!parts[1])return;
-      if(p.words.find(w=>w.en.toLowerCase()===parts[0].toLowerCase())){dup++;return;}
-      p.words.push({en:parts[0],kr:parts[1],ph:parts[2]||'',ex:parts[3]||parts[0]+'.',img:parts[4]||'📝',tip:parts[5]||'',meanings:[parts[1]]});
-      added++;
-    });
-    if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
-  };
-  reader.readAsText(file,'UTF-8');
+  if(!p){toast('팩을 찾을 수 없어요','err');return;}
+  if(!p.words)p.words=[];
+  const text = await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(file,'UTF-8');});
+  const csvLines=text.split('\n').filter(l=>l.trim());
+  const start=csvLines[0].toLowerCase().includes('en')||csvLines[0].toLowerCase().startsWith('영')?1:0;
+  let added=0,dup=0;
+  csvLines.slice(start).forEach(line=>{
+    const parts=line.split(',').map(s=>s.trim().replace(/^"|"$/g,''));
+    if(parts.length<2||!parts[0]||!parts[1])return;
+    if(p.words.find(w=>w.en.toLowerCase()===parts[0].toLowerCase())){dup++;return;}
+    p.words.push({en:parts[0],kr:parts[1],ph:parts[2]||'',ex:parts[3]||parts[0]+'.',img:parts[4]||'📝',tip:parts[5]||'',meanings:[parts[1]]});
+    added++;
+  });
+  if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
+  if(added>0) {
+    try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+  }
 }
 
 function exportPackCSV(packId) {
@@ -2571,7 +2579,7 @@ ${existing?`이미 있는 단어(중복 금지): ${existing}`:''}
   }
 }
 
-function saveAIPackWords(wsJson) {
+async function saveAIPackWords(wsJson) {
   try{
     const ws=typeof wsJson==='string'?JSON.parse(wsJson.replace(/&quot;/g,'"')):wsJson;
     const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
@@ -2586,6 +2594,8 @@ function saveAIPackWords(wsJson) {
       }
     });
     toast(`✅ ${added}개 저장 완료!`,'ok');
+    // Firebase 저장
+    try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
     showPackWordTab('list');
   }catch(e){toast('저장 실패: '+e.message,'err');}
 }
@@ -2621,7 +2631,7 @@ function editPackWord(packId, idx) {
   </div></div>`;
 }
 
-function saveEditPackWord(packId, idx) {
+async function saveEditPackWord(packId, idx) {
   const _packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   const p=_packs.find(x=>x.id===packId);
   if(!p||!p.words)return;
@@ -2635,10 +2645,11 @@ function saveEditPackWord(packId, idx) {
     meanings:[document.getElementById('epw-kr').value.trim()]
   };
   toast('✅ 수정 완료','ok');
+  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
   showPackWords(packId);
 }
 
-function removeInternalDups(packId) {
+async function removeInternalDups(packId) {
   const _packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   const p=_packs.find(x=>x.id===packId);
   if(!p||!p.words)return;
@@ -2650,6 +2661,7 @@ function removeInternalDups(packId) {
     seen.add(key);return true;
   });
   toast(`✅ ${before-p.words.length}개 중복 제거!`,'ok');
+  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
   showPackWordTab('dup');
 }
 
@@ -2679,12 +2691,14 @@ function doImportPack() {
       const data=JSON.parse(e.target.result);
       const pack=Array.isArray(data)?data[0]:data;
       if(!pack.id||!pack.name){if(msg)msg.innerHTML='<div style="color:#DC2626;font-size:12px">올바른 형식이 아니에요</div>';return;}
-      if(WORD_PACKS.find(p=>p.id===pack.id)){
+      const _ip = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+      if(_ip.find(p=>p.id===pack.id)){
         if(!confirm(`"${pack.name}" (${pack.id})가 이미 있어요. 덮어쓸까요?`))return;
-        const idx=WORD_PACKS.findIndex(p=>p.id===pack.id);
-        WORD_PACKS[idx]={...WORD_PACKS[idx],...pack};
+        const idx=_ip.findIndex(p=>p.id===pack.id);
+        _ip[idx]={..._ip[idx],...pack};
       } else {
-        WORD_PACKS.push({emoji:'📚',cat:'기타',count:100,words:[],...pack});
+        _ip.push({emoji:'📚',cat:'기타',count:100,words:[],...pack});
+        if(window._adminPacks) window._adminPacks = _ip;
       }
       toast(`✅ "${pack.name}" 가져오기 완료!`,'ok');
       cm(); rPK();

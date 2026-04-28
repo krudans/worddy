@@ -918,7 +918,7 @@ function charSVG(id, sz=64, mood='normal') {
 const cbrow = (msg,id,mood='normal') => `<div class="cbrow"><div style="flex-shrink:0">${charSVG(id,64,mood)}</div><div class="bubble">${msg}</div></div>`;
 
 // ── 상태 관리 ──
-const S = {
+const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   user:null, nick:'', lid:'egg', xp:0,
   tab:'home', stab:'books',
   words:[], learned:new Set(), srsMap:{}, markMap:{},
@@ -1758,8 +1758,8 @@ function replaceCollection(removeIdx, btn) {
 
 // ── 캐릭터 돌보기 화면 ──
 function rPetCare() {
-  const pet = getPetState();
-  const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
+  const pet = typeof getPetState==='function'?getPetState():{emoji:'😊'};
+  const petCol = (typeof PET_COLORS!=='undefined'&&typeof getPetColor==='function'&&PET_COLORS[getPetColor()])||{main:'#1E5FA5',light:'#DBEAFE'};
   const full = S._petFull||0;
   const happy = S._petHappy||0;
   const lvInfo = lv(S.lid);
@@ -4339,7 +4339,7 @@ function rLearnTab() {
   const sysWords=S._sysWords||[];
   const learned=getLearnedSysWords(S.lid);
   const pct=sysWords.length?Math.round(learned/sysWords.length*100):0;
-  const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
+  const srsToday=Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
   const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
   const curLvLearn = LEVELS.find(lx=>lx.id===S.lid);
   const isFinalLv = curLvLearn?.isFinal || S.lid==='god';
@@ -6399,17 +6399,17 @@ function rHome() {
   // 스트릭 위기 체크 (오늘 아직 학습 안 함 + 스트릭>=3)
   const _todayLog = S.studyLog[today()]||{};
   const _todayDone = (_todayLog.words||0) > 0;
-  const _dangerStreak = (S.streak||0)>=3 && !_todayDone;
+  const _dangerStreak = ((S.streak||0)>=3) && !_todayDone;
 
-  const l=lv(S.lid), tot=S.words.length, done=S.learned.size;
-  const todayWord = getTodayWord();
+  const l=lv(S.lid||'egg'), tot=(S.words||[]).length, done=(S.learned||new Set()).size;
+  const todayWord = typeof getTodayWord==='function'?getTodayWord():null;
   const pet = getPetState();
   const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
-  const curLvData = LEVELS.find(lx=>lx.id===S.lid);
+  const curLvData = LEVELS.find(lx=>lx.id===(S.lid||'egg'));
   const xpTarget = curLvData ? (curLvData.xp||100) : 100;
   const xpPct = Math.min(100, Math.round((S.xp||0)/xpTarget*100));
-  const nextLv = LEVELS[LEVELS.findIndex(lx=>lx.id===S.lid)+1];
-  const sysLearned = getLearnedSysWords(S.lid);
+  const nextLv = LEVELS[LEVELS.findIndex(lx=>lx.id===(S.lid||'egg'))+1];
+  const sysLearned = typeof getLearnedSysWords==='function'?getLearnedSysWords(S.lid):0;
   const sysTotal = (S._sysWords||[]).length;
   const stateKey = pet.emoji==='😄'?'happy':pet.emoji==='😊'?'normal':
     pet.emoji==='😐'?'sad1':pet.emoji==='😢'?'sad2':pet.emoji==='😤'?'angry':'danger';
@@ -6425,9 +6425,10 @@ function rHome() {
   const bubbleMsg = mArr[Math.floor(Math.random()*mArr.length)];
 
   const t = today();
+  if(!S.studyLog) S.studyLog={};
   const todayLog = S.studyLog[t]||{words:0,quiz:0};
   const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
-  const marked2 = Object.values(S.markMap).filter(v=>v===2).length;
+  const marked2 = Object.values(S.markMap||{}).filter(v=>v===2).length;
 
   // 오늘의 미션 - 구체적인 행동 지침
   const todayStudied = Math.round(S._dailyStudiedMin||0);
@@ -6675,12 +6676,12 @@ function rHome() {
   // ── 이번 주 학습 히트맵 ──
   const last7 = Array.from({length:7},(_,i)=>{
     const d=new Date(); d.setDate(d.getDate()-6+i);
-    const k=d.toISOString().slice(0,10);
+    const k=new Date(d.getTime()+9*60*60*1000).toISOString().slice(0,10);
     const log=S.studyLog[k]||{words:0,quiz:0};
     const total=log.words+log.quiz;
     const isToday=k===t;
     const dayNames=['일','월','화','수','목','금','토'];
-    return {k,total,words:log.words,isToday,day:dayNames[d.getDay()]};
+    return {k,total,words:log.words,quiz:log.quiz,isToday,day:dayNames[d.getDay()]};
   });
   const maxDay=Math.max(...last7.map(d=>d.total),1);
   parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px">

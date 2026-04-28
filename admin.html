@@ -338,6 +338,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
     <div class="main-inner" id="main-inner"></div>
   </div>
   <div id="mr"></div>
+  <div id="ma"></div>
 </div>
 
 <script>
@@ -2765,13 +2766,62 @@ async function delNT(id){if(!confirm('삭제할까요?'))return;try{await db.col
 async function rUS(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">회원 데이터 로딩 중...</div>';
   let us=[];
-  try{const s=await db.collection('users').limit(100).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
+  try{const s=await db.collection('users').orderBy('lastActive','desc').limit(200).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}
+  catch(e){try{const s=await db.collection('users').limit(200).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e2){}}
+  const totalStreak = us.reduce((a,u)=>a+(u.streak||0),0);
+  const avgStreak = us.length ? Math.round(totalStreak/us.length) : 0;
+  const activeToday = us.filter(u=>{
+    if(!u.lastActive) return false;
+    const d = u.lastActive.toDate ? u.lastActive.toDate() : new Date(u.lastActive);
+    return (Date.now()-d.getTime()) < 86400000;
+  }).length;
+  const active7 = us.filter(u=>{
+    if(!u.lastActive) return false;
+    const d = u.lastActive.toDate ? u.lastActive.toDate() : new Date(u.lastActive);
+    return (Date.now()-d.getTime()) < 7*86400000;
+  }).length;
+  const fmtDate = ts => {
+    if(!ts) return '-';
+    try { const d = ts.toDate ? ts.toDate() : new Date(ts); return d.toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch{return '-';}
+  };
   document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">👥 회원 관리 <span style="font-size:14px;color:#9CA3AF">(${us.length}명)</span></h2>
-      <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:260px"><span>🔍</span><input placeholder="닉네임/코드 검색..." oninput="filterUS(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none"></div>
+      <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px;width:240px">
+        <span>🔍</span><input placeholder="닉네임/코드 검색..." oninput="filterUS(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;box-shadow:none">
+      </div>
     </div>
-    <div class="card">${us.length?`<div class="tw"><table id="utb"><tr><th>닉네임</th><th>레벨</th><th>streak</th><th>코드</th><th>상태</th><th>작업</th></tr>${us.map(u=>`<tr><td><strong>${u.nick||'-'}</strong><div style="font-size:11px;color:#9CA3AF">${u.id.slice(0,8)}</div></td><td>${LI[u.lid||u.level||'egg']?.e||'🥚'} <span class="badge bb2">${u.lid||u.level||'egg'}</span></td><td style="font-weight:700;color:#E65100">🔥 ${u.streak||0}일</td><td style="font-family:monospace;font-size:12px;color:#7C3AED">${u.code||'-'}</td><td><span class="badge ${u.banned?'br2':'bg2'}">${u.banned?'정지':'정상'}</span></td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editUS('${u.id}','${u.lid||u.level||'egg'}','${(u.nick||'').replace(/'/g,"\\'")}')">수정</button><button class="btn ${u.banned?'bg':'br'}" style="font-size:11px;padding:4px 8px" onclick="toggleBan('${u.id}',${!u.banned})">${u.banned?'해제':'정지'}</button></div></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">👥</div><p>회원이 없거나 users 컬렉션이 없어요</p></div>'}
+    <div class="sg" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+      <div class="st"><div class="v" style="color:#1E5FA5">${us.length}</div><div class="l">전체 회원</div></div>
+      <div class="st"><div class="v" style="color:#16A34A">${activeToday}</div><div class="l">오늘 접속</div></div>
+      <div class="st"><div class="v" style="color:#7C3AED">${active7}</div><div class="l">7일 활성</div></div>
+      <div class="st"><div class="v" style="color:#E65100">${avgStreak}일</div><div class="l">평균 스트릭</div></div>
+    </div>
+    <div class="card">
+      <div class="tw"><table id="utb">
+        <tr>
+          <th>닉네임</th><th>레벨</th><th>단어수</th><th>streak</th><th>XP</th>
+          <th>최근접속</th><th>가입일</th><th>코드</th><th>상태</th><th>작업</th>
+        </tr>
+        ${us.map(u=>`<tr>
+          <td><strong>${u.nick||'-'}</strong><div style="font-size:10px;color:#9CA3AF">${u.id.slice(0,10)}...</div></td>
+          <td>${LI[u.lid||u.level||'egg']?.e||'🥚'} <span class="badge bb2">${u.lid||u.level||'egg'}</span></td>
+          <td style="font-weight:700;color:#1E5FA5">${(u.words||[]).length||u.wordCount||'-'}</td>
+          <td style="font-weight:700;color:#E65100">🔥 ${u.streak||0}일</td>
+          <td style="color:#7C3AED;font-weight:700">⚡${u.xp||0}</td>
+          <td style="font-size:11px">${fmtDate(u.lastActive)}</td>
+          <td style="font-size:11px;color:#9CA3AF">${fmtDate(u.createdAt||u.joinedAt)}</td>
+          <td style="font-family:monospace;font-size:11px;color:#7C3AED">${u.code||'-'}</td>
+          <td><span class="badge ${u.banned?'br2':'bg2'}">${u.banned?'정지':'정상'}</span></td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="btn bb" style="font-size:10px;padding:3px 7px" onclick="editUS('${u.id}','${u.lid||u.level||'egg'}','${(u.nick||'').replace(/'/g,"\\'")}')">수정</button>
+              <button class="btn ${u.banned?'bg':'br'}" style="font-size:10px;padding:3px 7px" onclick="toggleBan('${u.id}',${!u.banned})">${u.banned?'해제':'정지'}</button>
+              <button class="btn bgr" style="font-size:10px;padding:3px 7px" onclick="showUserDetail('${u.id}')">상세</button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </table></div>
     </div>`;
 }
 function filterUS(v){document.querySelectorAll('#utb tr:not(:first-child)').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
@@ -2781,6 +2831,24 @@ function editUS(id,lv,nick){
     <div class="fg"><label>닉네임</label><input id="un" value="${nick}"></div>
     <div class="fg"><label>레벨</label><select id="ul">${LIDS.map(l=>`<option value="${l}" ${l===lv?'selected':''}>${LI[l].e} ${LI[l].n}</option>`).join('')}</select></div>
     <div style="display:flex;gap:8px;margin-top:4px"><button class="btn bb" onclick="saveUS('${id}')" style="flex:1">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
+  </div></div>`;
+}
+async function showUserDetail(uid) {
+  let u = {};
+  try { const d = await db.collection('users').doc(uid).get(); if(d.exists) u = {id:d.id,...d.data()}; } catch(e){}
+  const fmtDate = ts => { if(!ts) return '-'; try { const d=ts.toDate?ts.toDate():new Date(ts); return d.toLocaleString('ko-KR'); } catch{return '-';} };
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">👤 회원 상세: ${u.nick||u.id?.slice(0,8)||'-'}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:14px">
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">레벨</div><strong>${LI[u.lid||'egg']?.e} ${u.lid||'egg'}</strong></div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">XP</div><strong>⚡${u.xp||0}</strong></div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">스트릭</div><strong>🔥 ${u.streak||0}일</strong></div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">보유 단어</div><strong>${(u.words||[]).length}개</strong></div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px;grid-column:1/-1"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">최근 접속</div><strong>${fmtDate(u.lastActive)}</strong></div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">가입일</div><strong>${fmtDate(u.createdAt||u.joinedAt)}</strong></div>
+      <div style="background:#F9FAFB;border-radius:10px;padding:10px"><div style="font-size:10px;color:#9CA3AF;margin-bottom:2px">코드</div><strong style="font-family:monospace;color:#7C3AED">${u.code||'-'}</strong></div>
+    </div>
+    <button onclick="cm()" class="btn bgr" style="width:100%">닫기</button>
   </div></div>`;
 }
 async function saveUS(id){try{await db.collection('users').doc(id).update({nick:document.getElementById('un').value.trim(),lid:document.getElementById('ul').value});toast('✅ 수정 완료','ok');cm();rUS();}catch(e){toast('오류: '+e.message,'err');}}

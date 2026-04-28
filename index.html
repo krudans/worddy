@@ -307,7 +307,7 @@ if(typeof firebase === 'undefined') {
     throw e;
   }
 }
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=2').catch(()=>{});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=3').catch(()=>{});
 
 // ── 레벨 정의 ──
 const LEVELS = [
@@ -10001,7 +10001,7 @@ function showLogoutMenu() {
       <div style="font-size:12px;color:#9CA3AF;margin-top:2px">${S.user?.email||''}</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      <button onclick="cm();window._svDisabled=true;window._appStarted=false;auth.signOut().then(()=>{window._svDisabled=false;showLogin();}).catch(e=>toast('로그아웃 오류: '+e.message))" style="background:#F3F4F6;border:1.5px solid #E5E7EB;border-radius:14px;padding:16px;text-align:left;cursor:pointer;width:100%">
+      <button onclick="cm();window._svDisabled=true;window._logoutRequested=true;auth.signOut().then(()=>{window._svDisabled=false;}).catch(e=>toast('로그아웃 오류: '+e.message))" style="background:#F3F4F6;border:1.5px solid #E5E7EB;border-radius:14px;padding:16px;text-align:left;cursor:pointer;width:100%">
         <div style="font-size:14px;font-weight:700;color:#374151">🚪 로그아웃</div>
         <div style="font-size:12px;color:#9CA3AF;margin-top:2px">데이터는 유지돼요. 다시 로그인하면 그대로예요.</div>
       </button>
@@ -10392,39 +10392,15 @@ window._authPending = false;
 
 auth.onAuthStateChanged(user => {
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
-
-  // Google 팝업 로그인 중 일시적으로 null이 오는 경우 무시
-  // _authPending=true 상태(팝업 진행 중)이고 user=null이면 skip
-  if(!user && window._authPending) {
-    console.log('[앱] 팝업 로그인 중 일시 null - 무시');
-    return;
-  }
-
-  // 이미 로그인 상태에서 null이 오면 300ms 대기 후 다시 확인
-  // (Google 팝업 로그인 완료 직전 일시적 null 방어)
-  if(!user && window._authInitialized && S.user) {
-    console.log('[앱] 일시적 비로그인 감지 - 300ms 대기');
-    setTimeout(() => {
-      if(!auth.currentUser) {
-        console.log('[앱] 확인됨: 비로그인 → showLogin');
-        S.user = null;
-        showLogin();
-      }
-    }, 300);
-    return;
-  }
-
-  window._authInitialized = true;
-  S.user = user;
-
+  
   if(user) {
-    window._authPending = false;
-    // 이미 앱이 실행 중이면 재시작하지 않음
-    if(window._appStarted) {
-      console.log('[앱] 이미 실행 중 - 재시작 스킵');
+    // 로그인 - 이미 실행 중이면 스킵
+    if(window._appStarted && S.user && S.user.uid === user.uid) {
+      console.log('[앱] 동일 유저 재인증 - 스킵');
       return;
     }
-    // 로컬스토리지 복원
+    S.user = user;
+    // localStorage 복원
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
@@ -10447,12 +10423,12 @@ auth.onAuthStateChanged(user => {
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
     } catch(e) {}
-    // 즉시 앱 시작
+    // 앱 시작 (중복 방지는 startApp 내부에서 처리)
     startApp();
     // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
       db.collection('users').doc(user.uid).get().then(doc => {
-        if(doc.exists) {
+        if(doc.exists && window._appStarted) {
           const data = doc.data();
           ['xp','lid','streak','nick','words','books','currentBook',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
@@ -10461,26 +10437,38 @@ auth.onAuthStateChanged(user => {
           ].forEach(k => { if(data[k] !== undefined) S[k] = data[k]; });
           if(Array.isArray(data.learned)) S.learned = new Set(data.learned);
           if(Array.isArray(data.favorites)) S.favorites = new Set(data.favorites);
-          // Firebase 동기화 완료 - go() 재호출 없이 헤더만 갱신
+          // go() 호출 없이 헤더만 갱신
           try { if(typeof updHD==='function') updHD(); } catch(e) {}
         }
       }).catch(()=>{});
     }
   } else {
-    // 완전한 비로그인
-    try {
-      const ls = localStorage;
-      if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
-      if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
-      if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
-      if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
-      const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
-      const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
-      const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
-    } catch(e) {}
-    showLogin();
+    // 비로그인 - _appStarted 상태면 진짜 로그아웃인지 확인
+    if(window._appStarted && window._logoutRequested) {
+      // 명시적 로그아웃
+      window._appStarted = false;
+      window._logoutRequested = false;
+      S.user = null;
+      showLogin();
+    } else if(!window._appStarted) {
+      // 초기 비로그인
+      S.user = null;
+      try {
+        const ls = localStorage;
+        if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+        if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
+        if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
+        if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
+        const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+        const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
+        const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
+      } catch(e) {}
+      showLogin();
+    }
+    // 앱 실행 중 일시적 null은 무시
   }
-});</script>
+});
+</script>
 <script src="js/wordpacks.js"></script>
 <script src="js/features.js"></script>
 </body>

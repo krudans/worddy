@@ -2675,13 +2675,23 @@ function showStudyCalendar() {
 
 // ── 마켓 단어팩 Firebase 로드 ──
 async function loadMarketPacks() {
-  if(typeof db === 'undefined') return;
+  if(typeof db === 'undefined') {
+    // Firebase 없으면 WORD_PACKS 사용
+    S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
+    return;
+  }
   try {
-    const snap = await db.collection('word_packs').orderBy('createdAt','desc').get();
-    S._marketPacks = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(p=>p.active!==false);
-    sv();
+    // 관리자가 저장한 Firebase 팩 로드 (컬렉션: 'packs')
+    const snap = await db.collection('packs').get();
+    const fbPacks = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.active !== false && p.name);
+    // 로컬 WORD_PACKS와 병합 (Firebase 팩 우선)
+    const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
+    const fbIds = new Set(fbPacks.map(p => p.id));
+    S._marketPacks = [...fbPacks, ...localPacks.filter(p => !fbIds.has(p.id))];
+    console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localPacks.filter(p=>!fbIds.has(p.id)).length + '개 로컬 =', S._marketPacks.length + '개 총합');
   } catch(e) {
-    console.warn('마켓 로드 실패:', e.message);
+    console.warn('마켓 Firebase 로드 실패, 로컬 사용:', e.message);
+    S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
   }
 }
 
@@ -7751,7 +7761,14 @@ function rStudy() {
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
-  if(S.stab==='market') return rMarket();
+  if(S.stab==='market') {
+    // 마켓 진입 시 항상 최신 팩 로드
+    if(!S._marketPacks || S._marketPacks.length === 0) {
+      loadMarketPacks().then(()=>go()).catch(()=>go());
+      return `<div class="pad" style="text-align:center;padding:40px;color:var(--text3,#9CA3AF)"><div style="font-size:36px;margin-bottom:8px">🔄</div><div>마켓 불러오는 중...</div></div>`;
+    }
+    return rMarket();
+  }
   if(S.stab==='add')   return booksBar+tabs+rAdd();
   if(S.stab==='list')  return booksBar+tabs+rList();
   return booksBar+tabs+rList();

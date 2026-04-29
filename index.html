@@ -282,6 +282,13 @@ window.onerror = function(msg,src,line,col,err) {
   const bd = document.getElementById('body');
   if(bd) bd.innerHTML='<div style="padding:20px;color:red;font-family:monospace;font-size:12px;word-break:break-all"><b>오류 발생</b><br>'+msg+'<br>'+src+'<br>Line:'+line+'</div>';
 };
+window.addEventListener('storage', e => {
+  if(e.key === 'xpConfigUpdated') {
+    loadXPConfig().then(()=>{
+      console.log('[앱] XP 설정 갱신됨');
+    }).catch(()=>{});
+  }
+});
 window.addEventListener('unhandledrejection',e=>{
   console.error('[Promise에러]',e.reason);
 });
@@ -1373,7 +1380,7 @@ async function loadXPConfig() {
   GAME_XP.wc       = {base: x.game_wc_base,       perfect: x.game_wc_perfect};
   GAME_XP.ssort    = {base: x.game_ssort_base,    perfect: x.game_ssort_perfect};
 }
-function xp(key) { return Math.round((window._XPC[key]||0) * (window._XPC.xpMultiplier||1)); }
+function xp(key) { const v = window._XPC[key]; return Math.round((v!=null ? v : (XP_DEFAULT[key]||0)) * (window._XPC.xpMultiplier||1)); }
 
 function saveGameScore(score) {
   if(!S.bestScores) S.bestScores={};
@@ -4246,7 +4253,6 @@ function finishAdaptiveTest() {
 
 // ── 앱 시작 ──
 function startApp() {
-  loadXPConfig(); // XP 설정 Firebase 로드
   console.log('[앱] startApp 호출');
   window._appStartTime = Date.now();
   window._svDisabled=false;
@@ -10808,7 +10814,7 @@ if(!auth) {
 window._authInitialized = false;
 window._authPending = false;
 
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
 
@@ -10836,6 +10842,7 @@ auth.onAuthStateChanged(user => {
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
     } catch(e) {}
+    await loadXPConfig(); // XP 설정 먼저 로드
     startApp();
     // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
@@ -10865,6 +10872,7 @@ auth.onAuthStateChanged(user => {
       const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
       const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
     } catch(e) {}
+    loadXPConfig().catch(()=>{});
     showLogin();
   }
 });

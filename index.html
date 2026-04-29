@@ -1965,10 +1965,25 @@ function shareCollectionCard(colId) {
   else navigator.clipboard?.writeText(text).then(()=>toast('복사됨!'));
 }
 
+
+function resetOwnedPacks() {
+  if(!confirm('보유 팩 목록을 전체 초기화할까요?\n단어장의 단어는 유지됩니다.')) return;
+  S._ownedPacks = [];
+  // Firebase 즉시 반영
+  if(typeof db !== 'undefined' && S.user && S.user.uid) {
+    db.collection('users').doc(S.user.uid).update({_ownedPacks:[]}).catch(()=>{
+      db.collection('users').doc(S.user.uid).set({_ownedPacks:[]},{merge:true}).catch(()=>{});
+    });
+  }
+  sv();
+  toast('보유 목록 초기화 완료');
+  go();
+}
 function rMarket() {
   const packs = S._marketPacks||[];
   const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
   const ownedPacks = S._ownedPacks||[];
+  console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
   // 카테고리 추출
   const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
@@ -1976,9 +1991,14 @@ function rMarket() {
   const filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
 
   let html = `<div class="pad" style="padding-bottom:24px">
-    <div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:16px;color:#fff">
-      <div style="font-size:18px;font-weight:900">🛒 단어 마켓</div>
-      <div style="font-size:12px;opacity:.8;margin-top:2px">관리자가 엄선한 단어팩을 내 단어장에 추가해요</div>
+    <div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:16px;color:#fff;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:18px;font-weight:900">🛒 단어 마켓</div>
+          <div style="font-size:12px;opacity:.8;margin-top:2px">관리자가 엄선한 단어팩을 내 단어장에 추가해요</div>
+        </div>
+        ${ownedPacks.length > 0 ? `<button onclick="resetOwnedPacks()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:4px 10px;font-size:10px;color:#fff;cursor:pointer;font-weight:600">보유 초기화</button>` : ''}
+      </div>
     </div>`;
 
   // 새로고침 버튼
@@ -4311,16 +4331,8 @@ function startApp() {
       const adDoc = await db.collection('config').doc('ad_banner').get();
       if(adDoc.exists) { S._adConfig = adDoc.data(); sv(); }
     } catch(e) {}
-    // 구매 이력 로드
-    if(typeof db !== 'undefined' && S.user?.uid) {
-      try {
-        const doc = await db.collection('user_packs').doc(S.user.uid).get();
-        if(doc.exists) {
-          S._ownedPacks = doc.data().owned||[];
-          sv();
-        }
-      } catch(e) {}
-    }
+    // _ownedPacks는 users 컬렉션에서 이미 로드됨 (위의 loadWordsFromFirestore에서)
+    // 별도 로드 불필요
   }, 3000); // 마켓 팩 + 구매이력 로드
   // 첫 실행 온보딩 투어
   if(!localStorage.getItem('wd-onboard')) {
@@ -10914,6 +10926,28 @@ auth.onAuthStateChanged(async user => {
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily'
           ].forEach(k => { if(data[k]!==undefined) S[k]=data[k]; });
+          // 필드 순서 오류 자동 수정 (en↔ex 뒤바뀐 경우)
+          const _fixWords = (arr) => (arr||[]).map(w => {
+            if(!w.en || !w.kr) return w;
+            // en에 공백 포함 긴 문장 + kr에 영어만 → 뒤바뀐 것
+            if(w.en.includes(' ') && w.en.length > 10 && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length < 20) {
+              const fixed = {...w};
+              fixed.en  = w.kr;       // 영단어
+              fixed.kr  = w.ph||'';   // 한국어뜻 (ph 자리에 있었음)
+              fixed.ph  = w.ex||'';   // 발음기호 (ex 자리에 있었음)
+              fixed.ex  = w.en;       // 예문
+              if(w.pos) fixed.pos = w.pos;
+              fixed.meanings = [fixed.kr];
+              return fixed;
+            }
+            // ph에 품사(명사/동사) → pos로 이동
+            if(w.ph && /^(명사|동사|형용사|부사|전치사|접속사)/.test(w.ph)) {
+              return {...w, pos: w.ph, ph: w.ex||'', ex: w.en+'.'};
+            }
+            return w;
+          });
+          if(data.words) S.words = _fixWords(S.words);
+          if(data.books) S.books = (S.books||[]).map(bk => ({...bk, words: _fixWords(bk.words)}));
           if(Array.isArray(data.learned)) S.learned=new Set(data.learned);
           if(Array.isArray(data.favorites)) S.favorites=new Set(data.favorites);
           try { if(typeof updHD==='function') updHD(); } catch(e) {}
@@ -10931,6 +10965,19 @@ auth.onAuthStateChanged(async user => {
       const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
       const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
       const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
+      // 필드 순서 오류 자동 수정
+      const _fixW2 = (arr) => (arr||[]).map(w => {
+        if(!w||!w.en||!w.kr) return w;
+        if(w.en.includes(' ') && w.en.length>10 && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length<20) {
+          return {...w, en:w.kr, kr:w.ph||'', ph:w.ex||'', ex:w.en, meanings:[w.ph||'']};
+        }
+        if(w.ph && /^(명사|동사|형용사|부사)/.test(w.ph)) {
+          return {...w, pos:w.ph, ph:w.ex||'', ex:w.en+'.'};
+        }
+        return w;
+      });
+      S.words = _fixW2(S.words);
+      S.books = (S.books||[]).map(bk=>({...bk, words:_fixW2(bk.words)}));
     } catch(e) {}
     loadXPConfig().catch(()=>{});
     showLogin();

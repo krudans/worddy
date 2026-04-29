@@ -6,26 +6,25 @@ function removePack(packId) {
   const pack = _allPacks.find(p=>p.id===packId);
   const packName = pack?.name || packId;
 
-  if(!confirm('"'+packName+'" 팩을 마켓에서 제거할까요?\n(이미 담은 단어는 유지됩니다)')) return;
+  if(!confirm('"'+packName+'" 팩을 마켓에서 제거할까요?')) return;
 
-  // S._ownedPacks에서 제거 (단일 소스)
   if(typeof S !== 'undefined') {
+    // S._ownedPacks에서 즉시 제거
     S._ownedPacks = (S._ownedPacks||[]).filter(id => id !== packId);
-    // Firebase에도 반영
-    if(typeof db !== 'undefined' && S.user?.uid) {
-      db.collection('user_packs').doc(S.user.uid).set(
-        {owned: S._ownedPacks},
-        {merge: true}
-      ).catch(()=>{});
+
+    // Firebase users 컬렉션에 즉시 반영 (sv() throttle 우회)
+    if(typeof db !== 'undefined' && S.user && S.user.uid) {
+      db.collection('users').doc(S.user.uid).update({
+        _ownedPacks: S._ownedPacks
+      }).catch(()=>{
+        // update 실패 시 set으로 재시도
+        db.collection('users').doc(S.user.uid).set(
+          {_ownedPacks: S._ownedPacks}, {merge:true}
+        ).catch(()=>{});
+      });
     }
     sv();
   }
-  // 구버전 localStorage도 정리
-  try {
-    const mp = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-    mp.delete(packId);
-    localStorage.setItem('wd-my-packs', JSON.stringify([...mp]));
-  } catch(e){}
 
   toast('"'+packName+'" 제거 완료');
   if(typeof go !== 'undefined') go();
@@ -120,9 +119,11 @@ function confirmDownloadPack(packId) {
     if(!S._ownedPacks) S._ownedPacks=[];
     if(!S._ownedPacks.includes(packId)) {
       S._ownedPacks.push(packId);
-      // Firebase에 저장
-      if(typeof db!=='undefined' && S.user?.uid) {
-        db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
+      // Firebase users 컬렉션에 즉시 저장
+      if(typeof db!=='undefined' && S.user && S.user.uid) {
+        db.collection('users').doc(S.user.uid).update({_ownedPacks:S._ownedPacks}).catch(()=>{
+          db.collection('users').doc(S.user.uid).set({_ownedPacks:S._ownedPacks},{merge:true}).catch(()=>{});
+        });
       }
     }
     sv();cm();toast(`✅ "${bookName}" 추가 완료!`);S.stab='books';go('mybooks');
@@ -143,8 +144,10 @@ function confirmDownloadPack(packId) {
     if(!S._ownedPacks) S._ownedPacks=[];
     if(!S._ownedPacks.includes(packId)) {
       S._ownedPacks.push(packId);
-      if(typeof db!=='undefined' && S.user?.uid) {
-        db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
+      if(typeof db!=='undefined' && S.user && S.user.uid) {
+        db.collection('users').doc(S.user.uid).update({_ownedPacks:S._ownedPacks}).catch(()=>{
+          db.collection('users').doc(S.user.uid).set({_ownedPacks:S._ownedPacks},{merge:true}).catch(()=>{});
+        });
       }
     }
     sv();cm();toast(`✅ "${target}"에 단어 추가 완료!`);S.stab='books';go('mybooks');

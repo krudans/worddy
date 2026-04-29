@@ -2420,8 +2420,8 @@ function showPackWordTab(tab) {
         <input placeholder="단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;font-size:13px">
         <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){(window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).find(x=>x.id===selPack).words=[];showPackWordTab('list')}">전체삭제</button>
       </div>
-      <div id="field-err-banner" style="${words.filter(w=>/[가-힣]/.test(w.en)||w.en.length>60).length>0?'':'display:none'}background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12px;color:#DC2626;font-weight:700">⚠️ 필드 오류 ${words.filter(w=>/[가-힣]/.test(w.en)||w.en.length>60).length}개 감지</span>
+      <div id="field-err-banner" style="display:none;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin-bottom:8px;align-items:center;justify-content:space-between">
+        <span id="field-err-msg" style="font-size:12px;color:#DC2626;font-weight:700"></span>
         <button onclick="fixPackWordFields('${selPack}')" class="btn br" style="font-size:11px;padding:4px 8px">자동 수정</button>
       </div>
       <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">${words.length}개</div>
@@ -2443,6 +2443,16 @@ function showPackWordTab(tab) {
           </div>
         </div>`).join('')}
       </div>`;
+  // 필드 오류 배너 업데이트
+  requestAnimationFrame(()=>{
+    const banner=document.getElementById('field-err-banner');
+    const msg=document.getElementById('field-err-msg');
+    if(banner&&msg&&words){
+      const bad=words.filter(w=>w.en&&w.en.includes(' ')&&w.en.length>10&&w.kr&&/^[a-zA-Z]+$/.test(w.kr));
+      if(bad.length>0){msg.textContent='⚠️ 필드 순서 오류 '+bad.length+'개 감지 (예문↔영단어 뒤바뀜)';banner.style.display='flex';}
+      else{banner.style.display='none';}
+    }
+  });
   }
 
   else if(tab==='dup') {
@@ -2505,23 +2515,45 @@ async function fixPackWordFields(packId) {
   const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   const p = _packs.find(x=>x.id===packId);
   if(!p||!p.words) return;
+
   let fixed=0, removed=0;
   const dummies = ['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'];
+
   p.words = p.words.filter(w => {
     // 더미 헤더 행 제거
     if(dummies.includes(w.en)) { removed++; return false; }
-    // en에 한국어가 들어있으면 ex와 교체 시도
-    if(/[가-힣]/.test(w.en) && w.ex && !/[가-힣]/.test(w.ex)) {
-      const tmp=w.en; w.en=w.ex; w.ex=tmp; fixed++;
+    if(!w.en || !w.kr) { removed++; return false; }
+
+    // 패턴 감지: en=예문(길고 공백있음), kr=영단어(짧고 공백없음), ph=한국어(한글포함)
+    const enIsEx  = w.en.includes(' ') && w.en.length > 10;   // 예문은 공백 포함 긴 문장
+    const krIsEn  = /^[a-zA-Z]+$/.test(w.kr) && w.kr.length < 20; // 한국어 자리에 영어
+    const phIsKr  = w.ph && /[가-힣]/.test(w.ph);             // 발음기호 자리에 한국어
+
+    if(enIsEx && krIsEn && phIsKr) {
+      // 현재: en=예문, kr=영단어, ph=한국어뜻, pos=품사, ex=발음기호
+      // 목표: en=영단어, kr=한국어뜻, ph=발음기호, pos=품사, ex=예문
+      const newEn  = w.kr;        // 영단어
+      const newKr  = w.ph;        // 한국어뜻
+      const newPh  = w.ex||'';    // 발음기호
+      const newEx  = w.en;        // 예문
+      const newPos = w.pos||'';   // 품사 그대로
+      w.en  = newEn;
+      w.kr  = newKr;
+      w.ph  = newPh;
+      w.ex  = newEx;
+      w.pos = newPos;
+      w.meanings = [newKr];
+      fixed++;
     }
-    // en이 너무 길면 제거
-    if(w.en.length>80) { removed++; return false; }
     return true;
   });
+
   try {
-    await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    toast(`✅ 수정 ${fixed}개, 제거 ${removed}개 완료`,'ok');
-  } catch(e) { toast('저장 오류: '+e.message,'err'); }
+    await db.collection('packs').doc(packId).set({...p, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+    toast(`✅ ${fixed}개 수정, ${removed}개 제거 완료! Firebase 저장 완료`, 'ok');
+  } catch(e) {
+    toast('저장 오류: '+e.message, 'err');
+  }
   showPackWordTab('list');
 }
 

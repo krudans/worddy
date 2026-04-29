@@ -97,7 +97,8 @@ function confirmDownloadPack(packId) {
     if(!S.books)S.books=[];
     let bookName=pack.name, cnt=1;
     while(S.books.find(b=>b.name===bookName)||bookName==='내 단어장') bookName=`${pack.name} (${++cnt})`;
-    S.books.push({name:bookName,words:[...(pack.words||[])],markMap:{},srsMap:{},learned:[]});
+    const cleanWords = (pack.words||[]).filter(w => w.en && w.kr && w.en.length < 50 && !['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'].includes(w.en));
+    S.books.push({name:bookName,words:cleanWords,markMap:{},srsMap:{},learned:[]});
     const mp=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]')); mp.add(packId);
     localStorage.setItem('wd-my-packs',JSON.stringify([...mp]));
     sv();cm();toast(`✅ "${bookName}" 추가 완료!`);S.stab='books';go('mybooks');
@@ -105,14 +106,14 @@ function confirmDownloadPack(packId) {
     const target=window._dpBook||'내 단어장';
     if(target==='내 단어장'){
       const ex=new Set(S.words.map(w=>w.en.toLowerCase()));
-      const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
+      const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()) && w.en && w.kr && w.en.length<50 && !w.en.includes('포함된') && !w.en.includes('한국어') && !w.en.includes('발음기호') && !w.en.includes('단어'));
       S.words.push(...newW);
     } else {
       const bk=(S.books||[]).find(b=>b.name===target);
       if(!bk){toast('단어장을 찾을 수 없어요');return;}
       if(!bk.words)bk.words=[];
       const ex=new Set(bk.words.map(w=>w.en.toLowerCase()));
-      const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()));
+      const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()) && w.en && w.kr && w.en.length<50 && !w.en.includes('포함된') && !w.en.includes('한국어') && !w.en.includes('발음기호') && !w.en.includes('단어'));
       bk.words.push(...newW);
     }
     const mp=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]')); mp.add(packId);

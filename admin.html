@@ -346,6 +346,145 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
 
 <script>
 // ── Google 로그인 ──
+async function rDB(){
+  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">대시보드 로딩 중...</div>';
+  let uc=0, tu=0, wu=0, pc=0, totalXP=0, avgStreak=0, activeUsers=[];
+  const td=today();
+  const wa=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const ma=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+
+  try {
+    const s=await db.collection('users').get();
+    uc=s.size;
+    s.forEach(d=>{
+      const x=d.data();
+      totalXP += (x.xp||0);
+      avgStreak += (x.streak||0);
+      const la = x.lastActive?.toDate?.()?.toISOString()?.slice(0,10)||x.updatedAt?.toDate?.()?.toISOString()?.slice(0,10);
+      if(la>=td) tu++;
+      if(la>=wa) wu++;
+      activeUsers.push({nick:x.nick,xp:x.xp||0,streak:x.streak||0,lid:x.lid||'egg'});
+    });
+    avgStreak = uc ? Math.round(avgStreak/uc) : 0;
+    activeUsers.sort((a,b)=>b.xp-a.xp);
+  } catch(e) {}
+  try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
+
+  const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const totalWords = packs.reduce((a,p)=>a+(p.words?.length||0),0);
+
+  // XP 설정 로드
+  let xpcfg = {};
+  try { const xd=await db.collection('settings').doc('xpConfig').get(); if(xd.exists) xpcfg=xd.data(); } catch(e){}
+  const xpMult = xpcfg.xpMultiplier||1;
+
+  document.getElementById('main-inner').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:22px;font-weight:900">📊 대시보드</h2>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="background:${xpMult>1?'#FEF3C7':'#F0FDF4'};border:1.5px solid ${xpMult>1?'#FDE68A':'#86EFAC'};border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;color:${xpMult>1?'#92400E':'#166534'}">
+          ⚡ XP 배율 ×${xpMult} <button onclick="T('xp')" style="background:none;border:none;font-size:11px;color:#9CA3AF;cursor:pointer;text-decoration:underline">변경</button>
+        </div>
+        <div style="font-size:13px;color:#9CA3AF">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'})}</div>
+      </div>
+    </div>
+
+    <!-- 관리자 프로필 -->
+    <div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);border-radius:16px;padding:16px;color:#fff;margin-bottom:20px;display:flex;align-items:center;gap:14px">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">👤</div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:800">${currentAdmin?.name||'관리자'}</div>
+        <div style="font-size:12px;opacity:.8">${currentAdmin?.email||''}</div>
+      </div>
+      <div style="font-size:12px;opacity:.7">${isSuperAdmin()?'👑 슈퍼 관리자':''}</div>
+    </div>
+
+    <!-- 핵심 지표 -->
+    <div class="sg" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+      <div class="st" onclick="T('us')" style="cursor:pointer">
+        <div class="v" style="color:#1E5FA5">${uc}</div><div class="l">총 회원</div>
+      </div>
+      <div class="st" style="background:#F0FDF4">
+        <div class="v" style="color:#16A34A">${tu}</div><div class="l">오늘 접속</div>
+      </div>
+      <div class="st">
+        <div class="v" style="color:#7C3AED">${wu}</div><div class="l">7일 활성</div>
+      </div>
+      <div class="st" style="background:#FFF8E1">
+        <div class="v" style="color:#D97706">${pc}</div><div class="l">미확인 콕</div>
+      </div>
+    </div>
+    <div class="sg" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+      <div class="st"><div class="v" style="color:#E65100;font-size:18px">${(totalXP||0).toLocaleString()}</div><div class="l">총 XP 합계</div></div>
+      <div class="st"><div class="v" style="color:#E65100;font-size:18px">🔥${avgStreak}일</div><div class="l">평균 스트릭</div></div>
+      <div class="st"><div class="v" style="color:#1E5FA5;font-size:18px">${packs.length}</div><div class="l">마켓 팩</div></div>
+      <div class="st"><div class="v" style="color:#16A34A;font-size:18px">${totalWords.toLocaleString()}</div><div class="l">총 단어수</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- XP 상위 회원 -->
+      <div class="card">
+        <div class="ct">🏆 XP 상위 회원</div>
+        ${activeUsers.slice(0,8).map((u,i)=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F3F4F6">
+            <div style="width:20px;text-align:center;font-size:12px;font-weight:800;color:${i<3?'#D97706':'#9CA3AF'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+            <div style="font-size:13px;flex:1;font-weight:600">${u.nick||'익명'}</div>
+            <div style="font-size:11px;color:#7C3AED;font-weight:700">⚡${u.xp.toLocaleString()}</div>
+            <div style="font-size:11px;color:#E65100">🔥${u.streak}일</div>
+          </div>`).join('')}
+        ${activeUsers.length===0?'<div style="text-align:center;padding:20px;color:#9CA3AF">회원 없음</div>':''}
+      </div>
+
+      <!-- 빠른 작업 -->
+      <div class="card">
+        <div class="ct">⚡ 빠른 작업</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn bb" onclick="T('wd')" style="justify-content:flex-start">📚 단어 추가/관리</button>
+          <button class="btn bg" onclick="T('us')" style="justify-content:flex-start">👥 회원 관리</button>
+          <button class="btn bp" onclick="T('nt')" style="justify-content:flex-start">📢 공지사항 작성</button>
+          <button class="btn" style="background:#F59E0B;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;justify-content:flex-start" onclick="T('xp')">⚡ XP 설정</button>
+          <button class="btn bo" onclick="T('an')" style="justify-content:flex-start">📈 이용 분석</button>
+          ${isSuperAdmin()?`<button class="btn" style="background:#1E3A5F;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer" onclick="T('adm')">🔐 관리자 관리</button>`:''}
+          <hr style="border:none;border-top:1px solid #E5E7EB;margin:4px 0">
+          <button class="btn bgr" onclick="window.open('index.html','_blank')" style="justify-content:flex-start">🔗 앱 열기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 레벨별 단어수 + 마켓팩 카테고리 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div class="ct">📚 레벨별 시스템 단어수</div>
+        ${LIDS.map(l=>`<div class="bi"><div class="bl">${LI[l].e} ${LI[l].n.split(' ')[0]}</div><div class="bt"><div class="bf" id="bf-${l}" style="height:100%;background:#1E5FA5;border-radius:4px;width:0%;transition:width .6s"></div></div><div id="bv-${l}" style="font-size:11px;font-weight:700;color:#374151;min-width:28px;text-align:right">0</div></div>`).join('')}
+      </div>
+      <div class="card">
+        <div class="ct">🛒 마켓팩 카테고리</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(cat=>{
+            const cnt=packs.filter(p=>p.cat===cat).length;
+            const wc=packs.filter(p=>p.cat===cat).reduce((a,p)=>a+(p.words?.length||0),0);
+            return `<div style="background:#F9FAFB;border-radius:10px;padding:8px;cursor:pointer" onclick="T('pk')">
+              <div style="font-size:11px;font-weight:700;color:#374151">${cat}</div>
+              <div style="font-size:13px;font-weight:900;color:#1E5FA5">${cnt}팩</div>
+              <div style="font-size:10px;color:#9CA3AF">${wc}단어</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  // 레벨별 단어수 로드
+  let mx=1; const wcs={};
+  await Promise.all(LIDS.map(async l=>{
+    try{const d=await db.collection('words').doc(l).get();wcs[l]=d.exists?(d.data().list||[]).length:0;}catch(e){wcs[l]=0;}
+    if(wcs[l]>mx) mx=wcs[l];
+  }));
+  LIDS.forEach(l=>{
+    const be=document.getElementById('bf-'+l), bv=document.getElementById('bv-'+l);
+    if(be){be.style.width=Math.round((wcs[l]||0)/mx*100)+'%';}
+    if(bv){bv.textContent=wcs[l]||0;}
+  });
+}
 async function doGoogleLogin(){
   try {
     const provider = new firebase.auth.GoogleAuthProvider();

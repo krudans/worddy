@@ -8812,8 +8812,69 @@ function showWordDetail(en) {
     <button onclick="aiEnrichWord('${safeEn}')" style="background:#F3F4F6;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;width:100%;color:#374151;margin-bottom:10px">✨ AI로 발음·품사·유의어 채우기</button>
      <button onclick="downloadWordCard('${safeEn}')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:10px 12px;font-size:16px;cursor:pointer" title="단어 카드 저장">📸</button>
 
+    <button onclick="showWordEdit('${safeEn}')" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;color:#374151">✏️ 단어 직접 수정</button>
     <button onclick="cm()" class="btn bgr">닫기</button>
   </div></div>`;
+}
+
+function showWordEdit(en) {
+  const w = S.words.find(x=>x.en===en);
+  if(!w) return;
+  const safeEn = en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:800;margin-bottom:14px">✏️ 단어 수정: ${w.en}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">영단어</div>
+        <input id="we-en" value="${w.en}" style="width:100%;font-family:monospace;font-size:15px;font-weight:700"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">한국어 뜻</div>
+        <input id="we-kr" value="${w.kr}" style="width:100%"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">발음기호</div>
+        <input id="we-ph" value="${w.ph||''}" placeholder="예: /ˈæpəl/" style="width:100%;font-family:monospace"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">예문</div>
+        <input id="we-ex" value="${w.ex||''}" style="width:100%"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">암기 팁</div>
+        <input id="we-tip" value="${w.tip||''}" style="width:100%"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">연상 이모지</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">
+          ${['📝','🌟','💡','🔥','❤️','🎯','⚡','🌈','🏆','🎨','😀','🤔','💪','🎵','🌙'].map(e=>`<button onclick="document.getElementById('we-img').value='${e}';this.parentNode.querySelectorAll('button').forEach(b=>b.style.background='#F3F4F6');this.style.background='#BFDBFE'" style="background:${(w.img||'📝')===e?'#BFDBFE':'#F3F4F6'};border:none;border-radius:8px;padding:4px 6px;font-size:16px;cursor:pointer">${e}</button>`).join('')}
+        </div>
+        <input id="we-img" value="${w.img||'📝'}" style="width:60px;text-align:center;font-size:18px">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="saveWordEdit('${safeEn}')" class="btn bb" style="flex:1">💾 저장</button>
+      <button onclick="cm()" class="btn bgr">취소</button>
+    </div>
+  </div></div>`;
+}
+
+function saveWordEdit(oldEn) {
+  const newEn = (document.getElementById('we-en')?.value||'').trim();
+  const newKr = (document.getElementById('we-kr')?.value||'').trim();
+  if(!newEn||!newKr) { toast('영단어와 뜻은 필수예요'); return; }
+  const wi = S.words.find(x=>x.en===oldEn);
+  if(!wi) return;
+  // 영단어 바뀌면 markMap, srsMap 키도 업데이트
+  if(newEn !== oldEn) {
+    if(S.markMap[oldEn]!==undefined) { S.markMap[newEn]=S.markMap[oldEn]; delete S.markMap[oldEn]; }
+    if(S.srsMap[oldEn]!==undefined) { S.srsMap[newEn]=S.srsMap[oldEn]; delete S.srsMap[oldEn]; }
+    S.learned.delete(oldEn); if(S.learned.has(oldEn)) S.learned.add(newEn);
+  }
+  wi.en  = newEn;
+  wi.kr  = newKr;
+  wi.ph  = document.getElementById('we-ph')?.value||'';
+  wi.ex  = document.getElementById('we-ex')?.value||'';
+  wi.tip = document.getElementById('we-tip')?.value||'';
+  wi.img = document.getElementById('we-img')?.value||'📝';
+  // books에도 동기화
+  (S.books||[]).forEach(bk=>{
+    const bwi = (bk.words||[]).find(x=>x.en===oldEn);
+    if(bwi) { Object.assign(bwi, {en:wi.en,kr:wi.kr,ph:wi.ph,ex:wi.ex,tip:wi.tip,img:wi.img}); }
+  });
+  sv();
+  cm();
+  toast(`✅ "${newEn}" 수정 완료!`);
+  go();
 }
 
 async function aiEnrichWord(en) {

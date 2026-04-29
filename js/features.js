@@ -2,33 +2,33 @@
 
 
 function removePack(packId) {
-  const _allPacks=(typeof S!=='undefined'&&S._marketPacks)||WORD_PACKS||[];
+  const _allPacks = (typeof S!=='undefined' && S._marketPacks) || (typeof WORD_PACKS!=='undefined' ? WORD_PACKS : []);
   const pack = _allPacks.find(p=>p.id===packId);
   const packName = pack?.name || packId;
 
-  if(!confirm('마켓에서 "'+packName+'" 팩을 제거할까요?\n(단어장의 단어는 유지됩니다)')) return;
+  if(!confirm('"'+packName+'" 팩을 마켓에서 제거할까요?\n(이미 담은 단어는 유지됩니다)')) return;
 
-  // localStorage에서 제거
-  const myPacks = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
-  myPacks.delete(packId);
-  localStorage.setItem('wd-my-packs', JSON.stringify([...myPacks]));
-
-  // S._ownedPacks에서도 제거
+  // S._ownedPacks에서 제거 (단일 소스)
   if(typeof S !== 'undefined') {
-    if(S._ownedPacks) S._ownedPacks = S._ownedPacks.filter(id=>id!==packId);
-    // 해당 팩으로 만든 단어장도 삭제할지 물어보기
-    const bookFromPack = (S.books||[]).find(b=>b.name===packName || b.packId===packId);
-    if(bookFromPack) {
-      if(confirm('"'+bookFromPack.name+'" 단어장도 삭제할까요?')) {
-        S.books = S.books.filter(b=>b.name!==bookFromPack.name);
-        sv();
-      }
+    S._ownedPacks = (S._ownedPacks||[]).filter(id => id !== packId);
+    // Firebase에도 반영
+    if(typeof db !== 'undefined' && S.user?.uid) {
+      db.collection('user_packs').doc(S.user.uid).set(
+        {owned: S._ownedPacks},
+        {merge: true}
+      ).catch(()=>{});
     }
+    sv();
   }
+  // 구버전 localStorage도 정리
+  try {
+    const mp = new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]'));
+    mp.delete(packId);
+    localStorage.setItem('wd-my-packs', JSON.stringify([...mp]));
+  } catch(e){}
 
-  toast('"'+packName+'" 팩 제거됨');
+  toast('"'+packName+'" 제거 완료');
   if(typeof go !== 'undefined') go();
-  else if(typeof rMarket !== 'undefined') rMarket();
 }
 
 function downloadPack(packId) {
@@ -117,10 +117,14 @@ function confirmDownloadPack(packId) {
     while(S.books.find(b=>b.name===bookName)||bookName==='내 단어장') bookName=`${pack.name} (${++cnt})`;
     const cleanWords = (pack.words||[]).filter(w => w.en && w.kr && w.en.length < 50 && !['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'].includes(w.en));
     S.books.push({name:bookName,words:cleanWords,markMap:{},srsMap:{},learned:[]});
-    const mp=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]')); mp.add(packId);
-    localStorage.setItem('wd-my-packs',JSON.stringify([...mp]));
     if(!S._ownedPacks) S._ownedPacks=[];
-    if(!S._ownedPacks.includes(packId)) S._ownedPacks.push(packId);
+    if(!S._ownedPacks.includes(packId)) {
+      S._ownedPacks.push(packId);
+      // Firebase에 저장
+      if(typeof db!=='undefined' && S.user?.uid) {
+        db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
+      }
+    }
     sv();cm();toast(`✅ "${bookName}" 추가 완료!`);S.stab='books';go('mybooks');
   } else {
     const target=window._dpBook||'내 단어장';
@@ -136,10 +140,13 @@ function confirmDownloadPack(packId) {
       const newW=pack.words.filter(w=>!ex.has(w.en.toLowerCase()) && w.en && w.kr && w.en.length<50 && !w.en.includes('포함된') && !w.en.includes('한국어') && !w.en.includes('발음기호') && !w.en.includes('단어'));
       bk.words.push(...newW);
     }
-    const mp=new Set(JSON.parse(localStorage.getItem('wd-my-packs')||'[]')); mp.add(packId);
-    localStorage.setItem('wd-my-packs',JSON.stringify([...mp]));
     if(!S._ownedPacks) S._ownedPacks=[];
-    if(!S._ownedPacks.includes(packId)) S._ownedPacks.push(packId);
+    if(!S._ownedPacks.includes(packId)) {
+      S._ownedPacks.push(packId);
+      if(typeof db!=='undefined' && S.user?.uid) {
+        db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
+      }
+    }
     sv();cm();toast(`✅ "${target}"에 단어 추가 완료!`);S.stab='books';go('mybooks');
   }
 }

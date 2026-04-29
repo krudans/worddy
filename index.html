@@ -4301,6 +4301,10 @@ function cleanDummyWords() {
 
 function startApp() {
   console.log('[앱] startApp 호출');
+  if(S.words.length > 0) {
+    const _w = S.words[0];
+    console.log('[앱] startApp 시점 첫 단어:', JSON.stringify({en:_w.en,kr:_w.kr,ph:_w.ph,ex:_w.ex,pos:_w.pos}));
+  }
   // 더미 헤더 데이터 자동 제거
   const _dummyKeys = ['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'];
   S.words = S.words.filter(w => w.en && w.kr && !_dummyKeys.includes(w.en) && w.en.length < 80);
@@ -8322,6 +8326,7 @@ function rLearn() {
     </div>`;
   }
   const w = words[Math.min(idx, words.length-1)];
+  console.log('[플래시카드] 현재 단어:', JSON.stringify({en:w.en,kr:w.kr,ph:w.ph,ex:w.ex,pos:w.pos}));
   const prog = idx+1, tot = words.length;
   const pct = Math.round(prog/tot*100);
   const mark = getMark(w.en);
@@ -10915,6 +10920,40 @@ auth.onAuthStateChanged(async user => {
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
     } catch(e) {}
     await loadXPConfig(); // XP 설정 먼저 로드
+
+    // Firebase에서 최신 데이터 먼저 로드한 뒤 startApp
+    if(typeof db !== 'undefined') {
+      try {
+        const _doc = await db.collection('users').doc(user.uid).get();
+        if(_doc.exists) {
+          const _data = _doc.data();
+          ['xp','lid','streak','nick','words','books','currentBook',
+           'markMap','_achievements','_acc','_equipped','_ownedPacks',
+           'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
+           '_dailyDate','_dailyXpGiven','studyLog','fontFamily'
+          ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
+          if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
+          if(Array.isArray(_data.favorites)) S.favorites=new Set(_data.favorites);
+
+          // 필드 순서 오류 자동 수정
+          const _fix = (arr) => (arr||[]).map(w => {
+            if(!w||!w.en||!w.kr) return w;
+            if(w.en.includes(' ') && w.en.length>10 && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length<20) {
+              console.log('[필드수정]', w.en.slice(0,20), '→', w.kr);
+              return {...w, en:w.kr, kr:w.ph||'', ph:w.ex||'', ex:w.en, pos:w.pos||'', meanings:[w.ph||'']};
+            }
+            if(w.ph && /^(명사|동사|형용사|부사|전치사|접속사)/.test(w.ph)) {
+              return {...w, pos:w.ph, ph:w.ex||'', ex:w.en+'.'};
+            }
+            return w;
+          });
+          S.words = _fix(S.words);
+          S.books = (S.books||[]).map(bk => ({...bk, words:_fix(bk.words||[])}));
+          console.log('[앱] Firebase 선로드 완료, words:', S.words.length, 'books:', S.books.length);
+        }
+      } catch(_e) { console.log('[앱] Firebase 선로드 실패, localStorage 사용'); }
+    }
+
     startApp();
     // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
@@ -10928,26 +10967,28 @@ auth.onAuthStateChanged(async user => {
           ].forEach(k => { if(data[k]!==undefined) S[k]=data[k]; });
           // 필드 순서 오류 자동 수정 (en↔ex 뒤바뀐 경우)
           const _fixWords = (arr) => (arr||[]).map(w => {
-            if(!w.en || !w.kr) return w;
-            // en에 공백 포함 긴 문장 + kr에 영어만 → 뒤바뀐 것
-            if(w.en.includes(' ') && w.en.length > 10 && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length < 20) {
-              const fixed = {...w};
-              fixed.en  = w.kr;       // 영단어
-              fixed.kr  = w.ph||'';   // 한국어뜻 (ph 자리에 있었음)
-              fixed.ph  = w.ex||'';   // 발음기호 (ex 자리에 있었음)
-              fixed.ex  = w.en;       // 예문
-              if(w.pos) fixed.pos = w.pos;
-              fixed.meanings = [fixed.kr];
-              return fixed;
+            if(!w||!w.en||!w.kr) return w;
+            if(w.en.includes(' ') && w.en.length>10 && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length<20) {
+              return {...w, en:w.kr, kr:w.ph||'', ph:w.ex||'', ex:w.en, pos:w.pos||'', meanings:[w.ph||'']};
             }
-            // ph에 품사(명사/동사) → pos로 이동
             if(w.ph && /^(명사|동사|형용사|부사|전치사|접속사)/.test(w.ph)) {
-              return {...w, pos: w.ph, ph: w.ex||'', ex: w.en+'.'};
+              return {...w, pos:w.ph, ph:w.ex||'', ex:w.en+'.'};
             }
             return w;
           });
-          if(data.words) S.words = _fixWords(S.words);
-          if(data.books) S.books = (S.books||[]).map(bk => ({...bk, words: _fixWords(bk.words)}));
+          // words 수정
+          const _w0 = (S.words||[])[0];
+          if(_w0) console.log('[필드수정] words[0] 수정 전:', JSON.stringify({en:_w0.en,kr:_w0.kr,ph:_w0.ph,ex:_w0.ex}));
+          S.words = _fixWords(S.words);
+          // books 수정 (S.books에 이미 data.books가 복사된 상태)
+          S.books = (S.books||[]).map(bk => {
+            const fixed = _fixWords(bk.words||[]);
+            if(fixed.length>0) console.log('[필드수정] book:'+bk.name+' words[0]:', JSON.stringify({en:fixed[0].en,kr:fixed[0].kr}));
+            return {...bk, words: fixed};
+          });
+          // 수정된 데이터 즉시 저장 및 화면 갱신
+          sv();
+          if(typeof go === 'function') go();
           if(Array.isArray(data.learned)) S.learned=new Set(data.learned);
           if(Array.isArray(data.favorites)) S.favorites=new Set(data.favorites);
           try { if(typeof updHD==='function') updHD(); } catch(e) {}

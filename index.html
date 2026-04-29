@@ -1174,8 +1174,8 @@ function charMsg(type) {
 // ── 마크 시스템 헬퍼 ──
 // 0=미분류(회색), 1=외운(파란), 2=헷갈리는(분홍)
 const MARK_INFO = [
-  {label:'미분류',       color:'#9CA3AF', bg:'#F3F4F6', emoji:'🥚', paw:'🥚'},
-  {label:'외운 단어',    color:'#1E5FA5', bg:'#EFF6FF', emoji:'🐛', paw:'🐛'},
+  {label:'미학습',       color:'#9CA3AF', bg:'#F3F4F6', emoji:'🥚', paw:'🥚'},
+  {label:'외웠음',    color:'#1E5FA5', bg:'#EFF6FF', emoji:'🐛', paw:'🐛'},
   {label:'헷갈리는 단어',color:'#EC4899', bg:'#FDF2F8', emoji:'🦋', paw:'🦋'},
 ];
 
@@ -3583,8 +3583,15 @@ async function _autoReadWord(w) {
 }
 
 function showAutoMode() {
-  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
-  if(!words || !words.length) { toast('단어가 없어요!'); return; }
+  const rawWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!rawWords || !rawWords.length) { toast('단어가 없어요!'); return; }
+  // 정렬
+  let words = [...rawWords];
+  const sort = S.autoSort||'default';
+  if(sort==='alpha') words.sort((a,b)=>a.en.localeCompare(b.en));
+  else if(sort==='alpha_kr') words.sort((a,b)=>a.kr.localeCompare(b.kr));
+  else if(sort==='mark') words.sort((a,b)=>getMark(b.en)-getMark(a.en));
+  else if(sort==='random') { for(let i=words.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[words[i],words[j]]=[words[j],words[i]];} }
   
   const mr = document.getElementById('mr');
   if(!mr) return;
@@ -3632,6 +3639,13 @@ function showAutoMode() {
       
       <!-- 옵션 패널 -->
       <div style="padding:8px 16px;flex-shrink:0">
+        <!-- 정렬 선택 -->
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <span style="font-size:10px;color:rgba(255,255,255,.4);min-width:32px">정렬</span>
+          ${[['default','추가순'],['alpha','A-Z'],['alpha_kr','가나다'],['mark','마크순'],['random','🔀랜덤']].map(([v,lb])=>
+            `<button onclick="S.autoSort='${v}';showAutoMode()" style="flex:1;background:${(S.autoSort||'default')===v?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:4px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
+          ).join('')}
+        </div>
         <!-- 무한루프 토글 + 읽기 모드 -->
         <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
           <button onclick="window._auto.loop=!window._auto.loop;window._autoRender()" style="background:${A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.loop?'rgba(96,165,250,.6)':'rgba(255,255,255,.15)'};border-radius:18px;padding:6px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">${A.loop?'🔁 무한반복':'➡ 1회만'}</button>
@@ -8308,7 +8322,27 @@ function getCurrentBookMarkMap() {
 
 
 function rLearn() {
-  const words = S._flipWords || S.words;
+  // 정렬/랜덤 적용
+  if(!S._flipWords) {
+    const sort = S.flashSort||'default';
+    if(sort==='random' && !S._flashShuffled) {
+      // 한번만 섞기 (카드 넘길 때마다 다시 섞으면 안 됨)
+      S._flashShuffled = [...S.words];
+      for(let i=S._flashShuffled.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [S._flashShuffled[i],S._flashShuffled[j]]=[S._flashShuffled[j],S._flashShuffled[i]];
+      }
+    } else if(sort!=='random') {
+      S._flashShuffled = null; // 랜덤 아닌 경우 캐시 초기화
+    }
+  }
+  const words = S._flipWords || (S.flashSort==='random' && S._flashShuffled ? S._flashShuffled : (()=>{
+    const ws = [...S.words];
+    if(S.flashSort==='alpha') ws.sort((a,b)=>a.en.localeCompare(b.en));
+    else if(S.flashSort==='alpha_kr') ws.sort((a,b)=>a.kr.localeCompare(b.kr));
+    else if(S.flashSort==='mark') ws.sort((a,b)=>getMark(b.en)-getMark(a.en));
+    return ws;
+  })());
   const idx = S._flipWords ? (S._flipIdx||0) : S.idx;
   if(!words.length) return `<div class="pad" style="text-align:center;margin-top:60px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('mybooks','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
 
@@ -8368,11 +8402,11 @@ function rLearn() {
       </div>
     </div>
 
-    <!-- 필터 바 (외운것/아닌것) -->
+    <!-- 필터 바 (외웠음/아닌것) -->
     <div style="display:flex;gap:6px;padding:0 16px;margin-bottom:6px;overflow-x:auto">
       ${(()=>{
         const cur=S.listMarkFilter??-1;
-        const filters=[[-1,'전체',S.words.length],[1,'✅외운것',S.words.filter(w=>getMark(w.en)===1).length],[2,'🦋복습',S.words.filter(w=>getMark(w.en)===2).length],[0,'○미학습',S.words.filter(w=>getMark(w.en)===0).length]];
+        const filters=[[-1,'전체',S.words.length],[1,'✅외웠음',S.words.filter(w=>getMark(w.en)===1).length],[2,'🦋복습',S.words.filter(w=>getMark(w.en)===2).length],[0,'○미학습',S.words.filter(w=>getMark(w.en)===0).length]];
         return filters.map(([v,lb,cnt])=>{
           const active=cur===v;
           const onclick=v>=0?'S.listMarkFilter='+v+';S.idx=0;S.flip=false;S._flipWords=S.words.filter(w=>getMark(w.en)==='+v+');S._flipIdx=0;go()':'S.listMarkFilter=-1;S.idx=0;S.flip=false;S._flipWords=null;go()';
@@ -8380,10 +8414,23 @@ function rLearn() {
         }).join('');
       })()}
     </div>
+    <!-- 정렬 선택 -->
+    <div style="display:flex;align-items:center;gap:6px;padding:0 16px;margin-bottom:4px">
+      <span style="font-size:11px;color:var(--text3,#A08040)">정렬:</span>
+      <select onchange="S.flashSort=this.value;S._flashShuffled=null;S.idx=0;S.flip=false;go()" style="font-size:11px;border:1px solid var(--border,#F0E6C8);border-radius:8px;padding:3px 6px;background:var(--bg-sub,#FFF9ED);color:var(--text2,#6B5200)">
+        <option value="default" ${(!S.flashSort||S.flashSort==='default')?'selected':''}>추가순</option>
+        <option value="alpha" ${S.flashSort==='alpha'?'selected':''}>영어 A-Z</option>
+        <option value="alpha_kr" ${S.flashSort==='alpha_kr'?'selected':''}>한글 가나다</option>
+        <option value="mark" ${S.flashSort==='mark'?'selected':''}>마크순</option>
+        <option value="random" ${S.flashSort==='random'?'selected':''}>🔀 랜덤</option>
+      </select>
+      ${S.flashSort==='random'?`<button onclick="S._flashShuffled=null;S.idx=0;S.flip=false;go()" style="font-size:11px;border:none;background:var(--bg-sub,#FFF9ED);border-radius:8px;padding:3px 8px;cursor:pointer;color:var(--text2,#6B5200)">🔀 다시섞기</button>`:''}
+    </div>
+
     <!-- 스와이프 힌트 -->
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3,#A08040);padding:0 20px;margin-bottom:8px">
       <span>← 모르겠어 🦋</span>
-      <span>알았어 ✅ →</span>
+      <span>외웠음 ✅ →</span>
     </div>
 
     <!-- 메인 카드 영역 -->
@@ -8465,7 +8512,7 @@ function rLearn() {
         <button onclick="if(!S.learned.has(w.en)){S.learned.add(w.en);setMark('${safeEn}',1);srsRate('${safeEn}',1);logStudy('words');checkAchievements();checkLearnMilestone();sv();const clrs=['#FDE68A','#6EE7B7','#93C5FD'];for(let ci=0;ci<6;ci++){const p=document.createElement('div');const ang=(ci/6)*360;p.style.cssText='position:fixed;left:50%;top:60%;width:8px;height:8px;border-radius:50%;background:'+clrs[ci%3]+';z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .4s ease-out;opacity:1';document.body.appendChild(p);setTimeout(()=>{p.style.transform='translate(calc(-50% + '+Math.round(Math.cos(ang*Math.PI/180)*50)+'px),calc(-50% + '+Math.round(Math.sin(ang*Math.PI/180)*50)+'px))';p.style.opacity='0';},30);setTimeout(()=>p.remove(),500);}}else{ /* 이미 외운 단어 - XP 없음 */ }SFX.play('swipe_ok');showSwipeHint('✅ 알았어!','#16A34A');${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;go()"
           style="background:#F0FDF4;border:2px solid #86EFAC;border-radius:16px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;display:flex;flex-direction:column;align-items:center;gap:3px">
           <span style="font-size:20px">✅</span>
-          <span>알았어</span>
+          <span>외웠음</span>
         </button>
       </div>
 
@@ -8494,10 +8541,10 @@ function initFlashSwipe() {
       e.stopPropagation();
       const w=S.words.length>0?S.words[Math.min(S.idx,S.words.length-1)]:null;
       if(dx>0 && w) {
-        // 오른쪽 스와이프 = 알았어 ✅
+        // 오른쪽 스와이프 = 외웠음 ✅
         setMark(w.en,1); ok(); logStudy('words');
         SFX.play('swipe_ok');
-        showSwipeHint('✅ 알았어!', '#16A34A');
+        showSwipeHint('✅ 외웠음!', '#16A34A');
         if(!S.learned.has(w.en)){S.learned.add(w.en);srsRate(w.en,1);checkAchievements();checkLearnMilestone();sv();}
         S.idx++; S.flip=false;
       } else if(dx<0 && w) {
@@ -8787,6 +8834,7 @@ function rList(){
   if(sortBy==='alpha') filtered.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sortBy==='alpha_kr') filtered.sort((a,b)=>a.kr.localeCompare(b.kr));
   else if(sortBy==='mark') filtered.sort((a,b)=>getMark(b.en)-getMark(a.en));
+  else if(sortBy==='random') { for(let i=filtered.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[filtered[i],filtered[j]]=[filtered[j],filtered[i]];} }
   const rows=filtered.map(w=>{
     const mark=getMark(w.en); const mInfo=MARK_INFO[mark];
     const safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -8810,11 +8858,12 @@ function rList(){
     +'<option value="alpha" '+(sortBy==='alpha'?'selected':'')+'>영어 A-Z</option>'
     +'<option value="alpha_kr" '+(sortBy==='alpha_kr'?'selected':'')+'>한글 가나다</option>'
     +'<option value="mark" '+(sortBy==='mark'?'selected':'')+'>마크순</option>'
+    +'<option value="random" '+(sortBy==='random'?'selected':'')+'>🔀 랜덤</option>'
     +'</select>'
     +'<button onclick="if(confirm(\'마크 초기화?\')){S.markMap={};S.learned.clear();sv();go();}" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;white-space:nowrap">초기화</button>'
     +'</div>'
     +'<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px">'
-    +[[-1,'전체',S.words.length,'#374151'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF'],[1,'외운 ✅',marked1,'#16A34A'],[2,'헷갈림 🦋',marked2,'#7C3AED'],[-2,'⭐즐겨찾기',markedFav,'#D97706']].map(function(arr){
+    +[[-1,'전체',S.words.length,'#374151'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF'],[1,'외웠음 ✅',marked1,'#16A34A'],[2,'헷갈림 🦋',marked2,'#7C3AED'],[-2,'⭐즐겨찾기',markedFav,'#D97706']].map(function(arr){
       const v=arr[0],lb=arr[1],cnt=arr[2],col=arr[3];
       return '<button onclick="S.listMarkFilter='+v+';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(filterMark===v?col:'#E5E7EB')+';font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;background:'+(filterMark===v?col:'#F9FAFB')+';color:'+(filterMark===v?'#fff':col)+'">'+lb+' '+cnt+'</button>';
     }).join('')

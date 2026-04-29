@@ -2416,9 +2416,13 @@ function showPackWordTab(tab) {
       return;
     }
     cont.innerHTML=`
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <input placeholder="단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;font-size:13px">
         <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){(window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).find(x=>x.id===selPack).words=[];showPackWordTab('list')}">전체삭제</button>
+      </div>
+      <div id="field-err-banner" style="${words.filter(w=>/[가-힣]/.test(w.en)||w.en.length>60).length>0?'':'display:none'}background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;color:#DC2626;font-weight:700">⚠️ 필드 오류 ${words.filter(w=>/[가-힣]/.test(w.en)||w.en.length>60).length}개 감지</span>
+        <button onclick="fixPackWordFields('${selPack}')" class="btn br" style="font-size:11px;padding:4px 8px">자동 수정</button>
       </div>
       <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">${words.length}개</div>
       <div id="pack-word-list" style="display:flex;flex-direction:column;gap:6px">
@@ -2497,6 +2501,30 @@ function filterPackWords(v) {
     el.style.display = el.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
   });
 }
+async function fixPackWordFields(packId) {
+  const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const p = _packs.find(x=>x.id===packId);
+  if(!p||!p.words) return;
+  let fixed=0, removed=0;
+  const dummies = ['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'];
+  p.words = p.words.filter(w => {
+    // 더미 헤더 행 제거
+    if(dummies.includes(w.en)) { removed++; return false; }
+    // en에 한국어가 들어있으면 ex와 교체 시도
+    if(/[가-힣]/.test(w.en) && w.ex && !/[가-힣]/.test(w.ex)) {
+      const tmp=w.en; w.en=w.ex; w.ex=tmp; fixed++;
+    }
+    // en이 너무 길면 제거
+    if(w.en.length>80) { removed++; return false; }
+    return true;
+  });
+  try {
+    await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    toast(`✅ 수정 ${fixed}개, 제거 ${removed}개 완료`,'ok');
+  } catch(e) { toast('저장 오류: '+e.message,'err'); }
+  showPackWordTab('list');
+}
+
 
 function showAddMethod(method) {
   ['single','bulk','csv','ai'].forEach(m=>{
@@ -2540,7 +2568,9 @@ function showAddMethod(method) {
   else if(method==='csv') {
     cont.innerHTML=`
       <div style="background:#EFF6FF;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#1E5FA5">
-        📋 CSV 형식: en,kr,ph,ex,img,tip (첫 줄 헤더 자동 인식)
+        📋 CSV 형식: <strong>영단어,한국어뜻,발음기호,예문,이모지,팁</strong><br>
+        헤더 행 자동 감지 (한국어 헤더/영어 헤더 모두 지원)<br>
+        <span style="color:#9CA3AF">예) apple,사과,[ˈæpl],I eat an apple.,🍎,에이플</span>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <input type="file" id="pack-csv" accept=".csv,.txt" style="flex:1;font-size:12px">
@@ -2635,17 +2665,53 @@ async function uploadPackCSV() {
   if(!p){toast('팩을 찾을 수 없어요','err');return;}
   if(!p.words)p.words=[];
   const text = await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(file,'UTF-8');});
-  const csvLines=text.split('\n').filter(l=>l.trim());
-  const start=csvLines[0].toLowerCase().includes('en')||csvLines[0].toLowerCase().startsWith('영')?1:0;
-  let added=0,dup=0;
-  csvLines.slice(start).forEach(line=>{
-    const parts=line.split(',').map(s=>s.trim().replace(/^"|"$/g,''));
-    if(parts.length<2||!parts[0]||!parts[1])return;
-    if(p.words.find(w=>w.en.toLowerCase()===parts[0].toLowerCase())){dup++;return;}
-    p.words.push({en:parts[0],kr:parts[1],ph:parts[2]||'',ex:parts[3]||parts[0]+'.',img:parts[4]||'📝',tip:parts[5]||'',meanings:[parts[1]]});
+  const allLines=text.split('\n').filter(l=>l.trim());
+  if(!allLines.length){toast('파일이 비어있어요','err');return;}
+
+  // ── 헤더 행 감지 (더 넓은 조건) ──
+  // 첫 줄에 영어 단어가 아닌 텍스트(한국어, 컬럼명 등)가 포함되면 헤더로 간주
+  const firstCell = allLines[0].split(',')[0].trim().replace(/^"|"$/g,'');
+  const isHeader = /[가-힣]/.test(firstCell)  // 한국어 포함
+    || /^(en|영단어|word|단어|포함|header|no|번호|순번)/i.test(firstCell)  // 헤더 키워드
+    || firstCell.length > 30;  // 너무 긴 첫 셀 (예문이 첫 컬럼에 있으면)
+  const dataLines = isHeader ? allLines.slice(1) : allLines;
+
+  // ── 컬럼 순서 자동 감지 ──
+  // 헤더가 있으면 헤더로 컬럼 매핑, 없으면 기본 순서(영단어,한국어,발음기호,예문,이모지,팁)
+  let colMap = {en:0, kr:1, ph:2, ex:3, img:4, tip:5}; // 기본
+  if(isHeader) {
+    const headers = allLines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,'').toLowerCase());
+    headers.forEach((h,i) => {
+      if(/^(en|영단어|word|english|단어)/.test(h)) colMap.en = i;
+      else if(/^(kr|한국어|뜻|korean|meaning)/.test(h)) colMap.kr = i;
+      else if(/^(ph|발음|pronunciation)/.test(h)) colMap.ph = i;
+      else if(/^(ex|예문|example|sentence|포함|문장)/.test(h)) colMap.ex = i;
+      else if(/^(img|이모지|emoji|image)/.test(h)) colMap.img = i;
+      else if(/^(tip|팁|hint|암기)/.test(h)) colMap.tip = i;
+    });
+  }
+
+  const get = (parts, key) => (parts[colMap[key]]||'').trim().replace(/^"|"$/g,'');
+
+  let added=0, dup=0, skip=0;
+  dataLines.forEach(line=>{
+    const parts=line.split(',');
+    const en=get(parts,'en');
+    const kr=get(parts,'kr');
+    if(!en||!kr||en.length>80||/[가-힣]/.test(en)){skip++;return;} // 영단어 자리에 한국어 오면 skip
+    if(p.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){dup++;return;}
+    p.words.push({
+      en, kr,
+      ph: get(parts,'ph'),
+      ex: get(parts,'ex')||en+'.',
+      img: get(parts,'img')||'📝',
+      tip: get(parts,'tip'),
+      meanings:[kr]
+    });
     added++;
   });
-  if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개 제외)</div>`;
+
+  if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개, 건너뜀 ${skip}개 제외)</div>`;
   if(added>0) {
     try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
   }

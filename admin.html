@@ -2214,19 +2214,21 @@ function filterPacks(v) {
 
 // 새 팩 만들기
 function showAddPack() {
+  console.log('[admin] showAddPack 호출, #ma:', document.getElementById("ma"));
   const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
   document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div class="mt">➕ 새 팩 만들기</div>
     <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:12px">
       <div class="fg"><label>이모지</label><input id="pk-emoji" value="📚" style="text-align:center;font-size:20px"></div>
-      <div class="fg"><label>팩 이름 *</label><input id="pk-name" placeholder="여행 필수 영어"></div>
+      <div class="fg"><label>팩 이름 *</label><input id="pk-name" placeholder="여행 필수 영어" oninput="const v=this.value.trim().toLowerCase().replace(/[^a-z0-9가-힣]/g,'_').slice(0,20);const el=document.getElementById('pk-id');if(!el._manualEdit)el.value=v+('_'+(Date.now()%10000));"></div>
     </div>
     <div class="fg"><label>카테고리</label>
       <select id="pk-cat">${cats.map(c=>`<option>${c}</option>`).join('')}</select>
     </div>
     <div class="fg"><label>설명</label><input id="pk-desc" placeholder="여행에서 꼭 필요한 영어 단어 모음"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="fg"><label>팩 ID (영문)</label><input id="pk-id" placeholder="travel_basic_2"></div>
+      <div class="fg"><label>팩 ID (영문) <span style="font-size:10px;color:#9CA3AF;font-weight:400">(비워두면 자동 생성)</span></label>
+        <input id="pk-id" placeholder="travel_basic_2 (선택사항)"></div>
       <div class="fg"><label>목표 단어 수</label><input id="pk-count" type="number" value="100"></div>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:14px">
@@ -2245,13 +2247,19 @@ function showAddPack() {
 }
 
 async function saveNewPack() {
+  console.log('[admin] saveNewPack 호출');
   const name = document.getElementById('pk-name')?.value.trim();
   const id = document.getElementById('pk-id')?.value.trim();
-  if(!name||!id){toast('이름과 ID를 입력하세요','err');return;}
+  // id가 비어있으면 이름 기반으로 자동 생성
+  let packId = id;
+  if(!packId && name) {
+    packId = name.replace(/[^a-zA-Z0-9가-힣]/g,'_').toLowerCase().slice(0,15)+'_'+Date.now().toString().slice(-4);
+  }
+  if(!name||!packId){toast('팩 이름을 입력하세요','err');return;}
   const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  if(packs.find(p=>p.id===id)){toast('이미 있는 ID예요','err');return;}
+  if(packs.find(p=>p.id===packId)){toast('이미 있는 ID예요','err');return;}
   const newPack = {
-    id, name,
+    id: packId, name,
     emoji: document.getElementById('pk-emoji')?.value||'📚',
     cat: document.getElementById('pk-cat')?.value||'기타',
     desc: document.getElementById('pk-desc')?.value||'',
@@ -2262,11 +2270,11 @@ async function saveNewPack() {
   };
   if(window._adminPacks) window._adminPacks.push(newPack);
   try {
-    await db.collection('packs').doc(id).set({...newPack, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection('packs').doc(packId).set({...newPack, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
     toast(`✅ "${name}" 팩 생성 완료!`,'ok');
   } catch(e) { toast('저장 오류: '+e.message,'err'); }
   cm(); rPK();
-  setTimeout(()=>showPackWords(id), 300);
+  setTimeout(()=>showPackWords(packId), 300);
 }
 
 // 팩 수정

@@ -2524,27 +2524,27 @@ async function fixPackWordFields(packId) {
     if(dummies.includes(w.en)) { removed++; return false; }
     if(!w.en || !w.kr) { removed++; return false; }
 
-    // 패턴 감지: en=예문(길고 공백있음), kr=영단어(짧고 공백없음), ph=한국어(한글포함)
-    const enIsEx  = w.en.includes(' ') && w.en.length > 10;   // 예문은 공백 포함 긴 문장
-    const krIsEn  = /^[a-zA-Z]+$/.test(w.kr) && w.kr.length < 20; // 한국어 자리에 영어
-    const phIsKr  = w.ph && /[가-힣]/.test(w.ph);             // 발음기호 자리에 한국어
+    // 패턴 1: en=예문(긴 문장), kr=영단어, ph=한국어 → 완전히 뒤바뀜
+    const enIsEx  = w.en && w.en.includes(' ') && w.en.length > 10;
+    const krIsEn  = w.kr && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length < 20;
+    const phIsKr  = w.ph && /[가-힣]/.test(w.ph);
 
     if(enIsEx && krIsEn && phIsKr) {
-      // 현재: en=예문, kr=영단어, ph=한국어뜻, pos=품사, ex=발음기호
-      // 목표: en=영단어, kr=한국어뜻, ph=발음기호, pos=품사, ex=예문
-      const newEn  = w.kr;        // 영단어
-      const newKr  = w.ph;        // 한국어뜻
-      const newPh  = w.ex||'';    // 발음기호
-      const newEx  = w.en;        // 예문
-      const newPos = w.pos||'';   // 품사 그대로
-      w.en  = newEn;
-      w.kr  = newKr;
-      w.ph  = newPh;
-      w.ex  = newEx;
-      w.pos = newPos;
-      w.meanings = [newKr];
+      // en=예문, kr=영단어, ph=한국어, pos=품사, ex=발음기호
+      const tmp = {en:w.kr, kr:w.ph, ph:w.ex||'', ex:w.en.replace(/\s*\[cite:[^\]]*\]/g,'').trim(), pos:w.pos||''};
+      Object.assign(w, tmp); w.meanings=[w.kr]; fixed++;
+    }
+    // 패턴 2: ph=품사(명사/동사), ex=발음기호([...]) → pos/ph/ex 순서 뒤바뀜
+    else if(w.ph && /^(명사|동사|형용사|부사|전치사|접속사)/.test(w.ph) && w.ex && /^\[/.test(w.ex)) {
+      // 현재: ph=품사, ex=발음기호
+      // 목표: pos=품사, ph=발음기호, ex=원래예문
+      w.pos = w.ph;
+      w.ph  = w.ex;
+      w.ex  = (w.en+'.').replace(/\s*\[cite:[^\]]*\]/g,'').trim();
       fixed++;
     }
+    // [cite: N] 제거
+    if(w.ex) w.ex = w.ex.replace(/\s*\[cite:[^\]]*\]/g,'').trim();
     return true;
   });
 
@@ -2600,9 +2600,11 @@ function showAddMethod(method) {
   else if(method==='csv') {
     cont.innerHTML=`
       <div style="background:#EFF6FF;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#1E5FA5">
-        📋 CSV 형식: <strong>영단어,한국어뜻,발음기호,예문,이모지,팁</strong><br>
-        헤더 행 자동 감지 (한국어 헤더/영어 헤더 모두 지원)<br>
-        <span style="color:#9CA3AF">예) apple,사과,[ˈæpl],I eat an apple.,🍎,에이플</span>
+        📋 <strong>지원 CSV 형식 (자동 감지):</strong><br>
+        <span style="font-family:monospace;font-size:11px">① 영단어,한국어뜻,품사,발음기호,예문</span><br>
+        <span style="font-family:monospace;font-size:11px">② 영단어,한국어뜻,발음기호,예문</span><br>
+        <span style="font-family:monospace;color:#9CA3AF;font-size:11px">예) apple,사과,명사,[ˈæpl],I eat an apple.</span><br>
+        <span style="font-size:10px;color:#9CA3AF">헤더 행 있으면 자동 건너뜀 · [cite: N] 자동 제거</span>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <input type="file" id="pack-csv" accept=".csv,.txt" style="flex:1;font-size:12px">
@@ -2710,20 +2712,40 @@ async function uploadPackCSV() {
 
   // ── 컬럼 순서 자동 감지 ──
   // 헤더가 있으면 헤더로 컬럼 매핑, 없으면 기본 순서(영단어,한국어,발음기호,예문,이모지,팁)
-  let colMap = {en:0, kr:1, ph:2, ex:3, img:4, tip:5}; // 기본
+  // 컬럼 순서 자동 감지 - 헤더 없이 컬럼 내용으로 판단
+  let colMap = {en:0, kr:1, pos:-1, ph:-1, ex:-1, img:-1, tip:-1};
+  
   if(isHeader) {
+    // 헤더로 매핑
     const headers = allLines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,'').toLowerCase());
     headers.forEach((h,i) => {
-      if(/^(en|영단어|word|english|단어)/.test(h)) colMap.en = i;
-      else if(/^(kr|한국어|뜻|korean|meaning)/.test(h)) colMap.kr = i;
-      else if(/^(ph|발음|pronunciation)/.test(h)) colMap.ph = i;
-      else if(/^(ex|예문|example|sentence|포함|문장)/.test(h)) colMap.ex = i;
-      else if(/^(img|이모지|emoji|image)/.test(h)) colMap.img = i;
-      else if(/^(tip|팁|hint|암기)/.test(h)) colMap.tip = i;
+      if(/^(en|영단어|word|english|단어)/.test(h))           colMap.en  = i;
+      else if(/^(kr|한국어|뜻|korean|meaning)/.test(h))     colMap.kr  = i;
+      else if(/^(pos|품사|part|type)/.test(h))              colMap.pos = i;
+      else if(/^(ph|발음|pronunciation)/.test(h))           colMap.ph  = i;
+      else if(/^(ex|예문|example|sentence|문장)/.test(h))   colMap.ex  = i;
+      else if(/^(img|이모지|emoji|image)/.test(h))          colMap.img = i;
+      else if(/^(tip|팁|hint|암기)/.test(h))                colMap.tip = i;
     });
+  } else {
+    // 헤더 없을 때: 첫 번째 데이터 행으로 컬럼 순서 추론
+    const sample = (dataLines[0]||'').split(',').map(s=>s.trim().replace(/^"|"$/g,''));
+    // 3번째 컬럼이 발음기호([...])인지 품사(명사/동사 등)인지 확인
+    const col2 = sample[2]||'';
+    const col3 = sample[3]||'';
+    if(/^\[/.test(col2) || /[ˈˌæəɪʊɔɑɛʌθðʃʒŋ]/.test(col2)) {
+      // col2 = 발음기호 → en,kr,ph,ex 순서
+      colMap = {en:0, kr:1, pos:-1, ph:2, ex:3, img:4, tip:5};
+    } else if(/^(명사|동사|형용사|부사|전치사|접속사|대명사|감탄사|n\.|v\.|adj\.|adv\.)/.test(col2)) {
+      // col2 = 품사 → en,kr,pos,ph,ex 순서 (이번 CSV 형식)
+      colMap = {en:0, kr:1, pos:2, ph:3, ex:4, img:5, tip:6};
+    } else {
+      // 기본: en,kr,ph,ex
+      colMap = {en:0, kr:1, pos:-1, ph:2, ex:3, img:4, tip:5};
+    }
   }
 
-  const get = (parts, key) => (parts[colMap[key]]||'').trim().replace(/^"|"$/g,'');
+  const get = (parts, key) => colMap[key]>=0 ? (parts[colMap[key]]||'').trim().replace(/^"|"$/g,'') : '';
 
   let added=0, dup=0, skip=0;
   dataLines.forEach(line=>{
@@ -2734,8 +2756,9 @@ async function uploadPackCSV() {
     if(p.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){dup++;return;}
     p.words.push({
       en, kr,
-      ph: get(parts,'ph'),
-      ex: get(parts,'ex')||en+'.',
+      pos: get(parts,'pos'),
+      ph:  get(parts,'ph'),
+      ex:  (get(parts,'ex')||en+'.').replace(/\s*\[cite:[^\]]*\]/g,'').trim(),
       img: get(parts,'img')||'📝',
       tip: get(parts,'tip'),
       meanings:[kr]

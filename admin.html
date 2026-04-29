@@ -2250,13 +2250,16 @@ async function saveNewPack() {
   console.log('[admin] saveNewPack 호출');
   const name = document.getElementById('pk-name')?.value.trim();
   const id = document.getElementById('pk-id')?.value.trim();
+  console.log('[admin] name:', name, '/ id:', id);
   // id가 비어있으면 이름 기반으로 자동 생성
   let packId = id;
   if(!packId && name) {
     packId = name.replace(/[^a-zA-Z0-9가-힣]/g,'_').toLowerCase().slice(0,15)+'_'+Date.now().toString().slice(-4);
   }
+  console.log('[admin] packId:', packId);
   if(!name||!packId){toast('팩 이름을 입력하세요','err');return;}
   const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  console.log('[admin] 기존 팩 수:', packs.length);
   if(packs.find(p=>p.id===packId)){toast('이미 있는 ID예요','err');return;}
   const newPack = {
     id: packId, name,
@@ -2269,10 +2272,16 @@ async function saveNewPack() {
     words: []
   };
   if(window._adminPacks) window._adminPacks.push(newPack);
+  console.log('[admin] Firebase 저장 시도, packId:', packId);
   try {
     await db.collection('packs').doc(packId).set({...newPack, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    console.log('[admin] Firebase 저장 성공');
     toast(`✅ "${name}" 팩 생성 완료!`,'ok');
-  } catch(e) { toast('저장 오류: '+e.message,'err'); }
+  } catch(e) {
+    console.error('[admin] Firebase 저장 실패:', e.code, e.message);
+    toast('저장 오류: '+e.message,'err');
+  }
+  console.log('[admin] cm() rPK() 호출');
   cm(); rPK();
   setTimeout(()=>showPackWords(packId), 300);
 }

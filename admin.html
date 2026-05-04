@@ -2338,16 +2338,23 @@ async function saveEditPack(packId) {
 
 // 팩 삭제
 async function deletePack(packId) {
-  const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const p=packs.find(x=>x.id===packId);
-  if(!confirm(`"${p?.name}" 팩을 삭제할까요?\n단어 ${p?.words?.length||0}개가 모두 삭제됩니다.`)) return;
+  const packs = window._adminPacks || [];
+  const p = packs.find(x=>x.id===packId);
+  if(!p) { toast('팩을 찾을 수 없어요. 페이지를 새로고침해주세요','err'); return; }
+  if(!confirm(`"${p.name}" 팩을 삭제할까요?\n단어 ${p.words?.length||0}개가 모두 삭제됩니다.`)) return;
   try {
+    console.log('[admin] 팩 삭제 시도:', packId);
     await db.collection('packs').doc(packId).delete();
-    const idx=packs.findIndex(x=>x.id===packId);
-    if(idx>=0) packs.splice(idx,1);
-    toast('🗑 팩 삭제됨','ok');
-  } catch(e) { toast('삭제 오류: '+e.message,'err'); }
-  rPK();
+    // _adminPacks에서도 제거
+    const i = window._adminPacks.findIndex(x=>x.id===packId);
+    if(i>=0) window._adminPacks.splice(i,1);
+    console.log('[admin] 팩 삭제 완료:', packId, '남은팩:', window._adminPacks.length);
+    toast('🗑 "'+p.name+'" 팩 삭제 완료','ok');
+    rPK();
+  } catch(e) {
+    console.error('[admin] 팩 삭제 실패:', e);
+    toast('삭제 오류: '+e.message,'err');
+  }
 }
 
 // ── 팩 단어 관리 ──
@@ -2579,7 +2586,9 @@ function showAddMethod(method) {
           <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">발음기호</label><input id="pw-ph" placeholder="[ˈæpl]"></div>
           <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">이모지</label><input id="pw-img" placeholder="🍎"></div>
         </div>
-        <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">예문</label><input id="pw-ex" placeholder="I eat an apple."></div>
+        <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">예문 1</label><input id="pw-ex" placeholder="I eat an apple."></div>
+        <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">예문 2 <span style="color:#9CA3AF;font-size:10px">(선택)</span></label><input id="pw-ex2" placeholder="" style="width:100%;margin-bottom:6px"></div>
+        <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">예문 3 <span style="color:#9CA3AF;font-size:10px">(선택)</span></label><input id="pw-ex3" placeholder="" style="width:100%;margin-bottom:6px"></div>
         <div><label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">암기 팁</label><input id="pw-tip" placeholder="에이플 = 사과"></div>
         <button class="btn bp" onclick="aiPackWordFill()" style="font-size:12px">✨ AI 자동완성</button>
         <button class="btn bb" onclick="addPackWord()" style="width:100%">➕ 추가</button>
@@ -2641,8 +2650,15 @@ async function addPackWord() {
   if(p.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){
     if(msg)msg.innerHTML='<div style="color:#E65100;font-size:12px">⚠️ 이미 있는 단어예요</div>';return;
   }
-  p.words.push({en,kr,ph:document.getElementById('pw-ph')?.value.trim()||'',ex:document.getElementById('pw-ex')?.value.trim()||en+'.',img:document.getElementById('pw-img')?.value.trim()||'📝',tip:document.getElementById('pw-tip')?.value.trim()||'',meanings:[kr]});
-  ['pw-en','pw-kr','pw-ph','pw-ex','pw-img','pw-tip'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const _ex=document.getElementById('pw-ex')?.value.trim()||'';
+  const _ex2=document.getElementById('pw-ex2')?.value.trim()||'';
+  const _ex3=document.getElementById('pw-ex3')?.value.trim()||'';
+  p.words.push({en,kr,ph:document.getElementById('pw-ph')?.value.trim()||'',
+    ex:_ex,exList:[_ex,_ex2,_ex3].filter(e=>e),
+    pos:document.getElementById('pw-pos')?.value.trim()||'',
+    img:document.getElementById('pw-img')?.value.trim()||'📝',
+    tip:document.getElementById('pw-tip')?.value.trim()||''})
+  ['pw-en','pw-kr','pw-ph','pw-ex','pw-ex2','pw-ex3','pw-img','pw-tip'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ "${en}" 추가! (총 ${p.words.length}개)</div>`;
   document.getElementById('pw-en')?.focus();
   // Firebase 자동 저장

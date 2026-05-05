@@ -1063,8 +1063,11 @@ function logStudy(type) {
   if(type==='words') { addXP(xp('daily_first'), true); checkXpUsable(); }
   else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
   const t = today();
-  if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0};
+  if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0, min:0};
+  if(!S.studyLog[t].min) S.studyLog[t].min = 0;
   S.studyLog[t][type]++;
+  if(type==='words') S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.1)*10)/10;
+  else if(type==='quiz') S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10;
   updStreak();
   // 단어 학습 → 배부름 직접 연결 (10개마다 +1)
   if(type==='words') {
@@ -1980,14 +1983,18 @@ function resetOwnedPacks() {
   go();
 }
 function rMarket() {
-  const packs = S._marketPacks||[];
+  const _allPacks = S._marketPacks||[];
+  // 중복 제거 (id 기준)
+  const seen = new Set();
+  const packs = _allPacks.filter(p=>{if(seen.has(p.id))return false;seen.add(p.id);return true;});
   const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
   const ownedPacks = S._ownedPacks||[];
+  const mktSort = S._mktSort||'kr';
+  const selCat = S._mktCat||'전체';
   console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
   // 카테고리 추출
   const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
-  const selCat = S._mktCat||'전체';
   const filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
 
   let html = `<div class="pad" style="padding-bottom:24px">
@@ -3638,31 +3645,83 @@ function showAutoMode() {
       </div>
       
       <!-- 옵션 패널 -->
-      <div style="padding:8px 16px;flex-shrink:0">
-        <!-- 정렬 선택 -->
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
-          <span style="font-size:10px;color:rgba(255,255,255,.4);min-width:32px">정렬</span>
-          ${[['default','추가순'],['alpha','A-Z'],['alpha_kr','가나다'],['mark','마크순'],['random','🔀랜덤']].map(([v,lb])=>
-            `<button onclick="S.autoSort='${v}';showAutoMode()" style="flex:1;background:${(S.autoSort||'default')===v?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:4px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
-          ).join('')}
+      <div style="padding:8px 16px 0;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
+        <!-- Row1: 정렬 + 학습단위 -->
+        <div style="display:flex;gap:6px">
+          <div style="flex:2">
+            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">정렬</div>
+            <div style="display:flex;gap:2px">
+              ${[['default','추가'],['alpha','A-Z'],['alpha_kr','가나다'],['mark','마크'],['random','🔀']].map(([v,lb])=>
+                `<button onclick="S.autoSort='${v}';showAutoMode()" style="flex:1;background:${(S.autoSort||'default')===v?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 1px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
+              ).join('')}
+            </div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">단위</div>
+            <div style="display:flex;gap:2px">
+              ${[['10','10'],['20','20'],['50','50'],['all','전체']].map(([v,lb])=>
+                `<button onclick="window._auto.unit='${v}';showAutoMode()" style="flex:1;background:${(A.unit||'all')===v?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 1px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
+              ).join('')}
+            </div>
+          </div>
         </div>
-        <!-- 무한루프 토글 + 읽기 모드 -->
-        <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-          <button onclick="window._auto.loop=!window._auto.loop;window._autoRender()" style="background:${A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.loop?'rgba(96,165,250,.6)':'rgba(255,255,255,.15)'};border-radius:18px;padding:6px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">${A.loop?'🔁 무한반복':'➡ 1회만'}</button>
+        <!-- Row2: 학습범위 -->
+        <div>
+          <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">학습범위</div>
+          <div style="display:flex;gap:2px">
+            ${[[-1,'전체'],[0,'미학습'],[1,'외웠음'],[2,'복습']].map(([v,lb])=>
+              `<button onclick="window._auto.range=${v};showAutoMode()" style="flex:1;background:${(A.range??-1)===v?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:4px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
+            ).join('')}
+          </div>
         </div>
-        <!-- 읽기 모드 -->
-        <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
-          <span style="font-size:10px;color:rgba(255,255,255,.4);min-width:32px">읽기</span>
-          ${[['en','영어'],['kr','한글'],['en+kr','영+한'],['en+ex','영+예'],['all','전체']].map(([v,lb])=>
-            `<button onclick="window._auto.read='${v}';window._autoRender()" style="flex:1;background:${A.read===v?'rgba(96,165,250,.4)':'rgba(255,255,255,.06)'};border:1px solid ${A.read===v?'rgba(96,165,250,.6)':'rgba(255,255,255,.12)'};border-radius:8px;padding:5px 2px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">${lb}</button>`
-          ).join('')}
+        <!-- Row3: 읽기 + 표시방식 -->
+        <div style="display:flex;gap:6px">
+          <div style="flex:2">
+            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">읽기</div>
+            <div style="display:flex;gap:2px">
+              ${[['en','영어'],['kr','한글'],['en+kr','영+한'],['en+ex','영+예'],['all','전체']].map(([v,lb])=>
+                `<button onclick="window._auto.read='${v}';window._autoRender()" style="flex:1;background:${A.read===v?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 1px;font-size:9px;color:#fff;cursor:pointer">${lb}</button>`
+              ).join('')}
+            </div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">표시</div>
+            <div style="display:flex;gap:2px">
+              ${[['both','앞뒤'],['front','앞만'],['flip','뒤집']].map(([v,lb])=>
+                `<button onclick="window._auto.display='${v}';window._autoRender()" style="flex:1;background:${(A.display||'both')===v?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 1px;font-size:9px;color:#fff;cursor:pointer">${lb}</button>`
+              ).join('')}
+            </div>
+          </div>
         </div>
-        <!-- 속도 -->
-        <div style="display:flex;gap:4px;align-items:center">
-          <span style="font-size:10px;color:rgba(255,255,255,.4);min-width:32px">속도</span>
-          ${[['느림',0.6,5500],['보통',0.85,4000],['빠름',1.0,3000],['최대',1.2,2000]].map(([lb,sr,sp])=>
-            `<button onclick="window._auto.shadowRate=${sr};window._auto.speed=${sp};window._autoRender()" style="flex:1;background:${Math.abs(A.shadowRate-sr)<0.05?'rgba(96,165,250,.4)':'rgba(255,255,255,.06)'};border:1px solid ${Math.abs(A.shadowRate-sr)<0.05?'rgba(96,165,250,.6)':'rgba(255,255,255,.12)'};border-radius:8px;padding:5px 2px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">${lb}</button>`
-          ).join('')}
+        <!-- Row4: 속도 + 발음 -->
+        <div style="display:flex;gap:6px">
+          <div style="flex:2">
+            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">속도</div>
+            <div style="display:flex;gap:2px">
+              ${[['느림',0.6,5500],['보통',0.85,4000],['빠름',1.0,3000],['최대',1.2,2000]].map(([lb,sr,sp])=>
+                `<button onclick="window._auto.shadowRate=${sr};window._auto.speed=${sp};window._autoRender()" style="flex:1;background:${A.shadowRate===sr?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 2px;font-size:9px;color:#fff;cursor:pointer">${lb}</button>`
+              ).join('')}
+            </div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">발음</div>
+            <div style="display:flex;gap:2px">
+              ${[['en-US','여성'],['en-GB','남성']].map(([v,lb])=>
+                `<button onclick="window._auto.voice='${v}';window._autoRender()" style="flex:1;background:${(A.voice||'en-US')===v?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 1px;font-size:9px;color:#fff;cursor:pointer">${lb}</button>`
+              ).join('')}
+            </div>
+          </div>
+        </div>
+        <!-- Row5: 토글 + 예문 -->
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+          <button onclick="window._auto.loop=!window._auto.loop;window._autoRender()" style="background:${A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.loop?'rgba(96,165,250,.6)':'rgba(255,255,255,.15)'};border-radius:14px;padding:4px 8px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">${A.loop?'🔁 무한':'➡ 1회'}</button>
+          <button onclick="window._auto.shadow=!window._auto.shadow;window._autoRender()" style="background:${A.shadow?'rgba(236,72,153,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.shadow?'rgba(236,72,153,.6)':'rgba(255,255,255,.15)'};border-radius:14px;padding:4px 8px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">🎤 따라말하기</button>
+          <div style="display:flex;align-items:center;gap:2px">
+            <span style="font-size:9px;color:rgba(255,255,255,.4)">예문</span>
+            ${[['0','OFF'],['1','1개'],['2','2개'],['3','3개']].map(([v,lb])=>
+              `<button onclick="window._auto.exCount=${v};window._autoRender()" style="background:${String(A.exCount??0)===v?'rgba(251,146,60,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 5px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
+            ).join('')}
+          </div>
         </div>
       </div>
       
@@ -4413,7 +4472,7 @@ function showOnboarding() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🦋',lb:'나비'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🎮',lb:'게임'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
@@ -7055,7 +7114,13 @@ function rHome() {
   const maxDay=Math.max(...last7.map(d=>d.total),1);
   parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
       <div style="font-size:12px;font-weight:800;color:var(--text1,#3D2C00)">📅 이번 주 학습 현황</div>
+      <div style="display:flex;background:#F3F4F6;border-radius:16px;padding:2px;gap:1px">
+        <button onclick="S._statView='words';go()" style="background:${S._statView!=='time'?'#fff':'transparent'};border:none;border-radius:14px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;color:${S._statView!=='time'?'#1E5FA5':'#9CA3AF'}">단어수</button>
+        <button onclick="S._statView='time';go()" style="background:${S._statView==='time'?'#fff':'transparent'};border:none;border-radius:14px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;color:${S._statView==='time'?'#E65100':'#9CA3AF'}">시간</button>
+      </div>
+    </div>
       <div style="font-size:11px;color:#9CA3AF">최근 7일</div>
     </div>
     <!-- 막대 그래프 + 세부 정보 -->
@@ -7158,6 +7223,7 @@ function saveCurrentBook() {
 function createBook() {
   const name=document.getElementById('new-book-name')?.value.trim();
   if(!name){toast('단어장 이름을 입력하세요');return;}
+  if((S.books||[]).length>=10){toast('단어장은 최대 10개까지 만들 수 있어요 📚');return;}
   if(name==='내 단어장'||S.books.find(b=>b.name===name)){toast('이미 있는 이름');return;}
   S.books.push({name,words:[],markMap:{},srsMap:{},learned:[]});
   sv();
@@ -8035,7 +8101,7 @@ function showBookMenu(name, type) {
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;overflow:hidden">
     <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;font-size:15px;font-weight:800">${name}</div>
     ${[
-      ['📁', '이동', `toast('준비 중이에요');cm()`],
+
       ['📤', '공유', `exportCSV();cm()`],
       ['✏️', '수정', `const n=prompt('새 이름');if(n&&n.trim()){const b=S.books?.find(x=>x.name==='${name}');if(b)b.name=n.trim();sv();cm();go();}`],
       ['📋', '복사', `if(S.books){const b=S.books?.find(x=>x.name==='${name}');if(b){const copy={...b,name:b.name+' 복사',words:[...b.words]};S.books.push(copy);sv();cm();go();toast('복사 완료!');}}`],
@@ -8149,9 +8215,6 @@ function showGameSettings(gameId, tab) {
             <span style="font-size:16px;color:#9CA3AF">›</span>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#F9FAFB;border-radius:12px;border:1.5px solid #E5E7EB;cursor:pointer" onclick="toast('날짜 필터 준비 중이에요')">
-            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">📅</span><span style="font-size:13px;font-weight:600">모든 날짜</span></div>
-            <span style="font-size:16px;color:#9CA3AF">›</span>
-          </div>
         </div>
       </div>
       <div>
@@ -8380,7 +8443,7 @@ function rLearn() {
   };
   const theme = cardThemes[mark] || cardThemes[0];
 
-  return `<div style="display:flex;flex-direction:column;height:100%;background:var(--bg,#FFFBF0)">
+  return `<div style="display:flex;flex-direction:column;height:100%;background:linear-gradient(135deg,#0F172A,#1E3A5F);color:#fff">
 
     <!-- 상단 바 -->
     <div style="padding:12px 16px 8px;display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -8445,7 +8508,7 @@ function rLearn() {
                display:flex;flex-direction:column;align-items:center;justify-content:center;
                gap:10px;padding:28px 24px;cursor:pointer;position:relative;user-select:none;
                transition:transform .25s,background .25s,box-shadow .25s;
-               box-shadow:0 4px 24px ${theme.border}88;min-height:200px">
+               box-shadow:0 4px 24px ${theme.border}88;height:340px;overflow:hidden">
 
         <!-- 마킹 뱃지 (우상단) -->
         <div style="position:absolute;top:14px;right:14px;display:flex;gap:6px;align-items:center">
@@ -8461,7 +8524,7 @@ function rLearn() {
           : ''}
 
         ${showWord
-          ? `<div style="font-size:36px;font-weight:900;color:var(--text1,#1A1A2E);font-family:monospace;text-align:center;letter-spacing:-0.5px;line-height:1.2">${w.en}</div>
+          ? `<div style="font-size:${w.en.length>12?'24px':w.en.length>8?'30px':'36px'};font-weight:900;color:var(--text1,#1A1A2E);font-family:monospace;text-align:center;letter-spacing:-0.5px;line-height:1.2">${w.en}</div>
              ${w.ph?`<div style="font-size:13px;color:${theme.accent};font-weight:500">${w.ph}</div>`:''}
              ${w.koSnd?`<div style="font-size:13px;color:#7C3AED;font-weight:600">[${w.koSnd}]</div>`:''}`
           : `<div style="background:var(--border,#F0E6C8);border-radius:14px;padding:12px 28px;font-size:14px;color:var(--text3,#A08040)">탭해서 단어 보기 👆</div>`}
@@ -8915,11 +8978,8 @@ function showWordDetail(en) {
       <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
     </div>`}
 
-    <!-- 5. 예문 -->
-    ${w.ex?`<div style="background:#F8F9FA;border-radius:12px;padding:10px 14px;margin-bottom:10px">
-      <div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">예문</div>
-      <div style="font-size:13px;color:#374151;font-style:italic;line-height:1.6">"${w.ex}"</div>
-    </div>`:''}
+    <!-- 5. 예문 (최대 3개) -->
+    ${(()=>{const exList=w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[]);if(!exList.length)return '';return '<div style="background:#F8F9FA;border-radius:12px;padding:10px 14px;margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">예문</div>'+exList.map((ex,i)=>'<div style="font-size:13px;color:#374151;font-style:italic;line-height:1.6'+(i>0?';margin-top:5px;padding-top:5px;border-top:1px solid #E5E7EB':'')+'">'+'"'+ex+'"</div>').join('')+'</div>';})()}
     ${w.tip?`<div style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:13px;color:#E65100;margin-bottom:10px">💡 ${w.tip}</div>`:''}
 
     <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🔊 발음 듣기</button>
@@ -8962,8 +9022,12 @@ function showWordEdit(en) {
         <input id="we-kr" value="${w.kr}" style="width:100%"></div>
       <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">발음기호</div>
         <input id="we-ph" value="${w.ph||''}" placeholder="예: /ˈæpəl/" style="width:100%;font-family:monospace"></div>
-      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">예문</div>
-        <input id="we-ex" value="${w.ex||''}" style="width:100%"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">예문 1</div>
+        <input id="we-ex" value="${(w.exList&&w.exList[0])||w.ex||''}" style="width:100%"></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">예문 2 <span style="font-size:10px;opacity:.6">(선택)</span></div>
+        <input id="we-ex2" value="${(w.exList&&w.exList[1])||''}" style="width:100%" placeholder="두 번째 예문..."></div>
+      <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">예문 3 <span style="font-size:10px;opacity:.6">(선택)</span></div>
+        <input id="we-ex3" value="${(w.exList&&w.exList[2])||''}" style="width:100%" placeholder="세 번째 예문..."></div>
       <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">암기 팁</div>
         <input id="we-tip" value="${w.tip||''}" style="width:100%"></div>
       <div><div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:3px">연상 이모지</div>
@@ -8995,7 +9059,10 @@ function saveWordEdit(oldEn) {
   wi.en  = newEn;
   wi.kr  = newKr;
   wi.ph  = document.getElementById('we-ph')?.value||'';
-  wi.ex  = document.getElementById('we-ex')?.value||'';
+  const _ex1=document.getElementById('we-ex')?.value||'';
+  const _ex2=document.getElementById('we-ex2')?.value||'';
+  const _ex3=document.getElementById('we-ex3')?.value||'';
+  wi.ex=_ex1;wi.exList=[_ex1,_ex2,_ex3].filter(e=>e.trim());
   wi.tip = document.getElementById('we-tip')?.value||'';
   wi.img = document.getElementById('we-img')?.value||'📝';
   // books에도 동기화
@@ -10007,6 +10074,22 @@ function rProfile(){
       <div style="font-size:14px;font-weight:800;color:#D97706;margin-bottom:4px">👑 나비의 신 달성!</div>
       <div style="font-size:11px;color:#92400E;margin-bottom:10px">알로 돌아가 새로운 여정을 시작해보세요</div>
       <button onclick="if(confirm('정말 알로 돌아갈까요?\nXP가 초기화되고 새 여정이 시작돼요')){resetToEgg();toast('🥚 새로운 여정 시작!');go();}" class="btn bb" style="font-size:13px">🥚 알로 돌아가기</button>
+    </div>`);
+  }
+  // 반려나비 도감
+  const _col=S._collection||[];
+  if(_col.length>0){
+    parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px;margin-top:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:800;color:var(--text1,#3D2C00)">🦋 반려나비 도감</div>
+        <span style="font-size:11px;color:#9CA3AF">${_col.length}마리</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        ${_col.map(b=>`<div style="background:var(--bg-sub,#FFF9ED);border-radius:10px;padding:8px;text-align:center">
+          ${charSVG(b.lid||'egg',36,'normal')}
+          <div style="font-size:9px;color:#9CA3AF;margin-top:3px">${lv(b.lid).name}</div>
+        </div>`).join('')}
+      </div>
     </div>`);
   }
   parts.push('<button class="btn bgr" onclick="showLogoutMenu()">로그아웃 / 초기화</button>');

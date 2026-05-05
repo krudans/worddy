@@ -2144,7 +2144,7 @@ async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
     const snap = await db.collection('packs').get();
-    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
     const localPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacks.map(p=>p.id));
     window._adminPacks = [...fbPacks, ...localPacks.filter(p=>!fbIds.has(p.id))];
@@ -2338,22 +2338,41 @@ async function saveEditPack(packId) {
 
 // 팩 삭제
 async function deletePack(packId) {
+  console.log('[admin] deletePack 호출:', packId);
+  console.log('[admin] _adminPacks:', window._adminPacks?.length, window._adminPacks?.map(p=>p.id));
+
   const packs = window._adminPacks || [];
-  const p = packs.find(x=>x.id===packId);
-  if(!p) { toast('팩을 찾을 수 없어요. 페이지를 새로고침해주세요','err'); return; }
+  const p = packs.find(x => x.id === packId);
+  console.log('[admin] 찾은 팩:', p?.name, '/ Firebase팩?:', p?._fromFirebase);
+
+  if(!p) {
+    toast('팩을 찾을 수 없어요. 🔄 새로고침 후 다시 시도해주세요', 'err');
+    return;
+  }
   if(!confirm(`"${p.name}" 팩을 삭제할까요?\n단어 ${p.words?.length||0}개가 모두 삭제됩니다.`)) return;
+
   try {
-    console.log('[admin] 팩 삭제 시도:', packId);
-    await db.collection('packs').doc(packId).delete();
-    // _adminPacks에서도 제거
-    const i = window._adminPacks.findIndex(x=>x.id===packId);
-    if(i>=0) window._adminPacks.splice(i,1);
-    console.log('[admin] 팩 삭제 완료:', packId, '남은팩:', window._adminPacks.length);
-    toast('🗑 "'+p.name+'" 팩 삭제 완료','ok');
+    // Firebase에서 삭제 시도
+    const docRef = db.collection('packs').doc(packId);
+    const docSnap = await docRef.get();
+    console.log('[admin] Firebase 문서 존재:', docSnap.exists);
+
+    if(docSnap.exists) {
+      await docRef.delete();
+      console.log('[admin] Firebase 삭제 완료');
+    } else {
+      console.warn('[admin] Firebase에 없는 팩 (로컬팩)');
+    }
+
+    // _adminPacks에서 제거
+    const idx = window._adminPacks.findIndex(x => x.id === packId);
+    if(idx >= 0) window._adminPacks.splice(idx, 1);
+
+    toast('🗑 "' + p.name + '" 팩 삭제 완료', 'ok');
     rPK();
   } catch(e) {
-    console.error('[admin] 팩 삭제 실패:', e);
-    toast('삭제 오류: '+e.message,'err');
+    console.error('[admin] 삭제 실패:', e.code, e.message);
+    toast('삭제 오류: ' + e.message, 'err');
   }
 }
 
@@ -2371,7 +2390,10 @@ function showPackWords(packId) {
         <div style="font-size:16px;font-weight:800">${p.emoji} ${p.name}</div>
         <div style="font-size:12px;color:#9CA3AF">${words.length}개 / 목표 ${p.count||100}개</div>
       </div>
-      <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕ 닫기</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="generateExamples('${packId}')" style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer">📖 예문 생성</button>
+        <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕ 닫기</button>
+      </div>
     </div>
 
     <!-- 탭 -->
@@ -2563,6 +2585,97 @@ async function fixPackWordFields(packId) {
   }
   showPackWordTab('list');
 }
+async function generateExamples(packId) {
+  const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const p = _packs.find(x=>x.id===packId);
+  if(!p||!p.words||!p.words.length){ toast('단어가 없어요','err'); return; }
+
+  const total = p.words.length;
+  if(!confirm(`전체 ${total}개 단어에 예문 3개씩 생성할까요?\n(기존 예문도 덮어씁니다)`)) return;
+
+  const progressEl = document.createElement('div');
+  progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1E3A5F;color:#fff;padding:14px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:200px';
+  document.body.appendChild(progressEl);
+
+  const updateProgress = (cur, msg) => {
+    progressEl.innerHTML = `<div>${msg||'📖 예문 생성 중...'}</div><div style="margin-top:6px;background:rgba(255,255,255,.2);border-radius:4px;height:6px"><div style="height:100%;background:#60A5FA;border-radius:4px;width:${Math.round(cur/total*100)}%;transition:width .3s"></div></div><div style="font-size:11px;margin-top:4px;opacity:.7">${cur}/${total}</div>`;
+  };
+
+  updateProgress(0);
+  let done = 0, failed = 0;
+  const batchSize = 15;
+
+  for(let i = 0; i < p.words.length; i += batchSize) {
+    const batch = p.words.slice(i, i + batchSize);
+    const wordList = batch.map(w => `${w.en} (${w.kr})`).join('\n');
+
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 3000,
+          messages: [{
+            role: 'user',
+            content: `다음 영단어 각각에 영어 예문을 정확히 3개씩 만들어줘.
+
+단어 목록:
+${wordList}
+
+규칙:
+- 각 예문에 해당 단어가 반드시 포함
+- 초등~중학교 수준의 짧고 자연스러운 문장
+- 마침표로 끝내기
+- 주석, 설명 없이 JSON만 반환
+
+형식 (반드시 이 형식으로):
+{"apple":["I eat an apple.","The apple is red.","She likes apples."],"word2":["ex1","ex2","ex3"]}`
+          }]
+        })
+      });
+
+      if(!resp.ok) throw new Error('API ' + resp.status);
+      const data = await resp.json();
+      const text = (data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+      const jsonMatch = text.match(/\{[\s\S]+\}/);
+      if(!jsonMatch) throw new Error('JSON 없음');
+      const result = JSON.parse(jsonMatch[0]);
+
+      for(const w of batch) {
+        const exArr = result[w.en] || result[w.en.toLowerCase()];
+        if(exArr && Array.isArray(exArr) && exArr.length >= 1) {
+          w.exList = exArr.slice(0,3).map(s=>String(s).replace(/\s*\[cite[^\]]*\]/g,'').trim());
+          w.ex = w.exList[0];
+          done++;
+        } else {
+          failed++;
+        }
+      }
+    } catch(e) {
+      console.error('배치 실패:', e.message);
+      failed += batch.length;
+    }
+
+    updateProgress(Math.min(i+batchSize, total));
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  updateProgress(total, '💾 Firebase 저장 중...');
+  try {
+    await db.collection('packs').doc(packId).set(
+      { ...p, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    progressEl.remove();
+    toast(`✅ 완료! ${done}개 성공 / ${failed}개 실패`, 'ok');
+    showPackWordTab('list');
+  } catch(e) {
+    progressEl.remove();
+    toast('저장 오류: '+e.message, 'err');
+  }
+}
+
 
 
 function showAddMethod(method) {

@@ -35,57 +35,6 @@
   --radius: 12px;
   --radius-lg: 16px;
 }
-async function generateAllExamples() {
-  const packs = window._adminPacks||[];
-  if(!packs.length){toast('팩이 없어요','err');return;}
-  const total = packs.reduce((s,p)=>s+(p.words||[]).length,0);
-  if(!confirm(`Firebase의 모든 팩 ${packs.length}개, 단어 ${total}개에 예문 3개씩 생성할까요?\n시간이 오래 걸릴 수 있어요.`)) return;
-
-  const progressEl = document.createElement('div');
-  progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1E3A5F;color:#fff;padding:14px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:220px';
-  document.body.appendChild(progressEl);
-
-  let doneWords=0, failWords=0;
-  const batchSize=15;
-
-  for(const p of packs) {
-    if(!p._fromFirebase) continue;
-    const words = p.words||[];
-    progressEl.innerHTML = `<div>📖 ${p.name}</div><div style="font-size:11px;opacity:.7">${doneWords}/${total} 완료</div>`;
-
-    for(let i=0;i<words.length;i+=batchSize){
-      const batch=words.slice(i,i+batchSize);
-      const wordList=batch.map(w=>`${w.en} (${w.kr})`).join('\n');
-      try{
-        const resp=await fetch('https://api.anthropic.com/v1/messages',{
-          method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:[{role:'user',content:`다음 영단어 각각에 영어 예문을 3개씩 만들어줘.\n\n단어 목록:\n${wordList}\n\n규칙:\n- 각 예문에 해당 단어 포함\n- 짧고 자연스러운 문장\n- JSON만 반환\n\n형식: {"단어":["예문1","예문2","예문3"],...}`}]})
-        });
-        if(!resp.ok) throw new Error('API '+resp.status);
-        const data=await resp.json();
-        const text=(data.content?.[0]?.text||'').replace(/\`\`\`json|\`\`\`/g,'').trim();
-        const jm=text.match(/\{[\s\S]+\}/);
-        if(!jm) throw new Error('JSON 없음');
-        const result=JSON.parse(jm[0]);
-        for(const w of batch){
-          const exArr=result[w.en]||result[w.en.toLowerCase()];
-          if(exArr&&Array.isArray(exArr)&&exArr.length>=1){
-            w.exList=exArr.slice(0,3);w.ex=w.exList[0];doneWords++;
-          } else failWords++;
-        }
-      }catch(e){console.error(e);failWords+=batch.length;}
-      progressEl.innerHTML=`<div>📖 ${p.name}</div><div style="font-size:11px;opacity:.7">${doneWords}/${total} 완료</div>`;
-      await new Promise(r=>setTimeout(r,200));
-    }
-    // 팩별 Firebase 저장
-    try{await db.collection('packs').doc(p.id).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});}
-    catch(e){console.error('저장 실패:',p.name,e.message);}
-  }
-  progressEl.remove();
-  toast(`✅ 완료! ${doneWords}개 성공 / ${failWords}개 실패`,'ok');
-  rPK();
-}
-
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; font-size: 14px; line-height: 1.5; }
@@ -1411,32 +1360,60 @@ async function rBF() {
   const allBF = [...bfList, ...BUILTIN_BF.filter(b=>!existingIds.has(b.id)).map(b=>({...b,_builtin:true}))].sort((a,b)=>a.id.localeCompare(b.id));
   window._adminAllBF = allBF;
   window._adminAllBF = allBF; // editBF에서 참조
-  main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <h2 style="font-size:22px;font-weight:900">🦋 나비 관리</h2>
+  main.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div>
+      <h2 style="font-size:20px;font-weight:900;color:#111">🦋 나비 관리</h2>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:2px">전체 ${allBF.length}종 · Firebase ${bfList.length}종 · 내장 ${BUILTIN_BF.length}종</div>
+    </div>
     <div style="display:flex;gap:8px">
-      <span style="background:#F5F3FF;color:#7C3AED;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">전체 ${allBF.length}종 (DB ${bfList.length}종)</span>
-      <button class="btn bp" onclick="showAddBF()">+ 나비 추가</button>
+      <button style="background:#111;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer" onclick="showAddBF()">+ 나비 추가</button>
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
-    ${allBF.map(bf=>`<div style="background:#fff;border-radius:12px;border:1.5px solid ${bf._builtin?'#DBEAFE':'#E5E7EB'};padding:10px;text-align:center;position:relative">
-      ${bf._builtin?'<span style="position:absolute;top:4px;right:4px;font-size:8px;background:#EFF6FF;color:#1E40AF;border-radius:4px;padding:1px 4px">기본</span>':''}
-      <div style="font-size:9px;color:#9CA3AF;margin-bottom:2px">${bf.id}</div>
-      <!-- SVG 미리보기 -->
-      <div style="width:80px;height:80px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;overflow:hidden">
-        ${bf.svgCode
-          ? bf.svgCode.replace(/viewBox="[^"]*"/g,'viewBox="0 0 100 100"').replace(/<svg/,'<svg width="80" height="80" style="display:block" ')
-          : '<div style="font-size:32px;opacity:0.4">🦋</div>'}
-      </div>
-      <div style="font-size:12px;font-weight:800;margin-bottom:2px">${bf.name||'-'}</div>
-      <div style="font-size:10px;color:#6B7280;margin-bottom:2px">${bf.enName||''}</div>
-      <div style="font-size:10px;margin-bottom:4px">${bf.rare||''}</div>
-      <div style="font-size:9px;color:#9CA3AF;min-height:16px;margin-bottom:6px">${(bf.desc||'').slice(0,20)}</div>
-      <div style="display:flex;gap:4px">
-        <button class="btn bgr" style="flex:1;font-size:11px;padding:3px" onclick="editBF('${bf.id}')">✏️ 편집</button>
-        ${bf._builtin?'':`<button class="btn br" style="font-size:11px;padding:3px" onclick="deleteBF('${bf.id}','${(bf.name||'')}')">🗑</button>`}
-      </div>
-    </div>`).join('')}
+  <!-- 나비 목록 표 -->
+  <div style="overflow-x:auto;border-radius:12px;border:1px solid #E5E7EB">
+  <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+      <th style="padding:10px 12px;text-align:center;width:80px">이미지</th>
+      <th style="padding:10px 12px;text-align:left">이름</th>
+      <th style="padding:10px 12px;text-align:left">학명</th>
+      <th style="padding:10px 12px;text-align:center;width:60px">레어</th>
+      <th style="padding:10px 12px;text-align:left">설명</th>
+      <th style="padding:10px 12px;text-align:center;width:80px">구분</th>
+      <th style="padding:10px 12px;text-align:center;width:80px">관리</th>
+    </tr></thead>
+    <tbody>
+    ${allBF.map((bf,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
+      <td style="padding:8px 12px;text-align:center">
+        <div style="width:56px;height:56px;margin:0 auto;display:flex;align-items:center;justify-content:center;background:#F9FAFB;border-radius:8px;overflow:hidden">
+          ${bf.svgCode
+            ? bf.svgCode.replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 120"').replace(/<svg/,'<svg width="54" height="54" style="display:block" preserveAspectRatio="xMidYMid meet"')
+            : '<div style="font-size:24px">🦋</div>'}
+        </div>
+      </td>
+      <td style="padding:8px 12px">
+        <div style="font-weight:800;color:#111">${bf.name||"-"}</div>
+        <div style="font-size:10px;color:#9CA3AF">${bf.id}</div>
+      </td>
+      <td style="padding:8px 12px;color:#6B7280;font-style:italic;font-size:11px">${bf.enName||"-"}</td>
+      <td style="padding:8px 12px;text-align:center">${bf.rare||"-"}</td>
+      <td style="padding:8px 12px;color:#374151;max-width:200px">
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${(bf.desc||"").slice(0,50)}</div>
+      </td>
+      <td style="padding:8px 12px;text-align:center">
+        ${bf._builtin
+          ? '<span style="background:#EFF6FF;color:#1E40AF;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700">내장</span>'
+          : '<span style="background:#F0FDF4;color:#16A34A;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700">Firebase</span>'}
+      </td>
+      <td style="padding:8px 12px;text-align:center">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button onclick="editBF('${bf.id}')" style="background:#F3F4F6;border:none;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer" title="편집">✏️</button>
+          ${bf._builtin ? '' : `<button onclick="deleteBF('${bf.id}','${(bf.name||"").replace(/'/g,"\\'")}','${bf._firebaseId||bf.id}')" style="background:#FEF2F2;border:none;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer" title="삭제">🗑</button>`}
+        </div>
+      </td>
+    </tr>`).join('')}
+    </tbody>
+  </table>
   </div>`;
 }
 
@@ -1718,12 +1695,67 @@ const cm=()=>{const ma=document.getElementById('ma');if(ma)ma.innerHTML='';const
 const today=()=>new Date().toISOString().slice(0,10);
 const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?.isSuperAdmin;
 
-function T(tab){
-  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
-  const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'시스템 단어',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정'};
-  const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP})[tab]?.();
+async function T(id) {
+  // 네비게이션 활성화 상태 업데이트
+  document.querySelectorAll('.ni').forEach(el=>{
+    const isActive = el.id === 'ni-'+id;
+    el.classList.toggle('on', isActive);
+  });
+  const main = document.getElementById('main-inner');
+  if(!main) return;
+  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px;font-size:14px">로딩 중...</div>';
+
+  if(id==='db') { rDB(); return; }
+  if(id==='bf') { rBF(); return; }
+  if(id==='pk') { rPK(); return; }
+
+  // 회원 관리
+  if(id==='us') {
+    try {
+      const snap = await db.collection('users').orderBy('xp','desc').limit(100).get();
+      const users = snap.docs.map(d=>({id:d.id,...d.data()}));
+      main.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div>
+            <h2 style="font-size:20px;font-weight:900;color:#111">👥 회원 관리</h2>
+            <div style="font-size:12px;color:#9CA3AF;margin-top:2px">총 ${users.length}명 (XP 상위 100명)</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto;border-radius:12px;border:1px solid #E5E7EB">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+              <th style="padding:10px 12px;text-align:left">#</th>
+              <th style="padding:10px 12px;text-align:left">닉네임</th>
+              <th style="padding:10px 12px;text-align:left">이메일</th>
+              <th style="padding:10px 12px;text-align:center">레벨</th>
+              <th style="padding:10px 12px;text-align:right">XP</th>
+              <th style="padding:10px 12px;text-align:right">연속</th>
+              <th style="padding:10px 12px;text-align:left">마지막 접속</th>
+            </tr></thead>
+            <tbody>
+            ${users.map((u,i)=>{
+              const la = u.lastActive?.toDate?.()?.toISOString()?.slice(0,10)||u.updatedAt?.toDate?.()?.toISOString()?.slice(0,10)||'-';
+              return '<tr style="border-bottom:1px solid #F3F4F6">'
+                +'<td style="padding:8px 12px;color:#9CA3AF">'+(i+1)+'</td>'
+                +'<td style="padding:8px 12px;font-weight:700;color:#111">'+(u.nick||'(이름없음)')+'</td>'
+                +'<td style="padding:8px 12px;color:#374151;font-size:11px">'+(u.email||'-')+'</td>'
+                +'<td style="padding:8px 12px;text-align:center">'+(u.lid||'egg')+'</td>'
+                +'<td style="padding:8px 12px;text-align:right;font-weight:700">'+(u.xp||0).toLocaleString()+'</td>'
+                +'<td style="padding:8px 12px;text-align:right">'+(u.streak||0)+'일</td>'
+                +'<td style="padding:8px 12px;color:#9CA3AF;font-size:11px">'+la+'</td>'
+                +'</tr>';
+            }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch(e) {
+      main.innerHTML = '<div style="text-align:center;padding:40px;color:#EF4444">로드 실패: '+e.message+'</div>';
+    }
+    return;
+  }
+
+  // 기타 탭 - 준비중 메시지
+  main.innerHTML = '<div style="text-align:center;padding:60px;color:#9CA3AF"><div style="font-size:48px;margin-bottom:12px">🔧</div><div style="font-size:16px;font-weight:700">준비 중이에요</div></div>';
 }
 
 // ══════════════════════════════════
@@ -2195,7 +2227,7 @@ async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
     const snap = await db.collection('packs').get();
-    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
+    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data()}));
     const localPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacks.map(p=>p.id));
     window._adminPacks = [...fbPacks, ...localPacks.filter(p=>!fbIds.has(p.id))];
@@ -2210,7 +2242,6 @@ async function rPK(){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn bg" onclick="showAddPack()">➕ 새 팩 만들기</button>
         <button class="btn bp" onclick="showImportPack()">📤 CSV/JSON 가져오기</button>
-        <button onclick="generateAllExamples()" style="background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">📖 전체 예문 생성</button>
       </div>
     </div>
     <div class="sg">
@@ -2249,7 +2280,7 @@ async function rPK(){
               <div style="display:flex;gap:4px;flex-wrap:wrap">
                 <button class="btn bb" style="font-size:11px;padding:4px 8px" onclick="showPackWords('${p.id}')">📝 단어</button>
                 <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="showEditPack('${p.id}')">✏️ 수정</button>
-                ${p._fromFirebase?`<button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deletePack('${p.id}')">🗑</button>`:'<span style="font-size:10px;color:#9CA3AF">로컬</span>'}
+                <button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deletePack('${p.id}')">🗑</button>
               </div>
             </td>
           </tr>`).join('')}
@@ -2390,30 +2421,25 @@ async function saveEditPack(packId) {
 
 // 팩 삭제
 async function deletePack(packId) {
-  const packs = window._adminPacks || [];
+  if(typeof db==='undefined'||!db) { toast('Firebase 연결 중입니다. 잠시 후 다시 시도해주세요','err'); return; }
+  const packs = window._adminPacks||[];
   const p = packs.find(x=>x.id===packId);
-  if(!p) { toast('팩을 찾을 수 없어요. 새로고침 후 다시 시도해주세요','err'); return; }
-  if(!confirm(`"${p.name}" 팩을 삭제할까요?\n단어 ${p.words?.length||0}개가 모두 삭제됩니다.`)) return;
+  if(!p) { toast('팩 정보를 찾을 수 없어요. 목록을 새로고침해주세요','err'); rPK(); return; }
+  if(!confirm('"'+p.name+'" 팩을 삭제할까요?\n단어 '+(p.words?.length||0)+'개가 모두 삭제됩니다.')) return;
+  const btn = event?.target; if(btn) { btn.disabled=true; btn.textContent='삭제 중...'; }
   try {
-    console.log('[admin] 팩 삭제 시도:', packId, p.name);
-    // Firebase 문서 존재 확인
-    const docRef = db.collection('packs').doc(packId);
-    const docSnap = await docRef.get();
-    console.log('[admin] Firebase 문서 존재:', docSnap.exists);
-    if(docSnap.exists) {
-      await docRef.delete();
-      console.log('[admin] Firebase 삭제 완료');
-    } else {
-      console.warn('[admin] Firebase에 문서 없음 - 로컬에서만 제거');
-    }
-    // _adminPacks에서 제거
+    console.log('[삭제] 시작:', packId, p.name);
+    await db.collection('packs').doc(packId).delete();
+    console.log('[삭제] Firebase 완료');
     const i = window._adminPacks.findIndex(x=>x.id===packId);
     if(i>=0) window._adminPacks.splice(i,1);
-    toast('🗑 "'+p.name+'" 삭제 완료','ok');
+    toast('✅ "'+p.name+'" 삭제 완료','ok');
     rPK();
   } catch(e) {
-    console.error('[admin] 삭제 실패:', e.code, e.message);
-    toast('삭제 오류: '+e.message,'err');
+    console.error('[삭제] 실패:', e.code, e.message);
+    if(e.code==='permission-denied') toast('권한 없음: 관리자 계정으로 로그인해주세요','err');
+    else if(e.code==='not-found') { const i=window._adminPacks.findIndex(x=>x.id===packId); if(i>=0)window._adminPacks.splice(i,1); toast('Firebase에 없어 목록에서만 제거했어요','ok'); rPK(); }
+    else { toast('삭제 오류: '+e.message,'err'); if(btn){btn.disabled=false;btn.textContent='🗑';} }
   }
 }
 
@@ -2492,23 +2518,30 @@ function showPackWordTab(tab) {
         <button onclick="fixPackWordFields('${selPack}')" class="btn br" style="font-size:11px;padding:4px 8px">자동 수정</button>
       </div>
       <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">${words.length}개</div>
-      <div id="pack-word-list" style="display:flex;flex-direction:column;gap:6px">
-        ${words.map((w,i)=>`<div style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#F9FAFB;border-radius:10px">
-          <span style="font-size:18px;flex-shrink:0;margin-top:2px">${w.img||'📝'}</span>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-              <span style="font-size:14px;font-weight:800;font-family:monospace;color:#111">${w.en}</span>
-              <span style="font-size:12px;font-weight:700;color:#1E5FA5">${w.kr}</span>
-              ${w.ph?`<span style="font-size:11px;color:#9CA3AF;font-family:monospace">${w.ph}</span>`:''}
-              ${w.pos?`<span style="font-size:10px;background:#EFF6FF;color:#1E5FA5;padding:1px 6px;border-radius:10px">${w.pos}</span>`:''}
-            </div>
-            ${w.ex?`<div style="font-size:11px;color:#6B7280;font-style:italic;line-height:1.4">"${w.ex}"</div>`:''}
-          </div>
-          <div style="display:flex;gap:2px;flex-shrink:0">
-            <button onclick="editPackWord('${selPack}',${i})" style="background:none;border:none;font-size:14px;cursor:pointer;color:#9CA3AF;padding:4px">✏️</button>
-            <button onclick="deletePackWord('${selPack}',${i})" style="background:none;border:none;font-size:16px;cursor:pointer;color:#FCA5A5;padding:4px">×</button>
-          </div>
-        </div>`).join('')}
+      <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB" id="pack-word-list">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">#</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">영어</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">한국어</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">발음기호</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">예문</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:700;color:#374151">관리</th>
+          </tr></thead>
+          <tbody>
+            ${words.map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
+              <td style="padding:7px 10px;color:#9CA3AF;font-size:11px">${i+1}</td>
+              <td style="padding:7px 10px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td>
+              <td style="padding:7px 10px;font-weight:600;color:#374151;white-space:nowrap">${w.kr}</td>
+              <td style="padding:7px 10px;color:#9CA3AF;font-size:11px">${w.ph||''}</td>
+              <td style="padding:7px 10px;color:#6B7280;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(w.exList&&w.exList[0])||w.ex||''}</td>
+              <td style="padding:7px 10px;text-align:center;white-space:nowrap">
+                <button onclick="editPackWord('${selPack}',${i})" style="background:none;border:none;font-size:13px;cursor:pointer">✏️</button>
+                <button onclick="deletePackWord('${selPack}',${i})" style="background:none;border:none;font-size:13px;cursor:pointer">🗑</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
       </div>`;
   // 필드 오류 배너 업데이트
   requestAnimationFrame(()=>{
@@ -3441,6 +3474,95 @@ async function saveST(){
     await db.collection('settings').doc('app').set({appName:document.getElementById('sn').value,notice:document.getElementById('so').value,noticeType:document.getElementById('sot').value,xpMultiplier:+document.getElementById('sx').value,maintenanceMode:document.getElementById('sm').checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
     toast('✅ 설정 저장 완료!','ok');
   }catch(e){toast('오류: '+e.message,'err');}
+}
+
+async function generateAllExamples() {
+  const packs = window._adminPacks||[];
+  if(!packs.length){toast('팩이 없어요','err');return;}
+  const total = packs.reduce((s,p)=>s+(p.words||[]).length,0);
+  if(!confirm(`Firebase의 모든 팩 ${packs.length}개, 단어 ${total}개에 예문 3개씩 생성할까요?\n시간이 오래 걸릴 수 있어요.`)) return;
+
+  const progressEl = document.createElement('div');
+  progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1E3A5F;color:#fff;padding:14px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:220px';
+  document.body.appendChild(progressEl);
+
+  let doneWords=0, failWords=0;
+  const batchSize=15;
+
+  for(const p of packs) {
+    if(!p._fromFirebase) continue;
+    const words = p.words||[];
+    progressEl.innerHTML = `<div>📖 ${p.name}</div><div style="font-size:11px;opacity:.7">${doneWords}/${total} 완료</div>`;
+
+    for(let i=0;i<words.length;i+=batchSize){
+      const batch=words.slice(i,i+batchSize);
+      const wordList=batch.map(w=>`${w.en} (${w.kr})`).join('\n');
+      try{
+        const resp=await fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:[{role:'user',content:`다음 영단어 각각에 영어 예문을 3개씩 만들어줘.\n\n단어 목록:\n${wordList}\n\n규칙:\n- 각 예문에 해당 단어 포함\n- 짧고 자연스러운 문장\n- JSON만 반환\n\n형식: {"단어":["예문1","예문2","예문3"],...}`}]})
+        });
+        if(!resp.ok) throw new Error('API '+resp.status);
+        const data=await resp.json();
+        const text=(data.content?.[0]?.text||'').replace(/\`\`\`json|\`\`\`/g,'').trim();
+        const jm=text.match(/\{[\s\S]+\}/);
+        if(!jm) throw new Error('JSON 없음');
+        const result=JSON.parse(jm[0]);
+        for(const w of batch){
+          const exArr=result[w.en]||result[w.en.toLowerCase()];
+          if(exArr&&Array.isArray(exArr)&&exArr.length>=1){
+            w.exList=exArr.slice(0,3);w.ex=w.exList[0];doneWords++;
+          } else failWords++;
+        }
+      }catch(e){console.error(e);failWords+=batch.length;}
+      progressEl.innerHTML=`<div>📖 ${p.name}</div><div style="font-size:11px;opacity:.7">${doneWords}/${total} 완료</div>`;
+      await new Promise(r=>setTimeout(r,200));
+    }
+    // 팩별 Firebase 저장
+    try{await db.collection('packs').doc(p.id).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});}
+    catch(e){console.error('저장 실패:',p.name,e.message);}
+  }
+  progressEl.remove();
+  toast(`✅ 완료! ${doneWords}개 성공 / ${failWords}개 실패`,'ok');
+  rPK();
+}
+
+function handleBFImageUpload(event) {
+  const file = event.target.files?.[0];
+  if(!file) return;
+  if(file.type === 'image/svg+xml') {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const svgText = e.target.result;
+      const ta = document.getElementById('bf-svg');
+      if(ta) { ta.value = svgText; updateBFPreview(); }
+    };
+    reader.readAsText(file);
+  } else {
+    // 일반 이미지 → base64로 img 태그로 변환
+    const reader = new FileReader();
+    reader.onload = e => {
+      const b64 = e.target.result;
+      const svgWrap = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><image href="${b64}" x="0" y="0" width="120" height="120" preserveAspectRatio="xMidYMid meet"/></svg>`;
+      const ta = document.getElementById('bf-svg');
+      if(ta) { ta.value = svgWrap; updateBFPreview(); }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function updateBFPreview() {
+  const svg = document.getElementById('bf-svg')?.value||'';
+  const preview = document.getElementById('bf-preview');
+  if(!preview) return;
+  if(svg.trim().startsWith('<svg')) {
+    const fixed = svg
+      .replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 120"')
+      .replace(/<svg/,'<svg width="86" height="86" preserveAspectRatio="xMidYMid meet"');
+    preview.innerHTML = fixed;
+  } else {
+    preview.innerHTML = '<div style="font-size:32px;opacity:.4">🦋</div>';
+  }
 }
 </script>
 <div id="tw"></div>

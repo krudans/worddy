@@ -948,7 +948,7 @@ function showButterflyDetail(id) {
 function getButterflyMiniSVG(b) {
   // 간단한 나비 실루엣 - 색상만 다르게
   const col = b.color;
-  return `<svg width="44" height="38" viewBox="0 0 100 85" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+  return `<svg width="48" height="48" viewBox="0 0 100 85" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="display:block">
     <path d="M50,42 Q28,10 8,18 Q3,32 10,46 Q22,58 50,48Z" fill="${col}" opacity="0.9"/>
     <path d="M50,42 Q72,10 92,18 Q97,32 90,46 Q78,58 50,48Z" fill="${col}" opacity="0.9"/>
     <path d="M50,48 Q28,56 18,68 Q20,76 30,72 Q42,62 50,56Z" fill="${col}" opacity="0.75"/>

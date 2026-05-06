@@ -35,6 +35,31 @@
   --radius: 12px;
   --radius-lg: 16px;
 }
+async function generateOneWordEx(packId, wordIdx) {
+  const packs = window._adminPacks||[];
+  const p = packs.find(x=>x.id===packId);
+  if(!p||!p.words[wordIdx]) return;
+  const w = p.words[wordIdx];
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,messages:[{role:'user',content:`"${w.en}" (${w.kr}) 단어를 사용한 영어 예문 3개를 JSON 배열로만 반환해줘. 예: ["ex1","ex2","ex3"]`}]})
+    });
+    const data = await resp.json();
+    const text = (data.content?.[0]?.text||'').trim();
+    const arr = JSON.parse(text.match(/\[[\s\S]+\]/)?.[0]||'[]');
+    if(arr.length) {
+      w.exList = arr.slice(0,3);
+      w.ex = w.exList[0];
+      if(p._fromFirebase) {
+        await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      }
+      showPackWordTab('list');
+      toast('✅ 예문 생성 완료','ok');
+    }
+  } catch(e) { toast('예문 생성 실패: '+e.message,'err'); }
+}
+
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; font-size: 14px; line-height: 1.5; }
@@ -371,7 +396,14 @@ async function rDB(){
   try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
 
   const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const totalWords = packs.reduce((a,p)=>a+(p.words?.length||0),0);
+  const fbPacks = packs.filter(p=>p._fromFirebase);
+  const localPacks = packs.filter(p=>!p._fromFirebase);
+  const marketWords = fbPacks.reduce((a,p)=>a+(p.words?.length||0),0);
+  const localWords = localPacks.reduce((a,p)=>a+(p.words?.length||0),0);
+  const totalWords = marketWords + localWords;
+  const sysWords = typeof window._sysWords !== 'undefined' ? window._sysWords.length : (typeof LEVELS !== 'undefined' ? 0 : 0);
+  let sysWordCount = 0;
+  try { const sd = await db.collection('settings').doc('sysWords').get(); if(sd.exists) sysWordCount = (sd.data().words||[]).length; } catch(e){};
 
   // XP 설정 로드
   let xpcfg = {};
@@ -418,7 +450,11 @@ async function rDB(){
       <div class="st"><div class="v" style="color:#E65100;font-size:18px">${(totalXP||0).toLocaleString()}</div><div class="l">총 XP 합계</div></div>
       <div class="st"><div class="v" style="color:#E65100;font-size:18px">🔥${avgStreak}일</div><div class="l">평균 스트릭</div></div>
       <div class="st"><div class="v" style="color:#1E5FA5;font-size:18px">${packs.length}</div><div class="l">마켓 팩</div></div>
-      <div class="st"><div class="v" style="color:#16A34A;font-size:18px">${totalWords.toLocaleString()}</div><div class="l">총 단어수</div></div>
+      <div class="st" onclick="T('pk')" style="cursor:pointer">
+        <div class="v" style="color:#16A34A;font-size:18px">${totalWords.toLocaleString()}</div>
+        <div class="l">총 단어수</div>
+        <div style="font-size:10px;color:#9CA3AF;margin-top:2px">마켓 ${marketWords.toLocaleString()} · 로컬 ${localWords.toLocaleString()}</div>
+      </div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -1695,67 +1731,12 @@ const cm=()=>{const ma=document.getElementById('ma');if(ma)ma.innerHTML='';const
 const today=()=>new Date().toISOString().slice(0,10);
 const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?.isSuperAdmin;
 
-async function T(id) {
-  // 네비게이션 활성화 상태 업데이트
-  document.querySelectorAll('.ni').forEach(el=>{
-    const isActive = el.id === 'ni-'+id;
-    el.classList.toggle('on', isActive);
-  });
-  const main = document.getElementById('main-inner');
-  if(!main) return;
-  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px;font-size:14px">로딩 중...</div>';
-
-  if(id==='db') { rDB(); return; }
-  if(id==='bf') { rBF(); return; }
-  if(id==='pk') { rPK(); return; }
-
-  // 회원 관리
-  if(id==='us') {
-    try {
-      const snap = await db.collection('users').orderBy('xp','desc').limit(100).get();
-      const users = snap.docs.map(d=>({id:d.id,...d.data()}));
-      main.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <div>
-            <h2 style="font-size:20px;font-weight:900;color:#111">👥 회원 관리</h2>
-            <div style="font-size:12px;color:#9CA3AF;margin-top:2px">총 ${users.length}명 (XP 상위 100명)</div>
-          </div>
-        </div>
-        <div style="overflow-x:auto;border-radius:12px;border:1px solid #E5E7EB">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
-              <th style="padding:10px 12px;text-align:left">#</th>
-              <th style="padding:10px 12px;text-align:left">닉네임</th>
-              <th style="padding:10px 12px;text-align:left">이메일</th>
-              <th style="padding:10px 12px;text-align:center">레벨</th>
-              <th style="padding:10px 12px;text-align:right">XP</th>
-              <th style="padding:10px 12px;text-align:right">연속</th>
-              <th style="padding:10px 12px;text-align:left">마지막 접속</th>
-            </tr></thead>
-            <tbody>
-            ${users.map((u,i)=>{
-              const la = u.lastActive?.toDate?.()?.toISOString()?.slice(0,10)||u.updatedAt?.toDate?.()?.toISOString()?.slice(0,10)||'-';
-              return '<tr style="border-bottom:1px solid #F3F4F6">'
-                +'<td style="padding:8px 12px;color:#9CA3AF">'+(i+1)+'</td>'
-                +'<td style="padding:8px 12px;font-weight:700;color:#111">'+(u.nick||'(이름없음)')+'</td>'
-                +'<td style="padding:8px 12px;color:#374151;font-size:11px">'+(u.email||'-')+'</td>'
-                +'<td style="padding:8px 12px;text-align:center">'+(u.lid||'egg')+'</td>'
-                +'<td style="padding:8px 12px;text-align:right;font-weight:700">'+(u.xp||0).toLocaleString()+'</td>'
-                +'<td style="padding:8px 12px;text-align:right">'+(u.streak||0)+'일</td>'
-                +'<td style="padding:8px 12px;color:#9CA3AF;font-size:11px">'+la+'</td>'
-                +'</tr>';
-            }).join('')}
-            </tbody>
-          </table>
-        </div>`;
-    } catch(e) {
-      main.innerHTML = '<div style="text-align:center;padding:40px;color:#EF4444">로드 실패: '+e.message+'</div>';
-    }
-    return;
-  }
-
-  // 기타 탭 - 준비중 메시지
-  main.innerHTML = '<div style="text-align:center;padding:60px;color:#9CA3AF"><div style="font-size:48px;margin-bottom:12px">🔧</div><div style="font-size:16px;font-weight:700">준비 중이에요</div></div>';
+function T(tab){
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'시스템 단어',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정'};
+  const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
+  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -2227,7 +2208,7 @@ async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
     const snap = await db.collection('packs').get();
-    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
     const localPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacks.map(p=>p.id));
     window._adminPacks = [...fbPacks, ...localPacks.filter(p=>!fbIds.has(p.id))];
@@ -2280,7 +2261,9 @@ async function rPK(){
               <div style="display:flex;gap:4px;flex-wrap:wrap">
                 <button class="btn bb" style="font-size:11px;padding:4px 8px" onclick="showPackWords('${p.id}')">📝 단어</button>
                 <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="showEditPack('${p.id}')">✏️ 수정</button>
-                <button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deletePack('${p.id}')">🗑</button>
+                ${p._fromFirebase
+                  ? `<button class="btn br" style="font-size:11px;padding:4px 8px" onclick="deletePack('${p.id}')">🗑</button>`
+                  : `<button style="background:#F59E0B;color:#fff;border:none;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;font-weight:700" onclick="uploadLocalPackToFirebase('${p.id}')">☁️ 업로드</button>`}
               </div>
             </td>
           </tr>`).join('')}
@@ -2442,6 +2425,22 @@ async function deletePack(packId) {
     else { toast('삭제 오류: '+e.message,'err'); if(btn){btn.disabled=false;btn.textContent='🗑';} }
   }
 }
+async function uploadLocalPackToFirebase(packId) {
+  const packs = window._adminPacks||[];
+  const p = packs.find(x=>x.id===packId);
+  if(!p) { toast('팩 없음','err'); return; }
+  if(!confirm('"'+p.name+'" 팩을 Firebase에 업로드할까요?')) return;
+  try {
+    const {id, _fromFirebase, _builtin, ...data} = p;
+    await db.collection('packs').doc(packId).set({...data, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    p._fromFirebase = true;
+    toast('✅ "'+p.name+'" Firebase 업로드 완료','ok');
+    rPK();
+  } catch(e) {
+    toast('업로드 실패: '+e.message,'err');
+  }
+}
+
 
 // ── 팩 단어 관리 ──
 function showPackWords(packId) {
@@ -2509,9 +2508,10 @@ function showPackWordTab(tab) {
       return;
     }
     cont.innerHTML=`
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <input placeholder="단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;font-size:13px">
-        <button class="btn br" style="font-size:12px;padding:6px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){(window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).find(x=>x.id===selPack).words=[];showPackWordTab('list')}">전체삭제</button>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <input placeholder="🔍 단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;min-width:140px;font-size:13px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px;outline:none">
+        <button onclick="generateExamples(selPack)" style="background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">📖 예문 생성</button>
+        <button class="btn br" style="font-size:12px;padding:7px 10px" onclick="if(confirm('모든 단어를 삭제할까요?')){(window._adminPacks||[]).find(x=>x.id===selPack)?.words?.splice(0);showPackWordTab('list')}">전체삭제</button>
       </div>
       <div id="field-err-banner" style="display:none;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin-bottom:8px;align-items:center;justify-content:space-between">
         <span id="field-err-msg" style="font-size:12px;color:#DC2626;font-weight:700"></span>
@@ -2534,7 +2534,13 @@ function showPackWordTab(tab) {
               <td style="padding:7px 10px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td>
               <td style="padding:7px 10px;font-weight:600;color:#374151;white-space:nowrap">${w.kr}</td>
               <td style="padding:7px 10px;color:#9CA3AF;font-size:11px">${w.ph||''}</td>
-              <td style="padding:7px 10px;color:#6B7280;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(w.exList&&w.exList[0])||w.ex||''}</td>
+              <td style="padding:7px 10px;color:#6B7280;font-size:11px;max-width:220px">
+                ${(()=>{
+                  const exList=w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[]);
+                  if(!exList.length) return '<button onclick="generateOneWordEx(selPack,'+i+')" style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;padding:2px 8px;font-size:10px;color:#6366F1;cursor:pointer;font-weight:700">+ 예문 생성</button>';
+                  return exList.slice(0,3).map((ex,ei)=>'<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+(ei>0?'margin-top:2px;opacity:.7':'')+'">'+ex+'</div>').join('');
+                })()}
+              </td>
               <td style="padding:7px 10px;text-align:center;white-space:nowrap">
                 <button onclick="editPackWord('${selPack}',${i})" style="background:none;border:none;font-size:13px;cursor:pointer">✏️</button>
                 <button onclick="deletePackWord('${selPack}',${i})" style="background:none;border:none;font-size:13px;cursor:pointer">🗑</button>
@@ -3564,6 +3570,7 @@ function updateBFPreview() {
     preview.innerHTML = '<div style="font-size:32px;opacity:.4">🦋</div>';
   }
 }
+
 </script>
 <div id="tw"></div>
 </body>

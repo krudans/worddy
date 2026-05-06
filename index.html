@@ -970,10 +970,8 @@ function showAttendPopup() {
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button onclick="S._noPopupToday=(typeof today==='function'?today():new Date().toISOString().slice(0,10));sv();cm()" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">오늘 안보기</button>
-      <button onclick="cm()" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;width:100%">
-        오늘도, 내일도 계속할래 💛
-      </button>
-        </div>
+        <button onclick="cm()" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">오늘도, 내일도 계속할래 💛</button>
+      </div>
   </div>`;
 }
 
@@ -3502,7 +3500,16 @@ function showAutoMode() {
         <div style="font-size:42px;font-weight:900;color:#fff;text-align:center;margin-bottom:14px;letter-spacing:0.5px">${w.en||''}</div>
         <div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-bottom:18px">${w.ph||''}</div>
         <div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;text-align:center;margin-bottom:18px">${w.kr||''}</div>
-        ${w.ex ? `<div style="font-size:14px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.6;text-align:center;max-width:340px">"${w.ex}"</div>` : ''}
+        ${(()=>{
+          const exCount = parseInt(A.exCount||0);
+          if(exCount === 0) return '';
+          const exList = w.exList && w.exList.length ? w.exList : (w.ex ? [w.ex] : []);
+          const toShow = exList.slice(0, exCount);
+          if(!toShow.length) return '';
+          return '<div style="max-width:340px;width:100%">'
+            + toShow.map(ex=>'<div style="font-size:13px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.6;text-align:center;margin-bottom:4px">\"'+ex+'\"</div>').join('')
+            + '</div>';
+        })()}
         <div style="margin-top:18px">${_markBtn(w.en||'')}</div>
       </div>
       
@@ -4335,7 +4342,7 @@ function showOnboarding() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🎮',lb:'게임'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🦋',lb:'나비키우기'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
@@ -5019,7 +5026,7 @@ function rGameTab() {
         <span>${BUTTERFLY_LIST.filter(b=>b.rare==='⭐⭐').filter(b=>butterflies.includes(b.id)).length}/9 일반</span>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;margin-bottom:12px">
       ${[...BUTTERFLY_LIST].sort((a,b)=>{
           const ao=butterflies.includes(a.id),bo=butterflies.includes(b.id);
           if(ao&&!bo)return -1; if(!ao&&bo)return 1;
@@ -5028,7 +5035,7 @@ function rGameTab() {
         const owned = butterflies.includes(b.id);
         return `<div onclick="${owned?'showButterflyDetail(\''+b.id+'\')':''}"
           style="text-align:center;padding:5px 3px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,var(--bg-sub,#F3F4F6))'};border:1.5px solid ${owned?b.color:'var(--border,var(--border,#E5E7EB))'};cursor:${owned?'pointer':'default'};position:relative;overflow:hidden;${owned?'animation:bfAppear .5s ease-out':''}">
-          <div style="transition:filter .3s;display:inline-block">${owned ? getButterflyCharSVG(b.id,36,true) : '<svg width="36" height="36" viewBox="0 0 36 36"><ellipse cx="18" cy="18" rx="14" ry="11" fill="#E5E7EB" opacity="0.6"/><text x="18" y="23" text-anchor="middle" font-size="14" fill="#9CA3AF">?</text></svg>'}</div>
+          <div style="transition:filter .3s;display:block;width:36px;height:36px;margin:0 auto;overflow:hidden">${owned ? getButterflyCharSVG(b.id,36,true) : '<svg width="36" height="36" viewBox="0 0 36 36"><ellipse cx="18" cy="18" rx="14" ry="11" fill="#E5E7EB" opacity="0.6"/><text x="18" y="23" text-anchor="middle" font-size="14" fill="#9CA3AF">?</text></svg>'}</div>
           <div style="font-size:7px;font-weight:700;color:${owned?b.color:'#C4A46B'};margin-top:2px;line-height:1.2">${owned?b.name:'???'}</div>
           ${owned?`<div style="font-size:6px;color:${b.color}">${b.rare}</div>`:''}
         </div>`;
@@ -5036,7 +5043,7 @@ function rGameTab() {
     </div>
     <!-- 캐릭터 수집 -->
     ${myCol.length>0?`<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px">수집한 캐릭터 (${myCol.length}/${MAX_COLLECTION})</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">
       ${myCol.map(item=>`<div onclick="showCollectionDetail('${item.id}')" style="text-align:center;padding:6px;border-radius:10px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));cursor:pointer">
         <div style="display:inline-block">${charSVGAnimated(item.lid||item.lvId||'egg',36,'normal')}</div>
         <div style="font-size:8px;font-weight:700;color:#7C3AED">${item.level||'알'}</div>
@@ -9813,7 +9820,7 @@ function rProfile(){
   const colKey=getPetColor();
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
     <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🎨 내 벌거지 색상</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">
       ${Object.entries(PET_COLORS).map(([k,v])=>`<div onclick="setPetColor('${k}');go()" style="text-align:center;padding:8px;border-radius:12px;background:${v.light};border:2px solid ${k===colKey?v.main:'transparent'};cursor:pointer">
         <div style="width:24px;height:24px;border-radius:50%;background:${v.main};margin:0 auto 4px"></div>
         <div style="font-size:10px;font-weight:700;color:${v.main}">${v.name}</div>

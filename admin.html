@@ -214,6 +214,19 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ── 테이블 깨짐 방지 ── */
+.tw table { width:100%; border-collapse:collapse; }
+.tw td, .tw th { overflow:hidden; text-overflow:ellipsis; }
+.tw tr:hover td { background:#F9FAFB; }
+/* ── 관리자 폼 입력 ── */
+.admin-form input, .admin-form textarea, .admin-form select {
+  padding:8px 10px; border:1.5px solid #E5E7EB; border-radius:8px;
+  font-size:13px; outline:none; width:100%; box-sizing:border-box; font-family:inherit;
+}
+.admin-form input:focus, .admin-form textarea:focus, .admin-form select:focus { border-color:#1E5FA5; }
+.admin-form label { font-size:12px; font-weight:700; color:#374151; display:block; margin-bottom:4px; }
+.admin-form .field { margin-bottom:12px; }
 </style>
 </head>
 <body>
@@ -395,15 +408,17 @@ async function rDB(){
   } catch(e) {}
   try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
 
-  const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const fbPacks = packs.filter(p=>p._fromFirebase);
-  const localPacks = packs.filter(p=>!p._fromFirebase);
-  const marketWords = fbPacks.reduce((a,p)=>a+(p.words?.length||0),0);
-  const localWords = localPacks.reduce((a,p)=>a+(p.words?.length||0),0);
+  // 팩 단어수 정확히 집계
+  let marketWords = 0, localWords = 0, fbPackCount = 0, localPackCount = 0;
+  try {
+    const pkSnap = await db.collection('packs').get();
+    fbPackCount = pkSnap.size;
+    marketWords = pkSnap.docs.reduce((s,d)=>s+((d.data().words||[]).length),0);
+  } catch(e){}
+  const localPacks2 = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
+  localPackCount = localPacks2.length;
+  localWords = localPacks2.reduce((s,p)=>s+(p.words?.length||0),0);
   const totalWords = marketWords + localWords;
-  const sysWords = typeof window._sysWords !== 'undefined' ? window._sysWords.length : (typeof LEVELS !== 'undefined' ? 0 : 0);
-  let sysWordCount = 0;
-  try { const sd = await db.collection('settings').doc('sysWords').get(); if(sd.exists) sysWordCount = (sd.data().words||[]).length; } catch(e){};
 
   // XP 설정 로드
   let xpcfg = {};
@@ -453,7 +468,7 @@ async function rDB(){
       <div class="st" onclick="T('pk')" style="cursor:pointer">
         <div class="v" style="color:#16A34A;font-size:18px">${totalWords.toLocaleString()}</div>
         <div class="l">총 단어수</div>
-        <div style="font-size:10px;color:#9CA3AF;margin-top:2px">마켓 ${marketWords.toLocaleString()} · 로컬 ${localWords.toLocaleString()}</div>
+        <div style="font-size:10px;color:#9CA3AF;margin-top:2px">Firebase ${fbPackCount}팩 ${marketWords.toLocaleString()}개 · 로컬 ${localPackCount}팩 ${localWords.toLocaleString()}개</div>
       </div>
     </div>
 
@@ -2425,6 +2440,54 @@ async function deletePack(packId) {
     else { toast('삭제 오류: '+e.message,'err'); if(btn){btn.disabled=false;btn.textContent='🗑';} }
   }
 }
+async function generateExamples(packId) {
+  const packs = window._adminPacks||[];
+  const p = packs.find(x=>x.id===packId);
+  if(!p||!p.words||!p.words.length){ toast('단어가 없어요','err'); return; }
+  const total = p.words.length;
+  if(!confirm('전체 '+total+'개 단어에 예문 3개씩 생성할까요?\n(기존 예문도 덮어씁니다)')) return;
+
+  const progressEl = document.createElement('div');
+  progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1E3A5F;color:#fff;padding:14px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:200px';
+  document.body.appendChild(progressEl);
+  const upd = (cur,msg) => {
+    progressEl.innerHTML = '<div>'+(msg||'📖 예문 생성 중...')+'</div><div style="margin-top:6px;background:rgba(255,255,255,.2);border-radius:4px;height:6px"><div style="height:100%;background:#60A5FA;border-radius:4px;width:'+Math.round(cur/total*100)+'%;transition:width .3s"></div></div><div style="font-size:11px;margin-top:4px;opacity:.7">'+cur+'/'+total+'</div>';
+  };
+  upd(0);
+  let done=0,failed=0;
+  const batchSize=15;
+
+  for(let i=0;i<p.words.length;i+=batchSize){
+    const batch=p.words.slice(i,i+batchSize);
+    const wordList=batch.map(w=>w.en+' ('+w.kr+')').join('\n');
+    try{
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:[{role:'user',content:'다음 영단어 각각에 영어 예문을 3개씩 만들어줘.\n\n단어 목록:\n'+wordList+'\n\n규칙:\n- 각 예문에 해당 단어 포함\n- 짧고 자연스러운 문장\n- JSON만 반환\n\n형식: {"단어":["예문1","예문2","예문3"],...}'}]})
+      });
+      if(!resp.ok) throw new Error('API '+resp.status);
+      const data=await resp.json();
+      const text=(data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+      const jm=text.match(/\{[\s\S]+\}/);
+      if(!jm) throw new Error('JSON 없음');
+      const result=JSON.parse(jm[0]);
+      for(const w of batch){
+        const exArr=result[w.en]||result[w.en.toLowerCase()];
+        if(exArr&&Array.isArray(exArr)&&exArr.length>=1){w.exList=exArr.slice(0,3);w.ex=w.exList[0];done++;}
+        else failed++;
+      }
+    }catch(e){console.error('배치 실패:',e.message);failed+=batch.length;}
+    upd(Math.min(i+batchSize,total));
+    await new Promise(r=>setTimeout(r,200));
+  }
+  upd(total,'💾 Firebase 저장 중...');
+  try{
+    await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    progressEl.remove();
+    toast('✅ 완료! '+done+'개 성공 / '+failed+'개 실패','ok');
+    showPackWordTab('list');
+  }catch(e){progressEl.remove();toast('저장 오류: '+e.message,'err');}
+}
+
 async function uploadLocalPackToFirebase(packId) {
   const packs = window._adminPacks||[];
   const p = packs.find(x=>x.id===packId);

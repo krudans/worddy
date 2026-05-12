@@ -485,13 +485,7 @@ async function rDB(){
       <!-- XP 상위 회원 -->
       <div class="card">
         <div class="ct">🏆 XP 상위 회원</div>
-        ${activeUsers.slice(0,8).map((u,i)=>`
-          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F3F4F6">
-            <div style="width:20px;text-align:center;font-size:12px;font-weight:800;color:${i<3?'#D97706':'#9CA3AF'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
-            <div style="font-size:13px;flex:1;font-weight:600">${u.nick||'익명'}</div>
-            <div style="font-size:11px;color:#7C3AED;font-weight:700">⚡${u.xp.toLocaleString()}</div>
-            <div style="font-size:11px;color:#E65100">🔥${u.streak}일</div>
-          </div>`).join('')}
+        ${activeUsers.slice(0,8).map(function(u,i){return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F3F4F6"><div style="width:20px;text-align:center;font-size:12px;font-weight:800;color:'+(i<3?'#D97706':'#9CA3AF')+'">'+(i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'')+'</div><div style="font-size:13px;flex:1;font-weight:600">'+(u.nick||'익명')+'</div><div style="font-size:11px;color:#7C3AED;font-weight:700">⚡'+u.xp.toLocaleString()+'</div><div style="font-size:11px;color:#E65100">🔥'+u.streak+'일</div></div>';}).join('')}
         ${activeUsers.length===0?'<div style="text-align:center;padding:20px;color:#9CA3AF">회원 없음</div>':''}
       </div>
 
@@ -520,15 +514,7 @@ async function rDB(){
       <div class="card">
         <div class="ct">🛒 마켓팩 카테고리</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(cat=>{
-            const cnt=packs.filter(p=>p.cat===cat).length;
-            const wc=packs.filter(p=>p.cat===cat).reduce((a,p)=>a+(p.words?.length||0),0);
-            return `<div style="background:#F9FAFB;border-radius:10px;padding:8px;cursor:pointer" onclick="T('pk')">
-              <div style="font-size:11px;font-weight:700;color:#374151">${cat}</div>
-              <div style="font-size:13px;font-weight:900;color:#1E5FA5">${cnt}팩</div>
-              <div style="font-size:10px;color:#9CA3AF">${wc}단어</div>
-            </div>`;
-          }).join('')}
+          ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(function(cat){const cnt=packs.filter(function(p){return p.cat===cat;}).length;const wc=packs.filter(function(p){return p.cat===cat;}).reduce(function(acc,p){return acc+(p.words?p.words.length:0);},0);return '<div style="background:#F9FAFB;border-radius:10px;padding:8px;cursor:pointer" onclick="T(\'pk\')"><div style="font-size:11px;font-weight:700;color:#374151">'+cat+'</div><div style="font-size:13px;font-weight:900;color:#1E5FA5">'+cnt+'팩</div><div style="font-size:10px;color:#9CA3AF">'+wc+'단어</div></div>';}).join('')}
         </div>
       </div>
     </div>`;
@@ -3702,6 +3688,38 @@ function handleBFImageUpload(event) {
       const svgWrap = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><image href="${b64}" x="0" y="0" width="120" height="120" preserveAspectRatio="xMidYMid meet"/></svg>`;
       const ta = document.getElementById('bf-svg');
       if(ta) { ta.value = svgWrap; updateBFPreview(); }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function handleBFFileUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  if(file.type === 'image/svg+xml' || file.name.endsWith('.svg')) {
+    reader.onload = function(e) {
+      let svg = e.target.result;
+      svg = svg.replace(/width="[^"]*"/g,'').replace(/height="[^"]*"/g,'');
+      if(!svg.includes('viewBox')) svg = svg.replace(/<svg/, '<svg viewBox="0 0 120 120"');
+      const ta = document.getElementById('bf-svg');
+      if(ta) { ta.value = svg; }
+      const sa = document.getElementById('bf-svg-area');
+      if(sa) sa.style.display = 'block';
+      updateBFPreview();
+      if(typeof toast === 'function') toast('✅ SVG 로드됨','ok');
+    };
+    reader.readAsText(file);
+  } else {
+    reader.onload = function(e) {
+      const b64 = e.target.result;
+      const svgWrap = '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><image href="'+b64+'" x="0" y="0" width="120" height="120" preserveAspectRatio="xMidYMid meet"/></svg>';
+      const ta = document.getElementById('bf-svg');
+      if(ta) { ta.value = svgWrap; }
+      const sa = document.getElementById('bf-svg-area');
+      if(sa) sa.style.display = 'block';
+      updateBFPreview();
+      if(typeof toast === 'function') toast('✅ 이미지 로드됨','ok');
     };
     reader.readAsDataURL(file);
   }

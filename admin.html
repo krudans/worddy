@@ -385,7 +385,16 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
 <script>
 // ── Google 로그인 ──
 async function rDB(){
-  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">대시보드 로딩 중...</div>';
+  const mi = document.getElementById('main-inner');
+  if(!mi) return;
+  mi.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px"><div style="font-size:24px;margin-bottom:8px">⏳</div>대시보드 로딩 중...</div>';
+  
+  // Firebase 연결 확인
+  if(typeof db==='undefined'||!db) {
+    mi.innerHTML='<div style="text-align:center;padding:40px;color:#EF4444"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-weight:700">Firebase 연결 안됨</div><div style="font-size:12px;margin-top:6px;color:#9CA3AF">로그인 후 다시 시도해주세요</div><button onclick="rDB()" class="btn bg" style="margin-top:14px">🔄 다시 시도</button></div>';
+    return;
+  }
+  
   let uc=0, tu=0, wu=0, pc=0, totalXP=0, avgStreak=0, activeUsers=[];
   const td=today();
   const wa=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
@@ -405,7 +414,7 @@ async function rDB(){
     });
     avgStreak = uc ? Math.round(avgStreak/uc) : 0;
     activeUsers.sort((a,b)=>b.xp-a.xp);
-  } catch(e) {}
+  } catch(e) { console.error('users 로드 실패:',e); }
   try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
 
   // 팩 단어수 정확히 집계
@@ -425,7 +434,7 @@ async function rDB(){
   try { const xd=await db.collection('settings').doc('xpConfig').get(); if(xd.exists) xpcfg=xd.data(); } catch(e){}
   const xpMult = xpcfg.xpMultiplier||1;
 
-  document.getElementById('main-inner').innerHTML=`
+  mi.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">📊 대시보드</h2>
       <div style="display:flex;align-items:center;gap:10px">
@@ -1437,9 +1446,15 @@ async function rBF() {
     ${allBF.map((bf,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
       <td style="padding:8px 12px;text-align:center">
         <div style="width:56px;height:56px;margin:0 auto;display:flex;align-items:center;justify-content:center;background:#F9FAFB;border-radius:8px;overflow:hidden">
-          ${bf.svgCode
-            ? bf.svgCode.replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 120"').replace(/<svg/,'<svg width="54" height="54" style="display:block" preserveAspectRatio="xMidYMid meet"')
-            : '<div style="font-size:24px">🦋</div>'}
+          ${(()=>{
+              if(!bf.svgCode) return '<div style="font-size:28px;line-height:1">🦋</div>';
+              const s = bf.svgCode
+                .replace(/width="[^"]*"/g,'')
+                .replace(/height="[^"]*"/g,'')
+                .replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 120"')
+                .replace(/<svg/, '<svg width="56" height="56" style="display:block;flex-shrink:0" preserveAspectRatio="xMidYMid meet"');
+              return s;
+            })()}
         </div>
       </td>
       <td style="padding:8px 12px">
@@ -1471,74 +1486,98 @@ async function rBF() {
 
 function showAddBF(bf){
   bf=bf||{};
+  const isEdit=!!bf.id;
   const mr=document.getElementById('mr');
-  const rareOpts=['⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'];
-  const colorOpts=['#4A90D9','#2D7A5C','#38BDF8','#E5E7EB','#DC2626','#0066FF','#3B82F6','#8B5E3C','#795548','#E67E22','#C62828','#7C3AED','#1D4ED8','#F97316','#007ACC','#8B6914','#00BCD4','#00ACC1','#FBBF24','#F5F5F5','#FDE047','#E8730E','#6B21A8','#0f0f0f','#1E40AF','#1a1a1a','#FEF9C3','#F8F8F5','#E8820A'];
-  
-  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:92vh;overflow-y:auto;min-width:340px">
-    <div style="font-size:16px;font-weight:900;margin-bottom:10px">${bf.id?'🦋 나비 수정':'🦋 나비 추가'}</div>
-    ${bf._builtin?'<div style="background:#EFF6FF;border-radius:8px;padding:8px 12px;font-size:11px;color:#1E40AF;margin-bottom:10px">💡 기본 나비 수정 시 Firebase DB에 저장됩니다.</div>':''}
-    
-    <!-- 입력 항목 표 -->
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
-      <colgroup><col style="width:90px"><col></colgroup>
-      <tbody>
-        <tr style="border-bottom:1px solid #F3F4F6">
-          <td style="padding:8px 4px;font-size:12px;font-weight:700;color:#374151">ID</td>
-          <td style="padding:8px 4px"><input id="bf-id" placeholder="예: b031" value="${bf.id||''}" ${bf.id?'readonly style="background:#F9FAFB;padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;width:100%;font-size:13px"':'style="padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;width:100%;font-size:13px"'}></td>
-        </tr>
-        <tr style="border-bottom:1px solid #F3F4F6">
-          <td style="padding:8px 4px;font-size:12px;font-weight:700;color:#374151">한글명 *</td>
-          <td style="padding:8px 4px"><input id="bf-name" placeholder="예: 호랑나비" value="${bf.name||''}" style="padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;width:100%;font-size:13px"></td>
-        </tr>
-        <tr style="border-bottom:1px solid #F3F4F6">
-          <td style="padding:8px 4px;font-size:12px;font-weight:700;color:#374151">영문명</td>
-          <td style="padding:8px 4px"><input id="bf-en" placeholder="예: Swallowtail" value="${bf.enName||''}" style="padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;width:100%;font-size:13px"></td>
-        </tr>
-        <tr style="border-bottom:1px solid #F3F4F6">
-          <td style="padding:8px 4px;font-size:12px;font-weight:700;color:#374151">희귀도</td>
-          <td style="padding:8px 4px"><select id="bf-rare" style="padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;width:100%;font-size:13px">${rareOpts.map(r=>'<option value="'+r+'"'+(bf.rare===r?' selected':'')+'>'+r+'</option>').join('')}</select></td>
-        </tr>
-        <tr style="border-bottom:1px solid #F3F4F6">
-          <td style="padding:8px 4px;font-size:12px;font-weight:700;color:#374151">대표색상</td>
-          <td style="padding:8px 4px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <input type="color" id="bf-color-pick" value="${bf.color||'#4A90D9'}" oninput="document.getElementById('bf-color').value=this.value" style="width:36px;height:36px;border:none;cursor:pointer;border-radius:6px">
-              <input id="bf-color" placeholder="#4A90D9" value="${bf.color||'#4A90D9'}" oninput="document.getElementById('bf-color-pick').value=this.value" style="padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;flex:1;font-size:13px;font-family:monospace">
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:8px 4px;font-size:12px;font-weight:700;color:#374151">설명</td>
-          <td style="padding:8px 4px"><input id="bf-desc" placeholder="짧은 특징 설명" value="${bf.desc||''}" style="padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;width:100%;font-size:13px"></td>
-        </tr>
-      </tbody>
-    </table>
-    
-    <!-- SVG 미리보기 + 입력 -->
-    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px">
-      SVG 이미지 코드
-      <span style="font-size:10px;font-weight:400;color:#9CA3AF;margin-left:6px">없으면 비워두세요 (🦋 기본 표시)</span>
+  const rareOpts=['⭐','⭐⭐','⭐⭐⭐','⭐⭐⭐⭐','⭐⭐⭐⭐⭐'];
+
+  mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;overflow-y:auto;max-height:92vh;max-width:500px;width:95%">
+    <div style="padding:16px 16px 12px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:10">
+      <div style="font-size:17px;font-weight:900;color:#111">${isEdit?'🦋 나비 수정':'🦋 나비 추가'}</div>
+      <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-start">
-      <div id="bf-preview" style="width:90px;height:68px;flex-shrink:0;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#FAFAFA;overflow:hidden">
-        ${bf.svgCode?bf.svgCode.replace(/viewBox="[^"]*"/g,'viewBox="0 0 100 100"').replace(/<svg/,'<svg width="100" height="100" style="display:block" '):'<span style="font-size:28px;opacity:0.3">🦋</span>'}
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <!-- 이미지 -->
+      <div style="background:#F9FAFB;border-radius:14px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:8px">나비 이미지</div>
+        <div id="bf-preview" style="width:100px;height:100px;margin:0 auto 10px;border-radius:12px;border:2px solid #E5E7EB;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden">
+          ${bf.svgCode ? (()=>{return bf.svgCode.replace(/width="[^"]*"/g,'').replace(/height="[^"]*"/g,'').replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 120"').replace(/<svg/,'<svg width="96" height="96" preserveAspectRatio="xMidYMid meet"');})() : '<span style="font-size:40px">🦋</span>'}
+        </div>
+        <input type="file" id="bf-file-input" accept="image/svg+xml,image/*" style="display:none" onchange="handleBFFileUpload(event)">
+        <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+          <button onclick="document.getElementById('bf-file-input').click()" style="background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer">📁 파일 불러오기</button>
+          <button onclick="document.getElementById('bf-svg-area').style.display=document.getElementById('bf-svg-area').style.display==='none'?'block':'none'" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#374151">SVG 코드</button>
+          ${bf.svgCode?`<button onclick="document.getElementById('bf-svg').value='';document.getElementById('bf-preview').innerHTML='<span style=&quot;font-size:40px&quot;>🦋</span>'" style="background:#FEF2F2;border:none;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#DC2626">제거</button>`:''}
+        </div>
+        <div id="bf-svg-area" style="display:none;margin-top:10px">
+          <textarea id="bf-svg" rows="4" placeholder="SVG 코드 직접 입력..." oninput="updateBFPreview()" style="width:100%;font-size:11px;font-family:monospace;border:1.5px solid #E5E7EB;border-radius:8px;padding:8px;resize:vertical;outline:none;box-sizing:border-box">${bf.svgCode||''}</textarea>
+        </div>
       </div>
-      <div style="flex:1">
-        <textarea id="bf-svg" rows="4" placeholder="<svg viewBox=&quot;0 0 120 90&quot; ...>...</svg>" style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid #E5E7EB;font-size:10px;font-family:monospace;resize:vertical" oninput="document.getElementById('bf-preview').innerHTML=this.value?this.value.replace('<svg ','<svg width=\'88\' height=\'66\' '):'<span style=\'font-size:28px;opacity:0.3\'>🦋</span>'">${bf.svgCode||''}</textarea>
+      <!-- 기본 정보 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">한국어 이름 *</label>
+          <input id="bf-name" value="${bf.name||''}" placeholder="호랑나비" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">영어 이름</label>
+          <input id="bf-enName" value="${bf.enName||''}" placeholder="Swallowtail" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box"></div>
       </div>
-    </div>
-    
-    <!-- 저장/취소 버튼 -->
-    <div style="display:flex;gap:8px">
-      <button onclick="saveBF('${bf.id||''}')" class="btn bb" style="flex:2">💾 저장</button>
-      <button onclick="cm()" class="btn bgr" style="flex:1">✕ 취소</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">학명</label>
+          <input id="bf-sci" value="${bf.sci||''}" placeholder="학명 (이탤릭)" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;font-style:italic;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">레어도</label>
+          <select id="bf-rare" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+            ${rareOpts.map(r=>`<option value="${r}" ${(bf.rare||'⭐⭐')===r?'selected':''}>${r}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">서식지</label>
+          <input id="bf-habitat" value="${bf.habitat||''}" placeholder="한국 산지" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">활동 시기</label>
+          <input id="bf-season" value="${bf.season||''}" placeholder="5~9월" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;outline:none;box-sizing:border-box"></div>
+      </div>
+      <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">설명</label>
+        <textarea id="bf-desc" rows="3" placeholder="나비에 대한 설명..." style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;outline:none;box-sizing:border-box;resize:vertical;font-family:inherit">${bf.desc||''}</textarea></div>
+      <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">환경 메시지</label>
+        <textarea id="bf-msg" rows="2" placeholder="환경보호 메시지..." style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;outline:none;box-sizing:border-box;resize:vertical;font-family:inherit">${bf.msg||''}</textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">위협 요인</label>
+          <input id="bf-threat" value="${bf.threat||''}" placeholder="서식지 파괴" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">보호 등급</label>
+          <input id="bf-protect" value="${bf.protect||''}" placeholder="LC / VU / EN" style="width:100%;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:12px;outline:none;box-sizing:border-box"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button onclick="cm()" style="flex:1;padding:13px;background:#F3F4F6;color:#374151;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer">취소</button>
+        <button onclick="saveBF(${isEdit?`'${bf.id||''}'`:'null'})" style="flex:2;padding:13px;background:#111;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer">${isEdit?'수정 저장':'등록하기'}</button>
+      </div>
     </div>
   </div></div>`;
 }
 
 
-async function saveBF(id){const bid=document.getElementById('bf-id').value.trim();const name=document.getElementById('bf-name').value.trim();if(!bid||!name){toast('ID와 이름 필수','err');return;}const data={id:bid,name,enName:document.getElementById('bf-en').value.trim(),rare:document.getElementById('bf-rare').value,color:document.getElementById('bf-color').value||'#4A90D9',desc:document.getElementById('bf-desc').value.trim(),svgCode:document.getElementById('bf-svg').value.trim(),updatedAt:new Date().toISOString()};try{await db.collection('butterflies').doc(bid).set(data,{merge:true});toast('✅ 저장');cm();rBF();}catch(e){toast('오류: '+e.message,'err');}}
+async function saveBF(id){
+  const name = (document.getElementById('bf-name')?.value||'').trim();
+  if(!name){toast('이름은 필수입니다','err');return;}
+  // id 생성: 수정이면 기존 id, 신규면 이름 기반
+  const bid = id || ('bf_'+name.replace(/[^a-zA-Z0-9가-힣]/g,'_')+'_'+Date.now().toString(36));
+  const svgCode = (document.getElementById('bf-svg')?.value||'').trim();
+  const data={
+    id:bid, name,
+    enName:(document.getElementById('bf-enName')?.value||'').trim(),
+    sci:(document.getElementById('bf-sci')?.value||'').trim(),
+    rare:document.getElementById('bf-rare')?.value||'⭐⭐',
+    habitat:(document.getElementById('bf-habitat')?.value||'').trim(),
+    season:(document.getElementById('bf-season')?.value||'').trim(),
+    desc:(document.getElementById('bf-desc')?.value||'').trim(),
+    msg:(document.getElementById('bf-msg')?.value||'').trim(),
+    threat:(document.getElementById('bf-threat')?.value||'').trim(),
+    protect:(document.getElementById('bf-protect')?.value||'').trim(),
+    svgCode: svgCode,
+    updatedAt: new Date().toISOString()
+  };
+  try{
+    await db.collection('butterflies').doc(bid).set(data,{merge:true});
+    toast('✅ '+(id?'수정':'등록')+' 완료','ok');
+    cm(); rBF();
+  }catch(e){toast('저장 실패: '+e.message,'err');}
+}
 async function editBF(id){
   // Firebase에서 먼저 찾기
   try{
@@ -3631,12 +3670,16 @@ function updateBFPreview() {
   const preview = document.getElementById('bf-preview');
   if(!preview) return;
   if(svg.trim().startsWith('<svg')) {
-    const fixed = svg
+    let fixed = svg
+      .replace(/width="[^"]*"/g,'')
+      .replace(/height="[^"]*"/g,'')
       .replace(/viewBox="[^"]*"/g,'viewBox="0 0 120 120"')
-      .replace(/<svg/,'<svg width="86" height="86" preserveAspectRatio="xMidYMid meet"');
+      .replace(/<svg/, '<svg width="96" height="96" style="display:block" preserveAspectRatio="xMidYMid meet"');
     preview.innerHTML = fixed;
+  } else if(svg.includes('data:image')) {
+    preview.innerHTML = '<img src="'+svg+'" style="width:96px;height:96px;object-fit:contain">';
   } else {
-    preview.innerHTML = '<div style="font-size:32px;opacity:.4">🦋</div>';
+    preview.innerHTML = '<span style="font-size:40px">🦋</span>';
   }
 }
 

@@ -1897,10 +1897,25 @@ function rMarket() {
             : `<button onclick="downloadPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
         </div>
         ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
-        <div id="preview-${pk.id}" style="display:none;margin-top:8px;display:none">
-          <div style="display:flex;flex-wrap:wrap;gap:4px">
-            ${(pk.words||[]).slice(0,10).map(w=>`<span style="background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text1,var(--text1,#111111))">${w.en} <span style="color:var(--text3,var(--text3,#9CA3AF))">${w.kr}</span></span>`).join('')}
-            ${wordCount>10?`<span style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF))">+${wordCount-10}개 더</span>`:''}
+        <div id="preview-${pk.id}" style="display:none;margin-top:10px">
+          <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">영어</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">한국어</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
+              </tr></thead>
+              <tbody>
+              ${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
+                <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td>
+                <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td>
+                <td style="padding:6px 8px;color:#6B7280;max-width:200px">
+                  ${(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.map(e=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px">${e}</div>`).join('');})()}
+                </td>
+              </tr>`).join('')}
+              ${wordCount>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${wordCount-10}개 더</td></tr>`:''}
+              </tbody>
+            </table>
           </div>
         </div>`:''}
       </div>`;
@@ -8657,75 +8672,87 @@ function rModes() {
 function startSGame(id){startGameW(id,S.words.length>=2?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));}
 
 function rAdd() {
-  // 전체 단어장 목록 (기본 + 추가)
   const allBooks = [
     {name:'내 단어장', cnt:S.words.length},
-    ...(S.books||[]).map(b=>({name:b.name, cnt:b.words.length}))
+    ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))
   ];
   const curBook = S.currentBook||'내 단어장';
 
-  return `<div class="pad">${cbrow('새 단어 추가! AI가 자동완성해줄게! ✨',S.lid)}
-
-    <!-- 단어장 선택 -->
-    <div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;margin-bottom:12px">
-      <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:8px">📚 추가할 단어장 선택</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${allBooks.map(b=>`
-        <button onclick="switchBook('${b.name.replace(/'/g,"\\'")}');go('mybooks','add')"
-          style="padding:8px 14px;border-radius:20px;border:1.5px solid ${b.name===curBook?'#1E5FA5':'#E5E7EB'};background:${b.name===curBook?'#1E5FA5':'#fff'};font-size:12px;font-weight:700;cursor:pointer;color:${b.name===curBook?'#fff':'#6B7280'}">
-          ${b.name} <span style="opacity:.7">${b.cnt}</span>
-        </button>`).join('')}
-        <button onclick="showBooksModal()"
-          style="padding:8px 14px;border-radius:20px;border:1.5px dashed #D1D5DB;background:#F9FAFB;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF">
-          ＋ 새 단어장
-        </button>
-      </div>
-      <div style="font-size:11px;color:#1E5FA5;margin-top:8px;font-weight:600">
-        현재: <strong>${curBook}</strong> (${allBooks.find(b=>b.name===curBook)?.cnt||0}개)에 추가됩니다
-      </div>
+  return `<div style="display:flex;flex-direction:column;height:100%;background:#F8F9FA">
+    <!-- 헤더 -->
+    <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #EFEFEF;flex-shrink:0">
+      <div style="font-size:18px;font-weight:900;color:#1A1A2E">단어 추가</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:2px">AI 자동완성으로 빠르게</div>
     </div>
 
-    <div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px">
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;gap:8px">
-          <input id="ne" placeholder="영단어 입력..." value="${S.nEn}" oninput="S.nEn=this.value" style="flex:1;font-family:monospace;font-size:16px;font-weight:700">
-          <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:#7C3AED;color:#fff;border:none;border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">${S.ai?'..':'✨AI'}</button>
+    <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px">
+
+      <!-- 단어장 선택 드롭다운 -->
+      <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:6px">추가할 단어장</div>
+        <div style="position:relative">
+          <select onchange="switchBook(this.value);go('mybooks','add')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
+            ${allBooks.map(b=>`<option value="${b.name}" ${b.name===curBook?'selected':''}>${b.name} (${b.cnt}개)</option>`).join('')}
+          </select>
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
         </div>
-        <div style="display:flex;gap:6px">
-          <button onclick="openNaverDict()" style="background:#03C75A;color:#fff;border:none;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">N 사전</button>
-          <input id="nk2" placeholder="한국어 뜻" value="${S.nKr}" oninput="S.nKr=this.value" style="flex:1">
-        </div>
-        <!-- 이미지/이모지 선택 -->
-        <div style="display:flex;gap:8px;align-items:center">
-          <div id="word-img-preview" onclick="showImgPicker()" style="width:48px;height:48px;border-radius:12px;background:#F9FAFB;border:1.5px solid #E5E7EB;display:flex;align-items:center;justify-content:center;font-size:26px;cursor:pointer;flex-shrink:0">${S.nImg||'📝'}</div>
-          <div style="flex:1">
-            <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">연상 이미지 (탭하면 변경)</div>
-            <div style="display:flex;gap:4px;flex-wrap:wrap">
-              ${['📝','🌟','💡','🔥','❤️','🎯','⚡','🌈','🏆','🎨'].map(e=>`<button onclick="S.nImg='${e}';document.getElementById('word-img-preview').textContent='${e}'" style="width:30px;height:30px;border-radius:8px;border:1px solid #E5E7EB;background:#fff;cursor:pointer;font-size:16px">${e}</button>`).join('')}
-            </div>
+      </div>
+
+      <!-- 단어 입력 카드 -->
+      <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <!-- 영단어 + AI 자동완성 -->
+        <div style="margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:5px">영단어 *</div>
+          <div style="display:flex;gap:8px">
+            <input id="ne" placeholder="apple, beautiful, run..." value="${S.nEn||''}" oninput="S.nEn=this.value"
+              style="flex:1;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:16px;font-weight:700;font-family:monospace;outline:none;color:#111"
+              onkeydown="if(event.key==='Enter'){document.getElementById('nk2').focus()}">
+            <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
+              ${S.ai?'⏳ AI 중...':'✨ AI 자동완성'}
+            </button>
           </div>
         </div>
-        ${S.nAiData?`<div style="background:#F8F9FA;border-radius:12px;padding:10px;font-size:12px;color:#374151">
-          ${S.nAiData.ph?`<div style="color:#9CA3AF;margin-bottom:4px">${S.nAiData.ph}</div>`:''}
-          ${S.nAiData.ex?`<div style="color:#6B7280;font-style:italic">"${S.nAiData.ex}"</div>`:''}
-          ${S.nAiData.tip?`<div style="color:#E65100;margin-top:4px">💡 ${S.nAiData.tip}</div>`:''}
-        </div>`:''}
-        <button class="btn bb" onclick="addW()">➕ 단어 추가</button>
+
+        <!-- 한국어 뜻 -->
+        <div style="margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <div style="font-size:11px;font-weight:700;color:#9CA3AF">한국어 뜻 *</div>
+            <button onclick="openNaverDict()" style="background:#03C75A;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer">네이버 사전</button>
+          </div>
+          <input id="nk2" placeholder="예: 사과, 아름다운, 달리다" value="${S.nKr||''}" oninput="S.nKr=this.value"
+            style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box">
+        </div>
+
+        <!-- 발음기호 -->
+        <div style="margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:5px">발음기호</div>
+          <input id="nph" placeholder="예: [ˈæpəl]" value="${S.nPh||''}" oninput="S.nPh=this.value"
+            style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;font-family:monospace;outline:none;box-sizing:border-box">
+        </div>
+
+        <!-- 예문 1,2,3 -->
+        ${[1,2,3].map(n=>`
+        <div style="margin-bottom:${n<3?'10px':'0'}">
+          <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:5px">예문 ${n}${n===1?' *':' (선택)'}</div>
+          <input id="nex${n}" placeholder="예문을 입력하세요${n>1?' (선택)':''}" value="${S['nEx'+n]||''}" oninput="S['nEx'+n]=this.value"
+            style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>`).join('')}
       </div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:18px;border:1.5px solid #E5E7EB;padding:14px">
-      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">📁 파일·텍스트로 추가</div>
-      <div class="g2">
-        <button onclick="document.getElementById('pu').click()" style="background:#FFF1F2;border:1.5px solid #FECDD3;border-radius:12px;padding:14px;font-size:13px;font-weight:700;cursor:pointer;color:#DC2626">📄 PDF</button>
-        <button onclick="document.getElementById('iu').click()" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:14px;font-size:13px;font-weight:700;cursor:pointer;color:#1E5FA5">🖼️ 이미지</button>
-        <button onclick="document.getElementById('cu').click()" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:14px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A">📷 사진</button>
-        <button onclick="blkModal()" style="background:#FDF4FF;border:1.5px solid #E9D5FF;border-radius:12px;padding:14px;font-size:13px;font-weight:700;cursor:pointer;color:#7C3AED">📋 붙여넣기</button>
+
+      <!-- 이미지 선택 카드 -->
+      <div style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:10px">이모지 선택 (선택)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${['📚','🔤','✏️','📝','💡','🌟','🎯','🔥','💎','🌈','🎪','🦋','🌺','🍎','🐾','🎵','🚀','🏆'].map(em=>`
+          <button onclick="S.nImg='${em}';go('mybooks','add')" style="width:40px;height:40px;border-radius:10px;border:2px solid ${S.nImg===em?'#1E5FA5':'#E5E7EB'};background:${S.nImg===em?'#EFF6FF':'#fff'};font-size:20px;cursor:pointer">${em}</button>
+          `).join('')}
+        </div>
       </div>
-      <button onclick="urlExtractModal()" style="background:#FFF8E1;border:1.5px solid #FFE082;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;color:#E65100;width:100%;margin-top:8px">🔗 URL·텍스트에서 단어 추출</button>
-      <input type="file" id="pu" accept=".pdf" style="display:none" onchange="handleFile(this)">
-      <input type="file" id="iu" accept="image/*" style="display:none" onchange="handleFile(this)">
-      <input type="file" id="cu" accept="image/*" capture="camera" style="display:none" onchange="handleFile(this)">
-      ${S.ai?`<div style="text-align:center;padding:12px;font-size:13px;color:#7C3AED">AI가 분석 중... ⏳</div>`:''}
+
+      <!-- 저장 버튼 -->
+      <button onclick="addW()" style="width:100%;padding:15px;background:linear-gradient(135deg,#1A1A2E,#374151);color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:-.3px">
+        + 단어 추가하기
+      </button>
     </div>
   </div>`;
 }
@@ -8787,26 +8814,40 @@ async function aiMFull() {
 const aiM = aiMFull;
 
 function addW(){
-  const en=(document.getElementById('ne')?.value||S.nEn).trim();
-  const kr=(document.getElementById('nk2')?.value||S.nKr).trim();
+  const en=(document.getElementById('ne')?.value||S.nEn||'').trim();
+  const kr=(document.getElementById('nk2')?.value||S.nKr||'').trim();
+  const ph=(document.getElementById('nph')?.value||S.nPh||'').trim();
+  const ex1=(document.getElementById('nex1')?.value||S.nEx1||'').trim();
+  const ex2=(document.getElementById('nex2')?.value||S.nEx2||'').trim();
+  const ex3=(document.getElementById('nex3')?.value||S.nEx3||'').trim();
   if(!en||!kr){toast('영단어와 뜻 입력');return;}
   if(S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){toast('이미 있는 단어');return;}
   const aiD=S.nAiData||{};
-  const newWord={en,kr,ph:aiD.ph||'',ex:aiD.ex||en+'.',tip:aiD.tip||en+' = '+kr,meanings:[kr],img:S.nImg||aiD.img||'📝'};
-  S.words.push(newWord);
+  const exList=[ex1,ex2,ex3].filter(Boolean);
+  const newWord={en,kr,
+    ph:ph||aiD.ph||'',
+    ex:exList[0]||aiD.ex||'',
+    exList:exList.length?exList:(aiD.exList||[]),
+    tip:aiD.tip||en+' = '+kr,
+    meanings:[kr],
+    img:S.nImg||aiD.img||'📝'
+  };
 
-  // 현재 단어장이 기본이 아니면 books에도 저장
+  // 현재 단어장에 저장
   if(S.currentBook && S.currentBook!=='내 단어장') {
     const bk = S.books.find(b=>b.name===S.currentBook);
-    if(bk) bk.words = [...S.words];
+    if(bk) { if(!bk.words) bk.words=[]; bk.words.push(newWord); }
+    else S.words.push(newWord);
+  } else {
+    S.words.push(newWord);
   }
 
   // SRS 자동 등록
   if(!S.srsMap[en]) srsRate(en, 1);
-  S.nEn=''; S.nKr=''; S.nAiData=null; S.nImg='📝';
+  S.nEn=''; S.nKr=''; S.nPh=''; S.nEx1=''; S.nEx2=''; S.nEx3=''; S.nAiData=null; S.nImg='📝';
   sv(); SFX.play('correct'); logStudy('words');
-  toast(`✅ "${en}" → [${S.currentBook||'내 단어장'}] 추가! (${S.words.length}개)`);
-  go();
+  toast(`✅ "${en}" → [${S.currentBook||'내 단어장'}] 추가! (${(S.currentBook&&S.currentBook!=='내 단어장'?(S.books.find(b=>b.name===S.currentBook)?.words||[]).length:S.words.length)}개)`);
+  go('mybooks','add');
 }
 
 async function handleFile(input){
@@ -10051,8 +10092,8 @@ function rProfile(){
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
-      ${[['7일',totalWords7+'개'],['30일',totalWords30+'개'],['일평균',avgDay7+'개'],['총학습',Math.floor((S._totalStudyMins||0)/60)+'시간']].map(([lb,v])=>
-        '<div style="text-align:center;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px;padding:8px"><div style="font-size:16px;font-weight:900;color:var(--text1,var(--text1,#111111))">'+v+'</div><div style="font-size:9px;color:var(--text3,var(--text3,#9CA3AF))">'+lb+'</div></div>'
+      ${(()=>{const tw7=last7?last7.reduce((s,d)=>s+d.words,0):0;const last30arr=Array.from({length:30},(_,i2)=>{const d2=new Date();d2.setDate(d2.getDate()-29+i2);return ((S.studyLog||{})[new Date(d2.getTime()+9*3600000).toISOString().slice(0,10)]||{}).words||0;});const tw30=last30arr.reduce((s,v)=>s+v,0);const avg7=Math.round(tw7/7);return [['7일',tw7+'개'],['30일',tw30+'개'],['일평균',avg7+'개'],['총학습',Math.floor((S._totalStudyMins||0)/60)+'시간']].map(([lb,v])=>'<div style="text-align:center;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px;padding:8px"><div style="font-size:16px;font-weight:900;color:var(--text1,var(--text1,#111111))">\''+v+'\'</div><div style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF))">\''+lb+'\'</div></div>').join('');})()}
+    </div>
       ).join('')}
     </div>
     <div style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF));margin-bottom:4px">최근 30일 학습 단어</div>

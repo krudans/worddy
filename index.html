@@ -861,7 +861,19 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
 
 const lv = id => LEVELS.find(l=>l.id===id)||LEVELS[0];
 const shuf = a => [...a].sort(()=>Math.random()-.5);
-const pick = (a,n) => shuf(a).slice(0,n);
+const pick = (a,n) => {
+  if(!a||!a.length) return [];
+  n = Math.min(n, a.length);
+  const gk = S.gameId||'default';
+  if(!S._gameUsed) S._gameUsed = {};
+  if(!S._gameUsed[gk]) S._gameUsed[gk] = [];
+  const used = new Set(S._gameUsed[gk]);
+  let pool = a.filter(w=>!used.has(w.en));
+  if(pool.length < n) { S._gameUsed[gk]=[]; pool=[...a]; }
+  const sel = pool.sort(()=>Math.random()-.5).slice(0,n);
+  sel.forEach(w=>S._gameUsed[gk].push(w.en));
+  return sel;
+};
 const rnd = a => a[Math.floor(Math.random()*a.length)];
 
 // ── 출석 체크 & 학습 기록 ──
@@ -1592,82 +1604,86 @@ function replaceCollection(removeIdx, btn) {
 
 // ── 캐릭터 돌보기 화면 ──
 function rPetCare() {
-  const pet = typeof getPetState==='function'?getPetState():{emoji:'😊'};
-  const petCol = (typeof PET_COLORS!=='undefined'&&typeof getPetColor==='function'&&PET_COLORS[getPetColor()])||{main:'#1E5FA5',light:'#DBEAFE'};
-  const full = S._petFull||0;
-  const happy = S._petHappy||0;
-  const lvInfo = lv(S.lid);
-  const nextEvol = getNextEvolution();
-  // 현재 레벨 xp 목표 기준으로 진행도 계산
-  const curLvForPct = LEVELS.find(l=>l.id===S.lid);
-  const xpTarget = curLvForPct ? (curLvForPct.xp||100) : 100;
+  const pet = typeof getPetState==='function' ? getPetState() : {emoji:'😊',mood:'좋음'};
+  const petCol = (typeof PET_COLORS!=='undefined' && typeof getPetColor==='function' && PET_COLORS[getPetColor()]) || {main:'#1E5FA5',light:'#DBEAFE',dark:'#1E3A5F'};
+  const lvInfo = (typeof lv==='function') ? lv(S.lid) : {emoji:'🥚',name:'알'};
+  const nextEvol = typeof getNextEvolution==='function' ? getNextEvolution() : null;
+  const curLv = (typeof LEVELS!=='undefined') ? LEVELS.find(l=>l.id===S.lid) : null;
+  const xpTarget = curLv ? (curLv.xp||100) : 100;
   const xpPct = Math.min(100, Math.round((S.xp||0)/xpTarget*100));
+  const canLevelUp = xpPct >= 100;
 
-  return `<div class="pad" style="padding-bottom:24px">
-    <!-- 캐릭터 메인 카드 -->
-    <div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:24px;text-align:center;color:#fff">
-      <div style="font-size:12px;opacity:.8;margin-bottom:8px">내 벌거지 · ${lvInfo.emoji} ${lvInfo.name}</div>
-      <div style="margin-bottom:12px">${charSVGAnimated(S.lid,90,pet.emoji==='😄'||pet.emoji==='😊'?'happy':pet.emoji==='😤'?'angry':pet.emoji==='💀'?'danger':pet.emoji==='😢'?'sad':'normal')}</div>
-      <div style="background:rgba(255,255,255,.15);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;margin-bottom:14px">${pet.mood}</div>
-      <!-- 수치 바 -->
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>🍎 배부름</span><span>${full}/10</span></div>
-          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;background:#fff;border-radius:6px;width:${full*10}%;transition:width .5s"></div>
-          </div>
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>🎮 기분</span><span>${happy}/10</span></div>
-          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;background:#FDE68A;border-radius:6px;width:${happy*10}%;transition:width .5s"></div>
-          </div>
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>⬆️ 진화</span><span>${xpPct}%</span></div>
-          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;background:#A78BFA;border-radius:6px;width:${xpPct}%;transition:width .5s"></div>
-          </div>
-        </div>
-      </div>
-    </div>
+  let html = '<div class="pad" style="padding-bottom:24px">';
 
-    <!-- XP 보유 표시 -->
-    <div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:14px;font-weight:800;color:var(--text1,#111)">보유 XP</span>
-      <span style="font-size:20px;font-weight:900;color:#7C3AED">⚡ ${S.xp||0}</span>
-    </div>
+  // ── 캐릭터 메인 카드 ──
+  html += '<div style="background:linear-gradient(160deg,'+petCol.main+','+( petCol.dark||petCol.main)+'cc);border-radius:24px;padding:24px;text-align:center;color:#fff;margin-bottom:10px">';
+  html += '<div style="font-size:12px;opacity:.8;margin-bottom:8px">내 벌거지 · '+lvInfo.emoji+' '+lvInfo.name+'</div>';
+  const mood = pet.emoji==='😄'||pet.emoji==='😊'?'happy':pet.emoji==='😤'?'angry':pet.emoji==='💀'?'danger':pet.emoji==='😢'?'sad':'normal';
+  html += '<div style="margin-bottom:12px">'+(typeof charSVGAnimated==='function'?charSVGAnimated(S.lid,90,mood):lvInfo.emoji)+'</div>';
+  html += '<div style="background:rgba(255,255,255,.15);border-radius:14px;padding:10px 14px;font-size:14px;font-weight:700;margin-bottom:16px">'+( pet.mood||'평온함')+'</div>';
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-        <div onclick="${xpPct>=100?'useXP(100,\'레벨업\')':'toast(\'XP를 더 모아야해!\')'}"
-          style="background:${xpPct>=100?'#F5F3FF':'#F9FAFB'};border-radius:14px;padding:14px;cursor:pointer;opacity:${xpPct>=100?1:0.5};border:1.5px solid ${xpPct>=100?'#7C3AED22':'#E5E7EB'};text-align:center">
-          <div style="font-size:32px;margin-bottom:6px">${nextEvol&&nextEvol.isFinal?'🦋':'⬆️'}</div>
-          <div style="font-size:13px;font-weight:800;color:#7C3AED">${nextEvol&&nextEvol.isFinal?'나비 뽑기!':'레벨업!'}</div>
-          <div style="font-size:11px;color:#6B7280">${xpPct>=100?(nextEvol&&nextEvol.isFinal?'나비 뽑기 준비완료! 🦋':'진화 준비 완료!'):'XP '+(lvInfo&&lvInfo.xp?(lvInfo.xp-(S.xp||0)):0)+'개 더 필요'}</div>
-          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-top:4px">XP ${lvInfo?lvInfo.xp:100}</div>
-        </div>
-        <div onclick="saveMyCharacter()" style="background:#F0FDF4;border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid #86EFAC;text-align:center">
-          <div style="font-size:22px;margin-bottom:4px">📸</div>
-          <div style="font-size:12px;font-weight:700;color:#16A34A">캐릭터 담기</div>
-          <div style="font-size:10px;color:#9CA3AF">이미지 저장</div>
-        </div>
-        <div onclick="useXP(50,'장식품')" style="background:#FFFBEB;border-radius:14px;padding:14px;cursor:pointer;opacity:${(S.xp||0)>=50?1:0.4};border:1.5px solid #D97706;text-align:center">
-          <div style="font-size:32px;margin-bottom:6px">🎀</div>
-          <div style="font-size:13px;font-weight:800;color:#D97706">장식품</div>
-          
-          <div style="font-size:11px;font-weight:700;color:#D97706;margin-top:4px">XP 50</div>
-        </div>
-      </div>
-    </div>
+  // XP 게이지
+  html += '<div>';
+  html += '<div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:4px"><span>⚡ XP</span><span>'+(S.xp||0)+' / '+xpTarget+'</span></div>';
+  html += '<div style="background:rgba(255,255,255,.25);border-radius:6px;height:10px;overflow:hidden">';
+  html += '<div style="height:100%;background:'+(canLevelUp?'#FFD600':'#fff')+';border-radius:6px;width:'+xpPct+'%;transition:width .5s"></div>';
+  html += '</div>';
+  if(canLevelUp) html += '<div style="font-size:11px;color:#FFD600;margin-top:4px;font-weight:700">✨ 레벨업 가능!</div>';
+  html += '</div></div>';
 
-    <!-- 도감에 담기 버튼 -->
-    <button onclick="addToCollectionConfirm({})" style="width:100%;background:var(--bg-card,var(--bg-card,#FFFFFF));color:#7C3AED;border:1.5px solid #7C3AED;border-radius:14px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">
-      📥 지금 모습을 도감에 담기
-    </button>
-    <button onclick="S.stab=null;go('butterfly')" style="width:100%;background:none;border:none;color:#9CA3AF;font-size:13px;cursor:pointer;padding:8px">
-      ← 나비 탭으로
-    </button>
-  </div>`;
+  // ── 레벨업 버튼 (메인) ──
+  html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:20px;text-align:center;margin-bottom:10px">';
+  html += '<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:14px">⬆️ 레벨업</div>';
+  if(canLevelUp) {
+    const nextLabel = nextEvol && nextEvol.isFinal ? '🦋 나비 뽑기!' : '⬆️ 레벨업!';
+    const nextName = nextEvol ? nextEvol.name : '?';
+    html += '<div style="font-size:14px;color:#374151;margin-bottom:12px">→ <strong>'+nextName+'</strong>으로 진화할 수 있어요!</div>';
+    html += '<button onclick="useXP(100,\'레벨업\')" style="width:100%;padding:16px;background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:16px;font-size:16px;font-weight:800;cursor:pointer">'+nextLabel+'</button>';
+  } else {
+    const needed = xpTarget - (S.xp||0);
+    html += '<div style="font-size:14px;color:#9CA3AF;margin-bottom:8px">레벨업까지 <strong style="color:#7C3AED">'+needed+' XP</strong> 필요</div>';
+    html += '<div style="background:#F3F4F6;border-radius:12px;padding:14px;">';
+    html += '<div style="font-size:12px;color:#6B7280">📚 단어를 외우면 XP를 얻어요</div>';
+    html += '<div style="font-size:12px;color:#6B7280;margin-top:4px">🎯 퀴즈를 풀면 보너스 XP!</div>';
+    html += '</div>';
+    html += '<button onclick="S.stab=\'petcare\';go(\'butterfly\')" style="width:100%;padding:14px;background:#F3F4F6;color:#374151;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px" disabled>아직 XP가 부족해요</button>';
+  }
+  html += '</div>';
+
+  // ── 성장 단계 ──
+  html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px;margin-bottom:10px">';
+  html += '<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px">🌱 성장 단계</div>';
+  html += '<div style="display:flex;justify-content:space-between;align-items:flex-end;padding:0 4px">';
+  if(typeof LEVELS!=='undefined') {
+    const curIdx = LEVELS.findIndex(l=>l.id===S.lid);
+    LEVELS.forEach(function(lx, i) {
+      const isCur = lx.id===S.lid;
+      const isPassed = i < curIdx;
+      html += '<div style="text-align:center;flex:1">';
+      html += '<div style="font-size:'+(isCur?'28px':'16px')+';opacity:'+(isCur?1:isPassed?0.8:0.3)+';transition:all .3s">'+lx.emoji+'</div>';
+      html += '<div style="font-size:8px;color:'+(isCur?petCol.main:'#9CA3AF')+';font-weight:'+(isCur?700:400)+';margin-top:2px">'+( isCur?lx.name:'')+'</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div></div>';
+
+  // ── 나비 컬렉션 ──
+  const myB = typeof getMyButterflies==='function' ? getMyButterflies() : [];
+  html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+  html += '<div style="font-size:13px;font-weight:700;color:#374151">🦋 나비 컬렉션</div>';
+  html += '<span style="font-size:12px;color:#7C3AED;font-weight:700;background:#F5F3FF;padding:3px 10px;border-radius:20px">'+myB.length+'/30</span>';
+  html += '</div>';
+  if(myB.length === 0) {
+    html += '<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:13px">레벨업하면 나비를 뽑을 수 있어요 🦋</div>';
+  } else {
+    html += '<div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px"><div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:11px;padding:8px">...</div></div>';
+    html += '<script>setTimeout(renderBFDogamGrid,50);<\/script>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+  return html;
 }
 
 function showCollectionDetail(colId) {
@@ -1809,13 +1825,7 @@ function rMarket() {
                 <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
               </tr></thead>
               <tbody>
-              ${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
-                <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td>
-                <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td>
-                <td style="padding:6px 8px;color:#6B7280;max-width:200px">
-                  ${(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.map(e=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px">${e}</div>`).join('');})()}
-                </td>
-              </tr>`).join('')}
+              ${(pk.words||[]).slice(0,10).map(function(w,i){const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);const exHtml=exs.map(function(e){return '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:1.4">'+String(e).replace(/</g,'&lt;')+'</div>';}).join('');return '<tr style="border-bottom:1px solid #F3F4F6;'+(i%2===0?'':'background:#FAFAFA')+'"><td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">'+(w.en||'')+'</td><td style="padding:6px 8px;color:#374151;white-space:nowrap">'+(w.kr||'')+'</td><td style="padding:6px 8px;color:#6B7280;max-width:200px">'+(exHtml||'<span style="color:#D1D5DB">-</span>')+'</td></tr>';}).join('')}
               ${wordCount>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${wordCount-10}개 더</td></tr>`:''}
               </tbody>
             </table>
@@ -3486,9 +3496,7 @@ function showAutoMode() {
           <button onclick="window._auto.shadow=!window._auto.shadow;window._autoRender()" style="background:${A.shadow?'rgba(236,72,153,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.shadow?'rgba(236,72,153,.6)':'rgba(255,255,255,.15)'};border-radius:14px;padding:4px 8px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">🎤 따라말하기</button>
           <div style="display:flex;align-items:center;gap:2px">
             <span style="font-size:9px;color:rgba(255,255,255,.4)">예문</span>
-            ${[['0','OFF'],['1','1개'],['2','2개'],['3','3개']].map(([v,lb])=>
-              `<button onclick="window._auto.exCount=parseInt('${v}');window._autoRender()" style="background:${parseInt(A.exCount??0)===parseInt('${v}')?'rgba(251,146,60,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:6px;padding:3px 5px;font-size:9px;color:#fff;cursor:pointer;font-weight:700">${lb}</button>`
-            ).join('')}
+            ${(function(){return [['0','OFF'],['1','1개'],['2','2개'],['3','3개']].map(function(item){var v=item[0],lb=item[1];var active=parseInt(A.exCount??0)===parseInt(v);return '<button onclick="window._auto.exCount='+parseInt(v)+';window._autoRender()" style="background:'+(active?'rgba(251,146,60,.5)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:3px 5px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
           </div>
         </div>
       </div>
@@ -4907,6 +4915,25 @@ function rGameTab() {
   });
   html += `</div></div>`;
 
+  // ── 레벨업 섹션 ──
+  const lvInfoGT = typeof lv==='function' ? lv(S.lid) : {emoji:'🥚',name:'알'};
+  const nextEvolGT = typeof getNextEvolution==='function' ? getNextEvolution() : null;
+  const curLvGT = typeof LEVELS!=='undefined' ? LEVELS.find(l=>l.id===S.lid) : null;
+  const xpTargetGT = curLvGT ? (curLvGT.xp||100) : 100;
+  const xpPctGT = Math.min(100, Math.round((S.xp||0)/xpTargetGT*100));
+  const canLvUpGT = xpPctGT >= 100;
+  html += '<div onclick="S.stab=\'petcare\';go(\'butterfly\'" style="background:linear-gradient(135deg,'+(petCol&&petCol.main?petCol.main:'#1E5FA5')+','+( petCol&&petCol.dark?petCol.dark:'#1E3A5F')+');border-radius:18px;padding:16px;color:#fff;margin-bottom:10px;cursor:pointer">';
+  html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">';
+  html += '<div>'+(typeof charSVGAnimated==='function'?charSVGAnimated(S.lid,52,'normal'):'🥚')+'</div>';
+  html += '<div style="flex:1"><div style="font-size:14px;font-weight:800">'+lvInfoGT.emoji+' '+lvInfoGT.name+'</div>';
+  html += '<div style="font-size:11px;opacity:.8">XP '+(S.xp||0)+' / '+xpTargetGT+'</div></div>';
+  html += '</div>';
+  html += '<div style="background:rgba(255,255,255,.25);border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">';
+  html += '<div style="height:100%;background:'+(canLvUpGT?'#FFD600':'#fff')+';border-radius:4px;width:'+xpPctGT+'%;transition:width .5s"></div>';
+  html += '</div>';
+  html += '<button onclick="event.stopPropagation();'+(canLvUpGT?"useXP(100,'레벨업')":'toast(\'XP를 더 모아야 해요!\')')+';" style="width:100%;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;background:'+(canLvUpGT?'#FFD600':'rgba(255,255,255,.15)')+';color:'+(canLvUpGT?'#1A1A1A':'rgba(255,255,255,.7)')+'">'+(canLvUpGT?'✨ 레벨업! ('+(nextEvolGT?nextEvolGT.name:'?')+')':'XP '+Math.max(0,xpTargetGT-(S.xp||0))+' 더 모으면 레벨업')+'</button>';
+  html += '</div>';
+
   // ── 반려나비 도감 (나비 + 캐릭터 수집) ──
   const butterflies = getMyButterflies();
   const myCol = getMyCollection();
@@ -4974,418 +5001,99 @@ function rGameTab() {
 
 // ── 나비 30종 SVG 캐릭터 ──
 function getButterflyCharSVG(bId, sz=60, owned=true) {
-  const s = sz, h = sz;
+  const s = sz;
   const filter = owned ? '' : 'filter:grayscale(1) opacity(0.25)';
-  const wrap = (svg) => `<div style="display:block;width:${sz}px;height:${sz}px;overflow:hidden;flex-shrink:0;${filter}">${svg}</div>`;
+  const wrap = (svg) => `<div style="display:block;width:${s}px;height:${s}px;overflow:hidden;flex-shrink:0;${filter}">${svg}</div>`;
 
-  // 실사 나비 SVG - viewBox="0 0 100 100" 정사각형 통일
-  // 공통 구조: 앞날개(forewing) 크고 삼각, 뒷날개(hindwing) 작고 둥근, 몸통, 더듬이
+  // 공통 나비 SVG 생성기 - 실사에 가까운 형태
+  function makeSVG(cfg) {
+    const {fw1,fw2,hw1,hw2,fw_s,hw_s,dots,veins,body_c,anten_c,mark_c,id} = cfg;
+    const sc = s/100;
+    return `<svg width="${s}" height="${s}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+<defs>
+  <radialGradient id="fw_g_${id}" cx="40%" cy="35%" r="65%">
+    <stop offset="0%" stop-color="${fw1}" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="${fw2}"/>
+  </radialGradient>
+  <radialGradient id="hw_g_${id}" cx="45%" cy="40%" r="60%">
+    <stop offset="0%" stop-color="${hw1}" stop-opacity="0.85"/>
+    <stop offset="100%" stop-color="${hw2}"/>
+  </radialGradient>
+</defs>
+<!-- 앞날개 좌 --><path d="M50,52 Q22,18 8,28 Q4,44 14,52 Q28,58 50,54Z" fill="url(#fw_g_${id})" stroke="${fw_s}" stroke-width="0.8"/>
+<!-- 앞날개 우 --><path d="M50,52 Q78,18 92,28 Q96,44 86,52 Q72,58 50,54Z" fill="url(#fw_g_${id})" stroke="${fw_s}" stroke-width="0.8"/>
+<!-- 뒷날개 좌 --><path d="M50,54 Q28,60 18,72 Q20,82 32,78 Q44,68 50,60Z" fill="url(#hw_g_${id})" stroke="${hw_s}" stroke-width="0.7"/>
+<!-- 뒷날개 우 --><path d="M50,54 Q72,60 82,72 Q80,82 68,78 Q56,68 50,60Z" fill="url(#hw_g_${id})" stroke="${hw_s}" stroke-width="0.7"/>
+${veins}
+${dots}
+<!-- 몸통 --><ellipse cx="50" cy="60" rx="3" ry="16" fill="${body_c}"/>
+<ellipse cx="50" cy="43" rx="4" ry="5" fill="${body_c}"/>
+<!-- 더듬이 -->
+<path d="M48,38 Q40,26 36,18" stroke="${anten_c}" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+<circle cx="36" cy="18" r="2.5" fill="${mark_c}"/>
+<path d="M52,38 Q60,26 64,18" stroke="${anten_c}" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+<circle cx="64" cy="18" r="2.5" fill="${mark_c}"/>
+</svg>`;
+  }
+
+  // 각 나비 실사 정의
   const svgs = {
+// b01: 배추흰나비 - 흰색 날개, 검은 점
+b01: makeSVG({id:'b01',fw1:'#FAFAFA',fw2:'#E8E8E8',hw1:'#F5F5F5',hw2:'#E0E0E0',fw_s:'#9CA3AF',hw_s:'#BBBBBB',body_c:'#374151',anten_c:'#374151',mark_c:'#F5F5F5',dots:`<circle cx="24" cy="36" r="5" fill="#6B7280" opacity="0.7"/><circle cx="76" cy="36" r="5" fill="#6B7280" opacity="0.7"/>`,veins:`<path d="M50,54 Q42,50 26,44" stroke="#9CA3AF" stroke-width="0.4" fill="none"/><path d="M50,54 Q58,50 74,44" stroke="#9CA3AF" stroke-width="0.4" fill="none"/>`}),
 
-b01: `<svg width="${s}" height="${h}" viewBox="0 0 100 100"><defs><radialGradient id="r01a" cx="35%" cy="30%" r="65%"><stop offset="0%" stop-color="#B8D8F0"/><stop offset="55%" stop-color="#5A9FD0"/><stop offset="100%" stop-color="#2E6EA0"/></radialGradient><radialGradient id="r01b" cx="65%" cy="30%" r="65%"><stop offset="0%" stop-color="#B8D8F0"/><stop offset="55%" stop-color="#5A9FD0"/><stop offset="100%" stop-color="#2E6EA0"/></radialGradient></defs>
-<path d="M50,58 C44,56 28,52 14,60 C8,64 10,72 18,70 C30,65 44,60 50,62Z" fill="#4A8BC0" stroke="#1a3a5c" stroke-width="0.8"/>
-<path d="M50,58 C56,56 72,52 86,60 C92,64 90,72 82,70 C70,65 56,60 50,62Z" fill="#4A8BC0" stroke="#1a3a5c" stroke-width="0.8"/>
-<path d="M50,55 C42,42 22,18 8,20 C1,22 2,34 10,40 C24,50 42,54 50,58Z" fill="url(#r01a)" stroke="#1a3a5c" stroke-width="0.9"/>
-<path d="M50,55 C58,42 78,18 92,20 C99,22 98,34 90,40 C76,50 58,54 50,58Z" fill="url(#r01b)" stroke="#1a3a5c" stroke-width="0.9"/>
-<path d="M8,20 C1,22 2,34 10,40" stroke="#0a2040" stroke-width="2.5" fill="none"/>
-<path d="M92,20 C99,22 98,34 90,40" stroke="#0a2040" stroke-width="2.5" fill="none"/>
-<path d="M8,28 C20,22 34,18 48,22" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
-<path d="M92,28 C80,22 66,18 52,22" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none"/>
-<ellipse cx="50" cy="57" rx="2.5" ry="11" fill="#1a3a5c"/>
-<path d="M49,48 Q44,37 40,28" stroke="#1a3a5c" stroke-width="1" fill="none"/>
-<path d="M51,48 Q56,37 60,28" stroke="#1a3a5c" stroke-width="1" fill="none"/>
-<circle cx="40" cy="27" r="2" fill="#1a3a5c"/><circle cx="60" cy="27" r="2" fill="#1a3a5c"/></svg>`,
+// b02: 호랑나비 - 노랑+검정 줄무늬
+b02: makeSVG({id:'b02',fw1:'#F9E150',fw2:'#E8C810',hw1:'#F0D440',hw2:'#D4B010',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#F9E150',dots:`<circle cx="78" cy="65" r="6" fill="#1A1A1A"/><circle cx="78" cy="65" r="3.5" fill="#64B5F6"/>`,veins:`<path d="M50,52 Q38,46 22,44" stroke="#1A1A1A" stroke-width="2.5" fill="none"/><path d="M50,52 Q40,48 26,50" stroke="#1A1A1A" stroke-width="2" fill="none"/><path d="M50,52 Q62,46 78,44" stroke="#1A1A1A" stroke-width="2.5" fill="none"/><path d="M50,52 Q60,48 74,50" stroke="#1A1A1A" stroke-width="2" fill="none"/>`}),
 
-b02: `<svg width="${s}" height="${h}" viewBox="0 0 100 100"><defs><linearGradient id="g02" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1a4a2e"/><stop offset="100%" stop-color="#0d2a18"/></linearGradient></defs>
-<path d="M50,60 C40,62 18,68 6,76 C2,80 4,88 14,84 C28,76 44,66 50,64Z" fill="#1a3a22" stroke="#0d2010" stroke-width="0.8"/>
-<path d="M50,60 C60,62 82,68 94,76 C98,80 96,88 86,84 C72,76 56,66 50,64Z" fill="#1a3a22" stroke="#0d2010" stroke-width="0.8"/>
-<path d="M50,56 C40,38 18,8 4,10 C-2,12 -2,26 8,34 C24,46 42,54 50,60Z" fill="url(#g02)" stroke="#0d2010" stroke-width="0.9"/>
-<path d="M50,56 C60,38 82,8 96,10 C102,12 102,26 92,34 C76,46 58,54 50,60Z" fill="url(#g02)" stroke="#0d2010" stroke-width="0.9"/>
-<circle cx="22" cy="22" r="4" fill="#F5D020" opacity="0.9"/><circle cx="14" cy="32" r="3" fill="#F5D020" opacity="0.8"/>
-<circle cx="78" cy="22" r="4" fill="#F5D020" opacity="0.9"/><circle cx="86" cy="32" r="3" fill="#F5D020" opacity="0.8"/>
-<ellipse cx="20" cy="70" rx="5" ry="4" fill="#4A90D9" opacity="0.8"/>
-<ellipse cx="80" cy="70" rx="5" ry="4" fill="#4A90D9" opacity="0.8"/>
-<ellipse cx="50" cy="58" rx="3" ry="12" fill="#1a3a22"/>
-<path d="M49,47 Q44,36 38,26" stroke="#1a3a22" stroke-width="1.2" fill="none"/>
-<path d="M51,47 Q56,36 62,26" stroke="#1a3a22" stroke-width="1.2" fill="none"/>
-<circle cx="38" cy="25" r="2.2" fill="#1a3a22"/><circle cx="62" cy="25" r="2.2" fill="#1a3a22"/></svg>`,
+// b03: 노랑나비
+b03: makeSVG({id:'b03',fw1:'#FFF176',fw2:'#FFEE58',hw1:'#FFEE58',hw2:'#FFD600',fw_s:'#F9A825',hw_s:'#F9A825',body_c:'#33691E',anten_c:'#33691E',mark_c:'#FFEE58',dots:``,veins:`<path d="M50,52 Q36,46 18,42" stroke="#F9A825" stroke-width="0.5" fill="none"/><path d="M50,52 Q64,46 82,42" stroke="#F9A825" stroke-width="0.5" fill="none"/>`}),
 
-b03: `<svg width="${s}" height="${h}" viewBox="0 0 100 100"><defs><radialGradient id="r03" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="#A8D8EA"/><stop offset="100%" stop-color="#2980B9"/></radialGradient></defs>
-<path d="M50,60 C42,58 26,54 14,62 C8,66 10,74 18,72 C30,67 44,62 50,64Z" fill="#5B9EC9" stroke="#1a3a5c" stroke-width="0.8"/>
-<path d="M50,60 C58,58 74,54 86,62 C92,66 90,74 82,72 C70,67 56,62 50,64Z" fill="#5B9EC9" stroke="#1a3a5c" stroke-width="0.8"/>
-<path d="M50,57 C44,44 28,22 14,22 C6,22 6,34 12,40 C26,52 44,56 50,60Z" fill="url(#r03)" stroke="#1a3a5c" stroke-width="0.9"/>
-<path d="M50,57 C56,44 72,22 86,22 C94,22 94,34 88,40 C74,52 56,56 50,60Z" fill="url(#r03)" stroke="#1a3a5c" stroke-width="0.9"/>
-<circle cx="22" cy="34" r="2" fill="white" opacity="0.7"/>
-<circle cx="78" cy="34" r="2" fill="white" opacity="0.7"/>
-<ellipse cx="50" cy="59" rx="2.5" ry="11" fill="#1a3a5c"/>
-<path d="M49,49 Q44,38 40,29" stroke="#1a3a5c" stroke-width="1" fill="none"/>
-<path d="M51,49 Q56,38 60,29" stroke="#1a3a5c" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a3a5c"/><circle cx="60" cy="28" r="2" fill="#1a3a5c"/></svg>`,
+// b04: 산제비나비 - 청록
+b04: makeSVG({id:'b04',fw1:'#26C6DA',fw2:'#006064',hw1:'#00ACC1',hw2:'#004D40',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#26C6DA',dots:`<circle cx="70" cy="68" r="5" fill="#E53935"/><circle cx="22" cy="68" r="5" fill="#E53935"/>`,veins:`<path d="M50,52 Q34,44 14,38" stroke="#B2EBF2" stroke-width="0.6" fill="none" opacity="0.5"/><path d="M50,52 Q66,44 86,38" stroke="#B2EBF2" stroke-width="0.6" fill="none" opacity="0.5"/>`}),
 
-b04: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C42,60 24,56 12,64 C6,68 8,76 16,74 C28,69 44,64 50,66Z" fill="#B0B8C0" stroke="#374151" stroke-width="0.8"/>
-<path d="M50,62 C58,60 76,56 88,64 C94,68 92,76 84,74 C72,69 56,64 50,66Z" fill="#B0B8C0" stroke="#374151" stroke-width="0.8"/>
-<path d="M50,59 C44,46 28,22 12,22 C4,22 4,34 10,40 C24,52 44,58 50,62Z" fill="#D8DCE0" stroke="#374151" stroke-width="0.9"/>
-<path d="M50,59 C56,46 72,22 88,22 C96,22 96,34 90,40 C76,52 56,58 50,62Z" fill="#D8DCE0" stroke="#374151" stroke-width="0.9"/>
-<circle cx="24" cy="30" r="5" fill="rgba(220,0,0,0.7)"/><circle cx="76" cy="30" r="5" fill="rgba(220,0,0,0.7)"/>
-<circle cx="24" cy="30" r="2.5" fill="black"/>
-<circle cx="76" cy="30" r="2.5" fill="black"/>
-<path d="M12,30 C24,26 36,22 48,24" stroke="rgba(0,0,0,0.3)" stroke-width="0.8" fill="none"/>
-<path d="M88,30 C76,26 64,22 52,24" stroke="rgba(0,0,0,0.3)" stroke-width="0.8" fill="none"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#374151"/>
-<path d="M49,50 Q44,39 40,29" stroke="#374151" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#374151" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="1.8" fill="#374151"/><circle cx="60" cy="28" r="1.8" fill="#374151"/></svg>`,
+// b05: 모르포나비 - 파란색 광택
+b05: makeSVG({id:'b05',fw1:'#64B5F6',fw2:'#1565C0',hw1:'#42A5F5',hw2:'#0D47A1',fw_s:'#0D47A1',hw_s:'#0D47A1',body_c:'#1A237E',anten_c:'#1A237E',mark_c:'#64B5F6',dots:``,veins:`<path d="M50,52 Q34,42 16,34" stroke="#90CAF9" stroke-width="0.8" fill="none" opacity="0.7"/><path d="M50,54 Q36,50 20,52" stroke="#90CAF9" stroke-width="0.6" fill="none" opacity="0.5"/><path d="M50,52 Q66,42 84,34" stroke="#90CAF9" stroke-width="0.8" fill="none" opacity="0.7"/><path d="M50,54 Q64,50 80,52" stroke="#90CAF9" stroke-width="0.6" fill="none" opacity="0.5"/>`}),
 
-b05: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C42,60 24,56 12,64 C6,68 8,76 16,74 C28,69 44,64 50,66Z" fill="#D0C8B8" stroke="#555" stroke-width="0.8"/>
-<path d="M50,62 C58,60 76,56 88,64 C94,68 92,76 84,74 C72,69 56,64 50,66Z" fill="#D0C8B8" stroke="#555" stroke-width="0.8"/>
-<path d="M50,59 C44,46 26,20 10,20 C2,20 2,34 10,40 C26,52 44,58 50,62Z" fill="#E8E0D0" stroke="#555" stroke-width="0.9"/>
-<path d="M50,59 C56,46 74,20 90,20 C98,20 98,34 90,40 C74,52 56,58 50,62Z" fill="#E8E0D0" stroke="#555" stroke-width="0.9"/>
-<circle cx="22" cy="28" r="5" fill="#DC2626" opacity="0.85"/>
-<circle cx="78" cy="28" r="5" fill="#DC2626" opacity="0.85"/>
-<circle cx="22" cy="28" r="2" fill="black"/>
-<circle cx="78" cy="28" r="2" fill="black"/>
-<path d="M10,20 C22,16 36,18 48,22" stroke="rgba(0,0,0,0.25)" stroke-width="1" fill="none"/>
-<path d="M90,20 C78,16 64,18 52,22" stroke="rgba(0,0,0,0.25)" stroke-width="1" fill="none"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#444"/>
-<path d="M49,50 Q44,39 40,29" stroke="#444" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#444" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="1.8" fill="#444"/><circle cx="60" cy="28" r="1.8" fill="#444"/></svg>`,
+// b06: 제왕나비 - 주황+검정
+b06: makeSVG({id:'b06',fw1:'#FF8F00',fw2:'#E65100',hw1:'#FF8F00',hw2:'#BF360C',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#FFCC02',dots:`<circle cx="20" cy="40" r="3" fill="#fff" opacity="0.8"/><circle cx="14" cy="50" r="2.5" fill="#fff" opacity="0.8"/><circle cx="80" cy="40" r="3" fill="#fff" opacity="0.8"/><circle cx="86" cy="50" r="2.5" fill="#fff" opacity="0.8"/>`,veins:`<path d="M50,52 Q34,44 16,38" stroke="#1A1A1A" stroke-width="1.5" fill="none"/><path d="M50,54 Q36,52 20,56" stroke="#1A1A1A" stroke-width="1.2" fill="none"/><path d="M50,52 Q66,44 84,38" stroke="#1A1A1A" stroke-width="1.5" fill="none"/><path d="M50,54 Q64,52 80,56" stroke="#1A1A1A" stroke-width="1.2" fill="none"/>`}),
 
-b06: `<svg width="${s}" height="${h}" viewBox="0 0 100 100"><defs><radialGradient id="r06" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#64B5F6"/><stop offset="40%" stop-color="#1565C0"/><stop offset="100%" stop-color="#0D47A1"/></radialGradient><radialGradient id="r06b" cx="60%" cy="35%" r="65%"><stop offset="0%" stop-color="#64B5F6"/><stop offset="40%" stop-color="#1565C0"/><stop offset="100%" stop-color="#0D47A1"/></radialGradient></defs>
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#1040A0" stroke="#0a2060" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#1040A0" stroke="#0a2060" stroke-width="0.8"/>
-<path d="M50,58 C40,42 20,12 4,14 C-2,16 -2,32 8,40 C26,52 44,56 50,62Z" fill="url(#r06)" stroke="#0a2060" stroke-width="0.9"/>
-<path d="M50,58 C60,42 80,12 96,14 C102,16 102,32 92,40 C74,52 56,56 50,62Z" fill="url(#r06b)" stroke="#0a2060" stroke-width="0.9"/>
-<path d="M50,58 C44,46 36,30 28,20 C38,26 46,40 50,58Z" fill="rgba(100,181,246,0.3)" fill-rule="evenodd"/>
-<path d="M50,58 C56,46 64,30 72,20 C62,26 54,40 50,58Z" fill="rgba(100,181,246,0.3)" fill-rule="evenodd"/>
-<ellipse cx="50" cy="60" rx="3" ry="12" fill="#0a2060"/>
-<path d="M49,49 Q44,38 39,28" stroke="#0a2060" stroke-width="1.2" fill="none"/>
-<path d="M51,49 Q56,38 61,28" stroke="#0a2060" stroke-width="1.2" fill="none"/>
-<circle cx="39" cy="27" r="2.2" fill="#0a2060"/><circle cx="61" cy="27" r="2.2" fill="#0a2060"/></svg>`,
+// b07: 공작나비 - 적갈색 눈알무늬
+b07: makeSVG({id:'b07',fw1:'#C62828',fw2:'#B71C1C',hw1:'#D32F2F',hw2:'#7F0000',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#C62828',dots:`<circle cx="22" cy="36" r="8" fill="#1A1A1A"/><circle cx="22" cy="36" r="5" fill="#1565C0"/><circle cx="22" cy="36" r="2" fill="#fff"/><circle cx="78" cy="36" r="8" fill="#1A1A1A"/><circle cx="78" cy="36" r="5" fill="#1565C0"/><circle cx="78" cy="36" r="2" fill="#fff"/>`,veins:``}),
 
-b07: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,63 C42,61 26,57 14,65 C8,69 10,77 18,75 C30,70 44,65 50,67Z" fill="#9EB0C0" stroke="#2d3a47" stroke-width="0.8"/>
-<path d="M50,63 C58,61 74,57 86,65 C92,69 90,77 82,75 C70,70 56,65 50,67Z" fill="#9EB0C0" stroke="#2d3a47" stroke-width="0.8"/>
-<path d="M50,60 C44,47 28,23 12,23 C4,23 4,35 10,41 C24,53 44,59 50,63Z" fill="#B8C8D8" stroke="#2d3a47" stroke-width="0.9"/>
-<path d="M50,60 C56,47 72,23 88,23 C96,23 96,35 90,41 C76,53 56,59 50,63Z" fill="#B8C8D8" stroke="#2d3a47" stroke-width="0.9"/>
-<path d="M12,23 C8,30 6,38 8,44" stroke="#1a2535" stroke-width="1.5" fill="none"/>
-<path d="M88,23 C92,30 94,38 92,44" stroke="#1a2535" stroke-width="1.5" fill="none"/>
-<circle cx="20" cy="35" r="2" fill="rgba(100,140,180,0.7)"/>
-<circle cx="80" cy="35" r="2" fill="rgba(100,140,180,0.7)"/>
-<ellipse cx="50" cy="61" rx="2.5" ry="11" fill="#2d3a47"/>
-<path d="M49,51 Q44,40 38,30" stroke="#2d3a47" stroke-width="1" fill="none"/>
-<path d="M51,51 Q56,40 62,30" stroke="#2d3a47" stroke-width="1" fill="none"/>
-<circle cx="38" cy="29" r="2" fill="#2d3a47"/><circle cx="62" cy="29" r="2" fill="#2d3a47"/></svg>`,
+// b08: 긴꼬리제비나비 - 진한 초록
+b08: makeSVG({id:'b08',fw1:'#388E3C',fw2:'#1B5E20',hw1:'#43A047',hw2:'#2E7D32',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#A5D6A7',dots:``,veins:`<path d="M50,52 Q36,44 20,38" stroke="#A5D6A7" stroke-width="0.8" fill="none" opacity="0.6"/><path d="M50,52 Q64,44 80,38" stroke="#A5D6A7" stroke-width="0.8" fill="none" opacity="0.6"/>`}),
 
-b08: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#5C4030" stroke="#2a1a0a" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#5C4030" stroke="#2a1a0a" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#7A5840" stroke="#2a1a0a" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#7A5840" stroke="#2a1a0a" stroke-width="0.9"/>
-<ellipse cx="18" cy="34" rx="10" ry="8" fill="#1a0a00" stroke="#5C4030" stroke-width="1"/>
-<ellipse cx="18" cy="34" rx="7" ry="5.5" fill="#4a3020"/>
-<circle cx="18" cy="34" r="3" fill="#B8860B" opacity="0.8"/>
-<ellipse cx="82" cy="34" rx="10" ry="8" fill="#1a0a00" stroke="#5C4030" stroke-width="1"/>
-<ellipse cx="82" cy="34" rx="7" ry="5.5" fill="#4a3020"/>
-<circle cx="82" cy="34" r="3" fill="#B8860B" opacity="0.8"/>
-<ellipse cx="50" cy="60" rx="3" ry="12" fill="#2a1a0a"/>
-<path d="M49,49 Q44,38 38,28" stroke="#2a1a0a" stroke-width="1.2" fill="none"/>
-<path d="M51,49 Q56,38 62,28" stroke="#2a1a0a" stroke-width="1.2" fill="none"/>
-<circle cx="38" cy="27" r="2.2" fill="#2a1a0a"/><circle cx="62" cy="27" r="2.2" fill="#2a1a0a"/></svg>`,
+// b09: 유리날개나비 - 반투명
+b09: makeSVG({id:'b09',fw1:'rgba(255,255,255,0.15)',fw2:'rgba(200,230,200,0.2)',hw1:'rgba(255,255,255,0.1)',hw2:'rgba(200,220,200,0.15)',fw_s:'#666',hw_s:'#888',body_c:'#333',anten_c:'#333',mark_c:'#aaa',dots:``,veins:`<path d="M50,52 Q34,44 16,38" stroke="#666" stroke-width="1.2" fill="none"/><path d="M50,54 Q36,50 20,52" stroke="#666" stroke-width="0.8" fill="none"/><path d="M50,52 Q66,44 84,38" stroke="#666" stroke-width="1.2" fill="none"/><path d="M50,54 Q64,50 80,52" stroke="#666" stroke-width="0.8" fill="none"/><path d="M50,56 Q40,60 28,66" stroke="#888" stroke-width="0.8" fill="none"/><path d="M50,56 Q60,60 72,66" stroke="#888" stroke-width="0.8" fill="none"/>`}),
 
-b09: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#5C3A18" stroke="#2a1a0a" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#5C3A18" stroke="#2a1a0a" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#7A4E28" stroke="#2a1a0a" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#7A4E28" stroke="#2a1a0a" stroke-width="0.9"/>
-<path d="M14,18 C20,22 26,28 30,36" stroke="#2a1a0a" stroke-width="3" fill="none" stroke-linecap="round"/>
-<path d="M86,18 C80,22 74,28 70,36" stroke="#2a1a0a" stroke-width="3" fill="none" stroke-linecap="round"/>
-<path d="M26,26 C30,24 34,22 38,24" stroke="#8B6940" stroke-width="1" fill="none"/>
-<path d="M74,26 C70,24 66,22 62,24" stroke="#8B6940" stroke-width="1" fill="none"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#2a1a0a"/>
-<path d="M49,50 Q44,39 40,29" stroke="#2a1a0a" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#2a1a0a" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="1.8" fill="#2a1a0a"/><circle cx="60" cy="28" r="1.8" fill="#2a1a0a"/></svg>`,
-
-b10: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#D97706" stroke="#7C3A00" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#D97706" stroke="#7C3A00" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#F59E0B" stroke="#7C3A00" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#F59E0B" stroke="#7C3A00" stroke-width="0.9"/>
-<path d="M4,14 C8,10 16,8 24,12" stroke="#1a0a00" stroke-width="3" fill="none"/>
-<path d="M96,14 C92,10 84,8 76,12" stroke="#1a0a00" stroke-width="3" fill="none"/>
-<line x1="16" y1="18" x2="16" y2="36" stroke="#1a0a00" stroke-width="2"/>
-<line x1="24" y1="16" x2="24" y2="34" stroke="#1a0a00" stroke-width="2"/>
-<line x1="84" y1="18" x2="84" y2="36" stroke="#1a0a00" stroke-width="2"/>
-<line x1="76" y1="16" x2="76" y2="34" stroke="#1a0a00" stroke-width="2"/>
-<circle cx="18" cy="68" r="3" fill="white" opacity="0.6"/>
-<circle cx="82" cy="68" r="3" fill="white" opacity="0.6"/>
-<ellipse cx="50" cy="60" rx="3" ry="12" fill="#1a0a00"/>
-<path d="M49,49 Q44,38 39,28" stroke="#1a0a00" stroke-width="1.2" fill="none"/>
-<path d="M51,49 Q56,38 61,28" stroke="#1a0a00" stroke-width="1.2" fill="none"/>
-<circle cx="39" cy="27" r="2.2" fill="#1a0a00"/><circle cx="61" cy="27" r="2.2" fill="#1a0a00"/></svg>`,
-
-b11: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#6B0F0F" stroke="#3a0a0a" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#6B0F0F" stroke="#3a0a0a" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#C0392B" stroke="#3a0a0a" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#C0392B" stroke="#3a0a0a" stroke-width="0.9"/>
-<ellipse cx="18" cy="24" rx="9" ry="7" fill="#1a0a00"/>
-<ellipse cx="18" cy="24" rx="6" ry="4.5" fill="#8B0000"/>
-<circle cx="18" cy="24" r="2.5" fill="#FFD700" opacity="0.8"/>
-<ellipse cx="82" cy="24" rx="9" ry="7" fill="#1a0a00"/>
-<ellipse cx="82" cy="24" rx="6" ry="4.5" fill="#8B0000"/>
-<circle cx="82" cy="24" r="2.5" fill="#FFD700" opacity="0.8"/>
-<path d="M6,38 C14,36 22,36 28,40" stroke="#1a0a00" stroke-width="1.5" fill="none"/>
-<path d="M94,38 C86,36 78,36 72,40" stroke="#1a0a00" stroke-width="1.5" fill="none"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#1a0a00"/>
-<path d="M49,50 Q44,39 40,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a0a00"/><circle cx="60" cy="28" r="2" fill="#1a0a00"/></svg>`,
-
-b12: `<svg width="${s}" height="${h}" viewBox="0 0 100 100"><defs><radialGradient id="r12" cx="45%" cy="35%" r="60%"><stop offset="0%" stop-color="#CE93D8"/><stop offset="60%" stop-color="#6A1B9A"/><stop offset="100%" stop-color="#4A1070"/></radialGradient></defs>
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#5A1580" stroke="#2a0a40" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#5A1580" stroke="#2a0a40" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="url(#r12)" stroke="#2a0a40" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="url(#r12)" stroke="#2a0a40" stroke-width="0.9"/>
-<circle cx="20" cy="26" r="4" fill="rgba(255,255,255,0.4)"/>
-<circle cx="80" cy="26" r="4" fill="rgba(255,255,255,0.4)"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#2a0a40"/>
-<path d="M49,50 Q44,39 40,29" stroke="#2a0a40" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#2a0a40" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#2a0a40"/><circle cx="60" cy="28" r="2" fill="#2a0a40"/></svg>`,
-
-b13: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#3E2010" stroke="#1a0a00" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#3E2010" stroke="#1a0a00" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#7A5028" stroke="#1a0a00" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#7A5028" stroke="#1a0a00" stroke-width="0.9"/>
-<path d="M8,20 C20,16 32,20 40,28" stroke="#1a0a00" stroke-width="2" fill="none"/>
-<path d="M92,20 C80,16 68,20 60,28" stroke="#1a0a00" stroke-width="2" fill="none"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#1a0a00"/>
-<path d="M49,50 Q44,39 40,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a0a00"/><circle cx="60" cy="28" r="2" fill="#1a0a00"/></svg>`,
-
-b14: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#4A3520" stroke="#1a0a00" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#4A3520" stroke="#1a0a00" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#A07848" stroke="#1a0a00" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#A07848" stroke="#1a0a00" stroke-width="0.9"/>
-<rect x="18" y="20" width="14" height="10" rx="2" fill="rgba(200,240,255,0.5)" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
-<rect x="68" y="20" width="14" height="10" rx="2" fill="rgba(200,240,255,0.5)" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#1a0a00"/>
-<path d="M49,50 Q44,39 40,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a0a00"/><circle cx="60" cy="28" r="2" fill="#1a0a00"/></svg>`,
-
-b15: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#0D3070" stroke="#061840" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#0D3070" stroke="#061840" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#1565C0" stroke="#061840" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#1565C0" stroke="#061840" stroke-width="0.9"/>
-<path d="M4,32 C16,28 30,28 42,34" stroke="rgba(100,180,255,0.6)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<path d="M96,32 C84,28 70,28 58,34" stroke="rgba(100,180,255,0.6)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#061840"/>
-<path d="M49,50 Q44,39 40,29" stroke="#061840" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#061840" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#061840"/><circle cx="60" cy="28" r="2" fill="#061840"/></svg>`,
-
-b16: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#6B0F0F" stroke="#3a0a0a" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#6B0F0F" stroke="#3a0a0a" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#D0D0D0" stroke="#3a0a0a" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#D0D0D0" stroke="#3a0a0a" stroke-width="0.9"/>
-<circle cx="22" cy="26" r="5" fill="#DC2626" opacity="0.9"/>
-<circle cx="78" cy="26" r="5" fill="#DC2626" opacity="0.9"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#1a0a00"/>
-<path d="M49,50 Q44,39 40,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a0a00"/><circle cx="60" cy="28" r="2" fill="#1a0a00"/></svg>`,
-
-b17: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,64 C42,62 28,58 18,66 C12,70 14,78 22,76 C32,71 44,66 50,68Z" fill="#9E7A50" stroke="#5a3a20" stroke-width="0.8"/>
-<path d="M50,64 C58,62 72,58 82,66 C88,70 86,78 78,76 C68,71 56,66 50,68Z" fill="#9E7A50" stroke="#5a3a20" stroke-width="0.8"/>
-<path d="M50,61 C46,50 36,30 22,28 C14,28 14,40 20,46 C32,56 46,60 50,64Z" fill="#C4A070" stroke="#5a3a20" stroke-width="0.9"/>
-<path d="M50,61 C54,50 64,30 78,28 C86,28 86,40 80,46 C68,56 54,60 50,64Z" fill="#C4A070" stroke="#5a3a20" stroke-width="0.9"/>
-<path d="M28,28 C34,24 40,26 46,32" stroke="rgba(120,80,40,0.5)" stroke-width="1.5" fill="none"/>
-<path d="M72,28 C66,24 60,26 54,32" stroke="rgba(120,80,40,0.5)" stroke-width="1.5" fill="none"/>
-<ellipse cx="50" cy="62" rx="2.5" ry="10" fill="#3a2010"/>
-<path d="M49,53 Q44,43 42,33" stroke="#3a2010" stroke-width="1" fill="none"/>
-<path d="M51,53 Q56,43 58,33" stroke="#3a2010" stroke-width="1" fill="none"/>
-<circle cx="42" cy="32" r="1.8" fill="#3a2010"/><circle cx="58" cy="32" r="1.8" fill="#3a2010"/></svg>`,
-
-b18: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#004D40" stroke="#002a22" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#004D40" stroke="#002a22" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#1a0a00" stroke="#002a22" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#1a0a00" stroke="#002a22" stroke-width="0.9"/>
-<path d="M6,24 C16,18 28,22 38,30" stroke="#00796B" stroke-width="3" fill="none" stroke-linecap="round"/>
-<path d="M94,24 C84,18 72,22 62,30" stroke="#00796B" stroke-width="3" fill="none" stroke-linecap="round"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#002a22"/>
-<path d="M49,50 Q44,39 40,29" stroke="#002a22" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#002a22" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#002a22"/><circle cx="60" cy="28" r="2" fill="#002a22"/></svg>`,
-
-b19: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#7B1FA2" stroke="#3a0060" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#7B1FA2" stroke="#3a0060" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#CE93D8" stroke="#3a0060" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#CE93D8" stroke="#3a0060" stroke-width="0.9"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#3a0060"/>
-<path d="M49,50 Q44,39 40,29" stroke="#3a0060" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#3a0060" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#3a0060"/><circle cx="60" cy="28" r="2" fill="#3a0060"/></svg>`,
-
-b20: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#1a0a00" stroke="#0a0500" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#1a0a00" stroke="#0a0500" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#F59E0B" stroke="#0a0500" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#F59E0B" stroke="#0a0500" stroke-width="0.9"/>
-<path d="M4,14 C8,10 16,8 22,12" stroke="#1a0a00" stroke-width="3" fill="none"/>
-<path d="M96,14 C92,10 84,8 78,12" stroke="#1a0a00" stroke-width="3" fill="none"/>
-<path d="M10,24 C18,20 26,24 34,30" stroke="#1a0a00" stroke-width="2" fill="none"/>
-<path d="M90,24 C82,20 74,24 66,30" stroke="#1a0a00" stroke-width="2" fill="none"/>
-<path d="M14,18 C20,24 24,32 22,40" stroke="#1a0a00" stroke-width="1.5" fill="none"/>
-<path d="M86,18 C80,24 76,32 78,40" stroke="#1a0a00" stroke-width="1.5" fill="none"/>
-<circle cx="18" cy="68" r="3.5" fill="#F59E0B" opacity="0.6"/>
-<circle cx="82" cy="68" r="3.5" fill="#F59E0B" opacity="0.6"/>
-<ellipse cx="50" cy="60" rx="3" ry="12" fill="#1a0a00"/>
-<path d="M49,49 Q44,38 38,28" stroke="#1a0a00" stroke-width="1.2" fill="none"/>
-<path d="M51,49 Q56,38 62,28" stroke="#1a0a00" stroke-width="1.2" fill="none"/>
-<circle cx="38" cy="27" r="2.2" fill="#1a0a00"/><circle cx="62" cy="27" r="2.2" fill="#1a0a00"/></svg>`,
-
-b21: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,63 C42,61 28,57 18,65 C12,69 14,77 22,75 C32,70 44,65 50,67Z" fill="#D0D0D0" stroke="#666" stroke-width="0.8"/>
-<path d="M50,63 C58,61 72,57 82,65 C88,69 86,77 78,75 C68,70 56,65 50,67Z" fill="#D0D0D0" stroke="#666" stroke-width="0.8"/>
-<path d="M50,60 C44,47 28,23 12,24 C4,25 4,37 10,43 C24,54 44,59 50,63Z" fill="#F5F5F5" stroke="#666" stroke-width="0.9"/>
-<path d="M50,60 C56,47 72,23 88,24 C96,25 96,37 90,43 C76,54 56,59 50,63Z" fill="#F5F5F5" stroke="#666" stroke-width="0.9"/>
-<path d="M12,24 C8,28 6,36 8,42" stroke="#888" stroke-width="1.5" fill="none"/>
-<path d="M88,24 C92,28 94,36 92,42" stroke="#888" stroke-width="1.5" fill="none"/>
-<ellipse cx="50" cy="61" rx="2.5" ry="10" fill="#555"/>
-<path d="M49,52 Q44,41 40,31" stroke="#555" stroke-width="1" fill="none"/>
-<path d="M51,52 Q56,41 60,31" stroke="#555" stroke-width="1" fill="none"/>
-<circle cx="40" cy="30" r="1.8" fill="#555"/><circle cx="60" cy="30" r="1.8" fill="#555"/></svg>`,
-
-b22: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,63 C42,61 26,57 16,64 C10,68 12,76 20,74 C32,69 44,64 50,67Z" fill="#D4A017" stroke="#7a5a00" stroke-width="0.8"/>
-<path d="M50,63 C58,61 74,57 84,64 C90,68 88,76 80,74 C68,69 56,64 50,67Z" fill="#D4A017" stroke="#7a5a00" stroke-width="0.8"/>
-<path d="M50,60 C44,47 26,22 12,22 C4,22 4,36 10,42 C24,54 44,59 50,63Z" fill="#F5D020" stroke="#7a5a00" stroke-width="0.9"/>
-<path d="M50,60 C56,47 74,22 88,22 C96,22 96,36 90,42 C76,54 56,59 50,63Z" fill="#F5D020" stroke="#7a5a00" stroke-width="0.9"/>
-<ellipse cx="50" cy="61" rx="2.5" ry="10" fill="#3a2a00"/>
-<path d="M49,52 Q44,41 40,31" stroke="#3a2a00" stroke-width="1" fill="none"/>
-<path d="M51,52 Q56,41 60,31" stroke="#3a2a00" stroke-width="1" fill="none"/>
-<circle cx="40" cy="30" r="1.8" fill="#3a2a00"/><circle cx="60" cy="30" r="1.8" fill="#3a2a00"/></svg>`,
-
-b23: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#8B4513" stroke="#3a1a00" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#8B4513" stroke="#3a1a00" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#D2691E" stroke="#3a1a00" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#D2691E" stroke="#3a1a00" stroke-width="0.9"/>
-<path d="M6,32 C14,26 22,26 30,32" stroke="#1a0a00" stroke-width="1.5" fill="none"/>
-<path d="M94,32 C86,26 78,26 70,32" stroke="#1a0a00" stroke-width="1.5" fill="none"/>
-<circle cx="18" cy="26" r="3.5" fill="#FF8C00" opacity="0.7"/>
-<circle cx="82" cy="26" r="3.5" fill="#FF8C00" opacity="0.7"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#1a0a00"/>
-<path d="M49,50 Q44,39 40,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#1a0a00" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a0a00"/><circle cx="60" cy="28" r="2" fill="#1a0a00"/></svg>`,
-
-b24: `<svg width="${s}" height="${h}" viewBox="0 0 100 100"><defs><radialGradient id="r24" cx="45%" cy="30%" r="65%"><stop offset="0%" stop-color="#CE93D8"/><stop offset="50%" stop-color="#7B1FA2"/><stop offset="100%" stop-color="#4A0072"/></radialGradient></defs>
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#4A0072" stroke="#200030" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#4A0072" stroke="#200030" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="url(#r24)" stroke="#200030" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="url(#r24)" stroke="#200030" stroke-width="0.9"/>
-<circle cx="20" cy="22" r="4.5" fill="rgba(200,150,255,0.4)"/>
-<circle cx="80" cy="22" r="4.5" fill="rgba(200,150,255,0.4)"/>
-<ellipse cx="50" cy="60" rx="3" ry="12" fill="#200030"/>
-<path d="M49,49 Q44,38 39,28" stroke="#200030" stroke-width="1.2" fill="none"/>
-<path d="M51,49 Q56,38 61,28" stroke="#200030" stroke-width="1.2" fill="none"/>
-<circle cx="39" cy="27" r="2.2" fill="#200030"/><circle cx="61" cy="27" r="2.2" fill="#200030"/></svg>`,
-
-b25: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#1a1a1a" stroke="#0a0a0a" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#1a1a1a" stroke="#0a0a0a" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#2a2a2a" stroke="#0a0a0a" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#2a2a2a" stroke="#0a0a0a" stroke-width="0.9"/>
-<path d="M4,14 C10,8 20,6 28,10 C34,4 40,2 48,6" stroke="#CC0000" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<path d="M96,14 C90,8 80,6 72,10 C66,4 60,2 52,6" stroke="#CC0000" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<path d="M50,62 Q44,70 40,82 Q46,80 50,76 Q54,80 60,82 Q56,70 50,62Z" fill="#1a1a1a" stroke="#0a0a0a" stroke-width="0.8"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#0a0a0a"/>
-<path d="M49,50 Q44,39 40,29" stroke="#0a0a0a" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#0a0a0a" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#0a0a0a"/><circle cx="60" cy="28" r="2" fill="#0a0a0a"/></svg>`,
-
-b26: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#1a1a1a" stroke="#0a0a0a" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#1a1a1a" stroke="#0a0a0a" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#2d2d2d" stroke="#0a0a0a" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#2d2d2d" stroke="#0a0a0a" stroke-width="0.9"/>
-<path d="M8,22 C16,18 24,20 30,26" stroke="#1565C0" stroke-width="2" fill="none"/>
-<path d="M92,22 C84,18 76,20 70,26" stroke="#1565C0" stroke-width="2" fill="none"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#0a0a0a"/>
-<path d="M49,50 Q44,39 40,29" stroke="#0a0a0a" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#0a0a0a" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#0a0a0a"/><circle cx="60" cy="28" r="2" fill="#0a0a0a"/></svg>`,
-
-b27: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#1a237e" stroke="#0a0a40" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#1a237e" stroke="#0a0a40" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#1a1a2e" stroke="#0a0a40" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#1a1a2e" stroke="#0a0a40" stroke-width="0.9"/>
-<path d="M6,20 C14,14 22,18 30,24" stroke="#3F51B5" stroke-width="2.5" fill="none"/>
-<path d="M94,20 C86,14 78,18 70,24" stroke="#3F51B5" stroke-width="2.5" fill="none"/>
-<circle cx="20" cy="24" r="3" fill="rgba(100,120,255,0.5)"/>
-<circle cx="80" cy="24" r="3" fill="rgba(100,120,255,0.5)"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#0a0a40"/>
-<path d="M49,50 Q44,39 40,29" stroke="#0a0a40" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#0a0a40" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#0a0a40"/><circle cx="60" cy="28" r="2" fill="#0a0a40"/></svg>`,
-
-b28: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C42,60 28,56 18,64 C12,68 14,76 22,74 C32,69 44,64 50,66Z" fill="#1E5C1A" stroke="#0a2a08" stroke-width="0.8"/>
-<path d="M50,62 C58,60 72,56 82,64 C88,68 86,76 78,74 C68,69 56,64 50,66Z" fill="#1E5C1A" stroke="#0a2a08" stroke-width="0.8"/>
-<path d="M50,59 C44,46 28,22 12,22 C4,22 4,36 10,42 C24,54 44,58 50,62Z" fill="#2E8B22" stroke="#0a2a08" stroke-width="0.9"/>
-<path d="M50,59 C56,46 72,22 88,22 C96,22 96,36 90,42 C76,54 56,58 50,62Z" fill="#2E8B22" stroke="#0a2a08" stroke-width="0.9"/>
-<circle cx="22" cy="28" r="3" fill="#FF8C00" opacity="0.8"/>
-<circle cx="78" cy="28" r="3" fill="#FF8C00" opacity="0.8"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#0a2a08"/>
-<path d="M49,50 Q44,39 40,29" stroke="#0a2a08" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#0a2a08" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#0a2a08"/><circle cx="60" cy="28" r="2" fill="#0a2a08"/></svg>`,
-
-b29: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,63 C42,61 28,57 18,65 C12,69 14,77 22,75 C32,70 44,65 50,67Z" fill="#B8B8B8" stroke="#555" stroke-width="0.8"/>
-<path d="M50,63 C58,61 72,57 82,65 C88,69 86,77 78,75 C68,70 56,65 50,67Z" fill="#B8B8B8" stroke="#555" stroke-width="0.8"/>
-<path d="M50,60 C44,47 28,23 12,24 C4,25 4,37 10,43 C24,54 44,59 50,63Z" fill="#E8E8E8" stroke="#555" stroke-width="0.9"/>
-<path d="M50,60 C56,47 72,23 88,24 C96,25 96,37 90,43 C76,54 56,59 50,63Z" fill="#E8E8E8" stroke="#555" stroke-width="0.9"/>
-<path d="M12,28 C20,22 28,24 36,30" stroke="#666" stroke-width="2" fill="none"/>
-<path d="M88,28 C80,22 72,24 64,30" stroke="#666" stroke-width="2" fill="none"/>
-<ellipse cx="50" cy="61" rx="2.5" ry="10" fill="#444"/>
-<path d="M49,52 Q44,41 40,31" stroke="#444" stroke-width="1" fill="none"/>
-<path d="M51,52 Q56,41 60,31" stroke="#444" stroke-width="1" fill="none"/>
-<circle cx="40" cy="30" r="1.8" fill="#444"/><circle cx="60" cy="30" r="1.8" fill="#444"/></svg>`,
-
-b30: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
-<path d="M50,62 C40,64 20,70 8,76 C4,80 6,88 14,84 C28,77 44,67 50,65Z" fill="#A04010" stroke="#5a2000" stroke-width="0.8"/>
-<path d="M50,62 C60,64 80,70 92,76 C96,80 94,88 86,84 C72,77 56,67 50,65Z" fill="#A04010" stroke="#5a2000" stroke-width="0.8"/>
-<path d="M50,58 C40,40 20,12 4,14 C-2,16 0,32 10,40 C28,52 44,56 50,62Z" fill="#E8821A" stroke="#5a2000" stroke-width="0.9"/>
-<path d="M50,58 C60,40 80,12 96,14 C102,16 100,32 90,40 C72,52 56,56 50,62Z" fill="#E8821A" stroke="#5a2000" stroke-width="0.9"/>
-<path d="M8,18 C14,14 20,18 26,24" stroke="#1a0a00" stroke-width="2" fill="none"/>
-<path d="M92,18 C86,14 80,18 74,24" stroke="#1a0a00" stroke-width="2" fill="none"/>
-<circle cx="20" cy="22" r="4" fill="rgba(100,60,200,0.5)"/>
-<circle cx="80" cy="22" r="4" fill="rgba(100,60,200,0.5)"/>
-<circle cx="20" cy="22" r="2" fill="rgba(200,100,255,0.7)"/>
-<circle cx="80" cy="22" r="2" fill="rgba(200,100,255,0.7)"/>
-<ellipse cx="50" cy="60" rx="2.5" ry="11" fill="#1a0800"/>
-<path d="M49,50 Q44,39 40,29" stroke="#1a0800" stroke-width="1" fill="none"/>
-<path d="M51,50 Q56,39 60,29" stroke="#1a0800" stroke-width="1" fill="none"/>
-<circle cx="40" cy="28" r="2" fill="#1a0800"/><circle cx="60" cy="28" r="2" fill="#1a0800"/></svg>`,
-
+// b10~b30: 나머지는 색상 변형
+b10: makeSVG({id:'b10',fw1:'#CE93D8',fw2:'#6A1B9A',hw1:'#BA68C8',hw2:'#4A148C',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#CE93D8',dots:`<circle cx="78" cy="64" r="5" fill="#F06292"/><circle cx="22" cy="64" r="5" fill="#F06292"/>`,veins:``}),
+b11: makeSVG({id:'b11',fw1:'#80CBC4',fw2:'#00695C',hw1:'#4DB6AC',hw2:'#004D40',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#80CBC4',dots:``,veins:`<path d="M50,52 Q34,44 18,40" stroke="#B2DFDB" stroke-width="0.7" fill="none" opacity="0.6"/><path d="M50,52 Q66,44 82,40" stroke="#B2DFDB" stroke-width="0.7" fill="none" opacity="0.6"/>`}),
+b12: makeSVG({id:'b12',fw1:'#FFAB91',fw2:'#BF360C',hw1:'#FF8A65',hw2:'#8D2505',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#FFAB91',dots:`<circle cx="76" cy="66" r="4" fill="#1A1A1A"/><circle cx="24" cy="66" r="4" fill="#1A1A1A"/>`,veins:``}),
+b13: makeSVG({id:'b13',fw1:'#FFF9C4',fw2:'#F9A825',hw1:'#FFEE58',hw2:'#F57F17',fw_s:'#333',hw_s:'#333',body_c:'#333',anten_c:'#333',mark_c:'#fff',dots:`<circle cx="22" cy="38" r="4" fill="#F9A825"/><circle cx="78" cy="38" r="4" fill="#F9A825"/>`,veins:`<path d="M50,52 Q36,46 22,44" stroke="#F9A825" stroke-width="0.6" fill="none"/><path d="M50,52 Q64,46 78,44" stroke="#F9A825" stroke-width="0.6" fill="none"/>`}),
+b14: makeSVG({id:'b14',fw1:'#90CAF9',fw2:'#1565C0',hw1:'#64B5F6',hw2:'#0D47A1',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#90CAF9',dots:`<circle cx="70" cy="36" r="6" fill="#1A1A2E"/><circle cx="70" cy="36" r="3" fill="#FFF176"/>`,veins:``}),
+b15: makeSVG({id:'b15',fw1:'#EF9A9A',fw2:'#B71C1C',hw1:'#EF5350',hw2:'#7F0000',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#EF9A9A',dots:``,veins:`<path d="M50,52 Q34,44 16,36" stroke="#FFCDD2" stroke-width="0.8" fill="none" opacity="0.6"/><path d="M50,52 Q66,44 84,36" stroke="#FFCDD2" stroke-width="0.8" fill="none" opacity="0.6"/>`}),
+b16: makeSVG({id:'b16',fw1:'#A5D6A7',fw2:'#1B5E20',hw1:'#81C784',hw2:'#2E7D32',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#A5D6A7',dots:`<circle cx="24" cy="38" r="5" fill="#1A1A2E"/><circle cx="24" cy="38" r="2.5" fill="#FFD600"/>`,veins:``}),
+b17: makeSVG({id:'b17',fw1:'#FFD54F',fw2:'#E65100',hw1:'#FFB300',hw2:'#BF360C',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#FFD54F',dots:`<circle cx="78" cy="40" r="6" fill="#1A1A1A"/><circle cx="78" cy="40" r="3" fill="#fff"/><circle cx="22" cy="40" r="6" fill="#1A1A1A"/><circle cx="22" cy="40" r="3" fill="#fff"/>`,veins:``}),
+b18: makeSVG({id:'b18',fw1:'#B39DDB',fw2:'#4527A0',hw1:'#9575CD',hw2:'#311B92',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#B39DDB',dots:``,veins:`<path d="M50,52 Q34,44 18,38" stroke="#D1C4E9" stroke-width="0.7" fill="none" opacity="0.7"/><path d="M50,52 Q66,44 82,38" stroke="#D1C4E9" stroke-width="0.7" fill="none" opacity="0.7"/>`}),
+b19: makeSVG({id:'b19',fw1:'#80DEEA',fw2:'#006064',hw1:'#4DD0E1',hw2:'#00838F',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#80DEEA',dots:``,veins:``}),
+b20: makeSVG({id:'b20',fw1:'#F48FB1',fw2:'#880E4F',hw1:'#F06292',hw2:'#6A0F35',fw_s:'#1A1A2E',hw_s:'#1A1A2E',body_c:'#1A1A2E',anten_c:'#1A1A2E',mark_c:'#F48FB1',dots:`<circle cx="78" cy="66" r="5" fill="#fff" opacity="0.8"/><circle cx="22" cy="66" r="5" fill="#fff" opacity="0.8"/>`,veins:``}),
+b21: makeSVG({id:'b21',fw1:'#BCAAA4',fw2:'#3E2723',hw1:'#A1887F',hw2:'#2D1A13',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#BCAAA4',dots:``,veins:`<path d="M50,52 Q34,44 18,40" stroke="#D7CCC8" stroke-width="0.6" fill="none" opacity="0.5"/><path d="M50,52 Q66,44 82,40" stroke="#D7CCC8" stroke-width="0.6" fill="none" opacity="0.5"/>`}),
+b22: makeSVG({id:'b22',fw1:'#CFD8DC',fw2:'#263238',hw1:'#B0BEC5',hw2:'#1C313A',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#CFD8DC',dots:`<circle cx="78" cy="38" r="5" fill="#1A1A1A"/><circle cx="78" cy="38" r="2.5" fill="#80CBC4"/>`,veins:``}),
+b23: makeSVG({id:'b23',fw1:'#FFCCBC',fw2:'#BF360C',hw1:'#FFAB91',hw2:'#8D2505',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#FFCCBC',dots:``,veins:`<path d="M50,52 Q36,44 20,38" stroke="#FF8A65" stroke-width="1" fill="none"/><path d="M50,52 Q64,44 80,38" stroke="#FF8A65" stroke-width="1" fill="none"/>`}),
+b24: makeSVG({id:'b24',fw1:'#E8EAF6',fw2:'#283593',hw1:'#C5CAE9',hw2:'#1A237E',fw_s:'#1A237E',hw_s:'#283593',body_c:'#1A237E',anten_c:'#1A237E',mark_c:'#E8EAF6',dots:`<circle cx="76" cy="36" r="6" fill="#283593"/><circle cx="76" cy="36" r="3" fill="#EF5350"/>`,veins:``}),
+b25: makeSVG({id:'b25',fw1:'#FFFDE7',fw2:'#F57F17',hw1:'#FFF9C4',hw2:'#E65100',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#FFFDE7',dots:`<circle cx="22" cy="38" r="5" fill="#F57F17"/><circle cx="78" cy="38" r="5" fill="#F57F17"/>`,veins:`<path d="M50,52 Q34,44 18,40" stroke="#F57F17" stroke-width="0.8" fill="none"/><path d="M50,52 Q66,44 82,40" stroke="#F57F17" stroke-width="0.8" fill="none"/>`}),
+b26: makeSVG({id:'b26',fw1:'#E1F5FE',fw2:'#0277BD',hw1:'#B3E5FC',hw2:'#01579B',fw_s:'#01579B',hw_s:'#01579B',body_c:'#01579B',anten_c:'#01579B',mark_c:'#E1F5FE',dots:``,veins:`<path d="M50,52 Q36,44 18,36" stroke="#B3E5FC" stroke-width="1" fill="none" opacity="0.8"/><path d="M50,52 Q64,44 82,36" stroke="#B3E5FC" stroke-width="1" fill="none" opacity="0.8"/>`}),
+b27: makeSVG({id:'b27',fw1:'#F3E5F5',fw2:'#6A1B9A',hw1:'#E1BEE7',hw2:'#4A148C',fw_s:'#4A148C',hw_s:'#4A148C',body_c:'#4A148C',anten_c:'#4A148C',mark_c:'#CE93D8',dots:`<circle cx="78" cy="62" r="6" fill="#4A148C"/><circle cx="78" cy="62" r="3" fill="#CE93D8"/>`,veins:``}),
+b28: makeSVG({id:'b28',fw1:'#FFECB3',fw2:'#FF6F00',hw1:'#FFE082',hw2:'#E65100',fw_s:'#1A1A1A',hw_s:'#1A1A1A',body_c:'#1A1A1A',anten_c:'#1A1A1A',mark_c:'#FFECB3',dots:``,veins:`<path d="M50,52 Q34,44 16,36" stroke="#1A1A1A" stroke-width="1.8" fill="none"/><path d="M50,54 Q36,50 20,54" stroke="#1A1A1A" stroke-width="1.4" fill="none"/><path d="M50,52 Q66,44 84,36" stroke="#1A1A1A" stroke-width="1.8" fill="none"/><path d="M50,54 Q64,50 80,54" stroke="#1A1A1A" stroke-width="1.4" fill="none"/>`}),
+b29: makeSVG({id:'b29',fw1:'#E8F5E9',fw2:'#1B5E20',hw1:'#C8E6C9',hw2:'#2E7D32',fw_s:'#1B5E20',hw_s:'#1B5E20',body_c:'#1B5E20',anten_c:'#1B5E20',mark_c:'#A5D6A7',dots:`<circle cx="24" cy="36" r="5" fill="#1B5E20"/><circle cx="24" cy="36" r="2.5" fill="#FFEE58"/>`,veins:`<path d="M50,52 Q34,42 14,34" stroke="#A5D6A7" stroke-width="0.7" fill="none"/><path d="M50,52 Q66,42 86,34" stroke="#A5D6A7" stroke-width="0.7" fill="none"/>`}),
+b30: makeSVG({id:'b30',fw1:'#FFEEFF',fw2:'#880E4F',hw1:'#FFD6E7',hw2:'#6A0F35',fw_s:'#880E4F',hw_s:'#880E4F',body_c:'#880E4F',anten_c:'#880E4F',mark_c:'#FFEEFF',dots:`<circle cx="78" cy="36" r="6" fill="#880E4F"/><circle cx="78" cy="36" r="3" fill="#F8BBD9"/><circle cx="22" cy="36" r="6" fill="#880E4F"/><circle cx="22" cy="36" r="3" fill="#F8BBD9"/>`,veins:``}),
   };
-  return wrap(svgs[bId] || svgs['b01']);
+
+  // 나비 ID에서 인덱스 번호 추출
+  const num = parseInt(bId.replace(/[^\d]/g,''))||1;
+  const key = 'b'+String(num).padStart(2,'0');
+  const svgContent = svgs[key] || svgs['b01'];
+  return wrap(svgContent);
 }
 
 const BUTTERFLY_LIST = [
@@ -6629,14 +6337,7 @@ function rHome() {
     </div>
     <!-- 성장 8단계 미니 표시 -->
     <div style="display:flex;justify-content:center;gap:4px;margin-top:10px;align-items:center">
-      ${LEVELS.map((lv,i)=>{
-        const isCur = lv.id===S.lid;
-        const isPassed = LEVELS.findIndex(l=>l.id===S.lid) > i;
-        return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
-          <div style="font-size:${isCur?16:10}px;opacity:${isCur?1:isPassed?0.7:0.35};transition:all .3s;${isCur?'filter:drop-shadow(0 0 4px rgba(255,255,255,.8))':''}">${lv.emoji}</div>
-          ${isCur?`<div style="width:4px;height:4px;border-radius:50%;background:#fff;margin-top:1px"></div>`:''}
-        </div>`;
-      }).join('')}
+      ${(function(){var curIdx=LEVELS.findIndex(function(l){return l.id===S.lid;});return LEVELS.map(function(lv,i){var isCur=lv.id===S.lid;var isPassed=i<curIdx;return '<div style="display:flex;flex-direction:column;align-items:center;gap:1px"><div style="font-size:'+(isCur?16:10)+'px;opacity:'+(isCur?1:isPassed?0.7:0.35)+';transition:all .3s">'+lv.emoji+'</div>'+(isCur?'<div style="width:4px;height:4px;border-radius:50%;background:#fff;margin-top:1px"></div>':'')+'</div>';}).join('');})()}
     </div>
     
   </div>`);
@@ -7677,6 +7378,17 @@ function srsRate(en, days) {
 }
 
 // ── 학습 탭 ──
+window._doMark = function(v) {
+  const words = S._flipWords || [];
+  const idx = S.idx||0;
+  const w = words[idx];
+  if(!w) return;
+  setMark(w.en, v);
+  S.flip = false;
+  S.idx = Math.min(idx+1, words.length-1);
+  go();
+};
+
 function rStudy() {
   // 단어장 선택 첫 화면
   if(!S.stab || S.stab==='books') return rStudyBooks();
@@ -8149,8 +7861,11 @@ function showGameSettings(gameId, tab) {
   </div></div>`;
 }
 
+
+
 function startGameWithSettings(gameId) {
   S._prevTab = S.tab; // 현재 탭 저장 → 나가기 시 복귀
+  S.gameId = gameId; // pick()에서 중복 방지용 키로 사용
   const gs = S.gameSettings||{count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false};
 
   // 현재 선택된 단어장 + 시스템 단어장 모두 포함
@@ -8194,210 +7909,149 @@ function getCurrentBookMarkMap() {
 
 
 function rLearn() {
-  // 정렬/랜덤 적용
-  if(!S._flipWords) {
-    const sort = S.flashSort||'default';
-    if(sort==='random' && !S._flashShuffled) {
-      // 한번만 섞기 (카드 넘길 때마다 다시 섞으면 안 됨)
-      S._flashShuffled = typeof getCurrentBookWords==='function' ? [...getCurrentBookWords()] : [...S.words];
-      for(let i=S._flashShuffled.length-1;i>0;i--){
-        const j=Math.floor(Math.random()*(i+1));
-        [S._flashShuffled[i],S._flashShuffled[j]]=[S._flashShuffled[j],S._flashShuffled[i]];
-      }
-    } else if(sort!=='random') {
-      S._flashShuffled = null; // 랜덤 아닌 경우 캐시 초기화
+  const sort = S.flashSort||'default';
+  const filter = S.listMarkFilter??-1;
+
+  // 현재 단어장 단어
+  let baseWords = typeof getCurrentBookWords==='function' ? [...getCurrentBookWords()] : [...S.words];
+
+  // 정렬
+  if(sort==='alpha') baseWords.sort((a,b)=>a.en.localeCompare(b.en));
+  else if(sort==='alpha_kr') baseWords.sort((a,b)=>a.kr.localeCompare(b.kr));
+  else if(sort==='mark') baseWords.sort((a,b)=>getMark(b.en)-getMark(a.en));
+  else if(sort==='random') {
+    if(!S._flashShuffled || S._flashShuffled.length !== baseWords.length) {
+      S._flashShuffled = [...baseWords].sort(()=>Math.random()-.5);
     }
+    baseWords = S._flashShuffled;
   }
-  const words = S._flipWords || (S.flashSort==='random' && S._flashShuffled ? S._flashShuffled : (()=>{
-    const ws = typeof getCurrentBookWords==='function' ? [...getCurrentBookWords()] : [...S.words];
-    if(S.flashSort==='alpha') ws.sort((a,b)=>a.en.localeCompare(b.en));
-    else if(S.flashSort==='alpha_kr') ws.sort((a,b)=>a.kr.localeCompare(b.kr));
-    else if(S.flashSort==='mark') ws.sort((a,b)=>getMark(b.en)-getMark(a.en));
-    return ws;
-  })());
-  const idx = S._flipWords ? (S._flipIdx||0) : S.idx;
-  if(!words.length) return `<div class="pad" style="text-align:center;margin-top:60px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}<button class="btn bb" onclick="go('mybooks','add')" style="max-width:200px;margin:0 auto">단어 추가하기</button></div>`;
 
-  // 단어 전체 완료 시 처리
-  if(idx >= words.length && !S._flipWords) {
-    return `<div class="pad" style="text-align:center;padding:40px 20px">
-      ${charSVGAnimated(S.lid,64,'happy')}
-      <div style="font-size:18px;font-weight:900;color:var(--text1,var(--text1,#111111));margin:16px 0 8px">오늘 학습 완료! 🎉</div>
-      <div style="font-size:13px;color:var(--text3,var(--text3,#9CA3AF));margin-bottom:20px">${words.length}개 단어를 모두 넘겼어요</div>
-      <div style="display:flex;flex-direction:column;gap:8px;max-width:280px;margin:0 auto">
-        <button onclick="S.idx=0;S.flip=false;go()" class="btn bb">🔄 처음부터 다시</button>
-        <button onclick="showGameSettings('quiz')" class="btn" style="background:#EFF6FF;color:#1E5FA5;border:1.5px solid #BFDBFE">🎯 퀴즈로 확인</button>
-        <button onclick="go('mybooks','mode')" class="btn" style="background:var(--bg-sub,var(--bg-sub,#F3F4F6));color:var(--text2,var(--text2,#374151));border:1.5px solid var(--border,var(--border,#E5E7EB))">← 학습 방법 선택</button>
-      </div>
-    </div>`;
+  // 필터 적용
+  const filtered = filter === -1 ? baseWords
+    : baseWords.filter(w => getMark(w.en) === filter);
+
+  // _flipWords 초기화 (필터/단어장 변경 시)
+  const words = (S._flipWords && S._flipWords.length > 0 && filter === (S._lastFilter??-1))
+    ? S._flipWords : filtered;
+  S._lastFilter = filter;
+  if(!S._flipWords || S._flipWords !== words) S._flipWords = words;
+
+  const idx = Math.min(S.idx||0, Math.max(0, words.length-1));
+  S.idx = idx;
+  const w = words[idx];
+  const flip = S.flip||false;
+  const total = words.length;
+  const pct = total > 0 ? Math.round((idx+1)/total*100) : 0;
+
+  // 빈 상태
+  if(!w) {
+    let html = '<div style="display:flex;flex-direction:column;height:100%;align-items:center;justify-content:center;padding:20px;text-align:center">';
+    html += '<div style="font-size:48px;margin-bottom:12px">📭</div>';
+    html += '<div style="font-size:16px;font-weight:700;color:#111;margin-bottom:6px">단어가 없어요</div>';
+    html += '<div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">';
+    if(filter === 0) html += '미학습 단어가 없어요.<br>먼저 단어를 추가하거나 필터를 바꿔주세요.';
+    else if(filter === 1) html += '외웠음 표시한 단어가 없어요.';
+    else if(filter === 2) html += '복습 표시한 단어가 없어요.';
+    else html += '단어장에 단어를 추가해주세요.';
+    html += '</div>';
+    html += '<button onclick="S.listMarkFilter=-1;go()" style="background:#111;color:#fff;border:none;border-radius:12px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer">전체 보기</button>';
+    html += '</div>';
+    return html;
   }
-  const w = words[Math.min(idx, words.length-1)];
-  console.log('[플래시카드] 현재 단어:', JSON.stringify({en:w.en,kr:w.kr,ph:w.ph,ex:w.ex,pos:w.pos}));
-  const prog = idx+1, tot = words.length;
-  const pct = Math.round(prog/tot*100);
-  const mark = getMark(w.en);
-  const mInfo = MARK_INFO[mark];
-  const hideMode = S.flashHide||0;
-  const showWord = hideMode!==2 || (S.flip||false);
-  const showMeaning = hideMode!==1 || (S.flip||false);
-  const flipped = S.flip||false;
-  const isFav = (S.favorites||new Set()).has(w.en);
-  const safeEn = w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-  // 마킹별 카드 테마
-  const cardThemes = {
-    0: {bg:'var(--bg-card,#FFFFFF)', border:'var(--border,#E5E7EB)', accent:'var(--text3,#9CA3AF)'},
-    1: {bg:'#F0FDF4', border:'#86EFAC', accent:'#16A34A'},
-    2: {bg:'#FDF4FF', border:'#E9D5FF', accent:'#7C3AED'},
-  };
-  const theme = cardThemes[mark] || cardThemes[0];
+  // 필터 버튼 HTML
+  const allFw = typeof getCurrentBookWords==='function' ? getCurrentBookWords() : S.words;
+  const filterBtns = [
+    [-1, '전체', allFw.length],
+    [0,  '📝 미학습', allFw.filter(w=>getMark(w.en)===0).length],
+    [1,  '✅ 외웠음', allFw.filter(w=>getMark(w.en)===1).length],
+    [2,  '🔁 복습',   allFw.filter(w=>getMark(w.en)===2).length],
+  ];
 
-  return `<div style="display:flex;flex-direction:column;height:100%;background:linear-gradient(135deg,#0F172A,#1E3A5F);color:#fff">
+  let filterHtml = '';
+  filterBtns.forEach(function([v, lb, cnt]) {
+    const active = filter === v;
+    filterHtml += '<button onclick="S.listMarkFilter='+v+';S.idx=0;S.flip=false;S._flipWords=null;go()" '
+      +'style="padding:6px 10px;border-radius:20px;border:1.5px solid '+(active?'#111':'#E5E7EB')+';'
+      +'background:'+(active?'#111':'#fff')+';color:'+(active?'#fff':'#374151')+';'
+      +'font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'
+      +lb+' <span style="opacity:.6">'+cnt+'</span></button>';
+  });
 
-    <!-- 상단 바 -->
-    <div style="padding:12px 16px 8px;display:flex;align-items:center;gap:10px;flex-shrink:0">
-      <button onclick="go('mybooks','mode')" style="background:none;border:none;font-size:22px;cursor:pointer;padding:4px;color:var(--text3,var(--text3,#9CA3AF))">‹</button>
-      <div style="flex:1">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-          <span style="font-size:13px;font-weight:700;color:var(--text1,var(--text1,#111111))">${prog} / ${tot}</span>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF))">${pct}%</span>
-            <button onclick="S.flashHide=((S.flashHide||0)+1)%3;go()" style="background:${hideMode>0?'#EFF6FF':'var(--bg-sub,var(--bg-sub,#F3F4F6))'};border:1.5px solid ${hideMode>0?'#BFDBFE':'var(--border,var(--border,#E5E7EB))'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;color:${hideMode>0?'#1E5FA5':'var(--text3,var(--text3,#9CA3AF))'}">
-              ${hideMode===0?'👁 전체':hideMode===1?'뜻 가림':'단어 가림'}
-            </button>
-          </div>
-        </div>
-        <!-- 진행 바 -->
-        <div style="background:var(--border,var(--border,#E5E7EB));border-radius:4px;height:4px;overflow:hidden">
-          <div style="height:100%;background:#E65100;border-radius:4px;width:${pct}%;transition:width .4s"></div>
-        </div>
-      </div>
-    </div>
+  // 카드 앞/뒤
+  let cardContent = '';
+  if(!flip) {
+    cardContent = '<div style="font-size:'+(w.en.length>12?'28px':w.en.length>8?'36px':'44px')+';font-weight:900;font-family:monospace;color:#fff;margin-bottom:10px">'+w.en+'</div>';
+    if(w.ph) cardContent += '<div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:6px">'+w.ph+'</div>';
+    cardContent += '<div style="font-size:12px;color:rgba(255,255,255,.4)">탭해서 뜻 확인</div>';
+  } else {
+    cardContent = '<div style="font-size:22px;font-weight:900;color:#fff;margin-bottom:8px">'+w.kr+'</div>';
+    if(w.ex||w.exList) {
+      const ex = (w.exList&&w.exList[0])||w.ex||'';
+      if(ex) cardContent += '<div style="font-size:12px;color:rgba(255,255,255,.6);font-style:italic;line-height:1.5;max-width:260px;text-align:center">'+ex+'</div>';
+    }
+    cardContent += '<div style="margin-top:10px;font-size:28px;font-weight:900;font-family:monospace;color:rgba(255,255,255,.3)">'+w.en+'</div>';
+  }
 
-    <!-- 필터 바 (외웠음/아닌것) -->
-    <div style="display:flex;gap:6px;padding:0 16px;margin-bottom:6px;overflow-x:auto">
-      ${(()=>{
-        const cur=S.listMarkFilter??-1;
-        const _fw = typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words;
-        const filters=[[-1,'전체',_fw.length],[0,'📝미학습',_fw.filter(w=>getMark(w.en)===0).length],[1,'✅외웠음',_fw.filter(w=>getMark(w.en)===1).length],[2,'🦋복습',_fw.filter(w=>getMark(w.en)===2).length],[0,'○미학습',S.words.filter(w=>getMark(w.en)===0).length]];
-        return filters.map(([v,lb,cnt])=>{
-          const active=cur===v;
-          const _fwRef=typeof getCurrentBookWords==='function'?'(typeof getCurrentBookWords===\'function\'?getCurrentBookWords():S.words)':'S.words';const onclick=v>=0?'S.listMarkFilter='+v+';S.idx=0;S.flip=false;S._flipWords=(typeof getCurrentBookWords===\'function\'?getCurrentBookWords():S.words).filter(w=>getMark(w.en)==='+v+');S._flipIdx=0;go()':'S.listMarkFilter=-1;S.idx=0;S.flip=false;S._flipWords=null;go()';
-          return '<button onclick="'+onclick+'" style="background:'+(active?'#E65100':'var(--bg-sub,var(--bg-sub,#F3F4F6))')+';color:'+(active?'#fff':'var(--text2,var(--text2,#374151))')+';border:1.5px solid '+(active?'#E65100':'var(--border,var(--border,#E5E7EB))')+';border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">'+lb+' '+cnt+'</button>';
-        }).join('');
-      })()}
-    </div>
-    <!-- 정렬 선택 -->
-    <div style="display:flex;align-items:center;gap:6px;padding:0 16px;margin-bottom:4px">
-      <span style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF))">정렬:</span>
-      <select onchange="S.flashSort=this.value;S._flashShuffled=null;S.idx=0;S.flip=false;go()" style="font-size:11px;border:1px solid var(--border,var(--border,#E5E7EB));border-radius:8px;padding:3px 6px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));color:var(--text2,var(--text2,#374151))">
-        <option value="default" ${(!S.flashSort||S.flashSort==='default')?'selected':''}>추가순</option>
-        <option value="alpha" ${S.flashSort==='alpha'?'selected':''}>영어 A-Z</option>
-        <option value="alpha_kr" ${S.flashSort==='alpha_kr'?'selected':''}>한글 가나다</option>
-        <option value="mark" ${S.flashSort==='mark'?'selected':''}>마크순</option>
-        <option value="random" ${S.flashSort==='random'?'selected':''}>🔀 랜덤</option>
-      </select>
-      ${S.flashSort==='random'?`<button onclick="S._flashShuffled=null;S.idx=0;S.flip=false;go()" style="font-size:11px;border:none;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:8px;padding:3px 8px;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔀 다시섞기</button>`:''}
-    </div>
+  // 마크 현황
+  const curMark = getMark(w.en)||0;
+  const markBtns = [
+    [0, '📝 미학습', curMark===0],
+    [1, '✅ 외웠음', curMark===1],
+    [2, '🔁 복습',   curMark===2],
+  ];
+  let markHtml = '';
+  markBtns.forEach(function([v, lb, active]) {
+    markHtml += '<button onclick="window._doMark('+v+')" style="flex:1;padding:12px 4px;border:none;border-radius:14px;background:'+(active?'#111':'#F3F4F6')+';color:'+(active?'#fff':'#374151')+';'+'font-size:12px;font-weight:'+(active?700:500)+';cursor:pointer">'+lb+'</button>';
+      +'style="flex:1;padding:12px 4px;border:none;border-radius:14px;'
+      +'background:'+(active?'#111':'#F3F4F6')+';color:'+(active?'#fff':'#374151')+';'
+      +'font-size:12px;font-weight:'+(active?700:500)+';cursor:pointer">'
+      +lb+'</button>';
+  });
 
-    <!-- 스와이프 힌트 -->
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3,var(--text3,#9CA3AF));padding:0 20px;margin-bottom:8px">
-      <span>← 모르겠어 🦋</span>
-      <span>외웠음 ✅ →</span>
-    </div>
+  let html = '<div style="display:flex;flex-direction:column;height:100%;background:#F8F9FA">';
 
-    <!-- 메인 카드 영역 -->
-    <div style="flex:1;padding:0 16px;display:flex;flex-direction:column;gap:0;min-height:0">
+  // 필터 바
+  html += '<div style="padding:10px 12px 6px;display:flex;gap:6px;overflow-x:auto;flex-shrink:0;scrollbar-width:none">';
+  html += filterHtml;
+  html += '</div>';
 
-      <!-- 플래시카드 -->
-      <div id="flash-card"
-        onclick="SFX.play('flip');vib(30);S.flip=!S.flip;go()"
-        ontouchend="this.style.transform='';this.style.background=this.dataset.origBg||'';this.style.transition='transform .25s,background .25s,box-shadow .25s'"
-        data-orig-bg="${theme.bg}"
-        style="flex:1;background:${theme.bg};border-radius:28px;border:2px solid ${theme.border};
-               display:flex;flex-direction:column;align-items:center;justify-content:center;
-               gap:10px;padding:28px 24px;cursor:pointer;position:relative;user-select:none;
-               transition:transform .25s,background .25s,box-shadow .25s;
-               box-shadow:0 4px 24px ${theme.border}88;height:340px;overflow:hidden">
+  // 진행바
+  html += '<div style="padding:0 12px 8px;flex-shrink:0">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+  html += '<span style="font-size:11px;color:#9CA3AF">'+( idx+1)+' / '+total+'</span>';
+  html += '<span style="font-size:11px;color:#9CA3AF">'+pct+'%</span>';
+  html += '</div>';
+  html += '<div style="background:#E5E7EB;border-radius:3px;height:3px"><div style="height:100%;background:#111;border-radius:3px;width:'+pct+'%;transition:width .3s"></div></div>';
+  html += '</div>';
 
-        <!-- 마킹 뱃지 (우상단) -->
-        <div style="position:absolute;top:14px;right:14px;display:flex;gap:6px;align-items:center">
-          ${isFav?'<span style="font-size:16px">⭐</span>':''}
-          <span style="background:${mInfo.bg};color:${mInfo.color};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700">${mInfo.emoji} ${mInfo.label}</span>
-        </div>
+  // 카드
+  html += '<div onclick="S.flip=!S.flip;go()" style="flex:1;margin:0 12px;background:linear-gradient(135deg,#1A3A2A,#2D5A3D);border-radius:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:200px">';
+  html += '<div style="text-align:center;padding:24px">'+cardContent+'</div>';
+  html += '</div>';
 
-        <!-- 단어 번호 (좌상단) -->
-        <div style="position:absolute;top:14px;left:14px;font-size:11px;color:${theme.accent};font-weight:700;opacity:.6">#${prog}</div>
+  // 마크 버튼
+  html += '<div style="padding:12px;display:flex;gap:8px;flex-shrink:0">'+markHtml+'</div>';
 
-        ${S.showImg!==false && w.img && w.img!=='📝'
-          ? `<div style="font-size:72px;line-height:1;margin-bottom:4px">${w.img}</div>`
-          : ''}
+  // 이전/다음
+  html += '<div style="padding:0 12px 12px;display:flex;gap:8px;flex-shrink:0">';
+  html += '<button onclick="S.idx=Math.max(0,S.idx-1);S.flip=false;go()" style="flex:1;padding:12px;background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;font-size:18px;cursor:pointer">⏮</button>';
+  html += '<button onclick="S.idx=Math.min(S._flipWords.length-1,S.idx+1);S.flip=false;go()" style="flex:2;padding:12px;background:#111;color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer">다음 →</button>';
+  html += '</div>';
 
-        ${showWord
-          ? `<div style="font-size:${w.en.length>12?'24px':w.en.length>8?'30px':'36px'};font-weight:900;color:var(--text1,#1A1A2E);font-family:monospace;text-align:center;letter-spacing:-0.5px;line-height:1.2">${w.en}</div>
-             ${w.ph?`<div style="font-size:13px;color:${theme.accent};font-weight:500">${w.ph}</div>`:''}
-             ${w.koSnd?`<div style="font-size:13px;color:#7C3AED;font-weight:600">[${w.koSnd}]</div>`:''}`
-          : `<div style="background:var(--border,var(--border,#E5E7EB));border-radius:14px;padding:12px 28px;font-size:14px;color:var(--text3,var(--text3,#9CA3AF))">탭해서 단어 보기 👆</div>`}
+  // 정렬
+  html += '<div style="padding:0 12px 12px;flex-shrink:0;display:flex;align-items:center;gap:8px">';
+  html += '<span style="font-size:11px;color:#9CA3AF">정렬</span>';
+  html += '<select onchange="S.flashSort=this.value;S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;go()" style="font-size:11px;border:1px solid #E5E7EB;border-radius:8px;padding:4px 8px;outline:none;background:#fff">';
+  html += '<option value="default" '+((!sort||sort==='default')?'selected':'')+'>추가순</option>';
+  html += '<option value="alpha" '+(sort==='alpha'?'selected':'')+'>영어 A-Z</option>';
+  html += '<option value="random" '+(sort==='random'?'selected':'')+'>랜덤</option>';
+  html += '<option value="mark" '+(sort==='mark'?'selected':'')+'>마크순</option>';
+  html += '</select>';
+  html += '</div>';
 
-        ${showMeaning
-          ? `<div style="width:100%;height:1px;background:${theme.border};margin:4px 0"></div>
-             <div style="font-size:22px;font-weight:800;color:var(--text1,var(--text1,#111111));text-align:center">${w.kr}</div>
-             ${w.pos?`<span style="background:${theme.bg};border:1.5px solid ${theme.border};color:${theme.accent};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${w.pos}</span>`:''}
-             ${w.syn?`<div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF))">= ${w.syn}</div>`:''}
-             ${w.ex?`<div style="font-size:12px;color:var(--text3,var(--text3,#9CA3AF));font-style:italic;text-align:center;line-height:1.7;background:${theme.bg}cc;border-radius:10px;padding:8px 12px">"${w.ex}"</div>`:''}`
-          : `<div style="background:var(--border,var(--border,#E5E7EB));border-radius:14px;padding:12px 28px;font-size:14px;color:var(--text3,var(--text3,#9CA3AF))">탭해서 뜻 보기 👆</div>`}
-
-        ${w.memo?`<div style="background:#FFF8E1;border-radius:10px;padding:7px 14px;font-size:12px;color:#E65100;text-align:center;width:100%;box-sizing:border-box">✏️ ${w.memo}</div>`:''}
-
-        <!-- 탭 힌트 (처음에만) -->
-        <div style="position:absolute;bottom:12px;font-size:10px;color:${theme.accent};opacity:.5">탭해서 뒤집기</div>
-      </div>
-    </div>
-
-    <!-- 하단 액션 바 -->
-    <div style="padding:12px 16px calc(env(safe-area-inset-bottom,0px)+64px);flex-shrink:0">
-      <!-- 모르겠어 / 알았어 스와이프 버튼 -->
-      <div style="display:grid;grid-template-columns:1fr auto auto auto auto 1fr;gap:8px;align-items:center;margin-bottom:10px">
-
-        <!-- 모르겠어 -->
-        <button onclick="setMark('${safeEn}',2);ng();SFX.play('swipe_ng');showSwipeHint('🦋 복습필요','#DC2626');${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;go()"
-          style="background:#FEF2F2;border:2px solid #FECDD3;border-radius:16px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#DC2626;display:flex;flex-direction:column;align-items:center;gap:3px">
-          <span style="font-size:20px">🦋</span>
-          <span>모르겠어</span>
-        </button>
-
-        <!-- 이전 -->
-        <button onclick="${S._flipWords?'S._flipIdx=Math.max(0,(S._flipIdx||0)-1)':'S.idx=Math.max(0,S.idx-1)'};S.flip=false;go()"
-          style="width:46px;height:46px;border-radius:50%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,var(--text2,#374151))">‹</button>
-
-        <!-- 발음 -->
-        <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u);SFX.play('tap')"
-          style="width:52px;height:52px;border-radius:50%;background:#E65100;border:none;font-size:20px;cursor:pointer;color:#fff;box-shadow:0 4px 12px #E6510044;display:flex;align-items:center;justify-content:center">🔊</button>
-        <!-- 자동재생 -->
-        <button onclick="startAutoPlay()"
-          style="width:46px;height:46px;border-radius:50%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,var(--text2,#374151))" title="자동재생">⏩</button>
-
-        <!-- 다음 -->
-        <button onclick="${S._flipWords?`S._flipIdx=(S._flipIdx||0)+1;if(S._flipIdx>=${words.length}){S._flipWords=null;S._flipIdx=0;S.stab='mode';go('mybooks','mode');return;}`:'S.idx++'};S.flip=false;go()"
-          style="width:46px;height:46px;border-radius:50%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,var(--text2,#374151))">›</button>
-
-        <!-- 알았어 -->
-        <button onclick="if(!S.learned.has(w.en)){S.learned.add(w.en);setMark('${safeEn}',1);srsRate('${safeEn}',1);logStudy('words');checkAchievements();checkLearnMilestone();sv();const clrs=['#FDE68A','#6EE7B7','#93C5FD'];for(let ci=0;ci<6;ci++){const p=document.createElement('div');const ang=(ci/6)*360;p.style.cssText='position:fixed;left:50%;top:60%;width:8px;height:8px;border-radius:50%;background:'+clrs[ci%3]+';z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .4s ease-out;opacity:1';document.body.appendChild(p);setTimeout(()=>{p.style.transform='translate(calc(-50% + '+Math.round(Math.cos(ang*Math.PI/180)*50)+'px),calc(-50% + '+Math.round(Math.sin(ang*Math.PI/180)*50)+'px))';p.style.opacity='0';},30);setTimeout(()=>p.remove(),500);}}else{ /* 이미 외운 단어 - XP 없음 */ }SFX.play('swipe_ok');showSwipeHint('✅ 알았어!','#16A34A');${S._flipWords?'S._flipIdx=(S._flipIdx||0)+1':'S.idx++'};S.flip=false;go()"
-          style="background:#F0FDF4;border:2px solid #86EFAC;border-radius:16px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#16A34A;display:flex;flex-direction:column;align-items:center;gap:3px">
-          <span style="font-size:20px">✅</span>
-          <span>외웠음</span>
-        </button>
-      </div>
-
-      <!-- 마킹 + 즐겨찾기 -->
-      <div style="display:flex;align-items:center;gap:8px">
-        <span onclick="event.stopPropagation();toggleFavorite('${safeEn}')" style="font-size:20px;cursor:pointer;padding:4px">${isFav?'⭐⭐':'☆'}</span>
-        <div style="flex:1;display:flex;gap:6px">
-          ${[0,1,2].map(v=>`<button onclick="setMark('${safeEn}',${v});go()" style="flex:1;padding:8px;border-radius:12px;border:2px solid ${MARK_INFO[v].color}44;background:${mark===v?MARK_INFO[v].bg:'var(--bg-sub,var(--bg-sub,#F3F4F6))'};font-size:13px;cursor:pointer;font-weight:${mark===v?'700':'400'}">${MARK_INFO[v].emoji} ${MARK_INFO[v].label}</button>`).join('')}
-        </div>
-      </div>
-    </div>
-  </div>`;
+  html += '</div>';
+  return html;
 }
 
 
@@ -10999,4 +10653,3 @@ auth.onAuthStateChanged(async user => {
 <script src="js/wordpacks.js"></script>
 <script src="js/features.js"></script>
 </body>
-</html>

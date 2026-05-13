@@ -1638,18 +1638,6 @@ function rPetCare() {
       <span style="font-size:20px;font-weight:900;color:#7C3AED">⚡ ${S.xp||0}</span>
     </div>
 
-    <!-- 돌보기 버튼 -->
-    <div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-      <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🐛 돌보기</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${[[30,'🍎','먹이주기','통통해져요','#16A34A','#F0FDF4'],[20,'🎮','놀아주기','기분 좋아져요','#2563EB','#EFF6FF']].map(([cost,ic,nm,dc,col,bg])=>`
-          <div onclick="useXP(${cost},'${nm}')" style="background:${bg};border-radius:14px;padding:14px;cursor:pointer;opacity:${(S.xp||0)>=cost?1:0.4};border:1.5px solid ${col}22;text-align:center">
-            <div style="font-size:32px;margin-bottom:6px">${ic}</div>
-            <div style="font-size:13px;font-weight:800;color:${col}">${nm}</div>
-            <div style="font-size:11px;color:#6B7280">${dc}</div>
-            <div style="font-size:11px;font-weight:700;color:${col};margin-top:4px">XP ${cost}</div>
-          </div>`).join('')}
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
         <div onclick="${xpPct>=100?'useXP(100,\'레벨업\')':'toast(\'XP를 더 모아야해!\')'}"
           style="background:${xpPct>=100?'#F5F3FF':'#F9FAFB'};border-radius:14px;padding:14px;cursor:pointer;opacity:${xpPct>=100?1:0.5};border:1.5px solid ${xpPct>=100?'#7C3AED22':'#E5E7EB'};text-align:center">
@@ -6632,13 +6620,12 @@ function rHome() {
       </div>
     </div>
     <!-- 빠른 액션 -->
-    <div onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-      ${[[30,'🍎','먹이주기'],[20,'🎮','놀아주기'],[100,'⬆️','레벨업']].map(([cost,ic,nm])=>`
-        <div onclick="useXP(${cost},'${nm}')" style="background:rgba(255,255,255,.2);border-radius:12px;padding:8px;text-align:center;cursor:pointer;opacity:${(S.xp||0)>=cost?1:0.45}">
-          <div style="font-size:18px">${ic}</div>
-          <div style="font-size:10px;font-weight:700;color:#fff">${nm}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,.7)">XP ${cost}</div>
-        </div>`).join('')}
+    <div onclick="event.stopPropagation()" style="display:flex;justify-content:center;margin:4px 0">
+      <div onclick="useXP(100,'레벨업')" style="background:rgba(255,255,255,.2);border-radius:12px;padding:8px 16px;text-align:center;cursor:pointer">
+        <div style="font-size:18px">⬆️</div>
+        <div style="font-size:10px;font-weight:700;color:#fff">레벨업</div>
+        <div style="font-size:9px;color:rgba(255,255,255,.7)">XP 100</div>
+      </div>
     </div>
     <!-- 성장 8단계 미니 표시 -->
     <div style="display:flex;justify-content:center;gap:4px;margin-top:10px;align-items:center">
@@ -6651,7 +6638,7 @@ function rHome() {
         </div>`;
       }).join('')}
     </div>
-    <div style="text-align:center;font-size:10px;opacity:.5;margin-top:4px">탭해서 자세히 돌보기 👆</div>
+    
   </div>`);
 
   // ── 스트릭 위기 배너 ──
@@ -7994,6 +7981,9 @@ function showGameSettings(gameId, tab) {
     return;
   }
   const curTab = tab||S.gsTab||'range';
+  // 단어장 선택 드롭다운 (게임 공통)
+  const allBooksForGame = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
+  const bookName4Game = S.currentBook||'내 단어장';
   S.gsTab = curTab;
   const gameName={flip:'깜빡이',quiz:'객관식',typing:'받아쓰기',fill:'빈칸 채우기',match:'스피드 매칭',wordle:'워들',chain:'문장 이어가기',sentence:'문장 구성',listen:'듣고 완성',ssort:'문장 배열',wordfind:'단어 찾기'}[gameId]||gameId;
   const curMM = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
@@ -8138,6 +8128,14 @@ function showGameSettings(gameId, tab) {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0">
       <div style="font-size:17px;font-weight:800">${gameName}</div>
       <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">×</button>
+    </div>
+    <div style="padding:8px 16px;border-bottom:1px solid #F3F4F6;background:#F9FAFB;flex-shrink:0">
+      <div style="position:relative">
+        <select onchange="S.currentBook=this.value;showGameSettings('${gameId}','${curTab}')" style="width:100%;padding:7px 28px 7px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;font-weight:700;color:#111;background:#fff;appearance:none;outline:none">
+          ${allBooksForGame.map(b=>`<option value="${b.name}" ${b.name===bookName4Game?'selected':''}>${b.name} (${(b.words||[]).length}개)</option>`).join('')}
+        </select>
+        <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span>
+      </div>
     </div>
     <div style="display:flex;border-bottom:1px solid #E5E7EB;flex-shrink:0">
       ${tabs.map(([t,lb])=>`<div onclick="showGameSettings('${gameId}','${t}')" style="flex:1;padding:10px;text-align:center;font-size:13px;font-weight:700;cursor:pointer;color:${curTab===t?'#EC4899':'#9CA3AF'};border-bottom:2px solid ${curTab===t?'#EC4899':'transparent'}">${lb}</div>`).join('')}
@@ -9719,10 +9717,10 @@ function rProfile(){
   const parts=[];
   parts.push('<div class="pad" style="padding-bottom:24px">');
 
-  parts.push(`
-  // ── 상단: 캐릭터 + 이름 + 레벨 (성향 색상 배경) ──
-    <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick}</div>
-    <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name} · ${l.desc}</div>
+  parts.push(`<div style="background:linear-gradient(135deg,${petCol.main},${petCol.dark||petCol.main});border-radius:18px;padding:20px;text-align:center;color:#fff;margin-bottom:4px">
+    <div style="margin-bottom:12px">${charSVG(S.lid,80,'normal')}</div>
+    <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick||'이름 없음'}</div>
+    <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name}</div>
     <div style="display:flex;gap:8px;justify-content:center">
       <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
         <div style="font-size:18px;font-weight:900">🔥 ${S.streak||0}</div>

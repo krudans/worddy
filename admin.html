@@ -2027,19 +2027,7 @@ async function loadW(l){
     if(ce)ce.textContent=`${LI[l].e} ${LI[l].n} · 총 ${ws.length}개 (DB ${fbWords.length}, 시스템 ${sysWords.length})`;
     if(!ws.length){el.innerHTML='<div class="es"><div class="ei">📚</div><p>단어가 없어요</p><small>추가하거나 CSV를 업로드해주세요</small></div>';return;}
     el.innerHTML=`<table id="wtb"><tr><th></th><th>영단어</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:100px">작업</th></tr>
-    ${ws.map((w,i)=>`<tr>
-  <td style="font-size:18px;text-align:center">${w.img||'📝'}</td>
-  <td><strong style="font-family:monospace">${w.en}</strong>${w._src==='sys'?'<span style="font-size:9px;background:#DBEAFE;color:#1E40AF;border-radius:6px;padding:1px 5px;margin-left:4px">시스템</span>':''}</td>
-  <td>${w.kr}</td>
-  <td style="font-size:11px;color:#9CA3AF">${w.ph||''}</td>
-  <td style="font-size:12px;color:#6B7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.ex||''}</td>
-  <td><div style="display:flex;gap:4px">
-    ${w._src==='sys'
-      ? `<button class="btn bp" style="font-size:11px;padding:4px 8px" onclick="copySysToFb('${l}','${w.en.replace(/'/g,'&apos;')}')" title="DB에 복사하면 편집 가능">📋 DB복사</button>`
-      : `<button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editW('${l}',${i})">✏️</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delW('${l}',${i})">🗑</button>`
-    }
-  </div></td>
-</tr>`).join('')}
+    ${(function(){return ws.map(function(w,i){var exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);var exHtml=exList.slice(0,3).map(function(e){return '<div style="font-size:11px;line-height:1.4;color:#374151;margin-bottom:2px">'+String(e).replace(/</g,'&lt;')+'</div>';}).join('') || '<span style="color:#D1D5DB;font-size:11px">-</span>';var srcBadge=w._src==='sys'?'<span style="font-size:9px;background:#DBEAFE;color:#1E40AF;padding:1px 4px;border-radius:4px;margin-left:3px">기본</span>':'';return '<tr><td style="font-size:18px;text-align:center">'+(w.img||'📝')+'</td><td><strong style="font-family:monospace">'+(w.en||'')+'</strong>'+srcBadge+'</td><td>'+(w.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(w.ph||'')+'</td><td style="max-width:220px;vertical-align:top">'+exHtml+'</td><td><div style="display:flex;gap:4px">'+(w._src==='sys'?'<button class="btn bp" style="font-size:11px;padding:4px 8px" onclick="copySysToFb(\''+selLv+'\',\''+w.en.replace(/'/g,'&apos;')+'\')" >복사</button>':'<button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="editW(\''+selLv+'\','+i+')" >✏️</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delW(\''+selLv+'\','+i+')" >🗑</button>')+'</div></td></tr>';}).join('');})()}
     </table>`;
   }catch(e){el.innerHTML=`<div style="color:#DC2626;padding:20px;text-align:center">로드 실패: ${e.message}</div>`;}
 }
@@ -2055,7 +2043,9 @@ function showAddW(){
       <div class="fg"><label>발음기호</label><input id="wp" placeholder="[ˈæpl]"></div>
       <div class="fg"><label>이모지</label><input id="wi" placeholder="🍎"></div>
     </div>
-    <div class="fg"><label>예문</label><input id="wx" placeholder="I eat an apple."></div>
+    <div class="fg"><label>예문 1</label><input id="wx" placeholder="I eat an apple."></div>
+    <div class="fg"><label>예문 2 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="wx2" placeholder="예문 2"></div>
+    <div class="fg"><label>예문 3 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="wx3" placeholder="예문 3"></div>
     <div class="fg"><label>암기 팁</label><input id="wt2" placeholder="에이플 = 사과!"></div>
     <div style="margin-bottom:14px"><button class="btn bp" style="width:100%" onclick="aiAF()">✨ AI 자동완성</button></div>
     <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveW()" style="flex:1">추가</button><button class="btn bgr" onclick="cm()">취소</button></div>
@@ -2106,7 +2096,7 @@ async function saveW(){
   try{
     const doc=await db.collection('words').doc(selLv).get();const ws=doc.exists?(doc.data().list||[]):[];
     if(ws.find(w=>w.en.toLowerCase()===en.toLowerCase())){toast('이미 있는 단어입니다','err');return;}
-    ws.push({en,kr,ph:document.getElementById('wp')?.value.trim()||'',ex:document.getElementById('wx')?.value.trim()||en+'.',img:document.getElementById('wi')?.value.trim()||'📝',tip:document.getElementById('wt2')?.value.trim()||'',meanings:[kr]});
+    ws.push({en,kr,ph:document.getElementById('wp')?.value.trim()||'',ex:document.getElementById('wx')?.value.trim()||'',exList:[document.getElementById('wx')?.value.trim(),document.getElementById('wx2')?.value.trim(),document.getElementById('wx3')?.value.trim()].filter(Boolean),img:document.getElementById('wi')?.value.trim()||'📝',tip:document.getElementById('wt2')?.value.trim()||'',meanings:[kr]});
     await db.collection('words').doc(selLv).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     toast(`✅ "${en}" 추가 완료!`,'ok');cm();loadW(selLv);
   }catch(e){toast('오류: '+e.message,'err');}
@@ -2123,7 +2113,9 @@ async function editW(l,i){
         <div class="fg"><label>발음기호</label><input id="ep" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
         <div class="fg"><label>이모지</label><input id="ei" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
       </div>
-      <div class="fg"><label>예문</label><input id="ex2" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>예문 1</label><input id="ex2" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>예문 2 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="ex2b" value="${((w.exList&&w.exList[1])||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>예문 3 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="ex2c" value="${((w.exList&&w.exList[2])||'').replace(/"/g,'&quot;')}"></div>
       <div class="fg"><label>암기 팁</label><input id="et" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
       <div style="display:flex;gap:8px;margin-top:4px"><button class="btn bb" onclick="saveEW('${l}',${i})" style="flex:1">저장</button><button class="btn bgr" onclick="cm()">취소</button></div>
     </div></div>`;
@@ -2133,7 +2125,7 @@ async function editW(l,i){
 async function saveEW(l,i){
   try{
     const doc=await db.collection('words').doc(l).get();const ws=doc.data().list||[];
-    ws[i]={...ws[i],en:document.getElementById('ee').value.trim(),kr:document.getElementById('ek').value.trim(),ph:document.getElementById('ep').value.trim(),ex:document.getElementById('ex2').value.trim(),img:document.getElementById('ei').value.trim(),tip:document.getElementById('et').value.trim(),meanings:[document.getElementById('ek').value.trim()]};
+    ws[i]={...ws[i],en:document.getElementById('ee').value.trim(),kr:document.getElementById('ek').value.trim(),ph:document.getElementById('ep').value.trim(),ex:document.getElementById('ex2').value.trim(),exList:[document.getElementById('ex2').value.trim(),document.getElementById('ex2b').value.trim(),document.getElementById('ex2c').value.trim()].filter(Boolean),img:document.getElementById('ei').value.trim(),tip:document.getElementById('et').value.trim(),meanings:[document.getElementById('ek').value.trim()]};
     await db.collection('words').doc(l).set({list:ws,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     toast('✅ 수정 완료','ok');cm();loadW(l);
   }catch(e){toast('오류: '+e.message,'err');}
@@ -2243,6 +2235,17 @@ async function rPK(){
   }
   const packs = window._adminPacks||[];
   const cats = [...new Set(packs.map(p=>p.cat))];
+  const packRows = packs.map(function(p){
+    return '<tr><td style="font-size:22px;text-align:center">'+(p.emoji||'📚')+'</td>'
+      +'<td><strong>'+(p.name||'')+'</strong><div style="font-size:11px;color:#9CA3AF">'+(( p.desc||'').slice(0,30))+'...</div></td>'
+      +'<td><span class="badge bb2">'+(p.cat||'')+'</span></td>'
+      +'<td><strong style="color:#1E5FA5">'+(p.words?.length||0)+'</strong></td>'
+      +'<td>'
+        +'<button class="btn bb" style="font-size:11px;padding:4px 8px" onclick="showPackWords(\''+p.id+'\')">단어</button> '
+        +'<button class="btn bp" style="font-size:11px;padding:4px 8px" onclick="showEditPack(\''+p.id+'\')">수정</button> '
+        +'<button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
+      +'</td></tr>';
+  }).join('');
   document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">🛒 마켓 팩 관리</h2>
@@ -2268,7 +2271,7 @@ async function rPK(){
       <div class="tw">
         <table id="pk-table">
           <tr><th></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>뱃지</th><th>작업</th></tr>
-          ${packs.map(function(p){return '<tr><td style="font-size:22px;text-align:center">'+(p.emoji||'📚')+'</td><td><strong>'+(p.name||'')+'</strong><div style="font-size:11px;color:#9CA3AF">'+(( p.desc||'').slice(0,30))+'</div></td><td><span class="badge bb2">'+(p.cat||'')+'</span></td><td><strong style="color:#1E5FA5">'+(p.words?.length||0)+'</strong></td><td><button class="btn bb" style="font-size:11px;padding:4px 8px" onclick="showPackWords(\''+p.id+'\')" >단어</button> <button class="btn bp" style="font-size:11px;padding:4px 8px" onclick="editPack(\''+p.id+'\')" >수정</button> <button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="deletePack(\''+p.id+'\')" >삭제</button></td></tr>';}).join('')}
+          ${packRows}
         </table>
       </div>
     </div>`;
@@ -2650,23 +2653,14 @@ function showPackWordTab(tab) {
       ${dups.length>0?`
         <div style="margin-bottom:14px">
           <div style="font-size:13px;font-weight:700;color:#DC2626;margin-bottom:8px">🔴 팩 내부 중복 (${dups.length}개)</div>
-          ${dups.map(({w,i})=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:#FEF2F2;border-radius:8px;margin-bottom:4px">
-            <span style="font-size:13px;font-family:monospace">${w.en} - ${w.kr}</span>
-            <button onclick="deletePackWord('${selPack}',${i});showPackWordTab('dup')" class="btn br" style="font-size:11px;padding:3px 8px">삭제</button>
-          </div>`).join('')}
+${dups.map(({w,i})=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:#FEF2F2;border-radius:8px;margin-bottom:4px"> <span style="font-size:13px;font-family:monospace">${w.en} - ${w.kr}</span> <button onclick="deletePackWord('${selPack}',${i});showPackWordTab('dup')" class="btn br" style="font-size:11px;padding:3px 8px">삭제</button> </div>`).join('')}
           <button onclick="removeInternalDups('${selPack}')" class="btn br" style="width:100%;margin-top:6px;font-size:12px">🧹 내부 중복 모두 제거</button>
         </div>`:'<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A;margin-bottom:14px">✅ 내부 중복 없음!</div>'}
       ${crossDups.length>0?`
         <div>
           <div style="font-size:13px;font-weight:700;color:#E65100;margin-bottom:8px">🟡 다른 팩과 중복 (${crossDups.length}개)</div>
           <div style="max-height:200px;overflow-y:auto">
-            ${crossDups.slice(0,20).map(w=>{
-              const inPacks = otherPacks.filter(op=>(op.words||[]).find(ow=>ow.en.toLowerCase()===w.en.toLowerCase())).map(op=>op.name).join(', ');
-              return `<div style="padding:6px 8px;background:#FFF8E1;border-radius:8px;margin-bottom:4px;font-size:12px">
-                <strong>${w.en}</strong> - ${w.kr}<br>
-                <span style="color:#9CA3AF">→ ${inPacks}</span>
-              </div>`;
-            }).join('')}
+${crossDups.slice(0,20).map(w=>{ const inPacks = otherPacks.filter(op=>(op.words||[]).find(ow=>ow.en.toLowerCase()===w.en.toLowerCase())).map(op=>op.name).join(', '); return `<div style="padding:6px 8px;background:#FFF8E1;border-radius:8px;margin-bottom:4px;font-size:12px"> <strong>${w.en}</strong> - ${w.kr}<br> <span style="color:#9CA3AF">→ ${inPacks}</span> </div>`; }).join('')}
           </div>
           ${crossDups.length>20?`<div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:4px">외 ${crossDups.length-20}개</div>`:''}
         </div>`:'<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A">✅ 다른 팩과 중복 없음!</div>'}`;
@@ -3025,7 +3019,9 @@ function editPackWord(packId, idx) {
       <div class="fg"><label>발음기호</label><input id="epw-ph" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
       <div class="fg"><label>이모지</label><input id="epw-img" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
     </div>
-    <div class="fg"><label>예문</label><input id="epw-ex" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
+    <div class="fg"><label>예문 1</label><input id="epw-ex" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
+    <div class="fg"><label>예문 2 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="epw-ex2" value="${((w.exList&&w.exList[1])||'').replace(/"/g,'&quot;')}"></div>
+    <div class="fg"><label>예문 3 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="epw-ex3" value="${((w.exList&&w.exList[2])||'').replace(/"/g,'&quot;')}"></div>
     <div class="fg"><label>암기 팁</label><input id="epw-tip" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
     <div style="display:flex;gap:8px">
       <button class="btn bb" onclick="saveEditPackWord('${packId}',${idx})" style="flex:1">저장</button>
@@ -3042,7 +3038,7 @@ async function saveEditPackWord(packId, idx) {
     en:document.getElementById('epw-en').value.trim(),
     kr:document.getElementById('epw-kr').value.trim(),
     ph:document.getElementById('epw-ph').value.trim(),
-    ex:document.getElementById('epw-ex').value.trim(),
+    ex:document.getElementById('epw-ex').value.trim(),exList:[document.getElementById('epw-ex').value.trim(),document.getElementById('epw-ex2').value.trim(),document.getElementById('epw-ex3').value.trim()].filter(Boolean),
     img:document.getElementById('epw-img').value.trim()||'📝',
     tip:document.getElementById('epw-tip').value.trim(),
     meanings:[document.getElementById('epw-kr').value.trim()]

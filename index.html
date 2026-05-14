@@ -867,15 +867,19 @@ const rnd = a => a[Math.floor(Math.random()*a.length)];
 // ── 출석 체크 & 학습 기록 ──
 function checkAttend() {
   const t = today();
-  if(S._noPopupToday === t) return; // 오늘 안보기 - 최우선
-  if(S.attendPopupShown === t) return; // 오늘 이미 표시 선택
+  // 오늘 안보기 선택했으면 무조건 스킵
+  if(S._noPopupToday === t) return;
+  // 오늘 이미 팝업 표시했으면 스킵
+  if(S.attendPopupShown === t) return;
   S.attendPopupShown = t;
+  // 출석 처리
   if(!S.attendDates.includes(t)) {
     S.attendDates.push(t);
     S.attendCount++;
     sv();
-    showAttendPopup();
   }
+  // 팝업은 출석 여부와 무관하게 항상 표시
+  showAttendPopup();
 }
 
 function logStudy(type) {
@@ -1668,92 +1672,73 @@ function replaceCollection(removeIdx, btn) {
 
 // ── 캐릭터 돌보기 화면 ──
 function rPetCare() {
-  const pet = typeof getPetState==='function'?getPetState():{emoji:'😊'};
-  const petCol = (typeof PET_COLORS!=='undefined'&&typeof getPetColor==='function'&&PET_COLORS[getPetColor()])||{main:'#1E5FA5',light:'#DBEAFE'};
-  const full = S._petFull||0;
-  const happy = S._petHappy||0;
-  const lvInfo = lv(S.lid);
-  const nextEvol = getNextEvolution();
-  // 현재 레벨 xp 목표 기준으로 진행도 계산
-  const curLvForPct = LEVELS.find(l=>l.id===S.lid);
-  const xpTarget = curLvForPct ? (curLvForPct.xp||100) : 100;
+  const petCol = (typeof PET_COLORS!=='undefined'&&typeof getPetColor==='function') ? (PET_COLORS[getPetColor()]||PET_COLORS.green) : {main:'#1E5FA5',light:'#DBEAFE',dark:'#1E3A5F',name:'블루'};
+  const lvInfo = typeof lv==='function' ? lv(S.lid) : {emoji:'🥚',name:'알'};
+  const curLvData = typeof LEVELS!=='undefined' ? LEVELS.find(function(l){return l.id===S.lid;}) : null;
+  const xpTarget = curLvData ? (curLvData.xp||100) : 100;
   const xpPct = Math.min(100, Math.round((S.xp||0)/xpTarget*100));
+  const canLevelUp = (S.xp||0) >= xpTarget;
+  const nextLvData = typeof LEVELS!=='undefined' ? LEVELS[LEVELS.findIndex(function(l){return l.id===S.lid;})+1] : null;
 
-  return `<div class="pad" style="padding-bottom:24px">
-    <!-- 캐릭터 메인 카드 -->
-    <div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:24px;text-align:center;color:#fff">
-      <div style="font-size:12px;opacity:.8;margin-bottom:8px">내 벌거지 · ${lvInfo.emoji} ${lvInfo.name}</div>
-      <div style="margin-bottom:12px">${charSVGAnimated(S.lid,90,pet.emoji==='😄'||pet.emoji==='😊'?'happy':pet.emoji==='😤'?'angry':pet.emoji==='💀'?'danger':pet.emoji==='😢'?'sad':'normal')}</div>
-      <div style="background:rgba(255,255,255,.15);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;margin-bottom:14px">${pet.mood}</div>
-      <!-- 수치 바 -->
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>🍎 배부름</span><span>${full}/10</span></div>
-          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;background:#fff;border-radius:6px;width:${full*10}%;transition:width .5s"></div>
-          </div>
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>🎮 기분</span><span>${happy}/10</span></div>
-          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;background:#FDE68A;border-radius:6px;width:${happy*10}%;transition:width .5s"></div>
-          </div>
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:3px"><span>⬆️ 진화</span><span>${xpPct}%</span></div>
-          <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden">
-            <div style="height:100%;background:#A78BFA;border-radius:6px;width:${xpPct}%;transition:width .5s"></div>
-          </div>
-        </div>
-      </div>
-    </div>
+  var html = '<div class="pad" style="padding-bottom:24px">';
 
-    <!-- XP 보유 표시 -->
-    <div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:14px;font-weight:800;color:var(--text1,#111)">보유 XP</span>
-      <span style="font-size:20px;font-weight:900;color:#7C3AED">⚡ ${S.xp||0}</span>
-    </div>
+  // ── 캐릭터 메인 카드 ──
+  html += '<div style="background:linear-gradient(160deg,'+petCol.main+','+( petCol.dark||petCol.main)+');border-radius:24px;padding:20px;text-align:center;color:#fff;margin-bottom:12px">';
+  html += '<div style="font-size:11px;opacity:.7;margin-bottom:8px">'+lvInfo.emoji+' '+lvInfo.name+'</div>';
+  var mood = canLevelUp?'happy':'normal';
+  html += '<div style="margin:0 auto 12px;display:inline-block">'+(typeof charSVGAnimated==='function'?charSVGAnimated(S.lid,90,mood):'<div style="font-size:72px">'+lvInfo.emoji+'</div>')+'</div>';
 
-    <!-- 돌보기 버튼 -->
-    <div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-      <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🐛 돌보기</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div onclick="useXP(100,'레벨업')" style="background:rgba(255,255,255,.2);border-radius:12px;padding:8px 16px;text-align:center;cursor:pointer;margin:0 auto;min-width:100px">
-        <div style="font-size:22px;margin-bottom:4px">⬆️</div>
-        <div style="font-size:12px;font-weight:800;color:#fff">레벨업</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.7)">XP 100</div>
-      </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-        <div onclick="${xpPct>=100?'useXP(100,\'레벨업\')':'toast(\'XP를 더 모아야해!\')'}"
-          style="background:${xpPct>=100?'#F5F3FF':'#F9FAFB'};border-radius:14px;padding:14px;cursor:pointer;opacity:${xpPct>=100?1:0.5};border:1.5px solid ${xpPct>=100?'#7C3AED22':'#E5E7EB'};text-align:center">
-          <div style="font-size:32px;margin-bottom:6px">${nextEvol&&nextEvol.isFinal?'🦋':'⬆️'}</div>
-          <div style="font-size:13px;font-weight:800;color:#7C3AED">${nextEvol&&nextEvol.isFinal?'나비 뽑기!':'레벨업!'}</div>
-          <div style="font-size:11px;color:#6B7280">${xpPct>=100?(nextEvol&&nextEvol.isFinal?'나비 뽑기 준비완료! 🦋':'진화 준비 완료!'):'XP '+(lvInfo&&lvInfo.xp?(lvInfo.xp-(S.xp||0)):0)+'개 더 필요'}</div>
-          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-top:4px">XP ${lvInfo?lvInfo.xp:100}</div>
-        </div>
-        <div onclick="saveMyCharacter()" style="background:#F0FDF4;border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid #86EFAC;text-align:center">
-          <div style="font-size:22px;margin-bottom:4px">📸</div>
-          <div style="font-size:12px;font-weight:700;color:#16A34A">캐릭터 담기</div>
-          <div style="font-size:10px;color:#9CA3AF">이미지 저장</div>
-        </div>
-        <div onclick="useXP(50,'장식품')" style="background:#FFFBEB;border-radius:14px;padding:14px;cursor:pointer;opacity:${(S.xp||0)>=50?1:0.4};border:1.5px solid #D97706;text-align:center">
-          <div style="font-size:32px;margin-bottom:6px">🎀</div>
-          <div style="font-size:13px;font-weight:800;color:#D97706">장식품</div>
-          <div style="font-size:11px;color:#6B7280">악세사리 구매</div>
-          <div style="font-size:11px;font-weight:700;color:#D97706;margin-top:4px">XP 50</div>
-        </div>
-      </div>
-    </div>
+  // XP 게이지
+  html += '<div style="background:rgba(255,255,255,.2);border-radius:10px;padding:10px 14px;margin-bottom:12px">';
+  html += '<div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:6px"><span>⚡ XP</span><span>'+(S.xp||0)+' / '+xpTarget+'</span></div>';
+  html += '<div style="background:rgba(0,0,0,.2);border-radius:6px;height:8px;overflow:hidden">';
+  html += '<div style="height:100%;background:'+(canLevelUp?'#FFD600':'#fff')+';border-radius:6px;width:'+xpPct+'%;transition:width .5s"></div>';
+  html += '</div>';
+  if(canLevelUp) html += '<div style="font-size:11px;color:#FFD600;margin-top:6px;font-weight:700">✨ 레벨업 가능!</div>';
+  html += '</div>';
 
-    <!-- 도감에 담기 버튼 -->
-    <button onclick="addToCollectionConfirm({})" style="width:100%;background:var(--bg-card,var(--bg-card,#FFFFFF));color:#7C3AED;border:1.5px solid #7C3AED;border-radius:14px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">
-      📥 지금 모습을 도감에 담기
-    </button>
-    <button onclick="S.stab=null;go('butterfly')" style="width:100%;background:none;border:none;color:#9CA3AF;font-size:13px;cursor:pointer;padding:8px">
-      ← 나비 탭으로
-    </button>
-  </div>`;
+  // 레벨업 버튼
+  if(canLevelUp) {
+    html += '<button onclick="useXP('+xpTarget+',\'레벨업\')" style="width:100%;padding:14px;border:none;border-radius:16px;background:#FFD600;color:#1A1A1A;font-size:16px;font-weight:900;cursor:pointer">';
+    html += nextLvData ? '✨ '+nextLvData.name+'으로 레벨업!' : '✨ 레벨업!';
+    html += '</button>';
+  } else {
+    html += '<div style="font-size:12px;opacity:.7">레벨업까지 <strong>'+(xpTarget-(S.xp||0))+'XP</strong> 남음</div>';
+  }
+  html += '</div>';
+
+  // ── 성장 단계 ──
+  html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px;margin-bottom:10px">';
+  html += '<div style="font-size:13px;font-weight:800;color:#111;margin-bottom:12px">🌱 성장 단계</div>';
+  html += '<div style="display:flex;justify-content:space-between;align-items:flex-end">';
+  if(typeof LEVELS!=='undefined') {
+    var curIdx = LEVELS.findIndex(function(l){return l.id===S.lid;});
+    LEVELS.forEach(function(lx,i) {
+      var isCur=lx.id===S.lid, isPassed=i<curIdx;
+      html += '<div style="text-align:center;flex:1">';
+      html += '<div style="font-size:'+(isCur?'28px':'16px')+';opacity:'+(isCur?1:isPassed?.8:.3)+';transition:all .3s">'+lx.emoji+'</div>';
+      if(isCur) html += '<div style="font-size:8px;color:'+petCol.main+';font-weight:700;margin-top:2px">'+lx.name+'</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div></div>';
+
+  // ── 나비 컬렉션 ──
+  var myB = typeof getMyButterflies==='function' ? getMyButterflies() : [];
+  html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+  html += '<div style="font-size:13px;font-weight:800;color:#111">🦋 나비 컬렉션</div>';
+  html += '<span style="font-size:12px;color:#7C3AED;font-weight:700;background:#F5F3FF;padding:3px 10px;border-radius:20px">'+myB.length+'/30</span>';
+  html += '</div>';
+  if(myB.length===0) {
+    html += '<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:13px">레벨업하면 나비를 뽑을 수 있어요 🦋</div>';
+  } else {
+    html += '<div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px"><div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:11px;padding:8px">...</div></div>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+  return html;
 }
 
 function showCollectionDetail(colId) {
@@ -1832,7 +1817,17 @@ function rMarket() {
 
   // 카테고리 추출
   const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
-  const filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
+  let filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
+  // 정렬 적용
+  if(mktSort==='name') filtered = filtered.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  else if(mktSort==='words') filtered = filtered.slice().sort((a,b)=>((b.words||[]).length||(b.count||0))-((a.words||[]).length||(a.count||0)));
+  else if(mktSort==='owned') filtered = filtered.slice().sort((a,b)=>{ const ao=ownedPacks.includes(a.id),bo=ownedPacks.includes(b.id); return ao===bo?0:ao?-1:1; });
+
+  // 정렬 버튼 HTML
+  const sortBtns = [['kr','기본'],['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
+    var v=item[0],lb=item[1],active=mktSort===v;
+    return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
+  }).join('');
 
   let html = `<div class="pad" style="padding-bottom:24px">
     <div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:16px;color:#fff;margin-bottom:10px">
@@ -1846,7 +1841,11 @@ function rMarket() {
     </div>`;
 
   // 새로고침 버튼
-  html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
+
+  // 카테고리 탭 + 정렬
+  html += '<div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;scrollbar-width:none;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+  html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
+    html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
 
   if(!packs.length) {
     html += `<div style="text-align:center;padding:48px 20px">
@@ -3527,16 +3526,7 @@ function showAutoMode() {
         <div style="font-size:42px;font-weight:900;color:#fff;text-align:center;margin-bottom:14px;letter-spacing:0.5px">${w.en||''}</div>
         <div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-bottom:18px">${w.ph||''}</div>
         <div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;text-align:center;margin-bottom:18px">${w.kr||''}</div>
-        ${(()=>{
-          const exCount = parseInt(A.exCount||0);
-          if(exCount === 0) return '';
-          const exList = w.exList && w.exList.length ? w.exList : (w.ex ? [w.ex] : []);
-          const toShow = exList.slice(0, exCount);
-          if(!toShow.length) return '';
-          return '<div style="max-width:340px;width:100%">'
-            + toShow.map(ex=>'<div style="font-size:13px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.6;text-align:center;margin-bottom:4px">\"'+ex+'\"</div>').join('')
-            + '</div>';
-        })()}
+        ${(function(){var exCount=parseInt(A.exCount||0);if(exCount===0)return '';var exList=w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[]);var toShow=exList.slice(0,exCount);if(!toShow.length)return '';return '<div style="max-width:340px;width:100%">'+toShow.map(function(ex){return '<div style="font-size:13px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.6;text-align:center;margin-bottom:6px">'+ex+'</div>';}).join('')+'</div>';})()}
         <div style="margin-top:18px">${_markBtn(w.en||'')}</div>
       </div>
       
@@ -4401,6 +4391,8 @@ function go(tab,sub) {
     if(tab==='study'&&!sub) S.stab='books';
     if(tab==='mybooks'&&!sub) S.stab='books';
     if(tab==='butterfly'&&!sub) S.stab=null;
+    // 나비키우기 탭 벗어날 때 배경음악 정지
+    if(S.tab==='butterfly' && tab!=='butterfly') { if(typeof SFX!=='undefined') SFX.stopBG(); }
     S.tab=tab;
   }
   if(tab==='ranking') S.tab='ranking';
@@ -6777,19 +6769,18 @@ function rHome() {
       </div>
     </div>
     <!-- 빠른 액션 -->
-    <div onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-      <div onclick="useXP(100,'레벨업')" style="background:rgba(255,255,255,.2);border-radius:12px;padding:8px 16px;text-align:center;cursor:pointer;margin:0 auto;min-width:100px"><div style="font-size:22px">⬆️</div><div style="font-size:12px;font-weight:800;color:#fff">레벨업</div><div style="font-size:10px;color:rgba(255,255,255,.7)">XP 100</div></div>
+    <!-- 빠른 액션: 레벨업 버튼 -->
+    <div onclick="event.stopPropagation()" style="display:flex;justify-content:center;margin-bottom:8px">
+      ${(function(){
+        var canLvUp=(S.xp||0)>=xpTarget;
+        var btnStyle='width:100%;padding:12px;border:none;border-radius:14px;font-size:14px;font-weight:800;cursor:pointer;';
+        if(canLvUp) return '<button onclick="useXP('+xpTarget+',\'레벨업\')" style="'+btnStyle+'background:#FFD600;color:#1A1A1A">✨ '+(nextLv?nextLv.name+'으로 ':'')+'레벨업!</button>';
+        return '<button disabled style="'+btnStyle+'background:rgba(255,255,255,.15);color:rgba(255,255,255,.6)">⚡ '+(xpTarget-(S.xp||0))+'XP 더 모으면 레벨업</button>';
+      })()}
     </div>
-    <!-- 성장 8단계 미니 표시 -->
-    <div style="display:flex;justify-content:center;gap:4px;margin-top:10px;align-items:center">
-      ${LEVELS.map((lv,i)=>{
-        const isCur = lv.id===S.lid;
-        const isPassed = LEVELS.findIndex(l=>l.id===S.lid) > i;
-        return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
-          <div style="font-size:${isCur?16:10}px;opacity:${isCur?1:isPassed?0.7:0.35};transition:all .3s;${isCur?'filter:drop-shadow(0 0 4px rgba(255,255,255,.8))':''}">${lv.emoji}</div>
-          ${isCur?`<div style="width:4px;height:4px;border-radius:50%;background:#fff;margin-top:1px"></div>`:''}
-        </div>`;
-      }).join('')}
+    <!-- 성장 단계 미니 -->
+    <div style="display:flex;justify-content:center;gap:4px;margin-top:6px;align-items:flex-end">
+      ${(function(){var ci=LEVELS.findIndex(function(l){return l.id===S.lid;});return LEVELS.map(function(lx,i){var isCur=lx.id===S.lid,isPassed=i<ci;return '<div style="text-align:center"><div style="font-size:'+(isCur?'18px':'11px')+';opacity:'+(isCur?1:isPassed?.8:.3)+'">'+lx.emoji+'</div></div>';}).join('');})()}
     </div>
     <div style="text-align:center;font-size:10px;opacity:.5;margin-top:4px">탭해서 자세히 돌보기 👆</div>
   </div>`);
@@ -7839,7 +7830,7 @@ function rStudy() {
     </div>
     <button onclick="showBooksModal()" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#6B7280);white-space:nowrap;flex-shrink:0">＋ 단어장 만들기</button>
   </div>`;
-const tabs=`<div class="stabs">${[['learn','📚','플래시카드'],['quiz3','🎯','퀴즈'],['modes','🎧','암기모드'],['add','➕','단어추가'],['list','📋','단어목록']].map(([id,ic,lb])=> `<div class="st ${S.stab===id?'on':''}" onclick="go('mybooks','${id}')"><span class="st-ic">${ic}</span><span class="st-lb ${S.stab===id?'on':''}">${lb}</span></div>`).join('')}</div>`;
+  const tabs = '<div class="stabs">' + [['learn','📚','플래시카드'],['quiz3','🎯','퀴즈'],['modes','🎧','암기모드'],['add','➕','단어추가'],['list','📋','단어목록']].map(function(item){var id=item[0],ic=item[1],lb=item[2];return '<div class="st '+(S.stab===id?'on':''  )+'" onclick="go(\'mybooks\',\''+id+'\')"><span class="st-ic">'+ic+'</span><span class="st-lb '+(S.stab===id?'on':'')+'">'+lb+'</span></div>';}).join('') + '</div>';
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
@@ -9697,243 +9688,104 @@ function rProfile(){
   const pet=getPetState();
   const marked1=Object.values(S.markMap).filter(v=>v===1).length;
   const marked2=Object.values(S.markMap).filter(v=>v===2).length;
-  const myB=getMyButterflies();
-  const curLvIdx=LEVELS.findIndex(lx=>lx.id===S.lid);
-  const nextLv=LEVELS[Math.min(curLvIdx+1,LEVELS.length-1)];
-  const xpPct=nextLv&&nextLv.xp?Math.min(100,Math.round((S.xp||0)/nextLv.xp*100)):100;
-  const sysLearned=getLearnedSysWords(S.lid);
-  const parts=[];
+  const totalW=S.words.length;
+  const t2=today();
+  const todayLog=(S.studyLog||{})[t2]||{words:0,quiz:0,min:0};
+  const isTimeView=S._statView==='time';
+  const last7=Array.from({length:7},function(_,i){
+    var d=new Date(); d.setDate(d.getDate()-6+i);
+    var k=new Date(d.getTime()+9*3600000).toISOString().slice(0,10);
+    var log=(S.studyLog||{})[k]||{words:0,quiz:0,min:0};
+    var dayNames=['일','월','화','수','목','금','토'];
+    return {k:k,total:(log.words||0)+(log.quiz||0),words:log.words||0,min:log.min||0,isToday:k===t2,day:dayNames[d.getDay()]};
+  });
+  const maxDay=Math.max.apply(null,last7.map(function(d){return d.total;}).concat([1]));
+  const maxMin=Math.max.apply(null,last7.map(function(d){return d.min;}).concat([0.1]));
+  const totalWeekWords=last7.reduce(function(s,d){return s+d.words;},0);
+  const fmtM=function(m){return m<1?Math.round(m*60)+'초':m<60?Math.round(m)+'분':Math.floor(m/60)+'h'+(m%60>0?' '+Math.round(m%60)+'m':'');};
+
+  var parts=[];
   parts.push('<div class="pad" style="padding-bottom:24px">');
 
-  // ── 상단: 캐릭터 + 이름 + 레벨 (성향 색상 배경) ──
-  parts.push(`<div style="background:linear-gradient(160deg,${petCol.main},${petCol.main}cc);border-radius:24px;padding:20px;text-align:center;color:#fff">
-    <div style="margin-bottom:10px;cursor:pointer" onclick="S.stab='petcare';go('butterfly')" title="탭해서 돌보기">${charSVGAnimated(S.lid,80,'happy')}</div>
-    <div style="font-size:10px;color:rgba(255,255,255,.6);margin-bottom:4px">탭해서 돌보기 👆</div>
-    <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick}</div>
-    <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name} · ${l.desc}</div>
-    <div style="display:flex;gap:8px;justify-content:center">
-      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:900">🔥 ${S.streak||0}</div>
-        <div style="font-size:10px;opacity:.8">연속 학습</div>
-      </div>
-      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:900">📅 ${S.attendCount||0}</div>
-        <div style="font-size:10px;opacity:.8">총 출석</div>
-      </div>
-      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:900">📚 ${marked1}</div>
-        <div style="font-size:10px;opacity:.8">외운 단어</div>
-      </div>
-      <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:900">⚡ ${S.xp||0}</div>
-        <div style="font-size:10px;opacity:.8">XP</div>
-      </div>
-    </div>
-  </div>`);
+  // ── 상단 캐릭터 카드 ──
+  var charHtml = typeof charSVGAnimated==='function' ? charSVGAnimated(S.lid,80,'normal') : l.emoji;
+  parts.push('<div style="background:linear-gradient(135deg,'+petCol.main+','+(petCol.dark||petCol.main)+');border-radius:20px;padding:20px;text-align:center;color:#fff;margin-bottom:10px">');
+  parts.push('<div style="margin-bottom:12px">'+charHtml+'</div>');
+  parts.push('<div style="font-size:20px;font-weight:900;margin-bottom:4px">'+(S.nick||'이름 없음')+'</div>');
+  parts.push('<div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700;margin-bottom:14px">'+l.emoji+' '+l.name+'</div>');
+  parts.push('<div style="display:flex;gap:8px;justify-content:center">');
+  parts.push('<div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center"><div style="font-size:18px;font-weight:900">🔥 '+(S.streak||0)+'</div><div style="font-size:10px;opacity:.8">연속학습</div></div>');
+  parts.push('<div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center"><div style="font-size:18px;font-weight:900">📅 '+(S.attendCount||0)+'</div><div style="font-size:10px;opacity:.8">총출석</div></div>');
+  parts.push('<div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center"><div style="font-size:18px;font-weight:900">📚 '+marked1+'</div><div style="font-size:10px;opacity:.8">외운단어</div></div>');
+  parts.push('<div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center"><div style="font-size:18px;font-weight:900">⚡ '+(S.xp||0)+'</div><div style="font-size:10px;opacity:.8">XP</div></div>');
+  parts.push('</div></div>');
 
-  // ── 진화 게이지 ──
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🐛 성장 단계</div>
-      <div style="font-size:12px;color:#6B7280">다음: ${nextLv&&nextLv.id!==S.lid?nextLv.emoji+' '+nextLv.name:'✨ 최고 레벨'}</div>
-    </div>
-    <div style="background:#F3F4F6;border-radius:8px;height:10px;overflow:hidden;margin-bottom:6px">
-      <div style="height:100%;background:${petCol.main};border-radius:8px;width:${xpPct}%;transition:width .8s"></div>
-    </div>
-    <div style="display:flex;justify-content:space-around;margin-top:10px">
-      ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=S.xp?1:.3}"><div style="font-size:${lx.id===S.lid?'22px':'14px'}">${lx.emoji}</div><div style="font-size:8px;color:${lx.id===S.lid?petCol.main:'#D1D5DB'};font-weight:${lx.id===S.lid?'800':'400'}">${lx.name||lx.id}</div></div>`).join('')}
-    </div>
-  </div>`);
+  // ── 오늘 통계 ──
+  parts.push('<div style="background:#fff;border-radius:16px;padding:14px;border:1px solid #EFEFEF;margin-bottom:8px">');
+  parts.push('<div style="font-size:12px;font-weight:800;color:#111;margin-bottom:10px">📊 오늘 학습</div>');
+  parts.push('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">');
+  parts.push('<div style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:#111">'+(todayLog.words||0)+'</div><div style="font-size:10px;color:#9CA3AF;margin-top:1px">단어</div></div>');
+  parts.push('<div style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:#111">'+(todayLog.quiz||0)+'</div><div style="font-size:10px;color:#9CA3AF;margin-top:1px">퀴즈</div></div>');
+  parts.push('<div style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:900;color:#111">'+fmtM(todayLog.min||0)+'</div><div style="font-size:10px;color:#9CA3AF;margin-top:1px">시간</div></div>');
+  parts.push('</div></div>');
 
-  // ── 성향 / 벌거지 색상 ──
-  const colKey=getPetColor();
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🎨 내 벌거지 색상</div>
-    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">
-      ${Object.entries(PET_COLORS).map(([k,v])=>`<div onclick="setPetColor('${k}');go()" style="text-align:center;padding:6px;border-radius:12px;cursor:pointer;background:${k===getPetColor()?v.light||'#F0F4FF':'transparent'}"><div style="width:24px;height:24px;border-radius:50%;background:${v.main};margin:0 auto 4px"></div><div style="font-size:10px;font-weight:700;color:${v.main}">${v.name}</div></div>`).join('')}
-    </div>
-  </div>`);
+  // ── 이번 주 그래프 ──
+  parts.push('<div style="background:#fff;border-radius:16px;padding:14px;border:1px solid #EFEFEF;margin-bottom:8px">');
+  parts.push('<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">');
+  parts.push('<div style="font-size:12px;font-weight:800;color:#111">📈 이번 주</div>');
+  parts.push('<div style="display:flex;background:#F3F4F6;border-radius:14px;padding:2px">');
+  parts.push('<button onclick="S._statView=\'words\';go()" style="background:'+((!isTimeView)?'#fff':'transparent')+';border:none;border-radius:12px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;color:'+((!isTimeView)?'#111':'#9CA3AF')+'">단어수</button>');
+  parts.push('<button onclick="S._statView=\'time\';go()" style="background:'+(isTimeView?'#fff':'transparent')+';border:none;border-radius:12px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;color:'+(isTimeView?'#E65100':'#9CA3AF')+'">시간</button>');
+  parts.push('</div></div>');
+  // 막대 그래프
+  parts.push('<div style="display:flex;gap:4px;align-items:flex-end;height:60px;margin-bottom:6px">');
+  var barHtml='';
+  last7.forEach(function(d){
+    var val=isTimeView?d.min:d.total;
+    var maxV=isTimeView?maxMin:maxDay;
+    var barH=val>0?Math.max(8,Math.round(val/maxV*52)):4;
+    var barColor=d.isToday?'#111':(val>0?(isTimeView?'#FB923C':'#60A5FA'):'#E5E7EB');
+    var lbl=isTimeView?(d.min>=1?Math.round(d.min)+'m':(d.min>0?Math.round(d.min*60)+'s':'')):(d.total>0?d.total:'');
+    barHtml+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">'
+      +'<div style="font-size:8px;font-weight:700;color:'+barColor+'">'+lbl+'</div>'
+      +'<div style="width:100%;background:'+barColor+';border-radius:4px 4px 2px 2px;height:'+barH+'px"></div>'
+      +'<div style="font-size:9px;color:'+(d.isToday?'#111':'#9CA3AF')+';font-weight:'+(d.isToday?700:400)+'">'+d.day+'</div>'
+      +'</div>';
+  });
+  parts.push(barHtml);
+  parts.push('</div>');
+  parts.push('<div style="display:flex;justify-content:space-between;font-size:11px;color:#9CA3AF;padding-top:6px;border-top:1px solid #F3F4F6">');
+  parts.push('<span>이번 주 '+totalWeekWords+'개</span>');
+  parts.push('<span>활동일 '+last7.filter(function(d){return d.total>0;}).length+'일</span>');
+  parts.push('</div></div>');
 
+  // ── 단어 현황 ──
+  parts.push('<div style="background:#fff;border-radius:16px;padding:14px;border:1px solid #EFEFEF;margin-bottom:8px">');
+  parts.push('<div style="font-size:12px;font-weight:800;color:#111;margin-bottom:10px">📚 단어 현황</div>');
+  parts.push('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">');
+  parts.push('<div onclick="S.listMarkFilter=0;go(\'mybooks\',\'list\')" style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#9CA3AF">'+(totalW-marked1-marked2)+'</div><div style="font-size:10px;color:#9CA3AF">미학습</div></div>');
+  parts.push('<div onclick="S.listMarkFilter=1;go(\'mybooks\',\'list\')" style="background:#EFF6FF;border-radius:12px;padding:10px;text-align:center;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#1E5FA5">'+marked1+'</div><div style="font-size:10px;color:#1E5FA5">외웠음</div></div>');
+  parts.push('<div onclick="S.listMarkFilter=2;go(\'mybooks\',\'list\')" style="background:#F5F3FF;border-radius:12px;padding:10px;text-align:center;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#7C3AED">'+marked2+'</div><div style="font-size:10px;color:#7C3AED">복습</div></div>');
+  parts.push('</div></div>');
 
-  // ── 악세사리 ──
-  const acc=[
-    {ic:'👑',nm:'왕관',cond:'7일 연속',done:(S.streak||0)>=7},
-    {ic:'✨',nm:'별빛',cond:'30일 연속',done:(S.streak||0)>=30},
-    {ic:'🌟',nm:'후광',cond:'100일 연속',done:(S.streak||0)>=100},
+  // ── 설정 버튼들 ──
+  parts.push('<div style="background:#fff;border-radius:16px;border:1px solid #EFEFEF;overflow:hidden;margin-bottom:8px">');
+  var settingBtns=[
+    ['⚙️','앱 설정',"showAppSettings&&showAppSettings('general')"],
+    ['🎨','테마 변경',"showThemeModal&&showThemeModal()"],
+    ['🔔','알람 설정',"showAlarmSettings&&showAlarmSettings()"],
+    ['📊','학습 통계',"S._statView=S._statView==='time'?'words':'time';go()"],
   ];
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🎀 악세사리</div>
-    <div style="display:flex;gap:8px">
-      ${acc.map(a=>`<div style="flex:1;text-align:center;padding:12px;border-radius:14px;background:${a.done?'#FEF9C3':'var(--bg-sub,#F3F4F6)'}" onclick="${a.onclick||''}"><div style="font-size:28px;filter:${a.done?'none':'grayscale(1) opacity(.3)'}">${a.ic}</div><div style="font-size:11px;font-weight:700;color:${a.done?'#D97706':'#9CA3AF'}">${a.nm}</div><div style="font-size:9px;color:#9CA3AF">${a.cond}</div></div>`).join('')}
-    </div>
-  </div>`);
-
-  // ── 단어 마크 현황 ──
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">📊 단어 현황</div>
-    <div style="display:flex;gap:8px">
-      ${[[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF','#F3F4F6'],[1,'외운',marked1,'#1E5FA5','#EFF6FF'],[2,'헷갈리는',marked2,'#7C3AED','#F5F3FF']].map(([type,lb,cnt,col,bg])=>`<div style="flex:1;text-align:center;background:${bg};border-radius:12px;padding:10px;cursor:pointer" onclick="S.listMarkFilter=${type};go('mybooks','list')"><div style="font-size:18px;font-weight:900;color:${col}">${cnt}</div><div style="font-size:10px;color:${col}">${lb}</div></div>`).join('')}
-    </div>
-  </div>`);
-
-  // ── 설정 ──
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">⚙️ 설정</div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <!-- 닉네임 -->
-      <div style="display:flex;align-items:center;gap:10px">
-        <input id="cnk" placeholder="닉네임 변경" value="${S.nick}" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border,var(--border,#E5E7EB));font-size:13px">
-        <button onclick="changeNickname()" style="background:${petCol.main};color:#fff;border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer">변경</button>
-      </div>
-      <!-- 주요 기능 버튼 -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-        <button onclick="showAlarmSettings()" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#1E5FA5;cursor:pointer;text-align:left">
-          ⏰ 목표·알람 설정<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">하루 공부 목표</div>
-        </button>
-        <button onclick="showTimerSettings()" style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#16A34A;cursor:pointer;text-align:left">
-          ⏱ 학습 타이머<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">세션 타이머</div>
-        </button>
-        <button onclick="startMode('auto')" style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#7C3AED;cursor:pointer;text-align:left">
-          ⚡ 자동 학습 시작<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">스트리밍·오디오</div>
-        </button>
-        <button onclick="showGameSettings('quiz')" style="background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#D97706;cursor:pointer;text-align:left">
-          🎯 퀴즈 시작<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">단어 테스트</div>
-        </button>
-      </div>
-      <!-- 기타 설정 -->
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <button onclick="showThemeModal()" style="flex:1;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer">🎨 테마</button>
-        <button onclick="showFontModal()" style="flex:1;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer">🔤 폰트</button>
-        <button onclick="showFriends()" style="flex:1;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer">👥 친구</button>
-      </div>
-      <button onclick="showLogoutMenu()" style="width:100%;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:10px;padding:10px;font-size:13px;font-weight:700;color:#DC2626;cursor:pointer;margin-top:2px">🚪 로그아웃</button>
-    </div>
-  </div>`);
-
-
-  // ── 학습 통계 (홈화면 스타일) ──
-  const t2 = typeof today==='function'?today():new Date().toISOString().slice(0,10);
-  const todayLog2 = (S.studyLog||{})[t2]||{words:0,quiz:0,min:0};
-  const isTimeView2 = S._statView==='time';
-  const last7 = Array.from({length:7},(_,i)=>{
-    const d=new Date(); d.setDate(d.getDate()-6+i);
-    const k=new Date(d.getTime()+9*3600000).toISOString().slice(0,10);
-    const log=(S.studyLog||{})[k]||{words:0,quiz:0,min:0};
-    const total=log.words+log.quiz;
-    const isToday=k===t2;
-    const dayNames=['일','월','화','수','목','금','토'];
-    return {k,total,words:log.words,quiz:log.quiz,min:log.min||0,isToday,day:dayNames[d.getDay()]};
+  settingBtns.forEach(function(item,i){
+    var ic=item[0],lb=item[1],fn=item[2];
+    parts.push('<div onclick="'+fn+'" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:'+(i<settingBtns.length-1?'1px solid #F3F4F6':'none')+';cursor:pointer">');
+    parts.push('<span style="font-size:20px">'+ic+'</span>');
+    parts.push('<span style="font-size:14px;font-weight:600;color:#111;flex:1">'+lb+'</span>');
+    parts.push('<span style="color:#9CA3AF;font-size:16px">›</span>');
+    parts.push('</div>');
   });
-  const maxDay=Math.max(...last7.map(d=>d.total),1);
-  const maxMin=Math.max(...last7.map(d=>d.min),0.1);
-  const totalWeekWords=last7.reduce((s,d)=>s+d.words,0);
-  const totalWeekMin=last7.reduce((s,d)=>s+d.min,0);
-  const fmtM=m=>m<1?Math.round(m*60)+'초':m<60?Math.round(m)+'분':Math.floor(m/60)+'h'+(m%60>0?' '+Math.round(m%60)+'m':'');
-  parts.push(`<div style="background:#fff;border-radius:16px;border:1px solid #EFEFEF;padding:16px;margin-bottom:2px">
-    <!-- 헤더 + 토글 -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:800;color:#111">📈 이번 주 학습</div>
-      <div style="display:flex;background:#F3F4F6;border-radius:16px;padding:2px;gap:1px">
-        <button onclick="S._statView='words';go()" style="background:${!isTimeView2?'#fff':'transparent'};border:none;border-radius:14px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;color:${!isTimeView2?'#111':'#9CA3AF'}">단어수</button>
-        <button onclick="S._statView='time';go()" style="background:${isTimeView2?'#fff':'transparent'};border:none;border-radius:14px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;color:${isTimeView2?'#E65100':'#9CA3AF'}">시간</button>
-      </div>
-    </div>
-    <!-- 오늘 요약 -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      <div style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center">
-        <div style="font-size:20px;font-weight:900;color:#111">${todayLog2.words||0}</div>
-        <div style="font-size:10px;color:#9CA3AF;margin-top:1px">오늘 단어</div>
-      </div>
-      <div style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center">
-        <div style="font-size:20px;font-weight:900;color:#111">${todayLog2.quiz||0}</div>
-        <div style="font-size:10px;color:#9CA3AF;margin-top:1px">오늘 퀴즈</div>
-      </div>
-      <div style="background:#F9FAFB;border-radius:12px;padding:10px;text-align:center">
-        <div style="font-size:18px;font-weight:900;color:#111">${fmtM(todayLog2.min||0)}</div>
-        <div style="font-size:10px;color:#9CA3AF;margin-top:1px">오늘 시간</div>
-      </div>
-    </div>
-    <!-- 막대 그래프 -->
-    <div style="display:flex;gap:4px;align-items:flex-end;height:60px;margin-bottom:6px">
-      ${last7.map(d=>{const val=isTimeView2?d.min:d.total;const maxV=isTimeView2?maxMin:maxDay;const barH=val>0?Math.max(8,Math.round(val/maxV*52)):4;const barColor=d.isToday?'#111':(val>0?(isTimeView2?'#FB923C':'#60A5FA'):'#E5E7EB');const lbl=isTimeView2?(d.min>=1?Math.round(d.min)+'m':(d.min>0?Math.round(d.min*60)+'s':'')):(d.total>0?d.total:'');return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-size:8px;font-weight:700;color:'+barColor+'">'+lbl+'</div><div style="width:100%;background:'+barColor+';border-radius:4px 4px 2px 2px;height:'+barH+'px"></div><div style="font-size:9px;color:'+(d.isToday?'#111':'#9CA3AF')+';font-weight:'+(d.isToday?700:400)+'">'+d.day+'</div></div>';}).join('')}
-    </div>
-    <!-- 주간 요약 -->
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:#9CA3AF;padding-top:8px;border-top:1px solid #F3F4F6">
-      <span>이번 주 ${isTimeView2?fmtM(totalWeekMin):totalWeekWords+'개'}</span>
-      <span>활동일 ${last7.filter(d=>d.total>0).length}일</span>
-    </div>
-  </div>`);
-  parts.push('<div style="height:8px"></div>');
-  const last30 = Array.from({length:30},(_,i)=>{
-    const d=new Date(); d.setDate(d.getDate()-29+i);
-    return (S.studyLog[d.toISOString().slice(0,10)]||{}).words||0;
-  });
-  const maxW30 = Math.max(...last30,1);
-  parts.push(`<div style="background:#fff;border-radius:16px;border:1px solid #EFEFEF;padding:14px;margin-bottom:2px">
-    <div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">30일 학습 기록</div>
-    <div style="display:flex;align-items:flex-end;gap:1px;height:32px">
-      ${last30.map((v,i)=>{const h=Math.max(2,Math.round(v/maxW30*30));const col=v===0?'#E5E7EB':i>=23?'#111':'#60A5FA';return '<div style="flex:1;height:'+h+'px;background:'+col+';border-radius:2px 2px 0 0"></div>';}).join('')}
-    </div>
-  </div>`);
-  parts.push('<div style="height:1px"></div>');
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--text1,var(--text1,#111111));margin-bottom:12px">📈 학습 통계</div>
-    <!-- 공부시간 현황 -->
-    <div onclick="showAlarmSettings()" style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:12px;padding:12px;margin-bottom:10px;cursor:pointer">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-size:12px;font-weight:800;color:#1E5FA5">⏱ 오늘 공부시간</div>
-        <div style="font-size:11px;color:#6B7280">${(S._dailyGoalMin||30)}분 목표</div>
-      </div>
-      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">
-        <div style="font-size:28px;font-weight:900;color:#1E5FA5">${(S._dailyStudiedMin||0).toFixed(1)}</div>
-        <div style="font-size:13px;color:#6B7280">분 / ${(S._dailyGoalMin||30)}분</div>
-      </div>
-      <div style="background:rgba(0,0,0,.08);border-radius:4px;height:6px;overflow:hidden">
-        <div style="height:100%;background:#3B82F6;border-radius:4px;width:${Math.min(100,Math.round((S._dailyStudiedMin||0)/(S._dailyGoalMin||30)*100))}%;transition:width .6s"></div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
-      ${(()=>{const tw7=last7?last7.reduce((s,d)=>s+d.words,0):0;const last30arr=Array.from({length:30},(_,i2)=>{const d2=new Date();d2.setDate(d2.getDate()-29+i2);return ((S.studyLog||{})[new Date(d2.getTime()+9*3600000).toISOString().slice(0,10)]||{}).words||0;});const tw30=last30arr.reduce((s,v)=>s+v,0);const avg7=Math.round(tw7/7);return [['7일',tw7+'개'],['30일',tw30+'개'],['일평균',avg7+'개'],['총학습',Math.floor((S._totalStudyMins||0)/60)+'시간']].map(([lb,v])=>'<div style="text-align:center;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px;padding:8px"><div style="font-size:16px;font-weight:900;color:var(--text1,var(--text1,#111111))">\''+v+'\'</div><div style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF))">\''+lb+'\'</div></div>').join('');})()}
-    </div>
-    </div>
-    <div style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF));margin-bottom:4px">최근 30일 학습 단어</div>
-    <div style="display:flex;align-items:flex-end;gap:1px;height:36px">
-      ${last30.map((v,i)=>{const h=Math.max(2,Math.round(v/maxW30*34));const col=v===0?'var(--border,#E5E7EB)':i>=23?'#111':'#9CA3AF';return '<div style="flex:1;height:'+h+'px;background:'+col+';border-radius:2px 2px 0 0"></div>';}).join('')}
-    </div>
-  </div>`);
+  parts.push('</div>');
 
-  parts.push('<button class="btn" onclick="showAlarmSettings()" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;id #E9D5FF">⏰ 목표 & 알람</button>');
-  parts.push('<button class="btn" onclick="showAchievementsModal()" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;FE082">🏆 도전 과제</button>');
-  parts.push('<button class="btn" onclick="showAppGuide()" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;FE082">📖 앱 사용법</button>');
-  parts.push('<button class="btn" onclick="showGameIntro(true)" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;FE082">🎬 첫 화면 다시보기</button>');
-  parts.push('<button class="btn" onclick="showStudyCalendar()" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;FE082">📅 학습 달력</button>');
-  parts.push('<button class="btn" onclick="showXpGuide()" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;id #E9D5FF">⚡ XP 안내</button>');
-  parts.push('<button class="btn" onclick="showTestIntro(true)" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;FE082">📝 레벨 재테스트</button>');
-  parts.push('<button class="btn" onclick="showDataBackup()" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;#86EFAC">💾 데이터 백업 / 복원</button>');
-  // 최고레벨이면 재탄생 버튼 표시
-  const isGodLv = S.lid === 'god';
-  if(isGodLv) {
-    parts.push(`<div style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:16px;padding:14px;border:1.5px solid #F6D860;margin-bottom:8px;text-align:center">
-      <div style="font-size:14px;font-weight:800;color:#D97706;margin-bottom:4px">👑 나비의 신 달성!</div>
-      <div style="font-size:11px;color:#92400E;margin-bottom:10px">알로 돌아가 새로운 여정을 시작해보세요</div>
-      <button onclick="if(confirm('정말 알로 돌아갈까요?\nXP가 초기화되고 새 여정이 시작돼요')){resetToEgg();toast('🥚 새로운 여정 시작!');go();}" class="btn bb" style="font-size:13px">🥚 알로 돌아가기</button>
-    </div>`);
-  }
-
-  // 캐릭터 모음 (컬렉션)
-  const _col = S._collection||[];
-  if(_col.length > 0) {
-    parts.push(`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:14px;margin-top:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700;color:#111">캐릭터 모음</div>
-        <span style="font-size:11px;color:#9CA3AF">${_col.length}마리</span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-        ${_col.map(b=>`<div style="background:#F9FAFB;border-radius:10px;padding:8px;text-align:center">${charSVG(b.lid||'egg',40,'normal')}<div style="font-size:9px;color:#9CA3AF;margin-top:3px">${lv(b.lid||'egg').name||b.lid}</div></div>`).join('')}
-      </div>
-    </div>`);
-  }
-  parts.push('<button class="btn bgr" onclick="showLogoutMenu()">로그아웃 / 초기화</button>');
   parts.push('</div>');
   return parts.join('');
 }

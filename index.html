@@ -266,10 +266,20 @@ body.fs-lg{font-size:17px!important}
       </div>
     </div>
     <div class="xpbar"><div class="xpfill" id="xpfill" style="width:0%"></div></div>
-    <div id="study-mini" onclick="showAlarmSettings()" style="margin-top:6px;background:rgba(255,255,255,.12);border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:8px">
-      <span id="study-mini-text" style="font-size:11px;color:rgba(255,255,255,.9);font-weight:600">⏱ 0 / 30분</span>
-      <span id="study-mini-bar" style="flex:1;height:3px;background:rgba(255,255,255,.2);border-radius:2px;overflow:hidden"><span id="study-mini-fill" style="display:block;height:100%;background:#fff;border-radius:2px;width:0%;transition:width .4s"></span></span>
-      <span id="study-mini-rem" style="font-size:10px;color:rgba(255,255,255,.7);font-weight:700">남음</span>
+    <div id="study-mini" onclick="showAlarmSettings()" style="margin-top:0;cursor:pointer">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 14px 2px">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="font-size:11px;opacity:.8">⏱</span>
+          <span id="study-mini-text" style="font-size:12px;color:#fff;font-weight:700">0 / 30분</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px">
+          <span id="study-mini-pct" style="font-size:11px;font-weight:800;color:#FFD600">0%</span>
+          <span id="study-mini-rem" style="font-size:11px;color:rgba(255,255,255,.7);font-weight:600">30분 남음</span>
+        </div>
+      </div>
+      <div style="height:5px;background:rgba(255,255,255,.15);overflow:hidden">
+        <div id="study-mini-fill" style="height:100%;background:linear-gradient(90deg,#60A5FA,#34D399);width:0%;transition:width .5s;border-radius:0 3px 3px 0"></div>
+      </div>
     </div>
   </div>
   <div class="body" id="body"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#EFF6FF,#F0FDF4)"><div style="font-size:64px;margin-bottom:16px;animation:float 2s ease-in-out infinite">🦋</div><div style="font-size:18px;font-weight:800;color:#1E5FA5;margin-bottom:8px">Butterfly Word</div><div style="font-size:13px;color:#9CA3AF">로딩 중...</div></div></div>
@@ -1388,11 +1398,12 @@ function useXP(cost, type) {
       return;
     }
     const needXp = curLv2 ? (curLv2.xp||100) : 100;
-    if((S.xp||0) < needXp) {
-      toast('레벨업에 XP '+needXp+'개 필요해요. 현재 '+(S.xp||0)+'XP');
-      return;
+    const realXp = (S.xp||0) + cost; // 차감 전 XP
+    if(realXp < needXp) {
+      toast('레벨업에 XP '+needXp+'개 필요해요. 현재 '+realXp+'XP');
+      S.xp += cost; sv(); return;
     }
-    S.xp -= needXp;
+    S.xp -= cost;
     sv();
     S._lvNotified = false;
     _doLevelUp();
@@ -3628,7 +3639,9 @@ function updHD() {
     mini.style.display='flex';
     document.getElementById('study-mini-text').textContent = `⏱ ${studied.toFixed(1)} / ${goal}분`;
     document.getElementById('study-mini-fill').style.width = pct + '%';
-    document.getElementById('study-mini-rem').textContent = pct >= 100 ? '🎉 달성' : remain.toFixed(1)+'분 남음';
+    const pctEl=document.getElementById('study-mini-pct');if(pctEl)pctEl.textContent=pct+'%';
+    const pctEl2=document.getElementById('study-mini-pct');if(pctEl2)pctEl2.style.color=pct>=100?'#FFD600':'rgba(255,255,255,.8)';
+    document.getElementById('study-mini-rem').textContent = pct >= 100 ? '🎉 달성!' : remain.toFixed(1)+'분 남음';
   }
   // 콕 찌르기 알림 뱃지 (Firebase에서 비동기 체크)
   if(S.user?.uid) {
@@ -4321,7 +4334,14 @@ function go(tab,sub) {
     if(tab==='butterfly'&&!sub) S.stab=null;
     // 나비키우기 탭 벗어날 때 배경음악 정지
     if(S.tab==='butterfly' && tab!=='butterfly') { if(typeof SFX!=='undefined') SFX.stopBG(); }
-    if((S.tab==='learn'||S.tab==='study'||S.tab==='mybooks')&&tab&&tab!==S.tab){if(S._learnEnterTime){const _m=(Date.now()-S._learnEnterTime)/60000;if(_m>=0.1){const _tk=new Date().toISOString().slice(0,10);if(S._dailyDate!==_tk){S._dailyStudiedMin=0;S._dailyDate=_tk;}S._dailyStudiedMin=Math.round(((S._dailyStudiedMin||0)+_m)*10)/10;sv();}S._learnEnterTime=null;}}
+    // 학습탭 이탈 시 공부시간 계산
+    if((S.tab==='learn'||S.tab==='study'||S.tab==='mybooks') && tab && tab!==S.tab) {
+      if(S._learnEnterTime) {
+        const _mins=(Date.now()-S._learnEnterTime)/60000;
+        if(_mins>=0.1){const _tk=new Date().toISOString().slice(0,10);if(S._dailyDate!==_tk){S._dailyStudiedMin=0;S._dailyDate=_tk;}S._dailyStudiedMin=Math.round(((S._dailyStudiedMin||0)+_mins)*10)/10;sv();}
+        S._learnEnterTime=null;
+      }
+    }
     if(tab==='learn'||tab==='study'||tab==='mybooks'){S._learnEnterTime=Date.now();}
     S.tab=tab;
   }
@@ -4336,16 +4356,17 @@ function go(tab,sub) {
     const _hGoal = S._dailyGoalMin||30;
     const _hStudied = S._dailyStudiedMin||0;
     const _hPct = Math.min(100, Math.round(_hStudied/_hGoal*100));
-    hdrEl.innerHTML=`<div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:100%">
+    hdrEl.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px 0">
       <div style="font-size:17px;font-weight:900;color:#fff;letter-spacing:-0.5px">🦋 Butterfly</div>
-      <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,.2)">
-        <div style="height:100%;background:${_hPct>=100?'#FFD600':'rgba(255,255,255,.7)'};width:${_hPct}%;transition:width .5s"></div>
-      </div>
-      <div onclick="go('profile')" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border-radius:20px;padding:4px 10px;cursor:pointer">
-        <span style="font-size:14px;animation:float 3.5s ease-in-out infinite;display:inline-block">${lvI.emoji}</span>
+      <div onclick="go('profile')" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border-radius:20px;padding:4px 10px;cursor:pointer">
+        <span style="font-size:13px;animation:float 3.5s ease-in-out infinite;display:inline-block">${lvI.emoji}</span>
         <span style="font-size:11px;font-weight:700;color:#fff">${_hStudied.toFixed(1)}/${_hGoal}분</span>
-        ${_hPct>=100?'<span style="font-size:10px;color:#FFD600;font-weight:800">✨</span>':''}
+        <span style="font-size:11px;font-weight:800;color:${_hPct>=100?'#FFD600':'rgba(255,255,255,.7)'}">${_hPct}%</span>
+        ${_hPct>=100?'<span style="font-size:10px">✨</span>':''}
       </div>
+    </div>
+    <div style="margin:3px 0 0;height:5px;background:rgba(255,255,255,.15)">
+      <div style="height:100%;background:${_hPct>=100?'linear-gradient(90deg,#FFD600,#FFA500)':'linear-gradient(90deg,#60A5FA,#34D399)'};width:${_hPct}%;transition:width .5s;border-radius:0 3px 3px 0"></div>
     </div>`;
   }
   const nav=document.getElementById('nav');

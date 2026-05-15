@@ -473,7 +473,7 @@ async function rDB(){
     <div class="sg" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
       <div class="st"><div class="v" style="color:#E65100;font-size:18px">${(totalXP||0).toLocaleString()}</div><div class="l">총 XP 합계</div></div>
       <div class="st"><div class="v" style="color:#E65100;font-size:18px">🔥${avgStreak}일</div><div class="l">평균 스트릭</div></div>
-      <div class="st"><div class="v" style="color:#1E5FA5;font-size:18px">${packs.length}</div><div class="l">마켓 팩</div></div>
+      <div class="st"><div class="v" style="color:#1E5FA5;font-size:18px">${fbPackCount + localPackCount}</div><div class="l">마켓 팩</div></div>
       <div class="st" onclick="T('pk')" style="cursor:pointer">
         <div class="v" style="color:#16A34A;font-size:18px">${totalWords.toLocaleString()}</div>
         <div class="l">총 단어수</div>
@@ -3204,7 +3204,6 @@ function rLV(){
 async function rNT(){
   let ns=[];
   try{const s=await db.collection('notices').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  document.getElementById('main-inner').innerHTML=`
   const elNT=document.getElementById('main-inner');
   let ntHtml='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
   ntHtml+='<h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>';
@@ -3213,15 +3212,14 @@ async function rNT(){
     ntHtml+='<div class="card" style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:40px;margin-bottom:12px">📭</div><p>등록된 공지사항이 없어요</p></div>';
   } else {
     ntHtml+='<div class="card"><div class="tw"><table><tr><th>제목</th><th>유형</th><th>작성일</th><th>상태</th><th>작업</th></tr>';
-    ntHtml+=ns.map(function(n){var dt=n.createdAt?new Date(n.createdAt.seconds?n.createdAt.seconds*1000:n.createdAt).toLocaleDateString('ko-KR'):'-';var typeLabel=n.type==='update'?'🆕 업데이트':n.type==='event'?'🎉 이벤트':'📢 공지';return '<tr><td style="font-weight:700">'+(n.title||'-')+'</td><td>'+typeLabel+'</td><td style="font-size:12px;color:#9CA3AF">'+dt+'</td><td><span class="badge '+(n.active?'bg2':'bgr2')+'">'+(n.active?'게시중':'숨김')+'</span></td><td><div style="display:flex;gap:4px"><button class="btn bb" style="font-size:11px;padding:3px 8px" onclick="toggleNT(\''+n.id+'\','+(n.active?'false':'true')+')">'+(n.active?'숨기기':'게시')+'</button><button class="btn bgr" style="font-size:11px;padding:3px 8px" onclick="delNT(\''+n.id+'\')" >삭제</button></div></td></tr>';}).join('');
+    ntHtml+=ns.map(function(n){
+      var dt=n.createdAt?new Date(n.createdAt.seconds?n.createdAt.seconds*1000:n.createdAt).toLocaleDateString('ko-KR'):'-';
+      var typeLabel=n.type==='update'?'🆕 업데이트':n.type==='event'?'🎉 이벤트':'📢 공지';
+      return '<tr><td style="font-weight:700">'+(n.title||'-')+'</td><td>'+typeLabel+'</td><td style="font-size:12px;color:#9CA3AF">'+dt+'</td><td><span class="badge '+(n.active?'bg2':'bgr2')+'">'+(n.active?'게시중':'숨김')+'</span></td><td><div style="display:flex;gap:4px"><button class="btn bb" style="font-size:11px;padding:3px 8px" onclick="toggleNT(''+n.id+'','+(n.active?'false':'true')+')">'+(n.active?'숨기기':'게시')+'</button><button class="btn bgr" style="font-size:11px;padding:3px 8px" onclick="delNT(''+n.id+'')">삭제</button></div></td></tr>';
+    }).join('');
     ntHtml+='</table></div></div>';
   }
   elNT.innerHTML=ntHtml;
-    <div class="fg"><label>유형</label><select id="ntype"><option value="notice">📢 공지</option><option value="update">🆕 업데이트</option><option value="event">🎉 이벤트</option></select></div>
-    <div class="fg"><label>내용</label><textarea id="nbody" style="min-height:100px;resize:vertical" placeholder="공지 내용..."></textarea></div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><input type="checkbox" id="nactive" checked style="width:18px;height:18px"><label style="display:inline;margin-bottom:0;font-size:13px;cursor:pointer" for="nactive">즉시 게시</label></div>
-    <div style="display:flex;gap:8px"><button class="btn bb" onclick="saveNT()" style="flex:1">작성</button><button class="btn bgr" onclick="cm()">취소</button></div>
-  </div></div>`;
 }
 
 async function saveNT(){
@@ -3248,7 +3246,7 @@ async function delNT(id){if(!confirm('삭제할까요?'))return;try{await db.col
 async function rUS(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">회원 데이터 로딩 중...</div>';
   let us=[];
-  try{const s=await db.collection('users').orderBy('lastActive','desc').limit(200).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}
+  try{const s=await db.collection('users').limit(200).get();us=s.docs.map(d=>({id:d.id,...d.data()}));us.sort((a,b)=>{const ta=a.lastActive?.toDate?.()?.getTime()||0;const tb=b.lastActive?.toDate?.()?.getTime()||0;return tb-ta;});}
   catch(e){try{const s=await db.collection('users').limit(200).get();us=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e2){}}
   const totalStreak = us.reduce((a,u)=>a+(u.streak||0),0);
   const avgStreak = us.length ? Math.round(totalStreak/us.length) : 0;

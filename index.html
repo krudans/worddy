@@ -3478,107 +3478,115 @@ function showAutoMode() {
   _LT.start();
   
   // 렌더 함수
-  window._autoRender = () => {
-    const mr = document.getElementById('mr'); if(!mr) return;
-    const w = window._autoWords[window._autoIdx];
+  
+// 자동학습 설정 헬퍼 함수들
+function _arSetSort(v){S.autoSort=v;showAutoMode();}
+function _arSetUnit(v){if(window._auto)window._auto.unit=v;window._autoRender&&window._autoRender();}
+function _arSetRange(v){if(window._auto)window._auto.range=v;window._autoRender&&window._autoRender();}
+function _arSetRead(v){if(window._auto)window._auto.read=v;window._autoRender&&window._autoRender();}
+function _arSetSpeed(sr,sp){if(window._auto){window._auto.shadowRate=sr;window._auto.speed=sp;}window._autoRender&&window._autoRender();}
+function _arSetExCount(v){if(window._auto)window._auto.exCount=v;window._autoRender&&window._autoRender();}
+function _arToggleLoop(){if(window._auto)window._auto.loop=!window._auto.loop;window._autoRender&&window._autoRender();}
+function _arToggleShadow(){if(window._auto)window._auto.shadow=!window._auto.shadow;window._autoRender&&window._autoRender();}
+
+window._autoRender = function() {
+    var mr = document.getElementById('mr'); if(!mr) return;
+    var w = window._autoWords[window._autoIdx];
     if(!w) return;
-    const total = window._autoWords.length;
-    const A = window._auto;
-    const pct = Math.round((window._autoIdx+1)/total*100);
-    
-    mr.innerHTML = `<div style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E3A5F);z-index:200;display:flex;flex-direction:column;color:#fff">
-      <!-- 헤더 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:900">⚡ 자동 학습</div>
-          <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:1px">${window._autoIdx+1}/${total} · ${A.loop?'🔁 무한반복':'1회'}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${_LT.barHTML()}<button onclick="window._autoPlaying=false;window.speechSynthesis.cancel();window._curRender=null;document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕</button></div>
-      </div>
-      
-      <!-- 진행 -->
-      <div style="padding:0 20px 8px;flex-shrink:0">
-        <div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden">
-          <div style="height:100%;background:linear-gradient(90deg,#60A5FA,#3B82F6);width:${pct}%;transition:width .4s"></div>
-        </div>
-      </div>
-      
-      <!-- 단어 카드 -->
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
-        <div style="font-size:42px;font-weight:900;color:#fff;text-align:center;margin-bottom:14px;letter-spacing:0.5px">${w.en||''}</div>
-        <div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-bottom:18px">${w.ph||''}</div>
-        <div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;text-align:center;margin-bottom:18px">${w.kr||''}</div>
-        ${(function(){var exCount=parseInt(A.exCount||0);if(exCount===0)return '';var exList=w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[]);var toShow=exList.slice(0,exCount);if(!toShow.length)return '';return '<div style="max-width:340px;width:100%">'+toShow.map(function(ex){return '<div style="font-size:13px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.6;text-align:center;margin-bottom:6px">'+ex+'</div>';}).join('')+'</div>';})()}
-        <div style="margin-top:18px">${_markBtn(w.en||'')}</div>
-      </div>
-      
-      <!-- 옵션 패널 -->
-      <div style="padding:8px 16px 0;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
-        <!-- Row1: 정렬 + 학습단위 -->
-        <div style="display:flex;gap:6px">
-          <div style="flex:2">
-            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">정렬</div>
-            <div style="display:flex;gap:2px">
-              ${(function(){return [['default','추가순'],['alpha','A-Z'],['alpha_kr','가나다'],['mark','마크'],['random','🔀']].map(function(item){var v=item[0],lb=item[1];var active=(S.autoSort||'default')===v;return '<button onclick="S.autoSort=\''+v+'\';showAutoMode()" style="flex:1;background:'+(active?'rgba(96,165,250,.5)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:3px 1px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-            </div>
-          </div>
-          <div style="flex:1">
-            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">단위</div>
-            <div style="display:flex;gap:2px">
-              ${(function(){return [['10','10개'],['20','20개'],['50','50개'],['all','전체']].map(function(item){var v=item[0],lb=item[1];var active=(A.unit||'all')===v;return '<button onclick="window._auto.unit=\''+v+'\';window._autoRender()" style="flex:1;background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:5px 2px;font-size:10px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-          </div>
-        </div>
-        <!-- Row2: 학습범위 -->
-        <div>
-          <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">학습범위</div>
-          <div style="display:flex;gap:2px">
-            ${(function(){return [[-1,'전체'],[0,'미학습'],[1,'외웠음'],[2,'복습']].map(function(item){var v=item[0],lb=item[1];var active=(A.range??-1)===v;return '<button onclick="window._auto.range='+v+';window._autoRender()" style="flex:1;background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:5px 2px;font-size:10px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-        </div>
-        <!-- Row3: 읽기 + 표시방식 -->
-        <div style="display:flex;gap:6px">
-          <div style="flex:2">
-            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">읽기</div>
-            <div style="display:flex;gap:2px">
-              ${(function(){return [['en','영어'],['kr','한글'],['en+kr','영+한'],['en+ex','영+예'],['all','전체']].map(function(item){var v=item[0],lb=item[1];var active=A.read===v;return '<button onclick="window._auto.read=\''+v+'\';window._autoRender()" style="flex:1;background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:5px 2px;font-size:10px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-          </div>
-          <div style="flex:1">
-            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">표시</div>
-            <div style="display:flex;gap:2px">
-              ${(function(){return [['both','앞뒤'],['front','앞만'],['flip','뒤집']].map(function(item){var v=item[0],lb=item[1];var active=(A.display||'both')===v;return '<button onclick="window._auto.display=\''+v+'\';window._autoRender()" style="flex:1;background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:5px 2px;font-size:10px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-          </div>
-        </div>
-        <!-- Row4: 속도 + 발음 -->
-        <div style="display:flex;gap:6px">
-          <div style="flex:2">
-            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">속도</div>
-            <div style="display:flex;gap:2px">
-              ${(function(){return [['느림',0.6,5500],['보통',0.85,4000],['빠름',1.0,3000],['최대',1.2,2000]].map(function(item){var lb=item[0],sr=item[1],sp=item[2];var active=(A.shadowRate===sr&&A.speed===sp);return '<button onclick="window._auto.shadowRate='+sr+';window._auto.speed='+sp+';window._autoRender()" style="flex:1;background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:5px 2px;font-size:10px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-          </div>
-          <div style="flex:1">
-            <div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">발음</div>
-            <div style="display:flex;gap:2px">
-              ${(function(){return [['en-US','여성'],['en-GB','남성']].map(function(item){var v=item[0],lb=item[1];return '<button onclick="window._auto.voice=\''+v+'\';window._autoRender()" style="flex:1;background:'+(( A.voice||'en-US')===v?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:5px 2px;font-size:10px;color:#fff;cursor:pointer">'+lb+'</button>';}).join('');})()}
-          </div>
-        </div>
-        <!-- Row5: 토글 + 예문 -->
-        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-          <button onclick="window._auto.loop=!window._auto.loop;window._autoRender()" style="background:${A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.loop?'rgba(96,165,250,.6)':'rgba(255,255,255,.15)'};border-radius:14px;padding:4px 8px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">${A.loop?'🔁 무한':'➡ 1회'}</button>
-          <button onclick="window._auto.shadow=!window._auto.shadow;window._autoRender()" style="background:${A.shadow?'rgba(236,72,153,.4)':'rgba(255,255,255,.08)'};border:1px solid ${A.shadow?'rgba(236,72,153,.6)':'rgba(255,255,255,.15)'};border-radius:14px;padding:4px 8px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">🎤 따라말하기</button>
-          <div style="display:flex;align-items:center;gap:2px">
-            <span style="font-size:9px;color:rgba(255,255,255,.4)">예문</span>
-            ${(function(){return [['0','OFF'],['1','1개'],['2','2개'],['3','3개']].map(function(item){var v=item[0],lb=item[1];var active=parseInt(A.exCount??0)===parseInt(v);return '<button onclick="window._auto.exCount='+parseInt(v)+';window._autoRender()" style="background:'+(active?'rgba(251,146,60,.5)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:3px 5px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+lb+'</button>';}).join('');})()}
-          </div>
-        </div>
-      </div>
-      
-      <!-- 컨트롤 버튼 -->
-      <div style="padding:8px 20px 20px;display:flex;gap:8px;flex-shrink:0">
-        <button onclick="window._autoIdx=Math.max(0,window._autoIdx-1);window._autoRender();window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">⏮ 이전</button>
-        <button onclick="window._autoToggle()" style="flex:2;background:${window._autoPlaying?'linear-gradient(135deg,#EF4444,#DC2626)':'linear-gradient(135deg,#10B981,#059669)'};border:none;border-radius:14px;padding:12px;color:#fff;font-size:15px;font-weight:800;cursor:pointer">${window._autoPlaying?'⏸ 정지':'▶ 자동재생'}</button>
-        <button onclick="window._autoIdx=Math.min(window._autoWords.length-1,window._autoIdx+1);window._autoRender();window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">⏭ 다음</button>
-      </div>
-    </div>`;
-  };
+    var total = window._autoWords.length;
+    var A = window._auto;
+    var pct = Math.round((window._autoIdx+1)/total*100);
+
+    var exList = (w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
+    var exCount = parseInt(A.exCount||0);
+    var exHtml = '';
+    if(exCount>0&&exList.length>0){
+      exList.slice(0,exCount).forEach(function(ex){
+        exHtml += '<div style="font-size:12px;color:rgba(255,255,255,.5);font-style:italic;line-height:1.5;margin-top:6px;max-width:340px">'+ex+'</div>';
+      });
+    }
+
+    function btn(label, onclick, active, color) {
+      var bg = active ? (color||'rgba(96,165,250,.5)') : 'rgba(255,255,255,.08)';
+      return '<button onclick="'+onclick+'" style="flex:1;background:'+bg+';border:none;border-radius:6px;padding:3px 4px;font-size:10px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+'">'+label+'</button>';
+    }
+
+    // 정렬 버튼
+    var sortBtns = [['추가순','default'],['A-Z','alpha'],['가나다','alpha_kr'],['마크','mark'],['랜덤','random']]
+      .map(function(it){return btn(it[0],"_arSetSort('"+it[1]+"')",(S.autoSort||'default')===it[1]);}).join('');
+
+    // 단위 버튼
+    var unitBtns = [['10','10'],['20','20'],['50','50'],['전체','all']]
+      .map(function(it){return btn(it[0],"_arSetUnit('"+it[1]+"')",(A.unit||'all')===it[1]);}).join('');
+
+    // 학습범위 버튼
+    var rangeBtns = [['전체',-1],['미학습',0],['외웠음',1],['복습',2]]
+      .map(function(it){return btn(it[0],'_arSetRange('+it[1]+')',(A.range??-1)===it[1]);}).join('');
+
+    // 발음 버튼
+    var readBtns = [['영어','en'],['한글','kr'],['영+한','en+kr'],['영+예','en+ex'],['전체','all']]
+      .map(function(it){return btn(it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]);}).join('');
+
+    // 속도 버튼
+    var speedBtns = [['느림',0.6,5500],['보통',0.85,4000],['빠름',1.0,3000],['최대',1.2,2000]]
+      .map(function(it){return btn(it[0],'_arSetSpeed('+it[1]+','+it[2]+')',(A.shadowRate===it[1]&&A.speed===it[2]));}).join('');
+
+    // 예문수 버튼
+    var exBtns = [['OFF',0],['1개',1],['2개',2],['3개',3]]
+      .map(function(it){return btn(it[0],'_arSetExCount('+it[1]+')',parseInt(A.exCount??0)===it[1],'rgba(251,146,60,.5)');}).join('');
+
+    function row(label, btns) {
+      return '<div style="margin-bottom:5px"><div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">'+label+'</div>'
+        +'<div style="display:flex;gap:2px">'+btns+'</div></div>';
+    }
+
+    mr.innerHTML = ''
+      +'<div style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E3A5F);z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">'
+        // 헤더
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;flex-shrink:0">'
+          +'<div><div style="font-size:14px;font-weight:900">⚡ 자동 학습</div>'
+          +'<div style="font-size:10px;color:rgba(255,255,255,.5)">'+(window._autoIdx+1)+'/'+total+' · '+(A.loop?'무한반복':'1회')+'</div></div>'
+          +'<div style="display:flex;gap:6px;align-items:center">'
+          +(_LT&&_LT.barHTML?_LT.barHTML():'')
+          +'<button onclick="window._autoToggle&&window._autoToggle()" style="background:'+(window._autoPlaying?'#22C55E':'rgba(255,255,255,.15)')+';border:none;border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">'+(window._autoPlaying?'⏸ 일시정지':'▶ 자동재생')+'</button>'
+          +'<button onclick="cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;cursor:pointer">✕</button>'
+          +'</div>'
+        +'</div>'
+        // 진행바
+        +'<div style="padding:0 16px 4px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div></div>'
+        // 단어 카드
+        +'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center">'
+          +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'
+          +(w.ph?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')
+          +'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>'
+          +exHtml
+          +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'
+        +'</div>'
+        // 컨트롤 버튼
+        +'<div style="padding:6px 16px;display:flex;gap:6px;flex-shrink:0">'
+          +'<button onclick="window._autoIdx=Math.max(0,window._autoIdx-1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">◀ 이전</button>'
+          +'<button onclick="window._autoToggle&&window._autoToggle()" style="flex:2;background:'+(window._autoPlaying?'#EF4444':'#22C55E')+';border:none;border-radius:12px;padding:10px;font-size:14px;font-weight:900;color:#fff;cursor:pointer">'+(window._autoPlaying?'⏸ 일시정지':'▶ 자동재생')+'</button>'
+          +'<button onclick="window._autoIdx=Math.min(window._autoWords.length-1,window._autoIdx+1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">다음 ▶</button>'
+        +'</div>'
+        // 설정 패널
+        +'<div style="flex-shrink:0;overflow-y:auto;padding:6px 16px 8px;border-top:1px solid rgba(255,255,255,.1)">'
+          +'<div style="display:flex;gap:6px;margin-bottom:5px">'
+            +'<div style="flex:3"><div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">정렬</div><div style="display:flex;gap:2px">'+sortBtns+'</div></div>'
+            +'<div style="flex:2"><div style="font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px">단위</div><div style="display:flex;gap:2px">'+unitBtns+'</div></div>'
+          +'</div>'
+          +row('학습범위', rangeBtns)
+          +row('발음', readBtns)
+          +row('속도', speedBtns)
+          +'<div style="display:flex;gap:6px">'
+            +'<div style="flex:2">'+row('예문', exBtns)+'</div>'
+            +'<div style="flex:1;display:flex;gap:4px;align-items:flex-end;padding-bottom:5px">'
+              +'<button onclick="_arToggleLoop()" style="flex:1;background:'+(A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:5px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(A.loop?700:400)+'">반복</button>'
+              +'<button onclick="_arToggleShadow()" style="flex:1;background:'+(A.shadow?'rgba(236,72,153,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:5px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(A.shadow?700:400)+'">쉐도잉</button>'
+            +'</div>'
+          +'</div>'
+        +'</div>'
+      +'</div>';
+};;;
   
   // 현재 단어 즉시 발음
   window._autoSpeakNow = async () => {
@@ -4952,7 +4960,7 @@ function rGameTab() {
       <div onclick="saveMyCharacter()" style="flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff">
         📸 이미지 저장
       </div>
-      <div onclick="useXP(xpTarget,'레벨업')" style="${canLvUp?'background:linear-gradient(135deg,#FFD700,#FFA500)':'background:rgba(255,255,255,.15)'};border-radius:12px;padding:9px;text-align:center;font-size:11px;font-weight:700;color:'+(canLvUp?'#1A1A1A':'#fff')+';cursor:pointer">
+      <div onclick="useXP(${xpTarget},'레벨업')" style="${canLvUp?'background:linear-gradient(135deg,#FFD700,#FFA500)':'background:rgba(255,255,255,.15)'};border-radius:12px;padding:9px;text-align:center;font-size:11px;font-weight:700;color:'+(canLvUp?'#1A1A1A':'#fff')+';cursor:pointer">
         ${canLvUp?'⬆️ 레벨업!':'🔒 '+xpTarget+' XP 필요'}
       </div>
     </div>
@@ -8451,6 +8459,7 @@ function rLearn() {
   if(w.ph) frontContent+='<div style="font-size:14px;color:rgba(255,255,255,.7);margin:6px 0;font-family:monospace">'+w.ph+'</div>';
   if(w.pos) frontContent+='<div style="background:rgba(255,255,255,.15);border-radius:10px;padding:2px 10px;font-size:11px;color:rgba(255,255,255,.8);display:inline-block;margin-bottom:6px">'+w.pos+'</div>';
   frontContent+='<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:8px">탭하면 뜻 보기 👆</div>';
+frontContent+='<div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:4px">← 복습 &nbsp;&nbsp; 외웠음 →</div>';
 
   var backContent='';
   if(w.img) backContent+='<div style="font-size:28px;margin-bottom:6px">'+w.img+'</div>';
@@ -8509,44 +8518,41 @@ function initFlashSwipe() {
   const card = document.getElementById('flash-card');
   if(!card) return;
   let sx=0, sy=0;
-  card.addEventListener('touchstart', e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY;},{passive:true});
-  card.addEventListener('touchend', e=>{
+  card.addEventListener('touchstart', function(e){
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+  },{passive:true});
+  card.addEventListener('touchend', function(e){
     const dx=e.changedTouches[0].clientX-sx;
     const dy=e.changedTouches[0].clientY-sy;
-    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50) {
+    if(Math.abs(dx)>Math.abs(dy) && Math.abs(dx)>50) {
       e.stopPropagation();
-      const w=S.words.length>0?S.words[Math.min(S.idx,S.words.length-1)]:null;
-      if(dx>0 && w) {
-        // 오른쪽 스와이프 = 외웠음 ✅
-        setMark(w.en,1); ok(); logStudy('words');
-        SFX.play('swipe_ok');
+      const _fw = S._flipWords&&S._flipWords.length>0 ? S._flipWords : S.words;
+      const w = _fw.length>0 ? _fw[Math.min(S.idx||0, _fw.length-1)] : null;
+      if(!w) return;
+      if(dx > 0) {
+        // 오른쪽 스와이프 = ✅ 외웠음
+        setMark(w.en, 1);
+        if(S.learned && !S.learned.has(w.en)) { S.learned.add(w.en); }
+        logStudy('words');
+        SFX.play && SFX.play('swipe_ok');
         showSwipeHint('✅ 외웠음!', '#16A34A');
-        if(!S.learned.has(w.en)){S.learned.add(w.en);srsRate(w.en,1);checkAchievements();checkLearnMilestone();sv();}
-        S.idx++; S.flip=false;
-      } else if(dx<0 && w) {
-        // 왼쪽 스와이프 = 모르겠어 🦋
-        setMark(w.en,2); ng();
-        SFX.play('swipe_ng');
-        showSwipeHint('🦋 복습필요', '#DC2626');
-        S.idx++; S.flip=false;
+        checkAchievements && checkAchievements();
+        checkLearnMilestone && checkLearnMilestone();
+      } else {
+        // 왼쪽 스와이프 = 🔁 복습 필요
+        setMark(w.en, 2);
+        SFX.play && SFX.play('swipe_ng');
+        showSwipeHint('🔁 복습 필요', '#DC2626');
       }
-      SFX.play('tap'); vib(30); go();
-    } else {
-      // 임계값 미만 → 카드 원위치
-      card.style.transform = '';
-      card.style.background = card.dataset.origBg || '';
+      // 다음 단어로 이동
+      S.flip = false;
+      S.idx = Math.min((S.idx||0)+1, _fw.length-1);
+      sv();
+      go();
     }
-  },{passive:true});
-  // 스와이프 방향 힌트 표시
-  card.addEventListener('touchmove', e=>{
-    const dx=e.touches[0].clientX-sx;
-    if(Math.abs(dx)>15) {
-      card.style.transform=`rotate(${dx*0.025}deg) translateX(${dx*0.12}px)`;
-      card.style.background=dx>0?'#F0FDF4':'#FFF1F2';
-      card.style.boxShadow=dx>0?'0 4px 24px #86EFAC88':'0 4px 24px #FECDD388';
-    }
-  },{passive:true});
-  card.addEventListener('touchstart', ()=>{
+  });
+  // 시각적 힌트
+  card.addEventListener('touchstart', function(){
     card.style.transition='none';
   },{passive:true});
 }

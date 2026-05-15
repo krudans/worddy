@@ -886,7 +886,7 @@ function showButterflyDogam() {
 }
 
 function showButterflyDetail(id) {
-  const b = BUTTERFLY_DATA.find(x=>x.id===id);
+  const b = (typeof BUTTERFLY_LIST !== 'undefined' ? BUTTERFLY_LIST : BUTTERFLY_DATA).find(x=>x.id===id);
   if(!b) return;
   const rNames = ['전체','일반','고급','희귀','전설','신화'];
   const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444','#F59E0B'];

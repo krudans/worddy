@@ -869,7 +869,7 @@ function showButterflyDogam() {
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
             <span style="font-size:14px;font-weight:800;color:#111">${b.name}</span>
-            <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${rColors[b.rare]}22;color:${rColors[b.rare]};font-weight:700">${rNames[b.rare]}</span>
+            <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${'#374151'}22;color:${'#374151'};font-weight:700">${(b.rare||b.en||'일반')}</span>
           </div>
           <div style="font-size:11px;color:#9CA3AF;font-style:italic;margin-bottom:3px">${b.sci}</div>
           <div style="font-size:11px;color:#374151;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${b.feature.slice(0,60)}...</div>
@@ -905,7 +905,7 @@ function showButterflyDetail(id) {
       <div style="margin-bottom:16px">
         <div style="font-size:20px;font-weight:900;color:#111;margin-bottom:2px">${b.name}</div>
         <div style="font-size:13px;color:#9CA3AF;font-style:italic;margin-bottom:6px">${b.sci}</div>
-        <div style="display:inline-block;padding:3px 10px;border-radius:10px;background:${rColors[b.rare]}22;color:${rColors[b.rare]};font-size:11px;font-weight:700">${rNames[b.rare]}</div>
+        <div style="display:inline-block;padding:3px 10px;border-radius:10px;background:${'#374151'}22;color:${'#374151'};font-size:11px;font-weight:700">${(b.rare||b.en||'일반')}</div>
       </div>
       <!-- 설명 -->
       <div style="background:#F9FAFB;border-radius:12px;padding:14px;margin-bottom:12px">
@@ -926,9 +926,9 @@ function showButterflyDetail(id) {
           <div style="font-size:10px;color:#9CA3AF;margin-bottom:4px">크기 (날개폭)</div>
           <div style="font-size:12px;color:#111;font-weight:600">${b.size}</div>
         </div>
-        <div style="background:${rColors[b.rare]}11;border-radius:12px;padding:12px;border-left:3px solid ${rColors[b.rare]}">
+        <div style="background:${'#374151'}11;border-radius:12px;padding:12px;border-left:3px solid ${'#374151'}">
           <div style="font-size:10px;color:#9CA3AF;margin-bottom:4px">보호 등급</div>
-          <div style="font-size:12px;color:${rColors[b.rare]};font-weight:700">${b.protect}</div>
+          <div style="font-size:12px;color:${'#374151'};font-weight:700">${b.protect}</div>
         </div>
       </div>
       <!-- 위협 요인 -->
@@ -1010,7 +1010,7 @@ async function saveButterflyCard(bId) {
     <div style="margin:0 auto 16px;display:flex;justify-content:center">${svgHtml}</div>
     <div style="font-size:22px;font-weight:900;margin-bottom:4px">${b.name}</div>
     <div style="font-size:12px;font-style:italic;opacity:.7;margin-bottom:12px">${b.sci||''}</div>
-    <div style="display:inline-block;background:${rColors[b.rare]||'#9CA3AF'};color:#fff;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;margin-bottom:14px">${rNames[b.rare]||'일반'}</div>
+    <div style="display:inline-block;background:${'#374151'||'#9CA3AF'};color:#fff;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;margin-bottom:14px">${(b.rare||b.en||'일반')||'일반'}</div>
     <div style="font-size:12px;opacity:.8;line-height:1.6;margin-bottom:14px">${(b.story||'').slice(0,60)}...</div>
     <div style="font-size:10px;opacity:.4;margin-top:8px">#나비보호 #ButterflyWord</div>
   </div>`;

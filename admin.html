@@ -1939,29 +1939,113 @@ async function deleteAdmin(uid,name){
 // 📈 분석
 // ══════════════════════════════════
 async function rAN(){
-  document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">분석 데이터 로딩 중...</div>';
-  let users=[],ld={};
-  try{const s=await db.collection('users').get();s.forEach(d=>{const x=d.data();users.push(x);if(x.lid||x.level){const k=x.lid||x.level;ld[k]=(ld[k]||0)+1;}});}catch(e){}
-  const LN={egg:'🥚 알',baby:'🐛 벌거지',crown:'🍀 왕관',coco:'🫘 번데기',shine:'✨ 빛나는',small:'🦋 작은',big:'🦋 큰',god:'⚡ 황금'};
-  const rd=Array.from({length:7},(_,i)=>{const d=new Date(Date.now()-(6-i)*86400000);return d.toISOString().slice(0,10);});
-  document.getElementById('main-inner').innerHTML=`
-    <h2 style="font-size:22px;font-weight:900;margin-bottom:20px">📈 이용 분석</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card"><div class="ct">🦋 레벨 분포</div>
-        ${LIDS.map(l=>{const cnt=ld[l]||0;const p=users.length?Math.round(cnt/users.length*100):0;return `<div class="bi"><div class="bl" style="font-size:11px">${LN[l]}</div><div class="bt"><div class="bf" style="width:${p}%;background:linear-gradient(90deg,#1E5FA5,#7C3AED)"></div></div><div class="bv">${cnt}명</div></div>`;}).join('')}
-        <div style="font-size:12px;color:#9CA3AF;margin-top:10px">총 ${users.length}명</div>
-      </div>
-      <div class="card"><div class="ct">📊 통계 요약</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          ${[['총 회원수',users.length+'명','#1E5FA5'],['평균 streak',Math.round(users.reduce((a,u)=>a+(u.streak||0),0)/Math.max(users.length,1))+'일','#16A34A'],['마켓 팩 수',(typeof WORD_PACKS!=='undefined'?WORD_PACKS.length:0)+'개','#D97706'],['게임 종류','12종','#7C3AED']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:10px"><span style="font-size:13px;font-weight:600;color:#374151">${l}</span><span style="font-size:16px;font-weight:900;color:${c}">${v}</span></div>`).join('')}
-        </div>
-      </div>
-    </div>
-    <div class="card"><div class="ct">📅 최근 7일 활동</div>
-      <div style="display:flex;gap:8px;align-items:flex-end;height:80px">
-        ${rd.map(d=>{const cnt=users.filter(u=>u.updatedAt?.toDate?.()?.toISOString().slice(0,10)===d).length;const h=Math.max(cnt*20,4);const it=d===today();return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:10px;color:#1E5FA5;font-weight:700">${cnt||''}</div><div style="width:100%;background:${it?'#1E5FA5':'#BFDBFE'};border-radius:4px 4px 0 0;height:${h}px;min-height:4px"></div><div style="font-size:10px;color:${it?'#1E5FA5':'#9CA3AF'};font-weight:${it?700:400}">${d.slice(5)}</div></div>`;}).join('')}
-      </div>
-    </div>`;
+  const mi=document.getElementById('main-inner');
+  mi.innerHTML='<div style="text-align:center;padding:40px;color:#9CA3AF">📊 분석 데이터 로딩 중...</div>';
+  
+  let users=[], packs=[];
+  try {
+    const uSnap = await db.collection('users').get();
+    users = uSnap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch(e) { console.error('users 로드 실패:',e); }
+  try {
+    const pSnap = await db.collection('packs').get();
+    packs = pSnap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch(e) {}
+
+  const now = new Date();
+  const todayStr = new Date(now.getTime()+9*3600000).toISOString().slice(0,10);
+  const week7 = new Date(now.getTime()-6*86400000);
+
+  const total = users.length;
+  const activeToday = users.filter(u=>u.lastActive&&u.lastActive>=todayStr).length;
+  const active7 = users.filter(u=>u.lastActive&&new Date(u.lastActive)>=week7).length;
+  const active30 = users.filter(u=>{if(!u.lastActive)return false;const d=new Date(u.lastActive);return (now-d)<30*86400000;}).length;
+  const avgStreak = total>0?Math.round(users.reduce((s,u)=>s+(u.streak||0),0)/total):0;
+  const avgWords = total>0?Math.round(users.reduce((s,u)=>s+(u.wordCount||(u.words||[]).length||0),0)/total):0;
+  const avgXP = total>0?Math.round(users.reduce((s,u)=>s+(u.xp||0),0)/total):0;
+  const banned = users.filter(u=>u.banned).length;
+  const totalWordMarked = users.reduce((s,u)=>s+(u.markedCount||Object.values(u.markMap||{}).filter(v=>v===1).length||0),0);
+
+  // 레벨 분포
+  const lvDist = {};
+  users.forEach(u=>{const l=u.lid||'egg';lvDist[l]=(lvDist[l]||0)+1;});
+  const lvOrder=['egg','larva','chrysalis','wing','fly','master','legend','butterfly'];
+  const lvNames={egg:'알',larva:'애벌레',chrysalis:'번데기',wing:'날개',fly:'나비',master:'마스터',legend:'레전드',butterfly:'나비신'};
+
+  // 단어팩 인기순
+  const packUsage={};
+  users.forEach(u=>{(u.ownedPacks||[]).forEach(pid=>{packUsage[pid]=(packUsage[pid]||0)+1;});});
+  const topPacks=packs.map(p=>({...p,cnt:packUsage[p.id]||0})).sort((a,b)=>b.cnt-a.cnt).slice(0,5);
+
+  let html='<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:24px">';
+
+  // 헤더
+  html+='<div style="display:flex;justify-content:space-between;align-items:center">';
+  html+='<h2 style="font-size:22px;font-weight:900">📊 이용 분석</h2>';
+  html+='<span style="font-size:12px;color:#9CA3AF">기준: 현재 시각</span>';
+  html+='</div>';
+
+  // KPI 카드
+  html+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">';
+  const kpis=[
+    ['👥','전체 회원',total,'명','#1E5FA5'],
+    ['🟢','오늘 접속',activeToday,'명','#16A34A'],
+    ['📅','7일 활성',active7,'명','#7C3AED'],
+    ['📆','30일 활성',active30,'명','#0D9488'],
+    ['🔥','평균 스트릭',avgStreak,'일','#E65100'],
+    ['📚','평균 단어',avgWords,'개','#D97706'],
+    ['⚡','평균 XP',avgXP,'','#7C3AED'],
+    ['🚫','정지 회원',banned,'명','#DC2626'],
+  ];
+  kpis.forEach(function(item){
+    var ic=item[0],lb=item[1],val=item[2],unit=item[3],col=item[4];
+    html+='<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:14px">';
+    html+='<div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">'+ic+' '+lb+'</div>';
+    html+='<div style="font-size:24px;font-weight:900;color:'+col+'">'+val.toLocaleString()+'<span style="font-size:13px;font-weight:500;color:#9CA3AF;margin-left:2px">'+unit+'</span></div>';
+    html+='</div>';
+  });
+  html+='</div>';
+
+  // 레벨 분포
+  html+='<div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:16px">';
+  html+='<div style="font-size:14px;font-weight:800;color:#111;margin-bottom:12px">🌱 레벨 분포</div>';
+  html+='<div style="display:flex;flex-direction:column;gap:6px">';
+  lvOrder.forEach(function(lv){
+    var cnt=lvDist[lv]||0;
+    var pct=total>0?Math.round(cnt/total*100):0;
+    html+='<div style="display:flex;align-items:center;gap:8px">';
+    html+='<div style="width:60px;font-size:11px;color:#374151;flex-shrink:0">'+( lvNames[lv]||lv)+'</div>';
+    html+='<div style="flex:1;background:#F3F4F6;border-radius:4px;height:8px"><div style="height:100%;background:#1E5FA5;border-radius:4px;width:'+pct+'%"></div></div>';
+    html+='<div style="width:40px;font-size:11px;color:#9CA3AF;text-align:right">'+cnt+'명</div>';
+    html+='</div>';
+  });
+  html+='</div></div>';
+
+  // 인기 단어팩
+  if(topPacks.length>0){
+    html+='<div style="background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:16px">';
+    html+='<div style="font-size:14px;font-weight:800;color:#111;margin-bottom:12px">🏆 인기 단어팩 TOP5</div>';
+    html+='<div style="display:flex;flex-direction:column;gap:6px">';
+    topPacks.forEach(function(p,i){
+      html+='<div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F9FAFB;border-radius:10px">';
+      html+='<div style="font-size:16px;font-weight:900;color:#9CA3AF;width:20px">'+(i+1)+'</div>';
+      html+='<div style="font-size:20px">'+(p.emoji||'📚')+'</div>';
+      html+='<div style="flex:1"><div style="font-size:13px;font-weight:700">'+(p.name||'-')+'</div><div style="font-size:11px;color:#9CA3AF">'+(p.words?.length||0)+'개 단어</div></div>';
+      html+='<div style="font-size:13px;font-weight:800;color:#1E5FA5">'+p.cnt+'명</div>';
+      html+='</div>';
+    });
+    html+='</div></div>';
+  }
+
+  // 외운 단어 총계
+  html+='<div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);border-radius:16px;padding:16px;color:#fff;text-align:center">';
+  html+='<div style="font-size:12px;opacity:.8;margin-bottom:4px">🎓 전체 사용자 외운 단어 합계</div>';
+  html+='<div style="font-size:36px;font-weight:900">'+totalWordMarked.toLocaleString()+'<span style="font-size:16px;font-weight:500;opacity:.8"> 개</span></div>';
+  html+='<div style="font-size:11px;opacity:.6;margin-top:4px">나비와 함께 외운 단어들 🦋</div>';
+  html+='</div>';
+
+  html+='</div>';
+  mi.innerHTML=html;
 }
 
 // ══════════════════════════════════
@@ -2653,7 +2737,7 @@ function showPackWordTab(tab) {
       ${dups.length>0?`
         <div style="margin-bottom:14px">
           <div style="font-size:13px;font-weight:700;color:#DC2626;margin-bottom:8px">🔴 팩 내부 중복 (${dups.length}개)</div>
-${dups.map(({w,i})=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:#FEF2F2;border-radius:8px;margin-bottom:4px"> <span style="font-size:13px;font-family:monospace">${w.en} - ${w.kr}</span> <button onclick="deletePackWord('${selPack}',${i});showPackWordTab('dup')" class="btn br" style="font-size:11px;padding:3px 8px">삭제</button> </div>`).join('')}
+        ${(function(){return dups.map(function(item){var w=item.w,i=item.i;return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:#FEF2F2;border-radius:8px;margin-bottom:4px"><span style="font-size:13px;font-family:monospace">'+w.en+' - '+w.kr+'</span><button onclick="deletePackWord(\''+selPack+'\','+i+');showPackWordTab(\'dup\')" class="btn br" style="font-size:11px;padding:3px 8px">삭제</button></div>';}).join('');})()}
           <button onclick="removeInternalDups('${selPack}')" class="btn br" style="width:100%;margin-top:6px;font-size:12px">🧹 내부 중복 모두 제거</button>
         </div>`:'<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A;margin-bottom:14px">✅ 내부 중복 없음!</div>'}
       ${crossDups.length>0?`
@@ -3121,18 +3205,18 @@ async function rNT(){
   let ns=[];
   try{const s=await db.collection('notices').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
   document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>
-      <button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button>
-    </div>
-    <div class="card">${ns.length?`<div class="tw"><table><tr><th>제목</th><th>유형</th><th>작성일</th><th>상태</th><th>작업</th></tr>${ns.map(n=>`<tr><td><strong>${n.title}</strong></td><td><span class="badge ${n.type==='update'?'bb2':n.type==='event'?'by':'bg2'}">${{update:'업데이트',event:'이벤트',notice:'공지'}[n.type]||'공지'}</span></td><td style="font-size:12px;color:#9CA3AF">${n.createdAt?.toDate?.()?.toLocaleDateString('ko-KR')||'-'}</td><td><span class="badge ${n.active?'bg2':'br2'}">${n.active?'게시중':'숨김'}</span></td><td><div style="display:flex;gap:4px"><button class="btn bgr" style="font-size:11px;padding:4px 8px" onclick="toggleNT('${n.id}',${!n.active})">${n.active?'숨김':'게시'}</button><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="delNT('${n.id}')">삭제</button></div></td></tr>`).join('')}</table></div>`:'<div class="es"><div class="ei">📢</div><p>공지사항이 없어요</p></div>'}
-    </div>`;
-}
-
-function showAddNT(){
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✏️ 공지 작성</div>
-    <div class="fg"><label>제목</label><input id="ntitle" placeholder="공지 제목"></div>
+  const elNT=document.getElementById('main-inner');
+  let ntHtml='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
+  ntHtml+='<h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>';
+  ntHtml+='<button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button></div>';
+  if(!ns.length){
+    ntHtml+='<div class="card" style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:40px;margin-bottom:12px">📭</div><p>등록된 공지사항이 없어요</p></div>';
+  } else {
+    ntHtml+='<div class="card"><div class="tw"><table><tr><th>제목</th><th>유형</th><th>작성일</th><th>상태</th><th>작업</th></tr>';
+    ntHtml+=ns.map(function(n){var dt=n.createdAt?new Date(n.createdAt.seconds?n.createdAt.seconds*1000:n.createdAt).toLocaleDateString('ko-KR'):'-';var typeLabel=n.type==='update'?'🆕 업데이트':n.type==='event'?'🎉 이벤트':'📢 공지';return '<tr><td style="font-weight:700">'+(n.title||'-')+'</td><td>'+typeLabel+'</td><td style="font-size:12px;color:#9CA3AF">'+dt+'</td><td><span class="badge '+(n.active?'bg2':'bgr2')+'">'+(n.active?'게시중':'숨김')+'</span></td><td><div style="display:flex;gap:4px"><button class="btn bb" style="font-size:11px;padding:3px 8px" onclick="toggleNT(\''+n.id+'\','+(n.active?'false':'true')+')">'+(n.active?'숨기기':'게시')+'</button><button class="btn bgr" style="font-size:11px;padding:3px 8px" onclick="delNT(\''+n.id+'\')" >삭제</button></div></td></tr>';}).join('');
+    ntHtml+='</table></div></div>';
+  }
+  elNT.innerHTML=ntHtml;
     <div class="fg"><label>유형</label><select id="ntype"><option value="notice">📢 공지</option><option value="update">🆕 업데이트</option><option value="event">🎉 이벤트</option></select></div>
     <div class="fg"><label>내용</label><textarea id="nbody" style="min-height:100px;resize:vertical" placeholder="공지 내용..."></textarea></div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><input type="checkbox" id="nactive" checked style="width:18px;height:18px"><label style="display:inline;margin-bottom:0;font-size:13px;cursor:pointer" for="nactive">즉시 게시</label></div>

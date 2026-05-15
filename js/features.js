@@ -940,6 +940,11 @@ function showButterflyDetail(id) {
       <div style="background:#F0FDF4;border-radius:12px;padding:14px;border-left:4px solid #16A34A">
         <div style="font-size:11px;font-weight:700;color:#15803D;margin-bottom:6px">💚 환경 메시지</div>
         <div style="font-size:13px;color:#14532D;line-height:1.7;font-style:italic">"${b.msg}"</div>
+      <!-- 도감 담기 + 이미지 저장 버튼 -->
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button onclick="saveButterflyCard('${b.id}')" style="flex:1;padding:13px;background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:800;cursor:pointer">🖼️ 이미지 저장</button>
+        <button onclick="showButterflyDogam()" style="flex:1;padding:13px;background:#F5F3FF;color:#7C3AED;border:1.5px solid #7C3AED;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer">← 도감으로</button>
+      </div>
       </div>
     </div>
   </div></div>`;
@@ -983,4 +988,67 @@ function getButterflyDetailSVG(b) {
     <circle cx="82" cy="36" r="4" fill="${col}"/>
     <circle cx="118" cy="36" r="4" fill="${col}"/>
   </svg>`;
+}
+
+
+// ── 나비 이미지 저장 (미리보기 포함) ──
+async function saveButterflyCard(bId) {
+  const b = BUTTERFLY_DATA.find(x=>x.id===bId);
+  if(!b) return;
+
+  // 미리보기 모달 생성
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+
+  const rColors={0:'#374151',1:'#9CA3AF',2:'#3B82F6',3:'#8B5CF6',4:'#F59E0B',5:'#EF4444'};
+  const rNames={0:'전체',1:'일반',2:'고급',3:'희귀',4:'전설',5:'신화'};
+  const svgHtml = typeof getButterflyCharSVG==='function' ? getButterflyCharSVG(bId,100,true) : '';
+
+  // 미리보기 카드 HTML
+  const cardHtml = `<div id="bf-save-card" style="background:linear-gradient(135deg,#1A1A2E,#1A3A2A);border-radius:24px;padding:24px;width:300px;text-align:center;color:#fff;font-family:sans-serif">
+    <div style="font-size:10px;letter-spacing:3px;opacity:.6;margin-bottom:16px">🦋 BUTTERFLY WORD</div>
+    <div style="margin:0 auto 16px;display:flex;justify-content:center">${svgHtml}</div>
+    <div style="font-size:22px;font-weight:900;margin-bottom:4px">${b.name}</div>
+    <div style="font-size:12px;font-style:italic;opacity:.7;margin-bottom:12px">${b.sci||''}</div>
+    <div style="display:inline-block;background:${rColors[b.r]||'#9CA3AF'};color:#fff;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;margin-bottom:14px">${rNames[b.r]||'일반'}</div>
+    <div style="font-size:12px;opacity:.8;line-height:1.6;margin-bottom:14px">${(b.msg||'').slice(0,60)}...</div>
+    <div style="font-size:10px;opacity:.4;margin-top:8px">#나비보호 #ButterflyWord</div>
+  </div>`;
+
+  mr.innerHTML = `<div class="mbg" onclick="cm()" style="z-index:9999"><div class="modal" onclick="event.stopPropagation()" style="padding:0;overflow:hidden;max-width:360px">
+    <div style="padding:16px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:15px;font-weight:800">🖼️ 이미지 저장 미리보기</div>
+      <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;background:#F9FAFB">
+      ${cardHtml}
+    </div>
+    <div style="padding:14px 16px;border-top:1px solid #E5E7EB;display:flex;gap:8px">
+      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button onclick="downloadBFCard('bf-save-card','${b.name}')" style="flex:2;padding:12px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;color:#fff">📥 저장하기</button>
+    </div>
+  </div></div>`;
+}
+
+async function downloadBFCard(cardId, name) {
+  const card = document.getElementById(cardId);
+  if(!card) { toast('카드를 찾을 수 없어요','err'); return; }
+  try {
+    if(!window.html2canvas) {
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      document.head.appendChild(s);
+      await new Promise(r=>s.onload=r);
+    }
+    const canvas = await html2canvas(card, {scale:2, backgroundColor:null, useCORS:true});
+    const link = document.createElement('a');
+    link.download = 'butterfly-'+name+'.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    cm();
+    toast('✅ 이미지 저장 완료!','ok');
+  } catch(e) {
+    console.error('이미지 저장 실패:',e);
+    toast('이미지 저장 실패: '+e.message,'err');
+  }
 }

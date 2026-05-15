@@ -8299,6 +8299,16 @@ function getCurrentBookMarkMap() {
 }
 
 
+
+window._doMark = function(v) {
+  const words = S._flipWords || [];
+  const w = words[S.idx||0];
+  if(!w) return;
+  setMark(w.en, v);
+  S.flip = false;
+  S.idx = Math.min((S.idx||0)+1, Math.max(0, words.length-1));
+  go();
+};
 function rLearn() {
   const sort = S.flashSort||'default';
   const filter = S.listMarkFilter??-1;
@@ -9225,18 +9235,18 @@ function rQ4(){
   html+='<div style="background:#E5E7EB;border-radius:4px;height:5px"><div style="height:100%;background:linear-gradient(90deg,#1E5FA5,#3B82F6);border-radius:4px;width:'+progress+'%;transition:width .4s"></div></div>';
 
   // 단어 카드
-  var cardBg = answered ? (isCorrect?'linear-gradient(135deg,#1A5C3A,#2D7A4F)':'linear-gradient(135deg,#7F1D1D,#B91C1C)') : 'linear-gradient(135deg,#1E3A5F,#1E5FA5)';
-  html+='<div style="background:'+cardBg+';border-radius:20px;padding:24px;text-align:center;color:#fff;position:relative;overflow:hidden">';
+  var cardBg=answered?(isCorrect?'linear-gradient(135deg,#1A5C3A,#2D7A4F)':'linear-gradient(135deg,#7F1D1D,#B91C1C)'):'linear-gradient(135deg,#1E3A5F,#1E5FA5)';
+  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
   if(w.img) html+='<div style="font-size:36px;margin-bottom:8px">'+w.img+'</div>';
-  var enFz=w.en.length>12?'28px':w.en.length>8?'36px':'44px';
+  var enFz=w.en.length>12?'26px':w.en.length>8?'34px':'42px';
   html+='<div style="font-size:'+enFz+';font-weight:900;font-family:Georgia,serif;letter-spacing:-1px;margin-bottom:6px">'+w.en+'</div>';
   if(w.ph) html+='<div style="font-size:13px;opacity:.7;font-family:monospace">'+w.ph+'</div>';
   if(w.pos) html+='<div style="background:rgba(255,255,255,.2);border-radius:10px;padding:2px 10px;font-size:11px;display:inline-block;margin-top:6px">'+w.pos+'</div>';
-  if(answered) {
-    html+='<div style="margin-top:12px;font-size:22px;font-weight:900">'+(isCorrect?'✅ 정답!':'❌ 오답');
-    html+='</div><div style="font-size:20px;font-weight:800;margin-top:4px">→ '+w.kr+'</div>';
-    if(exList.length>0) html+='<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;margin-top:10px;font-size:12px;opacity:.85;font-style:italic;line-height:1.5">'+exList[0]+'</div>';
+  if(answered){
+    html+='<div style="margin-top:10px;font-size:20px;font-weight:900">'+(isCorrect?'✅ 정답!':'❌ 오답')+'</div>';
+    html+='<div style="font-size:18px;font-weight:800;margin-top:4px">→ '+w.kr+'</div>';
+    if(exList.length>0) html+='<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:12px;opacity:.85;font-style:italic;line-height:1.5">'+exList[0]+'</div>';
   }
   html+='</div>';
 
@@ -9245,20 +9255,29 @@ function rQ4(){
   cs.forEach(function(ch) {
     var isAns=ch.en===w.en;
     var picked=answered&&S.gAns===ch.en;
-    var bg,border,color;
-    if(!answered){bg='#fff';border='#E5E7EB';color='#111';}
-    else if(isAns){bg='#F0FDF4';border='#22C55E';color='#166534';}
-    else if(picked){bg='#FEF2F2';border='#EF4444';color='#991B1B';}
-    else{bg='#F9FAFB';border='#E5E7EB';color='#9CA3AF';}
-    html+='<button onclick="'+(!answered?'S.gAns=\''+ch.en+'\';S.gRes=(\''+ch.en+'\'===\''+w.en+'\'?\'ok\':\'no\');S.gAns&&S.gRes===\'ok\'&&S.gScore++;go()':'')+'\" '
-      +'style="background:'+bg+';border:2px solid '+border+';border-radius:14px;padding:14px 10px;font-size:15px;font-weight:700;color:'+color+';cursor:'+(answered?'default':'pointer')+';text-align:center;transition:all .15s">'
+    var bg,border,col;
+    if(!answered){bg='#fff';border='#E5E7EB';col='#111';}
+    else if(isAns){bg='#F0FDF4';border='#22C55E';col='#166534';}
+    else if(picked){bg='#FEF2F2';border='#EF4444';col='#991B1B';}
+    else{bg='#F9FAFB';border='#E5E7EB';col='#9CA3AF';}
+
+    // 클릭 시: 정답이면 1초 후 자동 넘어가기, 오답이면 수동으로 넘어가기
+    var onclickCode = answered ? '' :
+      'S.gAns=\''+ch.en+'\';'
+      +'S.gRes=(\''+ch.en+'\'===\''+w.en+'\'?\'ok\':\'no\');'
+      +'if(!S.gResultMap)S.gResultMap={};'
+      +'if(\''+ch.en+'\'===\''+w.en+'\'){S.gScore++;S.gResultMap[S.gIdx]=true;go();setTimeout(function(){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();},800);}'
+      +'else{S.gResultMap[S.gIdx]=false;go();}';
+
+    html+='<button onclick="'+onclickCode+'" '
+      +'style="background:'+bg+';border:2px solid '+border+';border-radius:14px;padding:14px 8px;font-size:15px;font-weight:700;color:'+col+';cursor:'+(answered?'default':'pointer')+';text-align:center;transition:all .15s">'
       +(isAns&&answered?'✅ ':'')+(picked&&!isAns?'❌ ':'')+ch.kr
       +'</button>';
   });
   html+='</div>';
 
-  // 다음 버튼
-  if(answered){
+  // 오답일 때만 수동 다음 버튼
+  if(answered && !isCorrect){
     html+='<button onclick="S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go()" '
       +'style="width:100%;padding:14px;border:none;border-radius:16px;background:#111;color:#fff;font-size:16px;font-weight:800;cursor:pointer">'
       +(S.gIdx+1>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';

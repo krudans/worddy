@@ -3444,6 +3444,7 @@ function _arSetExCount(v){if(window._auto)window._auto.exCount=v;window._autoRen
 function _arToggleLoop(){if(window._auto)window._auto.loop=!window._auto.loop;window._autoRender&&window._autoRender();}
 function _arToggleShadow(){if(window._auto)window._auto.shadow=!window._auto.shadow;window._autoRender&&window._autoRender();}
 
+
 function showAutoMode() {
   const rawWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   if(!rawWords || !rawWords.length) { toast('단어가 없어요!'); return; }
@@ -3494,7 +3495,6 @@ function showAutoMode() {
   
   // 렌더 함수
   
-
 window._autoRender = function() {
     var mr = document.getElementById('mr'); if(!mr) return;
     var w = window._autoWords[window._autoIdx];
@@ -4653,6 +4653,7 @@ function finishLearnSession(resultMap) {
   else if(pct2>=80) xpAmt=50;
   else if(pct2>=60) xpAmt=30;
   addXP(xpAmt); checkXpUsable();
+  // quiz 카운트를 푼 문제 수만큼 증가
   { const _t=today(); if(!S.studyLog[_t]) S.studyLog[_t]={words:0,quiz:0,min:0}; S.studyLog[_t].quiz=(S.studyLog[_t].quiz||0)+(sw.length||1); updStreak(); }
   // 학습 시간 추적
   if(S._studyStartTime) {
@@ -4942,7 +4943,7 @@ function rGameTab() {
         <!-- XP 진행 -->
         <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.8);margin-bottom:5px">
           <span>⚡ ${S.xp||0} XP</span>
-          <span>${canLvUp?'레벨업 가능! ✨':((xpTarget-(S.xp||0))+'XP 남음')}</span>
+          <span>${curLvData&&curLvData.isFinal?'👑 최고 레벨!':canLvUp?'레벨업 가능! ✨':((xpTarget-(S.xp||0))+'XP 남음')}</span>
         </div>
         <div style="background:rgba(255,255,255,.25);border-radius:6px;height:8px;overflow:hidden;margin-bottom:8px">
           <div style="height:100%;background:#fff;border-radius:6px;width:${xpPct}%;transition:width .6s;box-shadow:0 0 6px rgba(255,255,255,.5)"></div>
@@ -4959,8 +4960,8 @@ function rGameTab() {
       <div onclick="saveMyCharacter()" style="flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff">
         📸 이미지 저장
       </div>
-      <div onclick="useXP(${xpTarget},'레벨업')" style="${canLvUp?'background:linear-gradient(135deg,#FFD700,#FFA500)':'background:rgba(255,255,255,.15)'};border-radius:12px;padding:9px;text-align:center;font-size:11px;font-weight:700;color:'+(canLvUp?'#1A1A1A':'#fff')+';cursor:pointer">
-        ${canLvUp?'⬆️ 레벨업!':'🔒 '+xpTarget+' XP 필요'}
+      <div onclick="(curLvData&&curLvData.isFinal)?confirm('알로 다시 시작할까요? XP는 유지됩니다.')&&(S.lid=LEVELS[0].id,sv(),go('butterfly'),toast('🥚 알로 돌아왔어요!','ok')):useXP(${xpTarget},'레벨업')" style="${canLvUp?'background:linear-gradient(135deg,#FFD700,#FFA500)':'background:rgba(255,255,255,.15)'};border-radius:12px;padding:9px;text-align:center;font-size:11px;font-weight:700;color:'+(canLvUp?'#1A1A1A':'#fff')+';cursor:pointer">
+        ${curLvData&&curLvData.isFinal?'🥚 알로 다시 시작':canLvUp?'⬆️ 레벨업!':'🔒 '+xpTarget+' XP 필요'}
       </div>
     </div>
   </div>`;
@@ -4996,6 +4997,7 @@ function rGameTab() {
       html += '<div style="font-size:11px;color:#9CA3AF;margin-top:4px">단어를 외우고 퀴즈를 풀면 XP를 얻어요!</div>';
       html += '</div>';
     }
+    } // end isFinal else
     html += '</div>';
   }
 
@@ -6763,13 +6765,14 @@ function rHome() {
     <!-- 빠른 액션: 레벨업 버튼 -->
     <div onclick="event.stopPropagation()" style="display:flex;justify-content:center;margin-bottom:8px">
       ${(function(){
-        if(curLvData&&curLvData.isFinal) return '<div style="width:100%"><button disabled style="width:100%;padding:12px;border:none;border-radius:14px;font-size:14px;font-weight:800;background:rgba(255,215,0,.2);color:#FFD600;margin-bottom:6px">👑 최고 레벨 달성!</button><button onclick="if(confirm(\'알로 다시 시작할까요? XP는 유지됩니다.\')){{S.lid=LEVELS[0].id;sv();go();toast(\'🥚 알로 돌아왔어요! XP는 유지됩니다.\',\'ok\');}}" style="width:100%;padding:10px;border:none;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.15);color:rgba(255,255,255,.9)">🥚 알로 다시 시작하기 (XP 유지)</button></div>';
+        if(curLvData&&curLvData.isFinal) return '<div style="width:100%"><button disabled style="width:100%;padding:12px;border:none;border-radius:14px;font-size:14px;font-weight:800;background:rgba(255,215,0,.2);color:#FFD600;margin-bottom:6px">👑 최고 레벨 달성!</button><button onclick="if(confirm(\'알(첫 레벨)로 다시 시작할까요? XP는 그대로 유지됩니다.\')){{ S.lid=LEVELS[0].id; sv(); go(); toast(\'🥚 알로 돌아왔어요! XP는 유지됩니다.\',\'ok\'); }}" style="width:100%;padding:10px;border:none;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.15);color:rgba(255,255,255,.9)">🥚 알로 다시 시작하기 (XP 유지)</button></div>';
         var canLvUp=(S.xp||0)>=xpTarget;
         var btnStyle='width:100%;padding:12px;border:none;border-radius:14px;font-size:14px;font-weight:800;cursor:pointer;';
         if(canLvUp) return '<button onclick="useXP('+xpTarget+',\'레벨업\')" style="'+btnStyle+'background:#FFD600;color:#1A1A1A">✨ '+(nextLv?nextLv.name+'으로 ':'')+'레벨업!</button>';
         return '<button disabled style="'+btnStyle+'background:rgba(255,255,255,.15);color:rgba(255,255,255,.6)">⚡ '+(xpTarget-(S.xp||0))+'XP 더 모으면 레벨업</button>';
       })()}
     </div>
+
 
   </div>`);
 
@@ -11002,7 +11005,6 @@ auth.onAuthStateChanged(async user => {
       const dsm=ls.getItem('wd-dsm'); if(dsm) S._dailyStudiedMin=Number(dsm)||0;
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
-      const npt=ls.getItem('wd-npt'); if(npt){const _td=new Date(new Date().getTime()+9*60*60*1000).toISOString().slice(0,10);if(npt===_td)S._noPopupToday=npt;}
     } catch(e) {}
     await loadXPConfig(); // XP 설정 먼저 로드
 

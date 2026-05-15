@@ -811,7 +811,7 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   _matchPlayed:0, // 매칭게임 진행 세트 수
   _hadPerfect:false, // 테스트 100% 달성
   _srsCount:0, // SRS 복습 누적 횟수
-  favorites:new Set(), // 즐겨찾기 단어
+  favorites:[], // 즐겨찾기 단어
   _wrongWords:[], // 오답 노트
   _achievements:[], // 달성한 도전 과제 // 벌거지 상태 (0~10)
   gAns:false, gRes:null, gInput:'', gResultMap:{},
@@ -2368,16 +2368,11 @@ function checkLearnMilestone() {
 }
 
 function toggleFavorite(en) {
-  if(!S.favorites) S.favorites=new Set();
-  if(S.favorites.has(en)) {
-    S.favorites.delete(en);
-    toast('⭐ 즐겨찾기 해제');
-  } else {
-    S.favorites.add(en);
-    toast('⭐ 즐겨찾기 추가!');
-    vib(50);
-  }
-  sv(); go();
+  if(!Array.isArray(S.favorites)) S.favorites = [];
+  const i = S.favorites.indexOf(en);
+  if(i >= 0) S.favorites.splice(i, 1);
+  else S.favorites.push(en);
+  sv();
 }
 
 function showCountdown(cb) {
@@ -7830,6 +7825,124 @@ function rStudy() {
   return booksBar+tabs+rList();
 }
 
+
+// ── 단어장 목록 보기 (단어 리스트 + 외웠음 체크) ──
+
+window._bwlCurrentBook = '';
+function _bwlSearch(q) {
+  const mr = document.getElementById('mr');
+  if(mr) _renderBookWordList(mr, window._bwlCurrentBook, q);
+}
+function showBookWordList(bookName) {
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  S.currentBook = bookName || '내 단어장';
+  window._bwlCurrentBook = S.currentBook;
+  _renderBookWordList(mr, S.currentBook, '');
+}
+
+function _renderBookWordList(mr, bookName, searchQ) {
+  window._bwlCurrentBook = bookName;
+  window._bwlCurrentQ = searchQ || '';
+  const allBooks = [{name:'내 단어장', words:S.words, markMap:S.markMap}, ...(S.books||[])];
+  const bk = allBooks.find(function(b){return b.name===bookName;}) || allBooks[0];
+  const words = bk.words || [];
+  const bkMark = (bookName==='내 단어장') ? (S.markMap||{}) : (bk.markMap||S.markMap||{});
+
+  const q = (searchQ||'').toLowerCase().trim();
+  const filtered = q ? words.filter(function(w){
+    return (w.en||'').toLowerCase().indexOf(q)>=0 || (w.kr||'').indexOf(q)>=0;
+  }) : words;
+
+  const total = words.length;
+  const marked1 = words.filter(function(w){return (bkMark[w.en]||0)===1;}).length;
+  const marked2 = words.filter(function(w){return (bkMark[w.en]||0)===2;}).length;
+  const pct = total > 0 ? Math.round(marked1/total*100) : 0;
+
+  var html = '<div class="mbg" onclick="cm()" style="align-items:flex-start;padding-top:0">';
+  html += '<div class="modal" onclick="event.stopPropagation()" style="padding:0;overflow:hidden;max-height:92vh;display:flex;flex-direction:column;margin-top:4vh">';
+
+  html += '<div style="background:linear-gradient(135deg,#1E3A5F,#1E5FA5);padding:14px 16px;flex-shrink:0">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<div style="font-size:15px;font-weight:900;color:#fff">📚 '+bookName+'</div>';
+  html += '<button onclick="cm()" style="background:rgba(255,255,255,.2);border:none;border-radius:20px;padding:4px 12px;color:#fff;font-size:13px;cursor:pointer">닫기</button>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+  html += '<span style="background:rgba(255,255,255,.15);border-radius:10px;padding:3px 10px;font-size:11px;color:#fff">전체 '+total+'</span>';
+  html += '<span style="background:rgba(34,197,94,.3);border-radius:10px;padding:3px 10px;font-size:11px;color:#86EFAC">✅ '+marked1+'</span>';
+  html += '<span style="background:rgba(167,139,250,.3);border-radius:10px;padding:3px 10px;font-size:11px;color:#C4B5FD">🔁 '+marked2+'</span>';
+  html += '</div>';
+  html += '<div style="background:rgba(255,255,255,.2);border-radius:4px;height:5px;overflow:hidden">';
+  html += '<div style="height:100%;background:#4ADE80;border-radius:4px;width:'+pct+'%"></div>';
+  html += '</div>';
+  html += '<div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:3px;text-align:right">'+pct+'% 완료</div>';
+  html += '</div>';
+
+  html += '<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;flex-shrink:0">';
+  html += '<input id="bwl-search" type="text" placeholder="🔍 단어 검색..." value="'+(searchQ||'')+'" oninput="_bwlSearch(this.value)" style="width:100%;padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box">';
+  html += '</div>';
+
+  html += '<div style="overflow-y:auto;flex:1;padding:8px 12px">';
+
+  if(filtered.length === 0) {
+    html += '<div style="text-align:center;padding:32px;color:#9CA3AF">검색 결과가 없어요</div>';
+  } else {
+    filtered.forEach(function(w) {
+      var mark = bkMark[w.en] || 0;
+      var markColor = mark===1?'#22C55E':mark===2?'#A78BFA':'#D1D5DB';
+      var markBg = mark===1?'#F0FDF4':mark===2?'#F5F3FF':'#F9FAFB';
+      var exList = (w.exList&&w.exList.length) ? w.exList : (w.ex?[w.ex]:[]);
+
+      html += '<div style="background:'+markBg+';border:1.5px solid '+markColor+';border-radius:14px;padding:10px 12px;margin-bottom:6px">';
+      html += '<div style="display:flex;align-items:center;gap:8px">';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<div style="display:flex;align-items:baseline;gap:6px">';
+      html += '<span style="font-size:16px;font-weight:800;font-family:Georgia,serif;color:#111">'+w.en+'</span>';
+      if(w.ph) html += '<span style="font-size:11px;color:#9CA3AF;font-family:monospace">'+w.ph+'</span>';
+      html += '</div>';
+      html += '<div style="font-size:13px;color:#374151;margin-top:1px">'+w.kr+'</div>';
+      if(exList.length>0) html += '<div style="font-size:11px;color:#9CA3AF;margin-top:3px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+exList[0]+'</div>';
+      html += '</div>';
+      html += '<div style="display:flex;gap:4px;flex-shrink:0">';
+      var safeEn = JSON.stringify(w.en);
+      html += '<button onclick="event.stopPropagation();_bwlSetMark('+safeEn+','+(mark===1?0:1)+')" ';
+      html += 'style="padding:5px 8px;border:none;border-radius:8px;background:'+(mark===1?'#22C55E':'#E5E7EB')+';color:'+(mark===1?'#fff':'#374151')+';font-size:11px;font-weight:700;cursor:pointer">✅</button>';
+      html += '<button onclick="event.stopPropagation();_bwlSetMark('+safeEn+','+(mark===2?0:2)+')" ';
+      html += 'style="padding:5px 8px;border:none;border-radius:8px;background:'+(mark===2?'#A78BFA':'#E5E7EB')+';color:'+(mark===2?'#fff':'#374151')+';font-size:11px;font-weight:700;cursor:pointer">🔁</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+  }
+
+  html += '</div>';
+  html += '<div style="padding:10px 14px;border-top:1px solid #E5E7EB;display:flex;gap:8px;flex-shrink:0">';
+  html += '<button onclick="cm();S.currentBook=window._bwlCurrentBook;S.stab=\'list\';go(\'mybooks\',\'list\')" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:#374151">📋 전체보기</button>';
+  html += '<button onclick="cm();S.currentBook=window._bwlCurrentBook;S.stab=\'learn\';go(\'mybooks\',\'learn\')" style="flex:2;padding:11px;background:#1E5FA5;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;color:#fff">📖 학습 시작</button>';
+  html += '</div>';
+  html += '</div></div>';
+
+  mr.innerHTML = html;
+  if(searchQ) {
+    setTimeout(function(){
+      var inp = document.getElementById('bwl-search');
+      if(inp){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}
+    }, 50);
+  }
+}
+
+function _bwlSetMark(en, val) {
+  var bookName = window._bwlCurrentBook || '내 단어장';
+  if(!S.markMap) S.markMap = {};
+  S.markMap[en] = val;
+  if(bookName !== '내 단어장') {
+    var bk = (S.books||[]).find(function(b){return b.name===bookName;});
+    if(bk){if(!bk.markMap)bk.markMap={};bk.markMap[en]=val;}
+  }
+  sv();
+  var mr = document.getElementById('mr');
+  if(mr) _renderBookWordList(mr, bookName, window._bwlCurrentQ||'');
+}
 function rStudyBooks() {
   const books = S.books||[];
   const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
@@ -7845,7 +7958,7 @@ function rStudyBooks() {
 
   // 내 단어장 카드
   html += `<div style="background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)">
-    <div style="padding:16px;cursor:pointer" onclick="selectBookAndLearn&&selectBookAndLearn('내 단어장')">
+    <div style="padding:16px;cursor:pointer" onclick="showBookWordList('내 단어장')">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div style="width:46px;height:46px;background:linear-gradient(135deg,#667EEA,#764BA2);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📚</div>
         <div style="flex:1">
@@ -7877,7 +7990,7 @@ function rStudyBooks() {
     const sn=bk.name.replace(/'/g,"\'");
     const [c1,c2]=bookColors[bi%bookColors.length];
     html += `<div style="background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)">
-      <div style="padding:16px;cursor:pointer" onclick="selectBookAndLearn&&selectBookAndLearn('${sn}')">
+      <div style="padding:16px;cursor:pointer" onclick="showBookWordList('${sn}')">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
           <div style="width:46px;height:46px;background:linear-gradient(135deg,${c1},${c2});border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📖</div>
           <div style="flex:1">
@@ -8703,11 +8816,11 @@ function rList(){
   const sortBy=S.listSort||'default';
   const marked1=S.words.filter(w=>getMark(w.en)===1).length;
   const marked2=S.words.filter(w=>getMark(w.en)===2).length;
-  const markedFav=(S.favorites||new Set()).size;
+  const markedFav=(Array.isArray(S.favorites)?S.favorites:[]).length;
   // 즐겨찾기 필터 (-2)
   let filtered;
   if(filterMark===-2) {
-    filtered = [...S.words].filter(w=>(S.favorites||new Set()).has(w.en));
+    filtered = [...S.words].filter(w=>(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0);
   } else {
     filtered = filterMark<0 ? [...S.words] : S.words.filter(w=>getMark(w.en)===filterMark);
   }
@@ -8803,7 +8916,7 @@ function showWordDetail(en) {
     <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🔊 발음 듣기</button>
 
     <button onclick="toggleFavorite('${safeEn}');showWordDetail('${safeEn}')" style="width:100%;background:${Array.from(S.favorites||[]).includes(w.en)?'#FFF8E1':'#F9FAFB'};border:1.5px solid ${Array.from(S.favorites||[]).includes(w.en)?'#F6D860':'#E5E7EB'};border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:${Array.from(S.favorites||[]).includes(w.en)?'#D97706':'#9CA3AF'};margin-bottom:10px">
-      ${Array.from(S.favorites||[]).includes(w.en)?'⭐ 즐겨찾기 해제':'☆ 즐겨찾기 추가'}
+      ${(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0?'⭐ 즐겨찾기 해제':'☆ 즐겨찾기 추가'}
     </button>
 
     <div style="display:flex;justify-content:center;gap:6px;margin-bottom:12px">
@@ -10896,7 +11009,7 @@ auth.onAuthStateChanged(async user => {
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
-          if(Array.isArray(_data.favorites)) S.favorites=new Set(_data.favorites);
+          if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
 
           // 필드 순서 오류 자동 수정
           const _fix = (arr) => (arr||[]).map(w => {
@@ -10953,7 +11066,7 @@ auth.onAuthStateChanged(async user => {
           sv();
           if(typeof go === 'function') go();
           if(Array.isArray(data.learned)) S.learned=new Set(data.learned);
-          if(Array.isArray(data.favorites)) S.favorites=new Set(data.favorites);
+          if(Array.isArray(data.favorites)) S.favorites=data.favorites;
           try { if(typeof updHD==='function') updHD(); } catch(e) {}
         }
       }).catch(()=>{});

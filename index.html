@@ -11031,12 +11031,43 @@ auth.onAuthStateChanged(async user => {
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
         if(Array.isArray(_data.myButterflies)) {
-          S.myButterflies = _data.myButterflies;
-          localStorage.setItem('wd-butterflies', JSON.stringify(_data.myButterflies));
+          // localStorage 나비와 Firebase 나비 합집합 (마이그레이션)
+          const lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
+          const merged = [...new Set([..._data.myButterflies, ...lsBf])];
+          S.myButterflies = merged;
+          localStorage.setItem('wd-butterflies', JSON.stringify(merged));
+          // 합집합이 Firebase보다 많으면 다시 저장
+          if(merged.length > _data.myButterflies.length && S.user && typeof db!=='undefined') {
+            db.collection('users').doc(S.user.uid).set({myButterflies:merged},{merge:true});
+          }
+        } else {
+          // Firebase에 없으면 localStorage 데이터 사용 후 Firebase 저장
+          const lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
+          if(lsBf.length > 0) {
+            S.myButterflies = lsBf;
+            if(S.user && typeof db!=='undefined') {
+              db.collection('users').doc(S.user.uid).set({myButterflies:lsBf},{merge:true});
+            }
+          }
         }
         if(Array.isArray(_data.collection)) {
-          S._collection = _data.collection;
-          localStorage.setItem('bw-collection', JSON.stringify(_data.collection));
+          // localStorage 컬렉션과 Firebase 컬렉션 합집합 (id 기준)
+          const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
+          const fbIds = new Set(_data.collection.map(x=>x.id));
+          const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))];
+          S._collection = merged;
+          localStorage.setItem('bw-collection', JSON.stringify(merged));
+          if(merged.length > _data.collection.length && S.user && typeof db!=='undefined') {
+            db.collection('users').doc(S.user.uid).set({collection:merged},{merge:true});
+          }
+        } else {
+          const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
+          if(lsCol.length > 0) {
+            S._collection = lsCol;
+            if(S.user && typeof db!=='undefined') {
+              db.collection('users').doc(S.user.uid).set({collection:lsCol},{merge:true});
+            }
+          }
         }
 
           // 필드 순서 오류 자동 수정

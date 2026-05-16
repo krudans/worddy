@@ -13,6 +13,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 <style>
 /* ── 꽃밭 테마 배경 ── */
 :root {
@@ -335,7 +336,7 @@ window.addEventListener('unhandledrejection',e=>{
   console.error('[Promise에러]',e.reason);
 });
 // ── Firebase ──
-var auth, db, provider;
+var auth, db, storage, provider;
 if(typeof firebase === 'undefined') {
   document.body.innerHTML='<div style="padding:20px;color:red;font-size:14px"><b>Firebase 로드 실패</b><br>Firebase SDK가 차단되었거나 네트워크 문제로 로드되지 않았습니다.<br><br>잠시 후 다시 시도해주세요.</div>';
 } else {
@@ -350,6 +351,7 @@ if(typeof firebase === 'undefined') {
     });
     auth = firebase.auth();
     db = firebase.firestore();
+    storage = firebase.storage();
     provider = new firebase.auth.GoogleAuthProvider();
   } catch(e) {
     document.body.innerHTML='<div style="padding:20px;color:red;font-size:14px">Firebase 초기화 오류: '+e.message+'</div>';
@@ -5130,6 +5132,27 @@ function getButterflyCharSVG(bId, sz=60, owned=true) {
   const filter = owned ? '' : 'filter:grayscale(1) opacity(0.25)';
   const wrap = (svg) => `<div style="display:block;width:${sz}px;height:${sz}px;overflow:hidden;flex-shrink:0;${filter}">${svg}</div>`;
 
+  // 1) Firebase/관리자에서 등록된 데이터 우선 사용
+  try {
+    const list = (typeof BUTTERFLY_LIST !== 'undefined' && Array.isArray(BUTTERFLY_LIST)) ? BUTTERFLY_LIST : [];
+    const bf = list.find(x => x && x.id === bId);
+    if (bf) {
+      // JPG/PNG 이미지 URL이 있으면 <img>로 표시
+      if (bf.imageUrl) {
+        return wrap(`<img src="${bf.imageUrl}" alt="${(bf.name||bId).replace(/"/g,'&quot;')}" style="width:100%;height:100%;object-fit:contain;display:block" loading="lazy">`);
+      }
+      // svgCode가 있고 내장 함수에 등록 안 된 커스텀 나비면 svgCode 사용
+      if (bf.svgCode && !svgs_BUILTIN.has(bId)) {
+        // viewBox 정규화
+        const normalized = bf.svgCode
+          .replace(/width="[^"]*"/g, '')
+          .replace(/height="[^"]*"/g, '')
+          .replace(/<svg/, `<svg width="${s}" height="${h}" preserveAspectRatio="xMidYMid meet"`);
+        return wrap(normalized);
+      }
+    }
+  } catch(_) {}
+
   function makeSVG(cfg) {
     const {fw1,fw2,hw1,hw2,fw_s,hw_s,dots,veins,body_c,anten_c,mark_c,id}=cfg;
     return `<svg width="${s}" height="${s}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
@@ -5558,8 +5581,10 @@ b30: `<svg width="${s}" height="${h}" viewBox="0 0 100 100">
   };
   return wrap(svgs[bId] || svgs['b01']);
 }
+// 내장 b01~b30 SVG ID 캐시 (외부에서 svgCode 우선 판정용)
+const svgs_BUILTIN = new Set(['b01','b02','b03','b04','b05','b06','b07','b08','b09','b10','b11','b12','b13','b14','b15','b16','b17','b18','b19','b20','b21','b22','b23','b24','b25','b26','b27','b28','b29','b30']);
 
-const BUTTERFLY_LIST = [
+let BUTTERFLY_LIST = [
   {id:'b01',svgCode:`<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <radialGradient id="b01w" cx="40%" cy="35%" r="60%"><stop offset="0%" stop-color="#7EC8F0"/><stop offset="60%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#1E5FA5"/></radialGradient>
@@ -6563,6 +6588,50 @@ const BUTTERFLY_LIST = [
    story:'주황 날개에 검정 점박이 무늬가 표범처럼 화려해. 날개 뒷면의 은색 줄이 반짝반짝!',
    protect:'유라시아 숲속의 표범이에요. 꽃이 피는 산지 초원을 보호해주세요.'},
 ];
+
+// ── Firebase에서 나비 데이터 머지 (관리자 등록/수정 반영) ──
+// 호출 규칙:
+//   - Firebase에 같은 id의 문서가 있으면 그 데이터로 기존 항목을 덮어씀
+//   - Firebase에만 있는 id(b31+ 등 신규)는 새로 추가
+//   - Firebase 로드 실패해도 기존 30종은 그대로 유지
+async function loadButterfliesFromFirebase() {
+  if (typeof db === 'undefined' || !db) return;
+  try {
+    const snap = await db.collection('butterflies').get();
+    if (snap.empty) return;
+    const cloudMap = {};
+    snap.docs.forEach(d => { cloudMap[d.id] = { id: d.id, ...d.data() }; });
+
+    // 기존 BUTTERFLY_LIST 항목을 cloud 데이터로 머지
+    for (let i = 0; i < BUTTERFLY_LIST.length; i++) {
+      const local = BUTTERFLY_LIST[i];
+      const cloud = cloudMap[local.id];
+      if (cloud) {
+        // cloud 필드가 비어있지 않으면 덮어쓰기, 빈 값이면 local 유지
+        const merged = { ...local };
+        Object.keys(cloud).forEach(k => {
+          const v = cloud[k];
+          if (v !== undefined && v !== null && v !== '') merged[k] = v;
+        });
+        BUTTERFLY_LIST[i] = merged;
+        delete cloudMap[local.id];
+      }
+    }
+    // cloud에만 있는 신규 나비 추가
+    Object.values(cloudMap).forEach(bf => {
+      if (bf && bf.id) BUTTERFLY_LIST.push(bf);
+    });
+    console.log('[나비] Firebase 머지 완료. 총', BUTTERFLY_LIST.length, '종');
+    // 도감/나비밭 화면이 열려있으면 다시 그리기
+    try { if (typeof S !== 'undefined' && document.getElementById('main-inner')) {
+      const cur = (typeof currentTab !== 'undefined') ? currentTab : null;
+      if (cur === 'dogam' && typeof showDogam === 'function') showDogam();
+      else if (cur === 'garden' && typeof showGarden === 'function') showGarden();
+    } } catch(_){}
+  } catch (e) {
+    console.warn('[나비] Firebase 로드 실패, 내장 데이터 사용:', e.message);
+  }
+}
 
 // 벌거지 상태 계산
 function getPetState() {
@@ -10990,6 +11059,9 @@ window._authPending = false;
 auth.onAuthStateChanged(async user => {
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
+
+  // 관리자에서 등록/수정한 나비 데이터 머지 (로그인 여부 무관)
+  loadButterfliesFromFirebase();
 
   if(user) {
     // localStorage 복원

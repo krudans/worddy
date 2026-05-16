@@ -1574,11 +1574,22 @@ function downloadButterflyCard(bId) {
 const MAX_COLLECTION = 15;
 
 function getMyCollection() {
-  return JSON.parse(localStorage.getItem('bw-collection')||'[]');
+  if(Array.isArray(S._collection)) return S._collection;
+  const local = JSON.parse(localStorage.getItem('bw-collection')||'[]');
+  S._collection = local;
+  return local;
 }
 
 function saveCollection(col) {
+  S._collection = col;
   localStorage.setItem('bw-collection', JSON.stringify(col));
+  if(S.user&&S.user.uid&&typeof db!=='undefined') {
+    clearTimeout(window._colTimer);
+    window._colTimer = setTimeout(()=>{
+      db.collection('users').doc(S.user.uid).set({collection:col},{merge:true})
+        .catch(e=>console.warn('컬렉션 저장 오류',e));
+    },2000);
+  }
 }
 
 function addToCollectionConfirm(petData) {
@@ -3363,6 +3374,7 @@ function sv() {
       _dailyDate:S._dailyDate||'', _dailyXpGiven:S._dailyXpGiven||{},
       studyLog:S.studyLog||{}, fontFamily:S.fontFamily||'default',
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
+      collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       updatedAt: new Date().toISOString()
     };
     // throttle: 3초에 1번만
@@ -6588,6 +6600,7 @@ function getNextEvolution() {
 }
 
 function getMyButterflies() {
+  if(Array.isArray(S.myButterflies)) return S.myButterflies;
   return JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
 }
 
@@ -11020,6 +11033,10 @@ auth.onAuthStateChanged(async user => {
         if(Array.isArray(_data.myButterflies)) {
           S.myButterflies = _data.myButterflies;
           localStorage.setItem('wd-butterflies', JSON.stringify(_data.myButterflies));
+        }
+        if(Array.isArray(_data.collection)) {
+          S._collection = _data.collection;
+          localStorage.setItem('bw-collection', JSON.stringify(_data.collection));
         }
 
           // 필드 순서 오류 자동 수정

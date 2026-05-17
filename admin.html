@@ -2894,26 +2894,43 @@ async function deletePack(packId) {
   const p = packs.find(x=>x.id===packId);
   const packName = p ? p.name : packId;
   const wordCount = p ? (p.words?.length||0) : 0;
-  if(!confirm('"'+packName+'" 팩을 삭제할까요?\n단어 '+wordCount+'개가 모두 삭제됩니다.')) return;
-  try {
-    console.log('[삭제] 시작:', packId, packName);
-    await db.collection('packs').doc(packId).delete();
-    console.log('[삭제] Firebase 완료');
-    const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
-    if(i>=0) window._adminPacks.splice(i,1);
-    toast('✅ "'+packName+'" 삭제 완료','ok');
-    rPK();
-  } catch(e) {
-    console.error('[삭제] 실패:', e.code, e.message);
-    if(e.code==='permission-denied') toast('권한 없음: 관리자 계정으로 로그인해주세요','err');
-    else if(e.code==='not-found') {
+
+  // confirm 대신 커스텀 모달
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:360px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:32px;margin-bottom:12px">🗑️</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:8px">"${packName}" 삭제</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:24px">단어 ${wordCount}개가 모두 삭제됩니다.<br>이 작업은 되돌릴 수 없습니다.</div>
+    <div style="display:flex;gap:10px">
+      <button id="_del_cancel" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button id="_del_confirm" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('_del_cancel').onclick = () => overlay.remove();
+  document.getElementById('_del_confirm').onclick = async () => {
+    overlay.remove();
+    try {
+      console.log('[삭제] 시작:', packId, packName);
+      await db.collection('packs').doc(packId).delete();
+      console.log('[삭제] Firebase 완료');
       const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
       if(i>=0) window._adminPacks.splice(i,1);
-      toast('Firebase에 없어 목록에서만 제거했어요','ok');
+      toast('✅ "'+packName+'" 삭제 완료','ok');
       rPK();
+    } catch(e) {
+      console.error('[삭제] 실패:', e.code, e.message);
+      if(e.code==='permission-denied') toast('권한 없음: 관리자 계정으로 로그인해주세요','err');
+      else if(e.code==='not-found') {
+        const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
+        if(i>=0) window._adminPacks.splice(i,1);
+        toast('Firebase에 없어 목록에서만 제거했어요','ok');
+        rPK();
+      }
+      else { toast('삭제 오류: '+e.message,'err'); }
     }
-    else { toast('삭제 오류: '+e.message,'err'); }
-  }
+  };
 }
 async function generateExamples(packId) {
   const packs = window._adminPacks||[];

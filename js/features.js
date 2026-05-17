@@ -6,28 +6,46 @@ function removePack(packId) {
   const pack = _allPacks.find(p=>p.id===packId);
   const packName = pack?.name || packId;
 
-  if(!confirm('"'+packName+'" 팩을 마켓에서 제거할까요?')) return;
+  // confirm 대신 커스텀 모달 사용
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+  mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">🗑️</div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:8px">"${packName}" 삭제</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">내 단어장에서 삭제할까요?<br>마켓에서 다시 추가할 수 있어요.</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button onclick="cm();_doRemovePack('${packId}')" style="flex:1;padding:12px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+    </div>
+  </div></div>`;
+}
+
+function _doRemovePack(packId) {
+  const _allPacks = (typeof S!=='undefined' && S._marketPacks) || (typeof WORD_PACKS!=='undefined' ? WORD_PACKS : []);
+  const pack = _allPacks.find(p=>p.id===packId);
+  const packName = pack?.name || packId;
 
   if(typeof S !== 'undefined') {
-    // S._ownedPacks에서 즉시 제거
     S._ownedPacks = (S._ownedPacks||[]).filter(id => id !== packId);
-
-    // Firebase users 컬렉션에 즉시 반영 (sv() throttle 우회)
+    // 단어장에서도 제거
+    if(S.books) S.books = S.books.filter(b=>b.packId!==packId && b.name!==packName);
     if(typeof db !== 'undefined' && S.user && S.user.uid) {
       db.collection('users').doc(S.user.uid).update({
         _ownedPacks: S._ownedPacks
       }).catch(()=>{
-        // update 실패 시 set으로 재시도
         db.collection('users').doc(S.user.uid).set(
           {_ownedPacks: S._ownedPacks}, {merge:true}
         ).catch(()=>{});
       });
+      db.collection('user_packs').doc(S.user.uid).set(
+        {owned: S._ownedPacks}, {merge:true}
+      ).catch(()=>{});
     }
     sv();
   }
 
-  toast('"'+packName+'" 제거 완료');
-  if(typeof go !== 'undefined') go();
+  toast('"'+packName+'" 삭제 완료');
+  if(typeof go !== 'undefined') go('mybooks','market');
 }
 
 function downloadPack(packId) {

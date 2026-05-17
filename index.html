@@ -1991,19 +1991,26 @@ function downloadPack(packId) { buyPack(packId); }
 function removePack(packId) {
   const pk = (S._marketPacks||[]).find(p=>p.id===packId);
   const name = pk ? pk.name : packId;
-  if(!confirm('"'+name+'" 팩을 내 단어장에서 삭제할까요?\n(팩 데이터는 마켓에 그대로 남아있어요)')) return;
-  // 보유 팩 목록에서 제거
+  // confirm 대신 인라인 확인 모달 사용
+  document.getElementById('mr').innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">🗑️</div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:8px">"${name}" 삭제</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">내 단어장에서 삭제할까요?<br>마켓에서 다시 추가할 수 있어요.</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button onclick="cm();_doRemovePack('${packId}')" style="flex:1;padding:12px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+    </div>
+  </div></div>`;
+}
+
+function _doRemovePack(packId) {
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  const name = pk ? pk.name : packId;
   if(!S._ownedPacks) S._ownedPacks = [];
   S._ownedPacks = S._ownedPacks.filter(id=>id!==packId);
-  // 단어장에서 해당 팩 단어장 제거
-  if(S.books) {
-    S.books = S.books.filter(b=>b.packId!==packId && b.name!==name);
-  }
-  // Firebase 저장
+  if(S.books) S.books = S.books.filter(b=>b.packId!==packId && b.name!==name);
   if(typeof db !== 'undefined' && S.user?.uid) {
-    db.collection('user_packs').doc(S.user.uid).set(
-      {owned: S._ownedPacks}, {merge: true}
-    ).catch(()=>{});
+    db.collection('user_packs').doc(S.user.uid).set({owned: S._ownedPacks}, {merge: true}).catch(()=>{});
   }
   sv();
   toast('🗑️ "'+name+'" 삭제됨');

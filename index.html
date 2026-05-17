@@ -8180,7 +8180,7 @@ function rStudyMode() {
   html += `<div style="background:#fff;border-bottom:1px solid #E5E7EB;padding:10px 14px;flex-shrink:0">
     <div style="font-size:11px;color:#9CA3AF;margin-bottom:6px;font-weight:600">단어장 선택</div>
     <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none">
-${allBooks.map(b=>{ const active=b.name===bookName; const bWords=b.words||[]; const bClick=b.name==='내 단어장'?'S.currentBook=\'내 단어장\';go()':'switchBook&&switchBook(\''+b.name.replace(/\'/g,'\\\'')+'\')+\';go()\''; return '<button onclick="'+bClick+'" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1.5px solid '+(active?'#111':'#E5E7EB')+';background:'+(active?'#111':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+b.name+' <span style=\"opacity:.6\">'+bWords.length+'</span></button>'; }).join('')}
+${allBooks.map(b=>{ const active=b.name===bookName; const bWords=b.words||[]; const bClick=b.name==='내 단어장'?'S.currentBook=\'내 단어장\';go()':'switchBook(\''+b.name.replace(/\'/g,'\\\')+'\');'; return '<button onclick="'+bClick+'" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1.5px solid '+(active?'#111':'#E5E7EB')+';background:'+(active?'#111':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+b.name+' <span style=\"opacity:.6\">'+bWords.length+'</span></button>'; }).join('')}
     </div>
   </div>`;
 
@@ -8923,27 +8923,36 @@ function showExtracted(words){
 function blkModal(){document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:16px;font-weight:800;margin-bottom:8px">📋 여러 단어 붙여넣기</div><div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">한 줄에 하나, 쉼표나 = 로 구분</div><textarea id="bt" placeholder="apple, 사과&#10;book = 책" style="min-height:100px;resize:none;font-size:13px;margin-bottom:10px"></textarea><button class="btn bg" onclick="addBlk()">추가하기</button></div></div>`;}
 function addBlk(){const t=document.getElementById('bt')?.value||'';let cnt=0;t.split('\n').filter(l=>l.trim()).forEach(ln=>{const p=ln.split(/[,=\t]/);if(p.length>=2){const en=p[0].trim(),kr=p[1].trim();if(en&&kr&&!S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){S.words.push({en,kr,ph:'',ex:en+'.',tip:en+' = '+kr,meanings:[kr],img:'📝'});cnt++;}}});sv();cm();toast(`✅ ${cnt}개 추가!`);go('mybooks','add');}
 function rList(){
-  if(!S.words.length)return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}</div>`;
+  // 현재 단어장 기준 단어 목록 가져오기
+  const bookName = S.currentBook || '내 단어장';
+  const allBooks = [{name:'내 단어장', words:S.words, markMap:S.markMap||{}}, ...(S.books||[])];
+  const curBook = allBooks.find(b=>b.name===bookName) || allBooks[0];
+  const curWords = curBook.words || [];
+  const curMarkMap = (bookName==='내 단어장') ? (S.markMap||{}) : (curBook.markMap||{});
+
+  const getMark_ = (en) => curMarkMap[en] || 0;
+
+  if(!curWords.length)return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}</div>`;
   const filterMark=S.listMarkFilter??-1;
   const searchQ=(S.listSearch||'').toLowerCase();
   const sortBy=S.listSort||'default';
-  const marked1=S.words.filter(w=>getMark(w.en)===1).length;
-  const marked2=S.words.filter(w=>getMark(w.en)===2).length;
+  const marked1=curWords.filter(w=>getMark_(w.en)===1).length;
+  const marked2=curWords.filter(w=>getMark_(w.en)===2).length;
   const markedFav=(Array.isArray(S.favorites)?S.favorites:[]).length;
   // 즐겨찾기 필터 (-2)
   let filtered;
   if(filterMark===-2) {
-    filtered = [...S.words].filter(w=>(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0);
+    filtered = [...curWords].filter(w=>(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0);
   } else {
-    filtered = filterMark<0 ? [...S.words] : S.words.filter(w=>getMark(w.en)===filterMark);
+    filtered = filterMark<0 ? [...curWords] : curWords.filter(w=>getMark_(w.en)===filterMark);
   }
   if(searchQ) filtered=filtered.filter(w=>w.en.toLowerCase().includes(searchQ)||w.kr.includes(searchQ));
   if(sortBy==='alpha') filtered.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sortBy==='alpha_kr') filtered.sort((a,b)=>a.kr.localeCompare(b.kr));
-  else if(sortBy==='mark') filtered.sort((a,b)=>getMark(b.en)-getMark(a.en));
+  else if(sortBy==='mark') filtered.sort((a,b)=>getMark_(b.en)-getMark_(a.en));
   else if(sortBy==='random') { for(let i=filtered.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[filtered[i],filtered[j]]=[filtered[j],filtered[i]];} }
   const rows=filtered.map(w=>{
-    const mark=getMark(w.en); const mInfo=MARK_INFO[mark];
+    const mark=getMark_(w.en); const mInfo=MARK_INFO[mark];
     const safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return '<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px 14px;display:flex;align-items:center;gap:10px">'
       +'<div style="font-size:22px">'+( w.img||'📝')+'</div>'
@@ -8971,7 +8980,7 @@ function rList(){
     +'<button onclick="if(confirm(\'마크 초기화?\')){S.markMap={};S.learned.clear();sv();go();}" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;white-space:nowrap">초기화</button>'
     +'</div>'
     +'<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px">'
-    +[[-1,'전체',S.words.length,'#374151'],[0,'미분류',S.words.length-marked1-marked2,'#9CA3AF'],[1,'외웠음 ✅',marked1,'#16A34A'],[2,'헷갈림 🦋',marked2,'#7C3AED'],[-2,'⭐즐겨찾기',markedFav,'#D97706']].map(function(arr){
+    +[[-1,'전체',curWords.length,'#374151'],[0,'미분류',curWords.length-marked1-marked2,'#9CA3AF'],[1,'외웠음 ✅',marked1,'#16A34A'],[2,'헷갈림 🦋',marked2,'#7C3AED'],[-2,'⭐즐겨찾기',markedFav,'#D97706']].map(function(arr){
       const v=arr[0],lb=arr[1],cnt=arr[2],col=arr[3];
       return '<button onclick="S.listMarkFilter='+v+';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(filterMark===v?col:'#E5E7EB')+';font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;background:'+(filterMark===v?col:'#F9FAFB')+';color:'+(filterMark===v?'#fff':col)+'">'+lb+' '+cnt+'</button>';
     }).join('')

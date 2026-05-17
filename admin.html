@@ -2924,12 +2924,15 @@ async function deletePack(packId) {
     try {
       console.log('[삭제] 시작:', packId, packName);
       await db.collection('packs').doc(packId).delete();
-      // 삭제된 팩 ID를 config에 기록 (로컬 WORD_PACKS에서도 숨기기 위해)
+      // 삭제된 팩 ID를 config에 기록
       try {
-        await db.collection('config').doc('deleted_packs').set(
-          { ids: firebase.firestore.FieldValue.arrayUnion(packId) }, { merge: true }
-        );
-      } catch(e2) { console.warn('deleted_packs 기록 실패:', e2); }
+        const delRef = db.collection('config').doc('deleted_packs');
+        const delDoc = await delRef.get();
+        const existingIds = delDoc.exists ? (delDoc.data()?.ids || []) : [];
+        if(!existingIds.includes(packId)) {
+          await delRef.set({ ids: [...existingIds, packId] });
+        }
+      } catch(e2) { console.warn('deleted_packs 기록 실패:', e2.message); }
       console.log('[삭제] Firebase 완료');
       const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
       if(i>=0) window._adminPacks.splice(i,1);

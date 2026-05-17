@@ -2956,7 +2956,21 @@ async function generateExamples(packId) {
   const p = packs.find(x=>x.id===packId);
   if(!p||!p.words||!p.words.length){ toast('단어가 없어요','err'); return; }
   const total = p.words.length;
-  // confirm 제거 - 바로 실행
+
+  // API 키 확인 - 없으면 입력 모달
+  let apiKey = window._adminApiKey || localStorage.getItem('admin_api_key') || '';
+  if(!apiKey) {
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+      <div style="font-size:17px;font-weight:800;margin-bottom:8px">🔑 Anthropic API 키 입력</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:14px">예문 생성에 필요합니다. 한 번 입력하면 저장됩니다.</div>
+      <input id="_api_key_input" type="password" placeholder="sk-ant-..." style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;margin-bottom:14px">
+      <div style="display:flex;gap:8px">
+        <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">취소</button>
+        <button onclick="const k=document.getElementById('_api_key_input').value.trim();if(!k){toast('키를 입력해주세요','err');return;}window._adminApiKey=k;localStorage.setItem('admin_api_key',k);cm();generateExamples('${packId}');" style="flex:2;padding:12px;background:#1E5FA5;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:#fff">저장 후 생성</button>
+      </div>
+    </div></div>`;
+    return;
+  }
 
   const progressEl = document.createElement('div');
   progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1E3A5F;color:#fff;padding:14px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:200px';
@@ -2972,7 +2986,7 @@ async function generateExamples(packId) {
     const batch=p.words.slice(i,i+batchSize);
     const wordList=batch.map(w=>w.en+' ('+w.kr+')').join('\n');
     try{
-      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
         body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:[{role:'user',content:'다음 영단어 각각에 영어 예문을 3개씩 만들어줘.\n\n단어 목록:\n'+wordList+'\n\n규칙:\n- 각 예문에 해당 단어 포함\n- 짧고 자연스러운 문장\n- JSON만 반환\n\n형식: {"단어":["예문1","예문2","예문3"],...}'}]})
       });
       if(!resp.ok) throw new Error('API '+resp.status);

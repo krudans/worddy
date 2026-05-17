@@ -2013,10 +2013,29 @@ function _doRemovePack(packId) {
 function removeButterflyFromCollection(bId) {
   const b = BUTTERFLY_LIST.find(x=>x.id===bId);
   if(!b) return;
-  if(!confirm(b.name+'을 도감에서 삭제할까요?\n삭제하면 다시 레벨업해야 얻을 수 있어요.')) return;
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">🗑️</div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:8px">"${b.name}" 삭제</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">도감에서 삭제할까요?<br>삭제하면 다시 레벨업해야 얻을 수 있어요.</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm()" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button onclick="cm();_doRemoveButterfly('${bId}')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+    </div>
+  </div></div>`;
+}
+
+function _doRemoveButterfly(bId) {
   const owned = getMyButterflies().filter(id=>id!==bId);
   localStorage.setItem('wd-butterflies', JSON.stringify(owned));
-  cm(); toast('🗑️ '+b.name+' 삭제됨'); go();
+  S.myButterflies = owned;
+  // Firebase에도 즉시 반영
+  if(S.user && typeof db !== 'undefined') {
+    db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true})
+      .catch(e=>console.warn('나비 삭제 Firebase 오류', e));
+  }
+  const b = BUTTERFLY_LIST.find(x=>x.id===bId);
+  toast('🗑️ '+(b?.name||bId)+' 삭제됨');
+  go();
 }
 
 function changeNickname() {
@@ -11155,15 +11174,9 @@ auth.onAuthStateChanged(async user => {
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
         if(Array.isArray(_data.myButterflies)) {
-          // localStorage 나비와 Firebase 나비 합집합 (마이그레이션)
-          const lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
-          const merged = [...new Set([..._data.myButterflies, ...lsBf])];
-          S.myButterflies = merged;
-          localStorage.setItem('wd-butterflies', JSON.stringify(merged));
-          // 합집합이 Firebase보다 많으면 다시 저장
-          if(merged.length > _data.myButterflies.length && S.user && typeof db!=='undefined') {
-            db.collection('users').doc(S.user.uid).set({myButterflies:merged},{merge:true});
-          }
+          // Firebase 데이터 우선 (삭제한 나비가 복원되지 않도록 합집합 제거)
+          S.myButterflies = _data.myButterflies;
+          localStorage.setItem('wd-butterflies', JSON.stringify(_data.myButterflies));
         } else {
           // Firebase에 없으면 localStorage 데이터 사용 후 Firebase 저장
           const lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');

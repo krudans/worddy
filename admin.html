@@ -4142,33 +4142,30 @@ async function handleBFFileUpload(event) {
     return;
   }
 
-  // JPG/PNG/WebP → Firebase Storage 업로드
+  // JPG/PNG/WebP → Cloudinary 업로드
   if(!/^image\/(jpeg|png|webp)$/.test(file.type)) {
     if(typeof toast === 'function') toast('JPG, PNG, WebP만 지원합니다','err');
     return;
   }
-  if(typeof storage === 'undefined' || !storage) {
-    if(typeof toast === 'function') toast('Firebase Storage 미초기화','err');
-    return;
-  }
+
+  const CLOUDINARY_CLOUD_NAME = 'dhnjiryh5';
+  const CLOUDINARY_UPLOAD_PRESET = 'worddy_butterflies';
 
   try {
     setStatus('압축 중...', '#1E5FA5');
-    // 우선 압축 시도 (실패하면 원본 사용)
     let uploadBlob = file, uploadMime = file.type;
     try {
       const r = await _bfCompressImage(file, 1024, 0.85);
       uploadBlob = r.blob; uploadMime = r.mime;
     } catch(_) { /* 압축 실패 시 원본 사용 */ }
 
-    if (uploadBlob.size > 5 * 1024 * 1024) {
-      setStatus('파일이 너무 큽니다 (5MB 이하)', '#DC2626');
-      if(typeof toast === 'function') toast('파일이 너무 큽니다 (5MB 이하)','err');
+    if(uploadBlob.size > 10 * 1024 * 1024) {
+      setStatus('파일이 너무 큽니다 (10MB 이하)', '#DC2626');
+      if(typeof toast === 'function') toast('파일이 너무 큽니다 (10MB 이하)','err');
       return;
     }
 
-    setStatus('업로드 중...', '#1E5FA5');
-    // 일단 미리 base64 프리뷰
+    // 미리보기 (base64)
     try {
       const dataUrl = await new Promise((res, rej) => {
         const fr = new FileReader();
@@ -4180,24 +4177,35 @@ async function handleBFFileUpload(event) {
       if(pv) pv.innerHTML = '<img src="'+dataUrl+'" style="width:96px;height:96px;object-fit:contain;display:block">';
     } catch(_){}
 
-    const ext = (uploadMime === 'image/png') ? 'png' : 'jpg';
-    const path = 'butterflies/' + Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.' + ext;
-    const ref = storage.ref(path);
-    const task = ref.put(uploadBlob, { contentType: uploadMime });
-    task.on('state_changed', snap => {
-      const pct = snap.totalBytes ? Math.round((snap.bytesTransferred/snap.totalBytes)*100) : 0;
-      setStatus('업로드 중... '+pct+'%', '#1E5FA5');
-    });
-    await task;
-    const url = await ref.getDownloadURL();
+    setStatus('업로드 중...', '#1E5FA5');
 
-    // imageUrl 저장, svgCode는 비움 (앱은 imageUrl 우선)
+    // Cloudinary Unsigned Upload
+    const formData = new FormData();
+    formData.append('file', uploadBlob);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('folder', 'worddy/butterflies');
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      { method: 'POST', body: formData }
+    );
+
+    if(!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || '업로드 실패');
+    }
+
+    const data = await res.json();
+    const url = data.secure_url;
+    console.log('[Cloudinary] 업로드 완료:', url);
+
     const iu = document.getElementById('bf-imageUrl'); if(iu) iu.value = url;
     const sv = document.getElementById('bf-svg'); if(sv) sv.value = '';
     setStatus('✅ 업로드 완료', '#16A34A');
     if(typeof toast === 'function') toast('✅ 사진 업로드 완료','ok');
+    updateBFPreview();
   } catch(e) {
-    console.error('[bf upload] 실패:', e);
+    console.error('[Cloudinary upload] 실패:', e);
     setStatus('업로드 실패: '+e.message, '#DC2626');
     if(typeof toast === 'function') toast('업로드 실패: '+e.message,'err');
   }

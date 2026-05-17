@@ -405,9 +405,14 @@ async function rDB(){
       const x=d.data();
       totalXP += (x.xp||0);
       avgStreak += (x.streak||0);
-      const la = x.lastActive?.toDate?.()?.toISOString()?.slice(0,10)||x.updatedAt?.toDate?.()?.toISOString()?.slice(0,10);
-      if(la>=td) tu++;
-      if(la>=wa) wu++;
+      // lastActive(string), lastDate, updatedAt(string or Timestamp) 순서로 체크
+      const la = x.lastActive?.slice?.(0,10)
+               || x.lastDate
+               || x.updatedAt?.toDate?.()?.toISOString()?.slice(0,10)
+               || (typeof x.updatedAt === 'string' ? x.updatedAt.slice(0,10) : null)
+               || null;
+      if(la && la>=td) tu++;
+      if(la && la>=wa) wu++;
       activeUsers.push({nick:x.nick,xp:x.xp||0,streak:x.streak||0,lid:x.lid||'egg'});
     });
     avgStreak = uc ? Math.round(avgStreak/uc) : 0;
@@ -415,16 +420,25 @@ async function rDB(){
   } catch(e) { console.error('users 로드 실패:',e); }
   try{const ps=await db.collection('pokes').where('read','==',false).get();pc=ps.size;}catch(e){}
 
-  // 팩 단어수 정확히 집계
+  // 팩 단어수 - deleted_packs 반영
   let marketWords = 0, localWords = 0, fbPackCount = 0, localPackCount = 0;
+  let deletedIds = new Set();
+  try {
+    const delSnap = await db.collection('config').doc('deleted_packs').get();
+    if(delSnap.exists) deletedIds = new Set(delSnap.data()?.ids || []);
+  } catch(e){}
   try {
     const pkSnap = await db.collection('packs').get();
     fbPackCount = pkSnap.size;
     marketWords = pkSnap.docs.reduce((s,d)=>s+((d.data().words||[]).length),0);
   } catch(e){}
-  const localPacks2 = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
-  localPackCount = localPacks2.length;
-  localWords = localPacks2.reduce((s,p)=>s+(p.words?.length||0),0);
+  const localPacks2 = (typeof WORD_PACKS!=='undefined' ? WORD_PACKS : []).filter(p=>!deletedIds.has(p.id));
+  // Firebase에 있는 팩은 로컬에서 제외
+  const fbPackIds = new Set();
+  try { const ps=await db.collection('packs').get(); ps.forEach(d=>fbPackIds.add(d.id)); } catch(e){}
+  const localOnlyPacks = localPacks2.filter(p=>!fbPackIds.has(p.id));
+  localPackCount = localOnlyPacks.length;
+  localWords = localOnlyPacks.reduce((s,p)=>s+(p.words?.length||0),0);
   const totalWords = marketWords + localWords;
 
   // XP 설정 로드

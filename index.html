@@ -1939,47 +1939,39 @@ function buyPack(packId) {
   if(!pk) { toast('팩을 찾을 수 없어요'); return; }
   if(!S._ownedPacks) S._ownedPacks = [];
   if(S._ownedPacks.includes(packId)) { toast('이미 보유 중이에요'); return; }
-
   const words = pk.words||[];
   if(!words.length) { toast('단어가 없는 팩이에요'); return; }
 
-  // 구매 확인
-  if(!confirm(pk.name+' ('+words.length+'개 단어)를 내 단어장에 추가할까요?')) return;
+  // 커스텀 확인 모달
+  document.getElementById('mr').innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">${pk.emoji||'📦'}</div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:8px">${pk.name}</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">${words.length}개 단어를 내 단어장에 추가할까요?</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button onclick="cm();_doBuyPack('${packId}')" style="flex:1;padding:12px;background:#1E5FA5;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">추가</button>
+    </div>
+  </div></div>`;
+}
 
-  // 새 단어장으로 추가 (기존 단어장과 분리)
+function _doBuyPack(packId) {
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  if(!pk) return;
+  const words = pk.words||[];
+  if(!S._ownedPacks) S._ownedPacks = [];
   if(!S.books) S.books = [];
   const existing = S.books.find(b=>b.name===pk.name);
   if(existing) {
-    // 이미 같은 이름 단어장 있으면 업데이트
     const newW = words.filter(w=>!existing.words.find(x=>x.en===w.en));
     existing.words = [...existing.words, ...newW];
   } else {
-    // 새 단어장 생성
-    S.books.push({
-      name: pk.name,
-      emoji: pk.emoji||'📦',
-      words: [...words],
-      markMap: {},
-      srsMap: {},
-      learned: [],
-      fromMarket: true,
-      packId: packId,
-    });
+    S.books.push({ name:pk.name, emoji:pk.emoji||'📦', words:[...words], markMap:{}, srsMap:{}, learned:[], fromMarket:true, packId:packId });
   }
-
-  // 내 단어장에도 추가 (현재 단어장)
-  const newWords = words.filter(w=>!S.words.find(x=>x.en===w.en));
-
   S._ownedPacks.push(packId);
-  // Firebase 즉시 저장
   if(typeof db !== 'undefined' && S.user?.uid) {
-    db.collection('user_packs').doc(S.user.uid).set(
-      {owned: S._ownedPacks},
-      {merge: true}
-    ).catch(()=>{});
+    db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
   }
   sv();
-
   toast('✅ '+pk.name+' 추가! 단어장에서 확인하세요 📚');
   vib([100,50,100]);
   SFX.play('levelup');

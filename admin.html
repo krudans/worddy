@@ -2892,22 +2892,27 @@ async function deletePack(packId) {
   if(typeof db==='undefined'||!db) { toast('Firebase 연결 중입니다. 잠시 후 다시 시도해주세요','err'); return; }
   const packs = window._adminPacks||[];
   const p = packs.find(x=>x.id===packId);
-  if(!p) { toast('팩 정보를 찾을 수 없어요. 목록을 새로고침해주세요','err'); rPK(); return; }
-  if(!confirm('"'+p.name+'" 팩을 삭제할까요?\n단어 '+(p.words?.length||0)+'개가 모두 삭제됩니다.')) return;
-  const btn = event?.target; if(btn) { btn.disabled=true; btn.textContent='삭제 중...'; }
+  const packName = p ? p.name : packId;
+  const wordCount = p ? (p.words?.length||0) : 0;
+  if(!confirm('"'+packName+'" 팩을 삭제할까요?\n단어 '+wordCount+'개가 모두 삭제됩니다.')) return;
   try {
-    console.log('[삭제] 시작:', packId, p.name);
+    console.log('[삭제] 시작:', packId, packName);
     await db.collection('packs').doc(packId).delete();
     console.log('[삭제] Firebase 완료');
-    const i = window._adminPacks.findIndex(x=>x.id===packId);
+    const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
     if(i>=0) window._adminPacks.splice(i,1);
-    toast('✅ "'+p.name+'" 삭제 완료','ok');
+    toast('✅ "'+packName+'" 삭제 완료','ok');
     rPK();
   } catch(e) {
     console.error('[삭제] 실패:', e.code, e.message);
     if(e.code==='permission-denied') toast('권한 없음: 관리자 계정으로 로그인해주세요','err');
-    else if(e.code==='not-found') { const i=window._adminPacks.findIndex(x=>x.id===packId); if(i>=0)window._adminPacks.splice(i,1); toast('Firebase에 없어 목록에서만 제거했어요','ok'); rPK(); }
-    else { toast('삭제 오류: '+e.message,'err'); if(btn){btn.disabled=false;btn.textContent='🗑';} }
+    else if(e.code==='not-found') {
+      const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
+      if(i>=0) window._adminPacks.splice(i,1);
+      toast('Firebase에 없어 목록에서만 제거했어요','ok');
+      rPK();
+    }
+    else { toast('삭제 오류: '+e.message,'err'); }
   }
 }
 async function generateExamples(packId) {

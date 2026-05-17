@@ -1986,6 +1986,30 @@ function buyPack(packId) {
   go('mybooks','market');
 }
 
+function downloadPack(packId) { buyPack(packId); }
+
+function removePack(packId) {
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  const name = pk ? pk.name : packId;
+  if(!confirm('"'+name+'" 팩을 내 단어장에서 삭제할까요?\n(팩 데이터는 마켓에 그대로 남아있어요)')) return;
+  // 보유 팩 목록에서 제거
+  if(!S._ownedPacks) S._ownedPacks = [];
+  S._ownedPacks = S._ownedPacks.filter(id=>id!==packId);
+  // 단어장에서 해당 팩 단어장 제거
+  if(S.books) {
+    S.books = S.books.filter(b=>b.packId!==packId && b.name!==name);
+  }
+  // Firebase 저장
+  if(typeof db !== 'undefined' && S.user?.uid) {
+    db.collection('user_packs').doc(S.user.uid).set(
+      {owned: S._ownedPacks}, {merge: true}
+    ).catch(()=>{});
+  }
+  sv();
+  toast('🗑️ "'+name+'" 삭제됨');
+  go('mybooks','market');
+}
+
 function removeButterflyFromCollection(bId) {
   const b = BUTTERFLY_LIST.find(x=>x.id===bId);
   if(!b) return;

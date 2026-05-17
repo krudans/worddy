@@ -2562,19 +2562,22 @@ ${['없음','적음','보통','많음','최다'].map((lb,i)=>` <div style="displ
 // ── 마켓 단어팩 Firebase 로드 ──
 async function loadMarketPacks() {
   if(typeof db === 'undefined') {
-    // Firebase 없으면 WORD_PACKS 사용
     S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
     return;
   }
   try {
-    // 관리자가 저장한 Firebase 팩 로드 (컬렉션: 'packs')
-    const snap = await db.collection('packs').get();
+    const [snap, delSnap] = await Promise.all([
+      db.collection('packs').get(),
+      db.collection('config').doc('deleted_packs').get().catch(()=>null)
+    ]);
+    const deletedIds = new Set(delSnap?.exists ? (delSnap.data()?.ids || []) : []);
     const fbPacks = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.active !== false && p.name);
-    // 로컬 WORD_PACKS와 병합 (Firebase 팩 우선)
     const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacks.map(p => p.id));
-    S._marketPacks = [...fbPacks, ...localPacks.filter(p => !fbIds.has(p.id))];
-    console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localPacks.filter(p=>!fbIds.has(p.id)).length + '개 로컬 =', S._marketPacks.length + '개 총합');
+    // Firebase에 없고 삭제 목록에도 없는 로컬 팩만 포함
+    const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
+    S._marketPacks = [...fbPacks, ...localOnly];
+    console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
   } catch(e) {
     console.warn('마켓 Firebase 로드 실패, 로컬 사용:', e.message);
     S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];

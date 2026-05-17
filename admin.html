@@ -2707,9 +2707,19 @@ async function rPK(){
   try {
     const snap = await db.collection('packs').get();
     const fbPacks = snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
-    const localPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacks.map(p=>p.id));
-    window._adminPacks = [...fbPacks, ...localPacks.filter(p=>!fbIds.has(p.id))];
+
+    // 삭제된 팩 ID 목록 가져오기 (Firebase에서 삭제한 팩은 로컬에도 숨김)
+    let deletedIds = new Set();
+    try {
+      const delSnap = await db.collection('config').doc('deleted_packs').get();
+      if(delSnap.exists) deletedIds = new Set(delSnap.data()?.ids || []);
+    } catch(e) {}
+
+    const localPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
+    // Firebase에 없고 삭제 목록에도 없는 로컬 팩만 추가
+    const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
+    window._adminPacks = [...fbPacks, ...localOnly];
   } catch(e) {
     window._adminPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
   }
@@ -2914,6 +2924,12 @@ async function deletePack(packId) {
     try {
       console.log('[삭제] 시작:', packId, packName);
       await db.collection('packs').doc(packId).delete();
+      // 삭제된 팩 ID를 config에 기록 (로컬 WORD_PACKS에서도 숨기기 위해)
+      try {
+        await db.collection('config').doc('deleted_packs').set(
+          { ids: firebase.firestore.FieldValue.arrayUnion(packId) }, { merge: true }
+        );
+      } catch(e2) { console.warn('deleted_packs 기록 실패:', e2); }
       console.log('[삭제] Firebase 완료');
       const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
       if(i>=0) window._adminPacks.splice(i,1);

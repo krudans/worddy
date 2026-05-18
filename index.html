@@ -9240,10 +9240,10 @@ async function handleImgFiles(files) {
       const _txt2 = await geminiVision('이 이미지에서 영어 단어를 모두 찾아 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}] — 영어 단어가 없으면 []', b64, file.type, 1200);
       const words=parseGeminiJson(_txt2);
       words.forEach(w=>{if(!allWords.find(x=>x.en===w.en))allWords.push(w);});
-    } catch(e){toast('이미지 분석 실패: '+file.name);}
+    } catch(e){if(e.message!=='NO_KEY')toast(e.message||('이미지 분석 실패: '+file.name));}
   }
-  S.ai=false;
-  if(!allWords.length){toast('영어 단어를 찾지 못했어요');go('mybooks','add');return;}
+  S.ai=false; go('mybooks','add');
+  if(!allWords.length){toast('영어 단어를 찾지 못했어요');return;}
   showExtracted(allWords);
   go('mybooks','add');
 }
@@ -9262,8 +9262,8 @@ async function handlePdfFile(file) {
     showExtracted(words);
     go('mybooks','add');
   } catch(e){
-    toast('PDF 분석 실패. 텍스트 PDF인지 확인해주세요.');
     S.ai=false; go('mybooks','add');
+    if(e.message!=='NO_KEY') toast(e.message||'PDF 분석 실패. 텍스트 PDF인지 확인해주세요.');
   }
 }
 
@@ -9349,7 +9349,7 @@ async function extractFromText() {
       : `아래 영어 텍스트에서 학습하기 좋은 단어 10~15개를 뽑아 JSON 배열로만 반환.\n형식: [{"en":"word","kr":"뜻"}]\n\n텍스트:\n${inp.slice(0,2000)}`;
     const _txt5 = await geminiText(prompt, 800);
     showExtracted(parseGeminiJson(_txt5));
-  } catch(e) { toast('추출 실패. 텍스트를 직접 입력해주세요'); }
+  } catch(e) { if(e.message!=='NO_KEY') toast(e.message||'추출 실패'); }
   S.ai=false; go('mybooks','add');
 }
 
@@ -9382,49 +9382,56 @@ function promptGeminiKey() {
   return null;
 }
 
-// 텍스트 전용 Gemini 호출
-async function geminiText(prompt, maxTokens=800) {
+// ── Gemini API 공통 호출 ──
+function _geminiErrMsg(d) {
+  const msg = d?.error?.message || '';
+  if(msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+    return '⏳ AI 사용량 한도에 도달했어요. 잠시 후 다시 시도해주세요.
+(무료 플랜: 분당 15회 제한)';
+  }
+  if(msg.includes('API_KEY_INVALID') || msg.includes('invalid') && msg.includes('key')) {
+    return '🔑 API 키가 올바르지 않아요. 프로필에서 키를 다시 확인해주세요.';
+  }
+  return 'AI 오류: ' + (msg.slice(0,60) || '알 수 없는 오류');
+}
+
+async function _geminiCall(parts, maxTokens=800) {
   let key = getGeminiKey();
-  if(!key) { key = promptGeminiKey(); if(!key) throw new Error('API 키 없음'); }
+  if(!key) {
+    document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+      <div style="font-size:17px;font-weight:900;margin-bottom:6px">🤖 Gemini API 키 필요</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">AI 자동완성·이미지 분석·PDF 추출 기능을 쓰려면 Gemini API 키가 필요해요. 무료로 발급받을 수 있어요.</div>
+      <input id="gkey-inp2" type="password" placeholder="AIzaSy..."
+        style="width:100%;padding:11px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;font-family:monospace;outline:none;box-sizing:border-box;margin-bottom:10px">
+      <a href="https://aistudio.google.com/app/apikey" target="_blank"
+        style="display:block;text-align:center;font-size:12px;color:#1E5FA5;margin-bottom:14px;font-weight:600">🔗 Google AI Studio에서 무료 발급 →</a>
+      <button onclick="const k=document.getElementById('gkey-inp2').value.trim();if(!k){toast('키를 입력해주세요');return;}setGeminiKey(k);cm();toast('✅ 키 저장! 다시 시도해주세요');" class="btn bb" style="margin-bottom:8px">저장</button>
+      <button onclick="cm()" class="btn">닫기</button>
+    </div></div>`;
+    throw new Error('NO_KEY');
+  }
   const url = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${key}`;
   const r = await fetch(url, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      contents:[{parts:[{text:prompt}]}],
-      generationConfig:{maxOutputTokens:maxTokens}
-    })
+    body: JSON.stringify({ contents:[{parts}], generationConfig:{maxOutputTokens:maxTokens} })
   });
   const d = await r.json();
-  if(d.error) throw new Error(d.error.message||'Gemini 오류');
+  if(d.error) throw new Error(_geminiErrMsg(d));
   return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-// 이미지 포함 Gemini 호출
+async function geminiText(prompt, maxTokens=800) {
+  return _geminiCall([{text:prompt}], maxTokens);
+}
+
 async function geminiVision(prompt, b64, mimeType, maxTokens=1200) {
-  let key = getGeminiKey();
-  if(!key) { key = promptGeminiKey(); if(!key) throw new Error('API 키 없음'); }
-  const url = `${GEMINI_BASE}/${GEMINI_PRO}:generateContent?key=${key}`;
-  const r = await fetch(url, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      contents:[{parts:[
-        {inline_data:{mime_type:mimeType, data:b64}},
-        {text:prompt}
-      ]}],
-      generationConfig:{maxOutputTokens:maxTokens}
-    })
-  });
-  const d = await r.json();
-  if(d.error) throw new Error(d.error.message||'Gemini Vision 오류');
-  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return _geminiCall([{inline_data:{mime_type:mimeType,data:b64}},{text:prompt}], maxTokens);
 }
 
-// PDF 포함 Gemini 호출 (1.5-flash supports PDF via inline_data)
 async function geminiPdf(prompt, b64, maxTokens=2000) {
   return geminiVision(prompt, b64, 'application/pdf', maxTokens);
 }
 
-// JSON 파싱 헬퍼 (코드블록 제거)
 function parseGeminiJson(text) {
   const clean = text.replace(/```json|```/g,'').trim();
   return JSON.parse(clean);
@@ -9437,11 +9444,18 @@ async function aiMFull() {
   try {
     const _txt6 = await geminiText(`"${en}" 단어 정보를 JSON으로만 반환. 형식: {"kr":"뜻1, 뜻2","ph":"[발음기호]","ex":"예문","tip":"한국어 발음 암기팁"}`, 300);
     const parsed=parseGeminiJson(_txt6);
+    if(!parsed||!parsed.kr) throw new Error('응답 형식 오류');
     S.nKr=parsed.kr||''; S.nEn=en;
     S.nAiData={ph:parsed.ph,ex:parsed.ex,tip:parsed.tip};
   } catch(e){
+    if(e.message==='NO_KEY'){S.ai=false;go();return;}
     // 간단 버전으로 폴백
-    try{const _txt7=await geminiText(`"${en}" 한국어 뜻 2~3개만. JSON 없이 텍스트로만. 예: 인내, 끈기`, 60);S.nKr=_txt7.trim();S.nEn=en;}catch(e2){toast('AI 오류');}
+    try{
+      const _txt7=await geminiText(`"${en}" 한국어 뜻 2~3개만. JSON 없이 텍스트로만. 예: 인내, 끈기`, 60);
+      S.nKr=_txt7.trim(); S.nEn=en;
+    }catch(e2){
+      if(e2.message!=='NO_KEY') toast(e2.message||'AI 오류');
+    }
   }
   S.ai=false; go();
 }
@@ -10722,9 +10736,18 @@ ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S
 
   // Gemini API 키 설정
   const _gkSet = !!localStorage.getItem('_geminiKey');
-  parts.push(`<button onclick="showGeminiKeyModal()" style="width:100%;padding:11px;background:${_gkSet?'#F0FDF4':'#FFF8F0'};color:${_gkSet?'#16A34A':'#E65100'};border:1.5px solid ${_gkSet?'#BBF7D0':'#FED7AA'};border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px">
-    ${_gkSet?'🤖 Gemini AI 연결됨 (키 변경)':'🔑 Gemini API 키 설정 (AI 기능 활성화)'}
-  </button>`);
+  parts.push(`<div onclick="showGeminiKeyModal()" style="background:${_gkSet?'#F0FDF4':'#FFF8F0'};border:1.5px solid ${_gkSet?'#BBF7D0':'#FED7AA'};border-radius:14px;padding:12px 14px;cursor:pointer;margin-bottom:4px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${_gkSet?'4px':'0'}">
+      <div style="font-size:13px;font-weight:800;color:${_gkSet?'#16A34A':'#E65100'}">
+        ${_gkSet?'🤖 Gemini AI 연결됨':'🔑 Gemini API 키 미설정'}
+      </div>
+      <span style="font-size:11px;color:${_gkSet?'#16A34A':'#E65100'};font-weight:600">${_gkSet?'키 변경 →':'설정 →'}</span>
+    </div>
+    ${_gkSet
+      ? '<div style="font-size:11px;color:#6B7280">AI 자동완성 · 이미지/PDF 단어 추출 활성화됨<br><span style="color:#9CA3AF">무료 플랜: 분당 15회 · 일 1,500회</span></div>'
+      : '<div style="font-size:11px;color:#9CA3AF">AI 자동완성·이미지·PDF 기능을 쓰려면 필요해요<br>Google AI Studio에서 무료 발급 가능</div>'
+    }
+  </div>`);
   parts.push('<button class="btn" onclick="showAlarmSettings()" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">⏰ 목표 & 알람</button>');
   parts.push('<button class="btn" onclick="showAchievementsModal()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">🏆 도전 과제</button>');
   parts.push('<button class="btn" onclick="showAppGuide()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📖 앱 사용법</button>');

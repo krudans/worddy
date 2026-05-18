@@ -1,5 +1,23 @@
 // ── 마켓 탭 ──
 
+// SVG viewBox 비율 보정 헬퍼 - 찌그러짐 방지
+function _fixSvgRatio(svgCode, sz) {
+  if(!svgCode) return svgCode;
+  const vb = svgCode.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  let sw = sz, sh = sz;
+  if(vb) {
+    const vw = parseFloat(vb[1]), vh = parseFloat(vb[2]);
+    if(vw > 0 && vh > 0) {
+      if(vw > vh) { sh = Math.round(sz * vh / vw); }
+      else if(vh > vw) { sw = Math.round(sz * vw / vh); }
+    }
+  }
+  return svgCode
+    .replace(/\s+width="[^"]*"/g, '')
+    .replace(/\s+height="[^"]*"/g, '')
+    .replace(/<svg/, `<svg width="${sw}" height="${sh}" preserveAspectRatio="xMidYMid meet"`);
+}
+
 
 function removePack(packId) {
   const _allPacks = (typeof S!=='undefined' && S._marketPacks) || (typeof WORD_PACKS!=='undefined' ? WORD_PACKS : []);
@@ -725,10 +743,18 @@ function showButterflyDogam() {
       ${filtered.map(b=>{
         const rNum = _bfRareToNum(b.rare);
         const isOwned = owned.has(b.id);
-        const svgHtml = (typeof getButterflyCharSVG === 'function') ? getButterflyCharSVG(b.id, 48, isOwned) : '<span style="font-size:28px">🦋</span>';
+        let svgHtml;
+        if(typeof getButterflyCharSVG === 'function') {
+          svgHtml = getButterflyCharSVG(b.id, 48, isOwned);
+        } else if(b.svgCode) {
+          const fixed = _fixSvgRatio(b.svgCode, 48);
+          svgHtml = `<div style="display:flex;align-items:center;justify-content:center;width:48px;height:48px">${fixed}</div>`;
+        } else {
+          svgHtml = '<span style="font-size:28px">🦋</span>';
+        }
         const desc = (b.feature || b.desc || b.story || '').slice(0, 60);
         return `<div onclick="showButterflyDetail('${b.id}')" style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">
-          <div style="width:52px;height:52px;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">${svgHtml}</div>
+          <div style="width:52px;height:52px;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgHtml}</div>
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
               <span style="font-size:14px;font-weight:800;color:#111">${b.name||'-'}</span>
@@ -756,7 +782,18 @@ function showButterflyDetail(id) {
   const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444','#F59E0B'];
   const rColor = rColors[rNum] || '#374151';
   const isOwned = (typeof S !== 'undefined' && S.butterflies) ? S.butterflies.includes(b.id) : true;
-  const svgHtml = (typeof getButterflyCharSVG === 'function') ? getButterflyCharSVG(b.id, 200, isOwned) : '🦋';
+  // getButterflyCharSVG 우선, 없으면 svgCode 직접 비율 보정 렌더링
+  let svgHtml;
+  if(typeof getButterflyCharSVG === 'function') {
+    svgHtml = getButterflyCharSVG(b.id, 200, isOwned);
+  } else if(b.svgCode) {
+    const fixed = _fixSvgRatio(b.svgCode, 200);
+    svgHtml = `<div style="display:flex;align-items:center;justify-content:center;width:200px;height:200px">${fixed}</div>`;
+  } else if(b.imageUrl) {
+    svgHtml = `<img src="${b.imageUrl}" style="width:200px;height:200px;object-fit:contain">`;
+  } else {
+    svgHtml = '<span style="font-size:80px">🦋</span>';
+  }
   document.getElementById('mr').innerHTML = `<div class="mbg" onclick="showButterflyDogam()" style="align-items:flex-start;padding-top:0"><div onclick="event.stopPropagation()" style="background:#fff;width:100%;max-width:600px;height:100vh;overflow-y:auto">
     <div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #E5E7EB;padding:12px 16px;display:flex;align-items:center;gap:10px">
       <button onclick="showButterflyDogam()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#374151">‹</button>

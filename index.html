@@ -911,15 +911,18 @@ function checkAttend() {
   const t = today();
   // 오늘 안보기 선택했으면 무조건 스킵
   if(S._noPopupToday === t) return;
-  // 오늘 이미 팝업 표시했으면 스킵
-  if(S.attendPopupShown === t) return;
-  S.attendPopupShown = t;
+  // 오늘 이미 팝업 표시했으면 스킵 (localStorage 기반)
+  const shown = localStorage.getItem('wd-aps') || '';
+  if(shown === t) return;
   // 출석 처리
   if(!S.attendDates.includes(t)) {
     S.attendDates.push(t);
     S.attendCount++;
     sv();
   }
+  // 팝업 표시 여부 저장 (새로고침해도 유지)
+  localStorage.setItem('wd-aps', t);
+  S.attendPopupShown = t;
   // 팝업은 출석 여부와 무관하게 항상 표시
   showAttendPopup();
 }
@@ -1016,7 +1019,7 @@ function showAttendPopup() {
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <button onclick="S._noPopupToday=(typeof today==='function'?today():new Date().toISOString().slice(0,10));sv();cm()" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">오늘 안보기</button>
+        <button onclick="S._noPopupToday=(typeof today==='function'?today():new Date().toISOString().slice(0,10));localStorage.setItem('wd-npt',S._noPopupToday);sv();cm()" style="flex:1;background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">오늘 안보기</button>
         <button onclick="cm()" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">오늘도, 내일도 계속할래 💛</button>
       </div>
   </div>`;
@@ -4493,6 +4496,7 @@ function go(tab,sub) {
   }
   body.innerHTML=newHTML;
   if(S.tab==='butterfly') setTimeout(renderBFDogamGrid,50);
+  if(S.tab==='profile') setTimeout(renderBFDogamGrid,100);
   // 광고 배너 고정 div에 렌더링
   const adEl=document.getElementById('ad-banner-fixed');
   if(adEl) adEl.innerHTML=renderAdBanner()||'';
@@ -5113,7 +5117,7 @@ function rGameTab() {
 
   // ── 반려나비 도감 (나비 + 캐릭터 수집) ──
   const butterflies = getMyButterflies();
-  const myCol = getMyCollection();
+  const myCol = getMyCollection().filter(b => b && b.id && b.lid); // 유효 항목만
   // ── 반려나비 도감 섹션 ──
   html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px;margin-bottom:12px">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
@@ -5141,7 +5145,7 @@ function rGameTab() {
 
   // 캐릭터 수집
   if(myCol.length > 0) {
-    html += '<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px">수집한 캐릭터 (' + myCol.length + '/' + MAX_COLLECTION + ')</div>';
+  html += '<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">수집한 캐릭터 (' + myCol.length + '/' + MAX_COLLECTION + ')<button onclick="if(confirm(\'도감을 전부 비울까요?\')){S._collection=[];saveCollection([]);toast(\'도감을 비웠어요\');go();}" style="font-size:9px;padding:2px 7px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;cursor:pointer;font-weight:700">전부 빼기</button></div>';
     html += '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">';
     myCol.forEach(function(item) {
       html += '<div onclick="showCollectionDetail(\''+item.id+'\')" style="text-align:center;padding:6px;border-radius:10px;background:#F3F4F6;border:1.5px solid #E5E7EB;cursor:pointer">';
@@ -10220,15 +10224,18 @@ ${[['7일',totalWords7+'개'],['30일',totalWords30+'개'],['일평균',avgDay7+
     </div>`);
   }
   // 반려나비 도감
-  const _col=S._collection||[];
+  const _col=(S._collection||[]).filter(b=>b && b.id && b.lid); // 유효한 항목만
   if(_col.length>0){
     parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:16px;border:1.5px solid var(--border,#F0E6C8);padding:14px;margin-top:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:13px;font-weight:800;color:var(--text1,#3D2C00)">🦋 반려나비 도감</div>
-        <span style="font-size:11px;color:#9CA3AF">${_col.length}마리</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:#9CA3AF">${_col.length}마리</span>
+          <button onclick="if(confirm('도감을 전부 비울까요?')){S._collection=[];saveCollection([]);toast('도감을 비웠어요');go('profile');}" style="font-size:10px;padding:3px 8px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;cursor:pointer;font-weight:700">전부 빼기</button>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-${_col.map(b=>`<div style="background:var(--bg-sub,#FFF9ED);border-radius:10px;padding:8px;text-align:center"> ${charSVG(b.lid||'egg',36,'normal')} <div style="font-size:9px;color:#9CA3AF;margin-top:3px">${lv(b.lid).name}</div> </div>`).join('')}
+${_col.map(b=>`<div onclick="showCollectionDetail('${b.id}')" style="background:var(--bg-sub,#FFF9ED);border-radius:10px;padding:8px;text-align:center;cursor:pointer"> ${charSVG(b.lid||'egg',36,'normal')} <div style="font-size:9px;color:#9CA3AF;margin-top:3px">${lv(b.lid).name}</div> </div>`).join('')}
       </div>
     </div>`);
   }

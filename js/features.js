@@ -724,7 +724,7 @@ function showButterflyDogam() {
   const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444','#F59E0B'];
   const counts  = [list.length, 1,2,3,4,5].map((_,i)=> i===0 ? list.length : list.filter(b=>_bfRareToNum(b.rare)===i).length);
   // 사용자가 가진 나비 (있으면 표시용)
-  const owned = new Set((typeof S !== 'undefined' && S.butterflies) ? S.butterflies : []);
+  const owned = new Set((typeof S !== 'undefined' && S.myButterflies) ? S.myButterflies : (S && S.butterflies ? S.butterflies : []));
 
   mr.innerHTML = `<div class="mbg" onclick="cm()" style="align-items:flex-start;padding-top:0"><div onclick="event.stopPropagation()" style="background:#fff;width:100%;max-width:600px;height:100vh;overflow-y:auto;display:flex;flex-direction:column">
     <div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 16px;z-index:10">
@@ -781,7 +781,7 @@ function showButterflyDetail(id) {
   const rNum = _bfRareToNum(b.rare);
   const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444','#F59E0B'];
   const rColor = rColors[rNum] || '#374151';
-  const isOwned = (typeof S !== 'undefined' && S.butterflies) ? S.butterflies.includes(b.id) : true;
+  const isOwned = (typeof S !== 'undefined' && (S.myButterflies || S.butterflies)) ? (S.myButterflies || S.butterflies || []).includes(b.id) : true;
   // getButterflyCharSVG 우선, 없으면 svgCode 직접 비율 보정 렌더링
   let svgHtml;
   if(typeof getButterflyCharSVG === 'function') {

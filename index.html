@@ -7293,16 +7293,39 @@ async function renderHomeRank() {
     const maxXp = top5[0]?.xp||1;
     const myRank = all.findIndex(u=>u.uid===myUid)+1;
     const myEntry = all.find(u=>u.uid===myUid);
-    const medals = ['🥇','🥈','🥉','4','5'];
+
+    // ── 이전 순위 로드 & 저장 ──
+    const prevKey = 'wd-prev-rank-'+mode;
+    let prevRankMap = {};
+    try { prevRankMap = JSON.parse(localStorage.getItem(prevKey)||'{}'); } catch(e){}
+    // 현재 순위를 저장 (다음 조회 때 비교용)
+    const newRankMap = {};
+    all.forEach((u,i) => { newRankMap[u.uid] = i+1; });
+    localStorage.setItem(prevKey, JSON.stringify(newRankMap));
+
+    // 단계 변화 뱃지 생성 함수
+    const changeBadge = (uid, curRank) => {
+      const prev = prevRankMap[uid];
+      if(!prev) return '<span style="font-size:9px;color:#9CA3AF;font-weight:700;background:#F3F4F6;border-radius:4px;padding:1px 4px">NEW</span>';
+      const diff = prev - curRank; // 양수=상승, 음수=하락
+      if(diff === 0) return '<span style="font-size:10px;color:#9CA3AF">━</span>';
+      if(diff > 0)   return `<span style="font-size:9px;color:#16A34A;font-weight:700;background:#F0FDF4;border-radius:4px;padding:1px 4px">▲${diff}</span>`;
+      return             `<span style="font-size:9px;color:#DC2626;font-weight:700;background:#FFF5F5;border-radius:4px;padding:1px 4px">▼${Math.abs(diff)}</span>`;
+    };
+
+    const rankLabel = ['1위','2위','3위','4위','5위'];
+    const rankColor = ['#F59E0B','#94A3B8','#92400E','#6B7280','#6B7280'];
 
     el.innerHTML = top5.length === 0
       ? `<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">${modeLabel} XP 데이터 없음</div>`
       : top5.map((u,i) => {
           const bar = Math.round(u.xp/maxXp*100);
           const isMe = u.uid===myUid;
+          const badge = changeBadge(u.uid, i+1);
           return `<div style="padding:7px 8px;border-radius:9px;background:${isMe?'#EFF6FF':'#F9FAFB'};margin-bottom:5px;border:1.5px solid ${isMe?'#BFDBFE':'transparent'}">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-              <span style="font-size:12px;width:20px;text-align:center">${medals[i]}</span>
+              <span style="font-size:11px;font-weight:900;color:${rankColor[i]};width:22px;text-align:center;flex-shrink:0">${rankLabel[i]}</span>
+              ${badge}
               <span style="flex:1;font-size:12px;font-weight:700;color:${isMe?'#1E5FA5':'#111'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.nick}${isMe?' 👈':''}</span>
               <span style="font-size:12px;font-weight:800;color:${modeColor}">⚡${u.xp.toLocaleString()}</span>
             </div>
@@ -7315,8 +7338,9 @@ async function renderHomeRank() {
     // 내 순위 (5위 밖이면 별도 표시)
     if(myEl) {
       if(myRank > 5 && myEntry) {
+        const myBadge = changeBadge(myUid, myRank);
         myEl.style.display = 'block';
-        myEl.innerHTML = `<div style="display:flex;align-items:center;gap:6px"><span style="font-size:12px;font-weight:900;color:#1E5FA5;width:24px;text-align:center">${myRank}위</span><span style="flex:1;font-size:12px;font-weight:700;color:#1E5FA5">${myEntry.nick} 👈</span><span style="font-size:12px;font-weight:800;color:${modeColor}">⚡${myEntry.xp.toLocaleString()}</span><span style="font-size:10px;color:#9CA3AF">/ 전체 ${all.length}명</span></div>`;
+        myEl.innerHTML = `<div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;font-weight:900;color:#1E5FA5;flex-shrink:0">${myRank}위</span>${myBadge}<span style="flex:1;font-size:12px;font-weight:700;color:#1E5FA5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${myEntry.nick} 👈</span><span style="font-size:12px;font-weight:800;color:${modeColor}">⚡${myEntry.xp.toLocaleString()}</span><span style="font-size:10px;color:#9CA3AF;flex-shrink:0">/ ${all.length}명</span></div>`;
       } else if(myRank > 0) {
         myEl.style.display = 'block';
         myEl.innerHTML = `<div style="font-size:11px;color:#1E5FA5;font-weight:700">내 순위: ${myRank}위 / 전체 ${all.length}명</div>`;

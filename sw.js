@@ -1,5 +1,5 @@
-// sw.js v3 - 캐시 오류로 인한 앱 재로드 방지
-const CACHE = 'butterfly-word-v3';
+// sw.js v4 - 캐시 오류로 인한 앱 재로드 방지
+const CACHE = 'butterfly-word-v4';
 const ASSETS = [
   './',
   './index.html',

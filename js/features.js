@@ -756,7 +756,7 @@ function showButterflyDetail(id) {
   const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444','#F59E0B'];
   const rColor = rColors[rNum] || '#374151';
   const isOwned = (typeof S !== 'undefined' && S.butterflies) ? S.butterflies.includes(b.id) : true;
-  const svgHtml = (typeof getButterflyCharSVG === 'function') ? getButterflyCharSVG(b.id, 180, isOwned) : '🦋';
+  const svgHtml = (typeof getButterflyCharSVG === 'function') ? getButterflyCharSVG(b.id, 200, isOwned) : '🦋';
   document.getElementById('mr').innerHTML = `<div class="mbg" onclick="showButterflyDogam()" style="align-items:flex-start;padding-top:0"><div onclick="event.stopPropagation()" style="background:#fff;width:100%;max-width:600px;height:100vh;overflow-y:auto">
     <div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #E5E7EB;padding:12px 16px;display:flex;align-items:center;gap:10px">
       <button onclick="showButterflyDogam()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#374151">‹</button>

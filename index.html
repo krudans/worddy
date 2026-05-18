@@ -9101,11 +9101,12 @@ function rAdd() {
       <div style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">✏️ 직접 입력 <span style="font-weight:400;color:#9CA3AF">— 영단어 + AI 자동완성</span></div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input id="ne" placeholder="apple, beautiful, run..." value="${S.nEn||''}" oninput="S.nEn=this.value"
+          <input id="ne" placeholder="영단어 입력 후 자동완성..." value="${S.nEn||''}" oninput="S.nEn=this.value"
             style="flex:1;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:16px;font-weight:700;font-family:monospace;outline:none;color:#111"
-            onkeydown="if(event.key==='Enter'){document.getElementById('nk2').focus()}">
+            onkeydown="if(event.key==='Enter'&&this.value.trim()){event.preventDefault();S.nEn=this.value.trim();aiMFull();}"
+            onblur="if(this.value.trim()&&!S.nKr&&!S.ai){S.nEn=this.value.trim();aiMFull();}">
           <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:10px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
-            ${S.ai?'⏳':'✨ AI 자동완성'}
+            ${S.ai?'⏳':'✨'}
           </button>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -9434,26 +9435,67 @@ function parseGeminiJson(text) {
 }
 
 async function aiMFull() {
-  const en=(document.getElementById('ne')?.value||S.nEn).trim();
+  const en=(document.getElementById('ne')?.value||S.nEn||'').trim();
   if(!en){toast('영단어를 먼저 입력하세요');return;}
-  S.ai=true; S.nAiData=null; go();
+  if(S.ai) return; // 중복 호출 방지
+
+  // 로딩 상태 즉시 표시 (go() 없이 DOM 직접 조작)
+  S.ai=true; S.nAiData=null;
+  const _setField = (id, val) => { const el=document.getElementById(id); if(el) el.value=val; };
+  const _showLoading = () => {
+    _setField('nk2','⏳ AI 분석 중...');
+    _setField('nph','');
+    _setField('nex1','');
+    const btn = document.querySelector('button[onclick="aiMFull()"]');
+    if(btn) btn.textContent='⏳';
+  };
+  _showLoading();
+
   try {
     const _txt6 = await geminiText(`"${en}" 단어 정보를 JSON으로만 반환. 형식: {"kr":"뜻1, 뜻2","ph":"[발음기호]","ex":"예문","tip":"한국어 발음 암기팁"}`, 300);
     const parsed=parseGeminiJson(_txt6);
     if(!parsed||!parsed.kr) throw new Error('응답 형식 오류');
-    S.nKr=parsed.kr||''; S.nEn=en;
+
+    // S 업데이트
+    S.nEn=en; S.nKr=parsed.kr||'';
+    S.nPh=parsed.ph||''; S.nEx1=parsed.ex||'';
     S.nAiData={ph:parsed.ph,ex:parsed.ex,tip:parsed.tip};
+
+    // 필드 직접 업데이트 (go() 없이)
+    _setField('nk2', S.nKr);
+    _setField('nph', S.nPh);
+    _setField('nex1', S.nEx1);
+    _setField('nex2', '');
+    _setField('nex3', '');
+
+    // 버튼 복원
+    const btn = document.querySelector('button[onclick="aiMFull()"]');
+    if(btn) btn.textContent='✨';
+    S.ai=false;
+    toast('✅ AI 자동완성 완료!');
+    // nex1 필드로 포커스 이동
+    setTimeout(()=>document.getElementById('nex1')?.focus(), 100);
+
   } catch(e){
-    if(e.message==='NO_KEY'){S.ai=false;go();return;}
-    // 간단 버전으로 폴백
+    S.ai=false;
+    const btn = document.querySelector('button[onclick="aiMFull()"]');
+    if(btn) btn.textContent='✨';
+
+    if(e.message==='NO_KEY'){go();return;}
+
+    // 폴백: 뜻만 간단 완성
     try{
-      const _txt7=await geminiText(`"${en}" 한국어 뜻 2~3개만. JSON 없이 텍스트로만. 예: 인내, 끈기`, 60);
+      _setField('nk2','⏳ AI 분석 중...');
+      const _txt7=await geminiText(`"${en}" 한국어 뜻 2~3개만. 텍스트로만. 예: 인내, 끈기`, 60);
       S.nKr=_txt7.trim(); S.nEn=en;
+      _setField('nk2', S.nKr);
+      toast('✅ 뜻 완성! 발음·예문은 직접 입력해주세요');
     }catch(e2){
+      _setField('nk2','');
       if(e2.message!=='NO_KEY') toast(e2.message||'AI 오류');
+      else go();
     }
   }
-  S.ai=false; go();
 }
 
 // 기존 aiM은 aiMFull로 대체 (하위 호환)

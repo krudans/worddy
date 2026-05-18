@@ -1777,7 +1777,7 @@ function rPetCare() {
   html += '<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:13px">레벨업하면 나비를 뽑을 수 있어요 🦋</div>';
   }
   } else {
-    html += '<div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px"><div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:11px;padding:8px">...</div></div>';
+    html += '<div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;justify-items:center"><div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:11px;padding:8px">...</div></div>';
   }
   html += '</div>';
 
@@ -5166,7 +5166,7 @@ function rGameTab() {
   html += '</div>';
 
   // 나비 그리드 (placeholder - renderBFDogamGrid로 채움)
-  html += '<div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:12px">';
+  html += '<div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:12px;justify-items:center">';
   html += '<div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:11px;padding:10px">로딩 중...</div>';
   html += '</div>';
 
@@ -10082,8 +10082,11 @@ function rProfile(){
   const l=lv(S.lid);
   const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
   const pet=getPetState();
-  const marked1=Object.values(S.markMap).filter(v=>v===1).length;
-  const marked2=Object.values(S.markMap).filter(v=>v===2).length;
+  // 단어 현황은 내 단어장 기준으로 계산 (markMap은 전체 단어장 포함이라 음수 방지)
+  const _curWords=S.words||[];
+  const _mm=S.markMap||{};
+  const marked1=_curWords.filter(w=>(_mm[w.en]||0)===1).length;
+  const marked2=_curWords.filter(w=>(_mm[w.en]||0)===2).length;
   const myB=getMyButterflies();
   const curLvIdx=LEVELS.findIndex(lx=>lx.id===S.lid);
   const nextLv=LEVELS[Math.min(curLvIdx+1,LEVELS.length-1)];
@@ -10097,7 +10100,7 @@ function rProfile(){
     <div style="margin-bottom:10px;cursor:pointer" onclick="S.stab='petcare';go('butterfly')" title="탭해서 돌보기">${charSVGAnimated(S.lid,80,'happy')}</div>
     <div style="font-size:10px;color:rgba(255,255,255,.6);margin-bottom:4px">탭해서 돌보기 👆</div>
     <div style="font-size:20px;font-weight:900;margin-bottom:4px">${S.nick}</div>
-    <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${l.emoji} ${l.name} · ${l.desc}</div>
+    <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-bottom:12px">${typeof charSVGAnimated==='function'?charSVGAnimated(l.id,20,'normal'):l.emoji} ${l.name} · ${l.desc}</div>
     <div style="display:flex;gap:8px;justify-content:center">
       <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
         <div style="font-size:18px;font-weight:900">🔥 ${S.streak||0}</div>
@@ -10122,7 +10125,7 @@ function rProfile(){
   parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:18px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🐛 성장 단계</div>
-      <div style="font-size:12px;color:#6B7280">다음: ${nextLv&&nextLv.id!==S.lid?nextLv.emoji+' '+nextLv.name:'✨ 최고 레벨'}</div>
+      <div style="font-size:12px;color:#6B7280;display:flex;align-items:center;gap:3px">다음: ${nextLv&&nextLv.id!==S.lid?(typeof charSVGAnimated==='function'?'<span style="display:inline-block">'+ charSVGAnimated(nextLv.id,16,'normal')+'</span>':nextLv.emoji)+' '+nextLv.name:'✨ 최고 레벨'}</div>
     </div>
     <div style="background:#F3F4F6;border-radius:8px;height:10px;overflow:hidden;margin-bottom:6px">
       <div style="height:100%;background:${petCol.main};border-radius:8px;width:${xpPct}%;transition:width .8s"></div>
@@ -11229,8 +11232,9 @@ auth.onAuthStateChanged(async user => {
           ['xp','lid','streak','nick','words','books','currentBook',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-           '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'
+           '_dailyDate','_dailyXpGiven','fontFamily','lastDate'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
+          if(_data.studyLog) { S.studyLog = Object.assign({}, _data.studyLog, S.studyLog||{}); }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
           if(Array.isArray(_data.myButterflies)) {
@@ -11277,8 +11281,9 @@ auth.onAuthStateChanged(async user => {
           ['xp','lid','streak','nick','words','books','currentBook',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-           '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'
+           '_dailyDate','_dailyXpGiven','fontFamily','lastDate'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
+          if(_data.studyLog) { S.studyLog = Object.assign({}, _data.studyLog, S.studyLog||{}); }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
         if(Array.isArray(_data.myButterflies)) {

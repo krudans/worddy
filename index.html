@@ -256,6 +256,7 @@ body.fs-sm{font-size:13px!important}
 body.fs-md{font-size:15px!important}
 body.fs-lg{font-size:17px!important}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -9242,8 +9243,8 @@ async function handleImgFiles(files) {
       words.forEach(w=>{if(!allWords.find(x=>x.en===w.en))allWords.push(w);});
     } catch(e){if(e.message!=='NO_KEY')toast(e.message||('이미지 분석 실패: '+file.name));}
   }
-  S.ai=false; go('mybooks','add');
-  if(!allWords.length){toast('영어 단어를 찾지 못했어요');return;}
+  S.ai=false;
+  if(!allWords.length){toast('영어 단어를 찾지 못했어요');go('mybooks','add');return;}
   showExtracted(allWords);
   go('mybooks','add');
 }
@@ -9287,43 +9288,39 @@ async function handleBulkFile(file) {
     if(!words.length){toast('단어를 찾지 못했어요. 형식: A열=영어, B열=한국어');return;}
     showExtracted(words);
   } else if(['xlsx','xls'].includes(ext)) {
-    // Excel: AI에게 파일 내용 분석 요청 (base64)
-    S.ai=true; go('mybooks','add');
+    // Excel: SheetJS 우선 파싱, 실패시 AI 폴백
     try {
-      const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-      const _txt4 = await geminiVision('이 Excel 파일에서 영어 단어와 한국어 뜻을 추출해 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}]', b64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 2000);
-      const words=parseGeminiJson(_txt4);
-      S.ai=false;
-      if(!words.length){toast('단어를 찾지 못했어요');go('mybooks','add');return;}
+      const ab=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsArrayBuffer(file);});
+      if(typeof XLSX==='undefined') throw new Error('SheetJS 미로드');
+      const wb=XLSX.read(ab,{type:'arraybuffer'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      const words=[];
+      rows.forEach((row,i)=>{
+        if(!row||row.length<2)return;
+        const en=String(row[0]||'').replace(/^"|"$/g,'').trim();
+        const kr=String(row[1]||'').replace(/^"|"$/g,'').trim();
+        if(i===0&&['english','word','단어','영어'].includes(en.toLowerCase()))return;
+        if(en&&kr&&/[a-zA-Z]/.test(en))words.push({en,kr});
+      });
+      if(!words.length){toast('단어를 찾지 못했어요. A열=영어, B열=한국어 형식인지 확인해주세요.');return;}
       showExtracted(words);
-      go('mybooks','add');
     } catch(e){
-      // SheetJS fallback
+      // AI 폴백 (SheetJS 실패 시)
+      S.ai=true; go('mybooks','add');
       try {
-        const ab=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsArrayBuffer(file);});
-        if(typeof XLSX!=='undefined'){
-          const wb=XLSX.read(ab,{type:'arraybuffer'});
-          const ws=wb.Sheets[wb.SheetNames[0]];
-          const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-          const words=[];
-          rows.forEach((row,i)=>{
-            if(!row||row.length<2)return;
-            const en=String(row[0]||'').trim(), kr=String(row[1]||'').trim();
-            if(i===0&&(en.toLowerCase()==='english'||en.toLowerCase()==='word'))return;
-            if(en&&kr&&/[a-zA-Z]/.test(en))words.push({en,kr});
-          });
-          S.ai=false;
-          if(words.length)showExtracted(words);
-          else toast('단어를 찾지 못했어요');
-        } else {
-          toast('Excel 파싱 실패. CSV로 변환 후 시도해주세요.');
-        }
-      } catch(e2){toast('Excel 파싱 실패');}
-      S.ai=false; go('mybooks','add');
+        const b64f=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+        const _txt4=await geminiText('Excel 단어장 데이터. A열=영어단어, B열=한국어뜻으로 된 행들을 JSON 배열로만 반환: [{"en":"word","kr":"뜻"}]. 파일명: '+file.name, 2000);
+        const words=parseGeminiJson(_txt4);
+        S.ai=false;
+        if(words.length)showExtracted(words);
+        else toast('단어를 찾지 못했어요. CSV로 변환 후 시도해주세요.');
+      } catch(e2){
+        S.ai=false;
+        if(e2.message!=='NO_KEY') toast('Excel 파싱 실패. CSV로 변환 후 시도해주세요.');
+      }
+      go('mybooks','add');
     }
-  } else {
-    toast('.xlsx .xls .csv .txt 파일만 지원합니다');
-  }
 }
 
 function urlExtractModal() {

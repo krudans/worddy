@@ -704,10 +704,21 @@ Object.defineProperty(window, 'BUTTERFLY_DATA', {
 
 // 레어도 문자열(⭐~⭐⭐⭐⭐⭐)을 숫자로 변환
 function _bfRareToNum(rare) {
-  if (typeof rare === 'number') return Math.max(1, Math.min(5, rare));
+  if (typeof rare === 'number') return Math.max(1, Math.min(6, rare));
   if (typeof rare !== 'string') return 1;
   const n = (rare.match(/⭐/g) || []).length;
-  return Math.max(1, Math.min(5, n || 1));
+  return Math.max(1, Math.min(6, n || 1));
+}
+
+// 등급 레이블: 1=일반(⭐), 2=일반(⭐⭐), 3=고급(⭐⭐⭐), 4=희귀(⭐⭐⭐⭐), 5=전설(⭐⭐⭐⭐⭐), 6=신화(그이상)
+// 필터용 단계: 0=전체, 1=일반(1~2개), 2=고급(3개), 3=희귀(4개), 4=전설(5개+)
+function _bfRareGrade(rare) {
+  const n = _bfRareToNum(rare);
+  if (n <= 2) return 1; // 일반
+  if (n === 3) return 2; // 고급
+  if (n === 4) return 3; // 희귀
+  if (n === 5) return 4; // 전설
+  return 5;              // 신화
 }
 
 function _bfList() {
@@ -719,10 +730,10 @@ function showButterflyDogam() {
   if(!mr) return;
   const selR = window._dogamFilter||0; // 0=전체, 1~5=레어도
   const list = _bfList();
-  const filtered = selR===0 ? list : list.filter(b => _bfRareToNum(b.rare) === selR);
-  const rNames  = ['전체','일반','고급','희귀','전설','신화'];
-  const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444','#F59E0B'];
-  const counts  = [list.length, 1,2,3,4,5].map((_,i)=> i===0 ? list.length : list.filter(b=>_bfRareToNum(b.rare)===i).length);
+  const filtered = selR===0 ? list : list.filter(b => _bfRareGrade(b.rare) === selR);
+  const rNames  = ['전체','일반','고급','희귀','전설'];
+  const rColors = ['#374151','#9CA3AF','#3B82F6','#8B5CF6','#EF4444'];
+  const counts  = [list.length, 1,2,3,4].map((_,i)=> i===0 ? list.length : list.filter(b=>_bfRareGrade(b.rare)===i).length);
   // 사용자가 가진 나비 (있으면 표시용)
   const owned = new Set((typeof S !== 'undefined' && S.myButterflies) ? S.myButterflies : (S && S.butterflies ? S.butterflies : []));
 
@@ -876,7 +887,7 @@ async function saveButterflyCard(bId) {
   if(!mr) return;
 
   const rColors={0:'#374151',1:'#9CA3AF',2:'#3B82F6',3:'#8B5CF6',4:'#F59E0B',5:'#EF4444'};
-  const rNames={0:'전체',1:'일반',2:'고급',3:'희귀',4:'전설',5:'신화'};
+  const rNames={0:'전체',1:'일반',2:'고급',3:'희귀',4:'전설'};
   const svgHtml = typeof getButterflyCharSVG==='function' ? getButterflyCharSVG(bId,100,true) : '';
 
   // 미리보기 카드 HTML

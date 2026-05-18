@@ -401,18 +401,18 @@ async function rDB(){
   const wa=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
   const ma=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
 
-  let users=[], uc=0, tu=0, wu=0, mu=0, pc=0, totalXP=0, totalStreak=0;
+  let users=[], uc=0, tu=0, wu=0, mu=0, pc=0, totalXP=0, totalStreak=0, totalCumXP=0;
   try {
     const s=await db.collection('users').get();
     uc=s.size;
     s.forEach(d=>{
       const x=d.data();
-      totalXP+=(x.xp||0); totalStreak+=(x.streak||0);
+      totalXP+=(x.xp||0); totalStreak+=(x.streak||0); totalCumXP+=(x._totalXp||x.xp||0);
       const la=x.lastActive?.slice?.(0,10)||x.lastDate||(typeof x.updatedAt==='string'?x.updatedAt.slice(0,10):null)||null;
       if(la&&la>=td) tu++;
       if(la&&la>=wa) wu++;
       if(la&&la>=ma) mu++;
-      users.push({nick:x.nick,xp:x.xp||0,streak:x.streak||0,lid:x.lid||'egg',words:(x.words||[]).length});
+      users.push({nick:x.nick,xp:x.xp||0,totalXp:x._totalXp||x.xp||0,streak:x.streak||0,lid:x.lid||'egg',words:(x.words||[]).length,uid:d.id});
     });
     users.sort((a,b)=>b.xp-a.xp);
   } catch(e){console.error(e);}
@@ -471,8 +471,8 @@ async function rDB(){
     ${statCard('📅','7일 활성',wu,'명','#7C3AED','#F5F3FF','')}
     ${statCard('🚨','미확인 콕',pc,'개','#DC2626','#FFF5F5',"T('po')")}
   </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-    ${statCard('⚡','총 XP 합계',totalXP,'','#E65100','#FFF7ED','')}
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
+    ${statCard('⚡','총 보유 XP',totalXP,'','#E65100','#FFF7ED','')} ${statCard('📈','총 누적 XP',totalCumXP,'','#7C3AED','#F5F3FF','')}
     ${statCard('🔥','평균 스트릭',avgStreak,'일','#E65100','#FFF7ED','')}
     ${statCard('🛒','마켓 팩',totalPacks,'개','#1E5FA5','#EFF6FF',"T('pk')")}
     ${statCard('📖','총 단어수',totalWords,'개','#16A34A','#F0FDF4',"T('pk')")}
@@ -481,19 +481,14 @@ async function rDB(){
   <!-- 2컬럼: XP 랭킹 + 빠른 작업 -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
     <div class="card">
-      <div class="ct">🏆 XP 상위 회원</div>
-      ${users.slice(0,8).map((u,i)=>`
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #F3F4F6">
-          <div style="width:22px;text-align:center;font-size:13px;font-weight:900;color:${i<3?'#D97706':'#9CA3AF'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.nick||'익명'}</div>
-            <div style="font-size:10px;color:#9CA3AF">단어 ${u.words}개</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:12px;font-weight:800;color:#7C3AED">⚡${u.xp.toLocaleString()}</div>
-            <div style="font-size:10px;color:#E65100">🔥${u.streak}일</div>
-          </div>
-        </div>`).join('')}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="ct" style="margin:0">🏆 XP 순위</div>
+        <div style="display:flex;gap:4px">
+          <button id="rank-btn-hold" onclick="window._rankMode='hold';renderRankTable()" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid #7C3AED;background:#7C3AED;color:#fff;cursor:pointer">보유 XP</button>
+          <button id="rank-btn-total" onclick="window._rankMode='total';renderRankTable()" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid #E5E7EB;background:#fff;color:#9CA3AF;cursor:pointer">누적 XP</button>
+        </div>
+      </div>
+      <div id="rank-table-body"></div>
       ${users.length===0?'<div style="text-align:center;padding:20px;color:#9CA3AF">회원 없음</div>':''}
     </div>
 
@@ -574,6 +569,35 @@ async function rDB(){
     if(be) be.style.width=Math.round((wcs[l]||0)/mx*100)+'%';
     if(bv) bv.textContent=(wcs[l]||0);
   });
+  // 순위 초기 렌더
+  window._rankUsers = users;
+  window._rankMode = window._rankMode||'hold';
+  renderRankTable();
+}
+
+function renderRankTable(){
+  const el = document.getElementById('rank-table-body');
+  if(!el) return;
+  const all = window._rankUsers||[];
+  const mode = window._rankMode||'hold';
+  const sorted = [...all].sort((a,b)=> mode==='total' ? b.totalXp-a.totalXp : b.xp-a.xp);
+  const btnH = document.getElementById('rank-btn-hold');
+  const btnT = document.getElementById('rank-btn-total');
+  if(btnH){ btnH.style.background=mode==='hold'?'#7C3AED':'#fff'; btnH.style.color=mode==='hold'?'#fff':'#9CA3AF'; btnH.style.borderColor=mode==='hold'?'#7C3AED':'#E5E7EB'; }
+  if(btnT){ btnT.style.background=mode==='total'?'#E65100':'#fff'; btnT.style.color=mode==='total'?'#fff':'#9CA3AF'; btnT.style.borderColor=mode==='total'?'#E65100':'#E5E7EB'; }
+  const rankColors=['#F59E0B','#94A3B8','#92400E','#1E40AF','#7C3AED'];
+  el.innerHTML = sorted.slice(0,10).map((u,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #F3F4F6">
+      <div style="width:24px;text-align:center;font-size:13px;font-weight:900;color:${rankColors[i]||'#9CA3AF'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.nick||'익명'}</div>
+        <div style="font-size:10px;color:#9CA3AF">단어 ${u.words}개 · 🔥${u.streak}일</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;font-weight:800;color:${mode==='total'?'#E65100':'#7C3AED'}">⚡${(mode==='total'?u.totalXp:u.xp).toLocaleString()}</div>
+        ${mode==='total'?`<div style="font-size:9px;color:#9CA3AF">보유 ⚡${u.xp.toLocaleString()}</div>`:`<div style="font-size:9px;color:#9CA3AF">누적 ⚡${u.totalXp.toLocaleString()}</div>`}
+      </div>
+    </div>`).join('')||'<div style="text-align:center;padding:20px;color:#9CA3AF">회원 없음</div>';
 }
 async function doGoogleLogin(){
   try {

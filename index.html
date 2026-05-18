@@ -3434,6 +3434,7 @@ function sv() {
   localStorage.setItem('wd-dsm', String(S._dailyStudiedMin||0));
   localStorage.setItem('wd-dd', S._dailyDate||'');
   localStorage.setItem('wd-dxg', JSON.stringify(S._dailyXpGiven||{}));
+  localStorage.setItem('wd-txp', String(S._totalXp||0)); // 누적 XP
   localStorage.setItem('wd-ach', JSON.stringify(S._achievements||[]));
   // Firebase 동기화 (로그인 상태일 때)
   if(S.user && S.user.uid && typeof db !== 'undefined' && !window._svDisabled) {
@@ -3447,6 +3448,7 @@ function sv() {
       _dailyGoalMin:S._dailyGoalMin||30, _dailyStudiedMin:S._dailyStudiedMin||0,
       _dailyDate:S._dailyDate||'', _dailyXpGiven:S._dailyXpGiven||{},
       studyLog:S.studyLog||{}, fontFamily:S.fontFamily||'default',
+      _totalXp:S._totalXp||0,
       lastDate:S.lastDate||'', lastStudyDate:S.lastDate||'',
       lastActive: new Date().toISOString().slice(0,10),
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
@@ -3815,6 +3817,7 @@ function addXP(n, silent=false) {
   const bonus = getStreakBonus();
   const actual = Math.round(n * bonus);
   S.xp = (S.xp||0) + actual;
+  S._totalXp = (S._totalXp||0) + actual; // 누적 XP (감소 안 함)
   sv(); if(!silent) updHD();
   // XP 획득 토스트 (게임 중이 아닐 때만)
   if(!silent && actual>0) showXpGain(actual, bonus>1);
@@ -10115,8 +10118,9 @@ function rProfile(){
         <div style="font-size:10px;opacity:.8">외운 단어</div>
       </div>
       <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:8px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:900">⚡ ${S.xp||0}</div>
-        <div style="font-size:10px;opacity:.8">XP</div>
+        <div style="font-size:16px;font-weight:900">⚡ ${S.xp||0}</div>
+        <div style="font-size:9px;opacity:.8">보유 XP</div>
+        <div style="font-size:11px;font-weight:700;opacity:.7;margin-top:2px">누적 ${S._totalXp||0}</div>
       </div>
     </div>
   </div>`);
@@ -10150,16 +10154,7 @@ ${Object.entries(PET_COLORS).map(([k,v])=>`<div onclick="setPetColor('${k}');go(
       <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🦋 반려나비 도감</div>
       <span style="font-size:12px;font-weight:700;color:#7C3AED;background:#F5F3FF;padding:3px 10px;border-radius:20px">${myB.length}/15</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px">
-      ${BUTTERFLY_LIST.map(b=>{
-        const owned=myB.includes(b.id);
-        return `<div onclick="${owned?'showButterflyDetail(\''+b.id+'\')':''}" style="text-align:center;padding:5px 3px;border-radius:10px;background:${owned?b.bg:'var(--bg-sub,#FFF9ED)'};border:1.5px solid ${owned?b.color:'var(--border,#F0E6C8)'};cursor:${owned?'pointer':'default'}">
-          <div style="display:flex;justify-content:center">${getButterflyCharSVG(b.id,32,owned)}</div>
-          <div style="font-size:7px;font-weight:700;color:${owned?b.color:'#C4A46B'}">${owned?b.name:'???'}</div>
-          ${owned?`<div style="font-size:6px;color:${b.color}">${b.rare}</div>`:''}
-        </div>`;
-      }).join('')}
-    </div>
+    <div id="bf-dogam-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px"><div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:11px;padding:8px">로딩 중...</div></div>
   </div>`);
 
   // ── 단어 마크 현황 ──
@@ -11214,6 +11209,7 @@ auth.onAuthStateChanged(async user => {
       const dsm=ls.getItem('wd-dsm'); if(dsm) S._dailyStudiedMin=Number(dsm)||0;
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
+      const txp=ls.getItem('wd-txp'); if(txp) S._totalXp=Number(txp)||0;
     } catch(e) {}
 
     // ── STEP 2: localStorage 데이터 있으면 즉시 앱 시작, Firebase는 백그라운드 동기화 ──
@@ -11232,7 +11228,7 @@ auth.onAuthStateChanged(async user => {
           ['xp','lid','streak','nick','words','books','currentBook',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-           '_dailyDate','_dailyXpGiven','fontFamily','lastDate'
+           '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
           if(_data.studyLog) { S.studyLog = Object.assign({}, _data.studyLog, S.studyLog||{}); }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
@@ -11281,7 +11277,7 @@ auth.onAuthStateChanged(async user => {
           ['xp','lid','streak','nick','words','books','currentBook',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-           '_dailyDate','_dailyXpGiven','fontFamily','lastDate'
+           '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
           if(_data.studyLog) { S.studyLog = Object.assign({}, _data.studyLog, S.studyLog||{}); }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);

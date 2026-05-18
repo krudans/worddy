@@ -313,7 +313,7 @@ body.fs-lg{font-size:17px!important}
       <span id="study-mini-rem" style="display:none"></span>
     </div>
   </div>
-    <div class="body" id="body"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#EFF6FF,#F0FDF4)"><div style="font-size:64px;margin-bottom:16px;animation:float 2s ease-in-out infinite">🦋</div><div style="font-size:18px;font-weight:800;color:#1E5FA5;margin-bottom:8px">Butterfly Word</div><div style="font-size:13px;color:#9CA3AF">로딩 중...</div></div></div>
+    <div class="body" id="body"><div id="splash-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#EFF6FF,#F0FDF4)"><div style="font-size:64px;margin-bottom:16px;animation:float 2s ease-in-out infinite">🦋</div><div style="font-size:18px;font-weight:800;color:#1E5FA5;margin-bottom:6px">Butterfly Word</div><div id="splash-msg" style="font-size:13px;color:#9CA3AF;margin-bottom:20px">시작 중...</div><div style="width:200px;background:#E5E7EB;border-radius:99px;height:6px;overflow:hidden"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1E5FA5,#7C3AED);border-radius:99px;transition:width 0.4s ease"></div></div><div id="splash-step" style="font-size:11px;color:#C4C4C4;margin-top:10px">Firebase 연결 중...</div></div></div>
   <div id="ad-banner-fixed" style="position:fixed;bottom:56px;left:0;right:0;z-index:90"></div>
 <div class="nav" id="nav" style="display:none"></div>
 </div>
@@ -4347,6 +4347,10 @@ function startApp() {
   if(!localStorage.getItem('wd-pet-color')) {
     setTimeout(showPersonalityQ, 800);
   }
+  // 스플래시 완료 → 앱 화면으로
+  setSplash(100,'','');
+  const _splash = document.getElementById('splash-screen');
+  if(_splash) { _splash.style.opacity='0'; _splash.style.transition='opacity 0.3s'; setTimeout(()=>{ if(_splash.parentNode) _splash.remove(); },350); }
   document.getElementById('hd').style.display='';
   document.getElementById('nav').style.display='flex';
   updHD(); scheduleAlarms();
@@ -11165,15 +11169,27 @@ if(!auth) {
 window._authInitialized = false;
 window._authPending = false;
 
+// 스플래시 상태 업데이트 헬퍼
+function setSplash(pct, msg, step) {
+  const bar = document.getElementById('splash-bar');
+  const msgEl = document.getElementById('splash-msg');
+  const stepEl = document.getElementById('splash-step');
+  if(bar) bar.style.width = pct + '%';
+  if(msgEl && msg) msgEl.textContent = msg;
+  if(stepEl && step) stepEl.textContent = step;
+}
+
 auth.onAuthStateChanged(async user => {
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
+  setSplash(10, '로그인 확인 중...', user ? '로그인됨: ' + (user.email||'').split('@')[0] : '로그인 필요');
 
   // 관리자에서 등록/수정한 나비 데이터 머지 (로그인 여부 무관)
   loadButterfliesFromFirebase();
 
   if(user) {
-    // localStorage 복원
+    // ── STEP 1: localStorage 즉시 복원 (동기, 빠름) ──
+    setSplash(20, '데이터 복원 중...', '로컬 데이터 불러오는 중');
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
@@ -11196,12 +11212,66 @@ auth.onAuthStateChanged(async user => {
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
     } catch(e) {}
-    await loadXPConfig(); // XP 설정 먼저 로드
 
-    // Firebase에서 최신 데이터 먼저 로드한 뒤 startApp
+    // ── STEP 2: localStorage 데이터 있으면 즉시 앱 시작, Firebase는 백그라운드 동기화 ──
+    const _hasLocalData = !!localStorage.getItem('wd-xp');
+    if(_hasLocalData) {
+      setSplash(60, '거의 다 됐어요!', 'XP 설정 로드 중');
+      await loadXPConfig();
+      setSplash(90, '시작합니다! 🦋', '앱 시작 중');
+      startApp();
+      // Firebase 백그라운드 동기화 (앱 시작 후)
+      if(typeof db !== 'undefined') {
+        setSplash(100, '', '');
+        db.collection('users').doc(user.uid).get().then(_doc => {
+          if(!_doc.exists) return;
+          const _data = _doc.data();
+          ['xp','lid','streak','nick','words','books','currentBook',
+           'markMap','_achievements','_acc','_equipped','_ownedPacks',
+           'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
+           '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'
+          ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
+          if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
+          if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
+          if(Array.isArray(_data.myButterflies)) {
+            S.myButterflies = _data.myButterflies;
+            localStorage.setItem('wd-butterflies', JSON.stringify(_data.myButterflies));
+          }
+          if(Array.isArray(_data.collection)) {
+            const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
+            const fbIds = new Set(_data.collection.map(x=>x.id));
+            const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))];
+            S._collection = merged;
+            localStorage.setItem('bw-collection', JSON.stringify(merged));
+          }
+          const _fix = (arr) => (arr||[]).map(w => {
+            if(!w||!w.en||!w.kr) return w;
+            if(w.en.includes(' ') && w.en.length>10 && /^[a-zA-Z]+$/.test(w.kr) && w.kr.length<20)
+              return {...w, en:w.kr, kr:w.ph||'', ph:w.ex||'', ex:w.en, pos:w.pos||''};
+            if(w.ph && /^(명사|동사|형용사|부사|전치사|접속사)/.test(w.ph))
+              return {...w, pos:w.ph, ph:w.ex||'', ex:w.en+'.'};
+            return w;
+          });
+          S.words = _fix(S.words||[]);
+          S.books = (S.books||[]).map(bk=>({...bk,words:_fix(bk.words||[])}));
+          sv(); // 최신 데이터 저장
+          console.log('[앱] Firebase 백그라운드 동기화 완료');
+        }).catch(e => console.warn('[앱] Firebase 동기화 실패', e));
+      }
+      return; // 아래 로직 실행 안 함
+    }
+
+    // ── 첫 로그인 or localStorage 없음: Firebase에서 직접 로드 (타임아웃 5초) ──
+    setSplash(40, '계정 데이터 로드 중...', 'Firebase 연결 중');
+    await loadXPConfig();
+    setSplash(60, '계정 데이터 로드 중...', '사용자 데이터 받아오는 중');
+
+    // Firebase에서 최신 데이터 먼저 로드한 뒤 startApp (타임아웃 5초)
     if(typeof db !== 'undefined') {
       try {
-        const _doc = await db.collection('users').doc(user.uid).get();
+        const _fbPromise = db.collection('users').doc(user.uid).get();
+        const _timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000));
+        const _doc = await Promise.race([_fbPromise, _timeout]);
         if(_doc.exists) {
           const _data = _doc.data();
           ['xp','lid','streak','nick','words','books','currentBook',
@@ -11261,9 +11331,10 @@ auth.onAuthStateChanged(async user => {
           S.books = (S.books||[]).map(bk => ({...bk, words:_fix(bk.words||[])}));
           console.log('[앱] Firebase 선로드 완료, words:', S.words.length, 'books:', S.books.length);
         }
-      } catch(_e) { console.log('[앱] Firebase 선로드 실패, localStorage 사용'); }
+      } catch(_e) { console.log('[앱] Firebase 선로드 실패, localStorage 사용'); setSplash(90,'시작합니다! 🦋','로컬 데이터로 시작'); }
     }
 
+    setSplash(95,'시작합니다! 🦋','앱 시작 중');
     startApp();
     // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
@@ -11332,6 +11403,7 @@ auth.onAuthStateChanged(async user => {
       S.books = (S.books||[]).map(bk=>({...bk, words:_fixW2(bk.words)}));
     } catch(e) {}
     loadXPConfig().catch(()=>{});
+    setSplash(100,'','');
     showLogin();
   }
 });

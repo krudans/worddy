@@ -2679,6 +2679,29 @@ function charClickable(svgHtml, size) {
   return `<div onclick="S.stab='petcare';go('butterfly')" style="cursor:pointer;display:inline-block" title="나비탭으로">${svgHtml}</div>`;
 }
 
+
+function showGeminiKeyModal() {
+  const cur = localStorage.getItem('_geminiKey')||'';
+  const mr = document.getElementById('mr');
+  mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:900;margin-bottom:4px">🤖 Gemini API 키</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">AI 자동완성·이미지 분석·PDF 추출 등 AI 기능에 사용됩니다. 무료로 발급 가능해요.</div>
+    <input id="gkey-inp" type="password" placeholder="AIzaSy..." value="${cur}"
+      style="width:100%;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-family:monospace;outline:none;box-sizing:border-box;margin-bottom:10px">
+    <a href="https://aistudio.google.com/app/apikey" target="_blank"
+      style="display:block;text-align:center;font-size:12px;color:#1E5FA5;margin-bottom:14px;font-weight:600">
+      🔗 Google AI Studio에서 무료 발급받기 →
+    </a>
+    <button onclick="
+      const k=document.getElementById('gkey-inp').value.trim();
+      if(!k){toast('키를 입력해주세요');return;}
+      setGeminiKey(k);cm();toast('✅ Gemini API 키 저장됨!');go('profile');
+    " class="btn bb" style="margin-bottom:8px">저장</button>
+    ${cur?`<button onclick="setGeminiKey('');cm();toast('키 삭제됨');go('profile');" class="btn bgr" style="margin-bottom:8px">키 삭제</button>`:''}
+    <button onclick="cm()" class="btn">닫기</button>
+  </div></div>`;
+}
+
 function showAlarmSettings() {
   const mr = document.getElementById('mr');
   if(!mr) return;
@@ -4099,8 +4122,7 @@ async function finishSurvey() {
   // AI 추천 (API 키 있을 시)
   let aiRec='';
   try {
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,messages:[{role:'user',content:`영어 단어 암기 앱 사용자. 설문결과: 하루학습시간=${['10분이하','10~30분','30분~1시간','1시간이상'][S.surveyAns[0]||0]}, 암기방식=${['눈으로','소리로','손으로','예문으로'][S.surveyAns[1]||0]}, 목적=${['회화','수능','토익','비즈니스','교양'][S.surveyAns[2]||0]}. 학습 스타일: ${style}. 3줄로 간단히 맞춤 학습법 추천. 한국어로.`}]})});
-    const d=await r.json(); aiRec=d.content?.[0]?.text?.trim()||'';
+    aiRec = await geminiText(`영어 단어 암기 앱 사용자. 설문결과: 하루학습시간=${['10분이하','10~30분','30분~1시간','1시간이상'][S.surveyAns[0]||0]}, 암기방식=${['눈으로','소리로','손으로','예문으로'][S.surveyAns[1]||0]}, 목적=${['회화','수능','토익','비즈니스','교양'][S.surveyAns[2]||0]}. 학습 스타일: ${style}. 3줄로 간단히 맞춤 학습법 추천. 한국어로.`, 200);
   } catch(e){}
 
   document.getElementById('body').innerHTML=`<div class="pad" style="text-align:center;padding-top:24px">
@@ -9215,16 +9237,8 @@ async function handleImgFiles(files) {
     try {
       if(!file.type.startsWith('image/')){toast('이미지 파일만 지원합니다');continue;}
       const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',max_tokens:1200,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:file.type,data:b64}},
-          {type:'text',text:'이 이미지에서 영어 단어를 모두 찾아 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}] — 영어 단어가 없으면 []'}
-        ]}]
-      })});
-      const d=await resp.json();
-      const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-      const words=JSON.parse(txt);
+      const _txt2 = await geminiVision('이 이미지에서 영어 단어를 모두 찾아 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}] — 영어 단어가 없으면 []', b64, file.type, 1200);
+      const words=parseGeminiJson(_txt2);
       words.forEach(w=>{if(!allWords.find(x=>x.en===w.en))allWords.push(w);});
     } catch(e){toast('이미지 분석 실패: '+file.name);}
   }
@@ -9241,16 +9255,8 @@ async function handlePdfFile(file) {
   S.ai=true; go('mybooks','add');
   try {
     const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',max_tokens:2000,
-      messages:[{role:'user',content:[
-        {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
-        {type:'text',text:'이 PDF에서 영어 단어를 최대 50개 추출해 JSON 배열로만 반환하세요. 학습 가치가 높은 단어를 우선 선택하세요. 형식: [{"en":"word","kr":"한국어뜻"}]'}
-      ]}]
-    })});
-    const d=await resp.json();
-    const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    const words=JSON.parse(txt);
+    const _txt3 = await geminiPdf('이 PDF에서 영어 단어를 최대 50개 추출해 JSON 배열로만 반환하세요. 학습 가치가 높은 단어를 우선 선택하세요. 형식: [{"en":"word","kr":"한국어뜻"}]', b64, 2000);
+    const words=parseGeminiJson(_txt3);
     if(!words.length){toast('영어 단어를 찾지 못했어요');S.ai=false;go('mybooks','add');return;}
     S.ai=false;
     showExtracted(words);
@@ -9285,16 +9291,8 @@ async function handleBulkFile(file) {
     S.ai=true; go('mybooks','add');
     try {
       const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',max_tokens:2000,
-        messages:[{role:'user',content:[
-          {type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:b64}},
-          {type:'text',text:'이 Excel 파일에서 영어 단어와 한국어 뜻을 추출해 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}]'}
-        ]}]
-      })});
-      const d=await resp.json();
-      const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-      const words=JSON.parse(txt);
+      const _txt4 = await geminiVision('이 Excel 파일에서 영어 단어와 한국어 뜻을 추출해 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}]', b64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 2000);
+      const words=parseGeminiJson(_txt4);
       S.ai=false;
       if(!words.length){toast('단어를 찾지 못했어요');go('mybooks','add');return;}
       showExtracted(words);
@@ -9349,10 +9347,8 @@ async function extractFromText() {
     const prompt = isUrl
       ? `이 URL의 내용을 알 수 없으므로, URL 자체에서 단어를 추측해서 JSON 배열로 반환: ${inp}\n형식: [{"en":"word","kr":"뜻"}] (5~10개)`
       : `아래 영어 텍스트에서 학습하기 좋은 단어 10~15개를 뽑아 JSON 배열로만 반환.\n형식: [{"en":"word","kr":"뜻"}]\n\n텍스트:\n${inp.slice(0,2000)}`;
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})});
-    const d=await r.json();
-    const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    showExtracted(JSON.parse(txt));
+    const _txt5 = await geminiText(prompt, 800);
+    showExtracted(parseGeminiJson(_txt5));
   } catch(e) { toast('추출 실패. 텍스트를 직접 입력해주세요'); }
   S.ai=false; go('mybooks','add');
 }
@@ -9363,20 +9359,89 @@ function openNaverDict() {
   window.open(url,'_blank');
 }
 
+
+// ══════════════════════════════════════════════
+// Gemini API 공통 헬퍼
+// ══════════════════════════════════════════════
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_PRO   = 'gemini-1.5-flash';  // 이미지/PDF도 flash로 처리
+
+function getGeminiKey() {
+  return S._geminiKey || localStorage.getItem('_geminiKey') || '';
+}
+
+function setGeminiKey(k) {
+  S._geminiKey = k.trim();
+  localStorage.setItem('_geminiKey', k.trim());
+}
+
+function promptGeminiKey() {
+  const k = prompt('Gemini API 키를 입력하세요.\n(https://aistudio.google.com 에서 무료 발급)');
+  if(k && k.trim()) { setGeminiKey(k); return k.trim(); }
+  return null;
+}
+
+// 텍스트 전용 Gemini 호출
+async function geminiText(prompt, maxTokens=800) {
+  let key = getGeminiKey();
+  if(!key) { key = promptGeminiKey(); if(!key) throw new Error('API 키 없음'); }
+  const url = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${key}`;
+  const r = await fetch(url, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      contents:[{parts:[{text:prompt}]}],
+      generationConfig:{maxOutputTokens:maxTokens}
+    })
+  });
+  const d = await r.json();
+  if(d.error) throw new Error(d.error.message||'Gemini 오류');
+  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// 이미지 포함 Gemini 호출
+async function geminiVision(prompt, b64, mimeType, maxTokens=1200) {
+  let key = getGeminiKey();
+  if(!key) { key = promptGeminiKey(); if(!key) throw new Error('API 키 없음'); }
+  const url = `${GEMINI_BASE}/${GEMINI_PRO}:generateContent?key=${key}`;
+  const r = await fetch(url, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      contents:[{parts:[
+        {inline_data:{mime_type:mimeType, data:b64}},
+        {text:prompt}
+      ]}],
+      generationConfig:{maxOutputTokens:maxTokens}
+    })
+  });
+  const d = await r.json();
+  if(d.error) throw new Error(d.error.message||'Gemini Vision 오류');
+  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// PDF 포함 Gemini 호출 (1.5-flash supports PDF via inline_data)
+async function geminiPdf(prompt, b64, maxTokens=2000) {
+  return geminiVision(prompt, b64, 'application/pdf', maxTokens);
+}
+
+// JSON 파싱 헬퍼 (코드블록 제거)
+function parseGeminiJson(text) {
+  const clean = text.replace(/```json|```/g,'').trim();
+  return JSON.parse(clean);
+}
+
 async function aiMFull() {
   const en=(document.getElementById('ne')?.value||S.nEn).trim();
   if(!en){toast('영단어를 먼저 입력하세요');return;}
   S.ai=true; S.nAiData=null; go();
   try {
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,messages:[{role:'user',content:`"${en}" 단어 정보를 JSON으로만 반환. 형식: {"kr":"뜻1, 뜻2","ph":"[발음기호]","ex":"예문","tip":"한국어 발음 암기팁"}`}]})});
-    const d=await r.json();
-    const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    const parsed=JSON.parse(txt);
+    const _txt6 = await geminiText(`"${en}" 단어 정보를 JSON으로만 반환. 형식: {"kr":"뜻1, 뜻2","ph":"[발음기호]","ex":"예문","tip":"한국어 발음 암기팁"}`, 300);
+    const parsed=parseGeminiJson(_txt6);
     S.nKr=parsed.kr||''; S.nEn=en;
     S.nAiData={ph:parsed.ph,ex:parsed.ex,tip:parsed.tip};
   } catch(e){
     // 간단 버전으로 폴백
-    try{const r2=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:60,messages:[{role:'user',content:`"${en}" 한국어 뜻 2~3개만. 예: "인내, 끈기"`}]})});const d2=await r2.json();S.nKr=d2.content?.[0]?.text?.trim()||'';S.nEn=en;}catch(e2){toast('AI 오류');}
+    try{const _txt7=await geminiText(`"${en}" 한국어 뜻 2~3개만. JSON 없이 텍스트로만. 예: 인내, 끈기`, 60);S.nKr=_txt7.trim();S.nEn=en;}catch(e2){toast('AI 오류');}
   }
   S.ai=false; go();
 }
@@ -9425,10 +9490,8 @@ async function handleFile(input){
   S.ai=true;go('mybooks','add');
   try{
     const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type,data:b64}},{type:'text',text:'이미지에서 영어 단어들을 찾아 JSON 배열로만 반환. 형식: [{"en":"word","kr":"뜻"}]'}]}]})});
-    const d=await resp.json();
-    const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    showExtracted(JSON.parse(txt));
+    const _txt8 = await geminiVision('이미지에서 영어 단어들을 찾아 JSON 배열로만 반환. 형식: [{"en":"word","kr":"뜻"}]', b64, file.type, 800);
+    showExtracted(parseGeminiJson(_txt8));
   }catch(e){toast('추출 실패. API 키가 필요해요.');}
   S.ai=false;go('mybooks','add');
 }
@@ -9655,10 +9718,8 @@ async function aiEnrichWord(en) {
   if(!wi) return;
   toast('AI 분석 중...');
   try {
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,messages:[{role:'user',content:`"${en}" 단어 정보 JSON으로만 반환. 형식: {"koSnd":"한국어발음(예:애플)","pos":"품사(예:명사/동사)","syn":"유의어 2개(쉼표구분)","tip":"한국어 암기팁"}`}]})});
-    const d=await r.json();
-    const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    const p=JSON.parse(txt);
+    const _txt9 = await geminiText(`"${en}" 단어 정보 JSON으로만 반환. 형식: {"koSnd":"한국어발음(예:애플)","pos":"품사(예:명사/동사)","syn":"유의어 2개(쉼표구분)","tip":"한국어 암기팁"}`, 200);
+    const p=parseGeminiJson(_txt9);
     if(p.koSnd) wi.koSnd=p.koSnd;
     if(p.pos) wi.pos=p.pos;
     if(p.syn) wi.syn=p.syn;
@@ -10659,6 +10720,11 @@ ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S
     </div>
   </div>`);
 
+  // Gemini API 키 설정
+  const _gkSet = !!localStorage.getItem('_geminiKey');
+  parts.push(`<button onclick="showGeminiKeyModal()" style="width:100%;padding:11px;background:${_gkSet?'#F0FDF4':'#FFF8F0'};color:${_gkSet?'#16A34A':'#E65100'};border:1.5px solid ${_gkSet?'#BBF7D0':'#FED7AA'};border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px">
+    ${_gkSet?'🤖 Gemini AI 연결됨 (키 변경)':'🔑 Gemini API 키 설정 (AI 기능 활성화)'}
+  </button>`);
   parts.push('<button class="btn" onclick="showAlarmSettings()" style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #E9D5FF">⏰ 목표 & 알람</button>');
   parts.push('<button class="btn" onclick="showAchievementsModal()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">🏆 도전 과제</button>');
   parts.push('<button class="btn" onclick="showAppGuide()" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082">📖 앱 사용법</button>');

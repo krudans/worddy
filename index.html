@@ -7226,7 +7226,107 @@ function rHome() {
       </div>
     </div>
   </div>`)
+
+  // ── XP 순위 (홈 하단) ──
+  parts.push(`<div style="background:var(--bg-card,#FFFFFF);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🏆 XP 순위</div>
+      <div style="display:flex;gap:4px">
+        ${[['day','오늘','#1E5FA5'],['week','주간','#16A34A'],['month','월간','#7C3AED'],['total','누적','#E65100']].map(([m,lb,c])=>`<button onclick="window._homeRankMode='${m}';renderHomeRank()" id="hr-${m}" style="padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;border:1.5px solid ${m==='day'?c:'#E5E7EB'};background:${m==='day'?c:'#fff'};color:${m==='day'?'#fff':'#9CA3AF'};cursor:pointer">${lb}</button>`).join('')}
+      </div>
+    </div>
+    <div id="home-rank-body" style="min-height:60px">
+      <div style="text-align:center;padding:16px;color:#9CA3AF;font-size:12px">⏳ 로딩 중...</div>
+    </div>
+    <div id="home-my-rank" style="margin-top:8px;padding:8px 12px;background:#EFF6FF;border-radius:10px;border:1.5px solid #BFDBFE;display:none"></div>
+  </div>`);
+
+  parts.push('</div>');
+  setTimeout(()=>renderHomeRank(), 300);
   return parts.join('');
+}
+
+// ── 홈 XP 순위 렌더링 ──
+async function renderHomeRank() {
+  const el = document.getElementById('home-rank-body');
+  const myEl = document.getElementById('home-my-rank');
+  if(!el) return;
+  if(typeof db === 'undefined' || !S.user) {
+    el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">로그인 필요</div>';
+    return;
+  }
+  const mode = window._homeRankMode || 'day';
+  const modeColor = {day:'#1E5FA5',week:'#16A34A',month:'#7C3AED',total:'#E65100'}[mode];
+  const modeLabel = {day:'오늘',week:'주간',month:'월간',total:'누적'}[mode];
+
+  // 버튼 스타일 업데이트
+  ['day','week','month','total'].forEach(m => {
+    const btn = document.getElementById('hr-'+m);
+    if(!btn) return;
+    const c = {day:'#1E5FA5',week:'#16A34A',month:'#7C3AED',total:'#E65100'}[m];
+    btn.style.background = m===mode ? c : '#fff';
+    btn.style.color = m===mode ? '#fff' : '#9CA3AF';
+    btn.style.borderColor = m===mode ? c : '#E5E7EB';
+  });
+
+  el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">⏳ 불러오는 중...</div>';
+
+  try {
+    const snap = await db.collection('users').get();
+    const today_ = typeof today==='function'?today():new Date().toISOString().slice(0,10);
+    const weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    const monthAgo = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+    const myUid = S.user.uid;
+    let all = [];
+    snap.forEach(d => {
+      const x = d.data();
+      const sl = x.studyLog||{};
+      const dayXp = (sl[today_]?.xp)||0;
+      const weekXp = Object.entries(sl).filter(([k])=>k>=weekAgo).reduce((s,[,v])=>s+(v.xp||0),0);
+      const monthXp = Object.entries(sl).filter(([k])=>k>=monthAgo).reduce((s,[,v])=>s+(v.xp||0),0);
+      const totalXp = x._totalXp||x.xp||0;
+      const xp = {day:dayXp, week:weekXp, month:monthXp, total:totalXp}[mode]||0;
+      all.push({uid:d.id, nick:x.nick||'익명', xp, streak:x.streak||0});
+    });
+    all.sort((a,b)=>b.xp-a.xp);
+    const top5 = all.slice(0,5);
+    const maxXp = top5[0]?.xp||1;
+    const myRank = all.findIndex(u=>u.uid===myUid)+1;
+    const myEntry = all.find(u=>u.uid===myUid);
+    const medals = ['🥇','🥈','🥉','4','5'];
+
+    el.innerHTML = top5.length === 0
+      ? `<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">${modeLabel} XP 데이터 없음</div>`
+      : top5.map((u,i) => {
+          const bar = Math.round(u.xp/maxXp*100);
+          const isMe = u.uid===myUid;
+          return `<div style="padding:7px 8px;border-radius:9px;background:${isMe?'#EFF6FF':'#F9FAFB'};margin-bottom:5px;border:1.5px solid ${isMe?'#BFDBFE':'transparent'}">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:12px;width:20px;text-align:center">${medals[i]}</span>
+              <span style="flex:1;font-size:12px;font-weight:700;color:${isMe?'#1E5FA5':'#111'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.nick}${isMe?' 👈':''}</span>
+              <span style="font-size:12px;font-weight:800;color:${modeColor}">⚡${u.xp.toLocaleString()}</span>
+            </div>
+            <div style="background:#E5E7EB;border-radius:99px;height:4px;overflow:hidden">
+              <div style="height:100%;background:${modeColor};border-radius:99px;width:${bar}%"></div>
+            </div>
+          </div>`;
+        }).join('');
+
+    // 내 순위 (5위 밖이면 별도 표시)
+    if(myEl) {
+      if(myRank > 5 && myEntry) {
+        myEl.style.display = 'block';
+        myEl.innerHTML = `<div style="display:flex;align-items:center;gap:6px"><span style="font-size:12px;font-weight:900;color:#1E5FA5;width:24px;text-align:center">${myRank}위</span><span style="flex:1;font-size:12px;font-weight:700;color:#1E5FA5">${myEntry.nick} 👈</span><span style="font-size:12px;font-weight:800;color:${modeColor}">⚡${myEntry.xp.toLocaleString()}</span><span style="font-size:10px;color:#9CA3AF">/ 전체 ${all.length}명</span></div>`;
+      } else if(myRank > 0) {
+        myEl.style.display = 'block';
+        myEl.innerHTML = `<div style="font-size:11px;color:#1E5FA5;font-weight:700">내 순위: ${myRank}위 / 전체 ${all.length}명</div>`;
+      } else {
+        myEl.style.display = 'none';
+      }
+    }
+  } catch(e) {
+    el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">순위 불러오기 실패</div>';
+  }
 }
 
 function showBooksModal() {

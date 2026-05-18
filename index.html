@@ -9058,77 +9058,274 @@ function rAdd() {
     ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))
   ];
   const curBook = S.currentBook||'내 단어장';
+  const addTab = S._addTab||'text';
+
+  // 단어장 저장 헬퍼
+  function _saveWord(w) {
+    const book = allBooks.find(b=>b.name===curBook);
+    if(curBook!=='내 단어장') {
+      const bk=(S.books||[]).find(b=>b.name===curBook);
+      if(bk){if(!bk.words)bk.words=[];bk.words.push(w);}
+      else S.words.push(w);
+    } else S.words.push(w);
+  }
+
+  // ── 탭별 콘텐츠 빌더 ──
+  const tabContents = {
+
+    // ─── 1. 텍스트(문장) ───
+    text:`
+      <div style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">✏️ 직접 입력 <span style="font-weight:400;color:#9CA3AF">— 영단어 + AI 자동완성</span></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="ne" placeholder="apple, beautiful, run..." value="${S.nEn||''}" oninput="S.nEn=this.value"
+            style="flex:1;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:16px;font-weight:700;font-family:monospace;outline:none;color:#111"
+            onkeydown="if(event.key==='Enter'){document.getElementById('nk2').focus()}">
+          <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:10px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
+            ${S.ai?'⏳':'✨ AI 자동완성'}
+          </button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:700;color:#9CA3AF">한국어 뜻 *</div>
+          <button onclick="openNaverDict()" style="background:#03C75A;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer">네이버 사전</button>
+        </div>
+        <input id="nk2" placeholder="예: 사과, 아름다운" value="${S.nKr||''}" oninput="S.nKr=this.value"
+          style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:8px">
+        <input id="nph" placeholder="발음기호 (예: [ˈæpəl])" value="${S.nPh||''}" oninput="S.nPh=this.value"
+          style="width:100%;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;font-family:monospace;outline:none;box-sizing:border-box;margin-bottom:8px">
+        ${[1,2,3].map(n=>`<input id="nex${n}" placeholder="예문 ${n}${n===1?' *':' (선택)'}" value="${S['nEx'+n]||''}" oninput="S['nEx${n}']=this.value"
+          style="width:100%;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:12px;outline:none;box-sizing:border-box;margin-bottom:${n<3?'8px':'0'}">`).join('')}
+      </div>
+      <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:8px">이모지</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${['📚','🔤','✏️','📝','💡','🌟','🎯','🔥','💎','🌈','🎪','🦋','🌺','🍎','🐾','🎵','🚀','🏆'].map(em=>`<button onclick="S.nImg='${em}';go('mybooks','add')" style="width:36px;height:36px;border-radius:8px;border:2px solid ${S.nImg===em?'#1E5FA5':'#E5E7EB'};background:${S.nImg===em?'#EFF6FF':'#fff'};font-size:18px;cursor:pointer">${em}</button>`).join('')}
+        </div>
+      </div>
+      <button onclick="addW()" style="width:100%;padding:14px;background:linear-gradient(135deg,#1A1A2E,#374151);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer">+ 단어 추가하기</button>`,
+
+    // ─── 2. 이미지 파일 ───
+    image:`
+      <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:4px">🖼️ 이미지에서 단어 자동 추출</div>
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">사진·스크린샷·교재 이미지를 올리면 AI가 영어 단어를 찾아 자동 등록해요</div>
+        <label style="display:block;border:2px dashed #E5E7EB;border-radius:12px;padding:30px 16px;text-align:center;cursor:pointer;background:#FAFAFA;transition:border-color .2s"
+          onmouseover="this.style.borderColor='#7C3AED'" onmouseout="this.style.borderColor='#E5E7EB'">
+          <div style="font-size:32px;margin-bottom:8px">📷</div>
+          <div style="font-size:14px;font-weight:700;color:#374151;margin-bottom:4px">이미지 파일 선택</div>
+          <div style="font-size:11px;color:#9CA3AF">JPG, PNG, GIF, WEBP 지원</div>
+          <input type="file" accept="image/*" multiple style="display:none" onchange="handleImgFiles(this.files)">
+        </label>
+        ${S.ai?'<div style="margin-top:14px;text-align:center;color:#7C3AED;font-size:13px;font-weight:700">⏳ AI가 이미지 분석 중...</div>':''}
+      </div>
+      <div style="background:#EFF6FF;border-radius:12px;padding:10px 14px">
+        <div style="font-size:11px;color:#1E5FA5;font-weight:600">💡 이런 이미지가 잘 됩니다</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;line-height:1.6">교재 페이지 · 단어장 사진 · 영문 기사 스크린샷 · 단어가 적힌 메모</div>
+      </div>`,
+
+    // ─── 3. PDF ───
+    pdf:`
+      <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:4px">📄 PDF에서 단어 추출</div>
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">PDF 파일을 올리면 AI가 영어 단어를 뽑아 자동 등록해요</div>
+        <label style="display:block;border:2px dashed #E5E7EB;border-radius:12px;padding:30px 16px;text-align:center;cursor:pointer;background:#FAFAFA;transition:border-color .2s"
+          onmouseover="this.style.borderColor='#E65100'" onmouseout="this.style.borderColor='#E5E7EB'">
+          <div style="font-size:32px;margin-bottom:8px">📑</div>
+          <div style="font-size:14px;font-weight:700;color:#374151;margin-bottom:4px">PDF 파일 선택</div>
+          <div style="font-size:11px;color:#9CA3AF">PDF 형식 지원 (최대 10MB)</div>
+          <input type="file" accept=".pdf" style="display:none" onchange="handlePdfFile(this.files[0])">
+        </label>
+        ${S.ai?'<div style="margin-top:14px;text-align:center;color:#E65100;font-size:13px;font-weight:700">⏳ AI가 PDF 분석 중...</div>':''}
+      </div>
+      <div style="background:#FFF8F0;border-radius:12px;padding:10px 14px">
+        <div style="font-size:11px;color:#E65100;font-weight:600">💡 추출 팁</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;line-height:1.6">텍스트가 있는 PDF에서 잘 작동해요. 스캔 이미지 PDF는 이미지 탭을 이용해주세요.</div>
+      </div>`,
+
+    // ─── 4. 파일 일괄등록 ───
+    file:`
+      <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:4px">📂 파일로 일괄 등록</div>
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">엑셀·CSV 파일을 올리거나, 아래 텍스트 박스에 직접 붙여넣기 하세요</div>
+        <label style="display:block;border:2px dashed #E5E7EB;border-radius:12px;padding:20px 16px;text-align:center;cursor:pointer;background:#FAFAFA;margin-bottom:10px;transition:border-color .2s"
+          onmouseover="this.style.borderColor='#16A34A'" onmouseout="this.style.borderColor='#E5E7EB'">
+          <div style="font-size:28px;margin-bottom:6px">📊</div>
+          <div style="font-size:14px;font-weight:700;color:#374151;margin-bottom:3px">Excel / CSV 파일 선택</div>
+          <div style="font-size:11px;color:#9CA3AF">.xlsx .xls .csv 지원</div>
+          <input type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none" onchange="handleBulkFile(this.files[0])">
+        </label>
+        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:6px">또는 직접 붙여넣기 <span style="font-weight:400">(한 줄에 하나, 쉼표·탭·= 구분)</span></div>
+        <textarea id="bt" placeholder="apple, 사과&#10;book = 책&#10;run	달리다" style="width:100%;min-height:120px;resize:vertical;font-size:13px;font-family:monospace;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:10px;box-sizing:border-box;outline:none;margin-bottom:8px"></textarea>
+        <button onclick="addBlk()" style="width:100%;padding:12px;background:linear-gradient(135deg,#16A34A,#15803D);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer">📥 일괄 추가</button>
+      </div>
+      <div style="background:#F0FDF4;border-radius:12px;padding:10px 14px">
+        <div style="font-size:11px;color:#16A34A;font-weight:600">💡 파일 형식 안내</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;line-height:1.6">
+          <b>CSV/Excel:</b> A열=영단어, B열=한국어뜻 (1행 헤더 자동 스킵)<br>
+          <b>텍스트:</b> <code>apple, 사과</code> 또는 <code>apple = 사과</code>
+        </div>
+      </div>`
+  };
+
+  const tabMeta = [
+    {id:'text',  ic:'✏️', lb:'텍스트'},
+    {id:'image', ic:'🖼️', lb:'이미지'},
+    {id:'pdf',   ic:'📄', lb:'PDF'},
+    {id:'file',  ic:'📂', lb:'파일'},
+  ];
 
   return `<div style="display:flex;flex-direction:column;height:100%;background:#F8F9FA">
     <!-- 헤더 -->
-    <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #EFEFEF;flex-shrink:0">
-      <div style="font-size:18px;font-weight:900;color:#1A1A2E">단어 추가</div>
-      <div style="font-size:12px;color:#9CA3AF;margin-top:2px">AI 자동완성으로 빠르게</div>
+    <div style="background:#fff;padding:12px 16px 0;border-bottom:1px solid #EFEFEF;flex-shrink:0">
+      <div style="font-size:17px;font-weight:900;color:#1A1A2E;margin-bottom:10px">단어 추가</div>
+      <!-- 입력 방식 탭 -->
+      <div style="display:flex;gap:0;overflow-x:auto;scrollbar-width:none">
+        ${tabMeta.map(t=>`<button onclick="S._addTab='${t.id}';go('mybooks','add')"
+          style="flex:1;min-width:64px;padding:8px 4px;border:none;border-bottom:2.5px solid ${addTab===t.id?'#1E5FA5':'transparent'};background:transparent;font-size:12px;font-weight:${addTab===t.id?'800':'600'};color:${addTab===t.id?'#1E5FA5':'#9CA3AF'};cursor:pointer;white-space:nowrap;transition:all .15s">
+          ${t.ic} ${t.lb}
+        </button>`).join('')}
+      </div>
     </div>
 
-    <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px">
-
-      <!-- 단어장 선택 드롭다운 -->
-      <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
-        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:6px">추가할 단어장</div>
+    <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px">
+      <!-- 단어장 선택 -->
+      <div style="background:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:5px">추가할 단어장</div>
         <div style="position:relative">
-          <select onchange="switchBook(this.value);go('mybooks','add')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
+          <select onchange="switchBook(this.value);go('mybooks','add')" style="width:100%;padding:8px 30px 8px 10px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:13px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
             ${allBooks.map(b=>`<option value="${b.name}" ${b.name===curBook?'selected':''}>${b.name} (${b.cnt}개)</option>`).join('')}
           </select>
-          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
+          <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
         </div>
       </div>
 
-      <!-- 단어 입력 카드 -->
-      <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
-        <!-- 영단어 + AI 자동완성 -->
-        <div style="margin-bottom:10px">
-          <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:5px">영단어 *</div>
-          <div style="display:flex;gap:8px">
-            <input id="ne" placeholder="apple, beautiful, run..." value="${S.nEn||''}" oninput="S.nEn=this.value"
-              style="flex:1;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:16px;font-weight:700;font-family:monospace;outline:none;color:#111"
-              onkeydown="if(event.key==='Enter'){document.getElementById('nk2').focus()}">
-            <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
-              ${S.ai?'⏳ AI 중...':'✨ AI 자동완성'}
-            </button>
-          </div>
-        </div>
-
-        <!-- 한국어 뜻 -->
-        <div style="margin-bottom:10px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <div style="font-size:11px;font-weight:700;color:#9CA3AF">한국어 뜻 *</div>
-            <button onclick="openNaverDict()" style="background:#03C75A;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer">네이버 사전</button>
-          </div>
-          <input id="nk2" placeholder="예: 사과, 아름다운, 달리다" value="${S.nKr||''}" oninput="S.nKr=this.value"
-            style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box">
-        </div>
-
-        <!-- 발음기호 -->
-        <div style="margin-bottom:10px">
-          <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:5px">발음기호</div>
-          <input id="nph" placeholder="예: [ˈæpəl]" value="${S.nPh||''}" oninput="S.nPh=this.value"
-            style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;font-family:monospace;outline:none;box-sizing:border-box">
-        </div>
-
-        <!-- 예문 1,2,3 -->
-${[1,2,3].map(n=>` <div style="margin-bottom:${n<3?'10px':'0'}"> <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:5px">예문 ${n}${n===1?' *':' (선택)'}</div> <input id="nex${n}" placeholder="예문을 입력하세요${n>1?' (선택)':''}" value="${S['nEx'+n]||''}" oninput="S['nEx'+n]=this.value" style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box"> </div>`).join('')}
-      </div>
-
-      <!-- 이미지 선택 카드 -->
-      <div style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
-        <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:10px">이모지 선택 (선택)</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-${['📚','🔤','✏️','📝','💡','🌟','🎯','🔥','💎','🌈','🎪','🦋','🌺','🍎','🐾','🎵','🚀','🏆'].map(em=>` <button onclick="S.nImg='${em}';go('mybooks','add')" style="width:40px;height:40px;border-radius:10px;border:2px solid ${S.nImg===em?'#1E5FA5':'#E5E7EB'};background:${S.nImg===em?'#EFF6FF':'#fff'};font-size:20px;cursor:pointer">${em}</button> `).join('')}
-        </div>
-      </div>
-
-      <!-- 저장 버튼 -->
-      <button onclick="addW()" style="width:100%;padding:15px;background:linear-gradient(135deg,#1A1A2E,#374151);color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:-.3px">
-        + 단어 추가하기
-      </button>
+      <!-- 탭별 콘텐츠 -->
+      ${tabContents[addTab]||tabContents.text}
     </div>
   </div>`;
+}
+
+
+// ── 이미지 파일 처리 (다중) ──
+async function handleImgFiles(files) {
+  if(!files||!files.length){toast('파일을 선택해주세요');return;}
+  S.ai=true; go('mybooks','add');
+  const allWords=[];
+  for(const file of Array.from(files)) {
+    try {
+      if(!file.type.startsWith('image/')){toast('이미지 파일만 지원합니다');continue;}
+      const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',max_tokens:1200,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:file.type,data:b64}},
+          {type:'text',text:'이 이미지에서 영어 단어를 모두 찾아 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}] — 영어 단어가 없으면 []'}
+        ]}]
+      })});
+      const d=await resp.json();
+      const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+      const words=JSON.parse(txt);
+      words.forEach(w=>{if(!allWords.find(x=>x.en===w.en))allWords.push(w);});
+    } catch(e){toast('이미지 분석 실패: '+file.name);}
+  }
+  S.ai=false;
+  if(!allWords.length){toast('영어 단어를 찾지 못했어요');go('mybooks','add');return;}
+  showExtracted(allWords);
+  go('mybooks','add');
+}
+
+// ── PDF 파일 처리 ──
+async function handlePdfFile(file) {
+  if(!file){toast('파일을 선택해주세요');return;}
+  if(file.size>10*1024*1024){toast('10MB 이하 PDF만 지원합니다');return;}
+  S.ai=true; go('mybooks','add');
+  try {
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',max_tokens:2000,
+      messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+        {type:'text',text:'이 PDF에서 영어 단어를 최대 50개 추출해 JSON 배열로만 반환하세요. 학습 가치가 높은 단어를 우선 선택하세요. 형식: [{"en":"word","kr":"한국어뜻"}]'}
+      ]}]
+    })});
+    const d=await resp.json();
+    const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+    const words=JSON.parse(txt);
+    if(!words.length){toast('영어 단어를 찾지 못했어요');S.ai=false;go('mybooks','add');return;}
+    S.ai=false;
+    showExtracted(words);
+    go('mybooks','add');
+  } catch(e){
+    toast('PDF 분석 실패. 텍스트 PDF인지 확인해주세요.');
+    S.ai=false; go('mybooks','add');
+  }
+}
+
+// ── 파일 일괄등록 (Excel/CSV) ──
+async function handleBulkFile(file) {
+  if(!file){toast('파일을 선택해주세요');return;}
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(['csv','tsv','txt'].includes(ext)) {
+    // CSV/TSV/TXT: 텍스트로 읽어서 파싱
+    const text=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsText(file,'UTF-8');});
+    const words=[];
+    text.split('\n').forEach((ln,i)=>{
+      const p=ln.split(/[,\t=;]/);
+      if(p.length<2)return;
+      const en=p[0].replace(/^["']|["']$/g,'').trim();
+      const kr=p[1].replace(/^["']|["']$/g,'').trim();
+      // 헤더 스킵
+      if(i===0&&(en.toLowerCase()==='english'||en.toLowerCase()==='word'||en.toLowerCase()==='단어'))return;
+      if(en&&kr&&/[a-zA-Z]/.test(en))words.push({en,kr});
+    });
+    if(!words.length){toast('단어를 찾지 못했어요. 형식: A열=영어, B열=한국어');return;}
+    showExtracted(words);
+  } else if(['xlsx','xls'].includes(ext)) {
+    // Excel: AI에게 파일 내용 분석 요청 (base64)
+    S.ai=true; go('mybooks','add');
+    try {
+      const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',max_tokens:2000,
+        messages:[{role:'user',content:[
+          {type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:b64}},
+          {type:'text',text:'이 Excel 파일에서 영어 단어와 한국어 뜻을 추출해 JSON 배열로만 반환하세요. 형식: [{"en":"word","kr":"한국어뜻"}]'}
+        ]}]
+      })});
+      const d=await resp.json();
+      const txt=(d.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+      const words=JSON.parse(txt);
+      S.ai=false;
+      if(!words.length){toast('단어를 찾지 못했어요');go('mybooks','add');return;}
+      showExtracted(words);
+      go('mybooks','add');
+    } catch(e){
+      // SheetJS fallback
+      try {
+        const ab=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsArrayBuffer(file);});
+        if(typeof XLSX!=='undefined'){
+          const wb=XLSX.read(ab,{type:'arraybuffer'});
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+          const words=[];
+          rows.forEach((row,i)=>{
+            if(!row||row.length<2)return;
+            const en=String(row[0]||'').trim(), kr=String(row[1]||'').trim();
+            if(i===0&&(en.toLowerCase()==='english'||en.toLowerCase()==='word'))return;
+            if(en&&kr&&/[a-zA-Z]/.test(en))words.push({en,kr});
+          });
+          S.ai=false;
+          if(words.length)showExtracted(words);
+          else toast('단어를 찾지 못했어요');
+        } else {
+          toast('Excel 파싱 실패. CSV로 변환 후 시도해주세요.');
+        }
+      } catch(e2){toast('Excel 파싱 실패');}
+      S.ai=false; go('mybooks','add');
+    }
+  } else {
+    toast('.xlsx .xls .csv .txt 파일만 지원합니다');
+  }
 }
 
 function urlExtractModal() {

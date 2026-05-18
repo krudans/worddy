@@ -747,7 +747,7 @@ function showButterflyDogam() {
         <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕</button>
       </div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
-        ${[0,1,2,3,4,5].map(r=>`<button onclick="window._dogamFilter=${r};showButterflyDogam()" style="padding:4px 10px;border-radius:14px;border:1.5px solid ${(selR===r)?rColors[r]:'#E5E7EB'};background:${(selR===r)?rColors[r]:'#fff'};color:${(selR===r)?'#fff':rColors[r]};font-size:11px;font-weight:700;cursor:pointer">${rNames[r]} (${counts[r]})</button>`).join('')}
+        ${[0,1,2,3,4].map(r=>`<button onclick="window._dogamFilter=${r};showButterflyDogam()" style="padding:4px 10px;border-radius:14px;border:1.5px solid ${(selR===r)?rColors[r]:'#E5E7EB'};background:${(selR===r)?rColors[r]:'#fff'};color:${(selR===r)?'#fff':rColors[r]};font-size:11px;font-weight:700;cursor:pointer">${rNames[r]} (${counts[r]})</button>`).join('')}
       </div>
     </div>
     <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
@@ -769,7 +769,7 @@ function showButterflyDogam() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
               <span style="font-size:14px;font-weight:800;color:#111">${b.name||'-'}</span>
-              <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${rColors[rNum]}22;color:${rColors[rNum]};font-weight:700">${b.rare||'⭐'}</span>
+              <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${(rColors[rNum]||'#374151')}22;color:${rColors[rNum]||'#374151'};font-weight:700">${b.rare||'⭐'}</span>
               ${b.score!=null?`<span style="font-size:10px;color:#9CA3AF;font-weight:700">${b.score}점</span>`:''}
             </div>
             <div style="font-size:11px;color:#9CA3AF;font-style:italic;margin-bottom:3px">${b.sci||''}</div>

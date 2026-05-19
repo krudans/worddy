@@ -31,26 +31,38 @@ window.showAdminNoticeEditor = function() {
     <input id="ntc-title" placeholder="제목" style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:8px">
     <input id="ntc-sub" placeholder="부제목 (선택)" style="width:100%;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:8px">
     <textarea id="ntc-body" placeholder="공지 내용..." style="width:100%;min-height:100px;resize:vertical;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:8px"></textarea>
-    <button onclick="submitAdminNotice()" class="btn bb" style="margin-bottom:8px">📤 공지 등록</button>
-    <button onclick="loadAdminNotices()" class="btn" style="margin-bottom:8px">📋 공지 목록</button>
+    <button onclick="window.submitAdminNotice()" class="btn bb" style="margin-bottom:8px">📤 공지 등록</button>
+    <button onclick="window.loadAdminNotices()" class="btn" style="margin-bottom:8px">📋 공지 목록</button>
     <button onclick="cm()" class="btn bgr">닫기</button>
   </div></div>`;
 }
 
 window.submitAdminNotice = async function() {
-  const title = document.getElementById('ntc-title')?.value.trim();
-  const subtitle = document.getElementById('ntc-sub')?.value.trim();
-  const content = document.getElementById('ntc-body')?.value.trim();
-  if(!title||!content) { toast('제목과 내용을 입력해주세요'); return; }
+  const titleEl = document.getElementById('ntc-title');
+  const subEl = document.getElementById('ntc-sub');
+  const bodyEl = document.getElementById('ntc-body');
+  if(!titleEl||!bodyEl) { alert('입력 필드를 찾을 수 없어요. 다시 열어주세요.'); return; }
+  const title = titleEl.value.trim();
+  const subtitle = subEl?.value.trim()||'';
+  const content = bodyEl.value.trim();
+  if(!title) { alert('제목을 입력해주세요'); return; }
+  if(!content) { alert('내용을 입력해주세요'); return; }
   try {
+    const ts = typeof firebase !== 'undefined'
+      ? firebase.firestore.FieldValue.serverTimestamp()
+      : new Date().toISOString();
     await db.collection('announcements').add({
       title, subtitle, content, active:true,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy: S.user.email
+      createdAt: ts,
+      createdBy: S.user?.email || 'admin'
     });
-    cm(); toast('공지사항이 등록됐어요!');
-    renderHomeNotice();
-  } catch(e) { toast('등록 실패: '+e.message); }
+    cm();
+    alert('공지사항이 등록됐어요!');
+    if(typeof renderHomeNotice === 'function') renderHomeNotice();
+  } catch(e) {
+    alert('등록 실패: ' + e.message);
+    console.error('공지 등록 오류:', e);
+  }
 }
 
 window.loadAdminNotices = async function() {
@@ -64,8 +76,8 @@ window.loadAdminNotices = async function() {
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<div style="font-size:13px;font-weight:700">'+dat.title+'</div>' +
           '<div style="display:flex;gap:4px">' +
-            '<button onclick="toggleNotice(\''+d.id+'\','+(!dat.active)+')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none;cursor:pointer;background:'+(dat.active?'#D1FAE5':'#FEE2E2')+';color:'+(dat.active?'#065F46':'#991B1B')+';font-weight:700">'+(dat.active?'활성':'비활성')+'</button>' +
-            '<button onclick="deleteNotice(\''+d.id+'\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none;cursor:pointer;background:#FEE2E2;color:#991B1B;font-weight:700">삭제</button>' +
+            '<button onclick="window.toggleNotice(\''+d.id+'\','+(!dat.active)+')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none;cursor:pointer;background:'+(dat.active?'#D1FAE5':'#FEE2E2')+';color:'+(dat.active?'#065F46':'#991B1B')+';font-weight:700">'+(dat.active?'활성':'비활성')+'</button>' +
+            '<button onclick="window.deleteNotice(\''+d.id+'\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none;cursor:pointer;background:#FEE2E2;color:#991B1B;font-weight:700">삭제</button>' +
           '</div>' +
         '</div>' +
         '<div style="font-size:11px;color:#9CA3AF;margin-top:2px">'+(dat.content||'').slice(0,40)+'...</div>' +
@@ -74,7 +86,7 @@ window.loadAdminNotices = async function() {
     mr.innerHTML = '<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">' +
       '<div style="font-size:16px;font-weight:900;margin-bottom:12px">📋 공지 목록</div>' +
       '<div style="max-height:300px;overflow-y:auto">'+rows+'</div>' +
-      '<button onclick="showAdminNoticeEditor()" class="btn bb" style="margin-top:10px;margin-bottom:8px">+ 새 공지 작성</button>' +
+      '<button onclick="window.showAdminNoticeEditor()" class="btn bb" style="margin-top:10px;margin-bottom:8px">+ 새 공지 작성</button>' +
       '<button onclick="cm()" class="btn">닫기</button>' +
     '</div></div>';
   } catch(e) { toast('로드 실패'); }

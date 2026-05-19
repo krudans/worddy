@@ -3465,6 +3465,20 @@ function sv() {
   // Firebase 동기화 (로그인 상태일 때)
   if(S.user && S.user.uid && typeof db !== 'undefined' && !window._svDisabled) {
     const uid = S.user.uid;
+    // ── 저장 전 유효성 검사 (데이터 손실 방지) ──
+    const _prevXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || 0;
+    // 이전 XP보다 50% 이상 급감하면 저장 차단 (비정상 상태)
+    if(_prevXp > 100 && (S._totalXp||S.xp||0) < _prevXp * 0.5) {
+      console.warn('[sv] XP 급감 감지, Firebase 저장 차단', {prev:_prevXp, curr:S._totalXp||S.xp});
+      return;
+    }
+    // nick이 비어있는데 이전에 있었으면 저장 차단
+    const _prevNick = localStorage.getItem('wd-nk');
+    if(_prevNick && _prevNick.length > 0 && (!S.nick || S.nick.length === 0)) {
+      console.warn('[sv] 닉네임 소실 감지, Firebase 저장 차단');
+      S.nick = _prevNick; // 복원
+    }
+
     const saveData = {
       lid:S.lid, xp:S.xp, streak:S.streak, nick:S.nick,
       words:S.words||[], books:S.books||[], currentBook:S.currentBook||'내 단어장',
@@ -11896,11 +11910,28 @@ auth.onAuthStateChanged(async user => {
         db.collection('users').doc(user.uid).get().then(_doc => {
           if(!_doc.exists) return;
           const _data = _doc.data();
-          ['xp','lid','streak','nick','words','books','currentBook',
-           'markMap','_achievements','_acc','_equipped','_ownedPacks',
-           'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-           '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
-          ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
+          // ── Firebase 데이터 유효성 검사 후 머지 ──
+          const _localXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || S.xp || 0;
+          const _fbXp = _data._totalXp || _data.xp || 0;
+          const _isFirebaseValid = !(
+            (_localXp > 500 && _fbXp < _localXp * 0.3) || // XP 70% 이상 감소 = 비정상
+            (_data.nick === '' && S.nick && S.nick.length > 0) // 닉네임 소실
+          );
+          if(!_isFirebaseValid) {
+            console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
+          } else {
+            ['xp','lid','streak','nick','words','books','currentBook',
+             'markMap','_achievements','_acc','_equipped','_ownedPacks',
+             'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
+             '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
+            ].forEach(k => {
+              // XP가 비정상적으로 낮은 데이터는 덮어쓰지 않음
+              if(k === 'xp' && _data[k] === 0 && (S.xp||0) > 100) return;
+              if(k === '_totalXp' && _data[k] === 0 && (S._totalXp||0) > 100) return;
+              if(k === 'nick' && _data[k] === '' && S.nick) return;
+              if(_data[k]!==undefined) S[k]=_data[k];
+            });
+          }
           if(_data.studyLog) {
             // 날짜별로 더 큰 값 유지 (로컬과 Firebase 중 최신 데이터 보존)
             const merged = Object.assign({}, _data.studyLog);
@@ -11958,11 +11989,28 @@ auth.onAuthStateChanged(async user => {
         const _doc = await Promise.race([_fbPromise, _timeout]);
         if(_doc.exists) {
           const _data = _doc.data();
-          ['xp','lid','streak','nick','words','books','currentBook',
-           'markMap','_achievements','_acc','_equipped','_ownedPacks',
-           'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
-           '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
-          ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
+          // ── Firebase 데이터 유효성 검사 후 머지 ──
+          const _localXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || S.xp || 0;
+          const _fbXp = _data._totalXp || _data.xp || 0;
+          const _isFirebaseValid = !(
+            (_localXp > 500 && _fbXp < _localXp * 0.3) || // XP 70% 이상 감소 = 비정상
+            (_data.nick === '' && S.nick && S.nick.length > 0) // 닉네임 소실
+          );
+          if(!_isFirebaseValid) {
+            console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
+          } else {
+            ['xp','lid','streak','nick','words','books','currentBook',
+             'markMap','_achievements','_acc','_equipped','_ownedPacks',
+             'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
+             '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
+            ].forEach(k => {
+              // XP가 비정상적으로 낮은 데이터는 덮어쓰지 않음
+              if(k === 'xp' && _data[k] === 0 && (S.xp||0) > 100) return;
+              if(k === '_totalXp' && _data[k] === 0 && (S._totalXp||0) > 100) return;
+              if(k === 'nick' && _data[k] === '' && S.nick) return;
+              if(_data[k]!==undefined) S[k]=_data[k];
+            });
+          }
           if(_data.studyLog) {
             // 날짜별로 더 큰 값 유지 (로컬과 Firebase 중 최신 데이터 보존)
             const merged = Object.assign({}, _data.studyLog);

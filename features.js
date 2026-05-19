@@ -855,15 +855,18 @@ async function showAnnouncementPopup() {
 
     const notices = [];
 
-    // ─ 1. Firebase에서 관리자 공지 로드 ─
+    // ─ 1. Firebase에서 관리자 공지 로드 (인덱스 없이 단순 조회) ─
     if(typeof db !== 'undefined') {
       try {
         const snap = await db.collection('announcements')
-          .where('active', '==', true)
           .orderBy('createdAt', 'desc')
-          .limit(5)
+          .limit(10)
           .get();
-        snap.docs.forEach(d => notices.push({ type: 'admin', ...d.data() }));
+        snap.docs
+          .map(d => d.data())
+          .filter(d => d.active !== false)
+          .slice(0, 5)
+          .forEach(d => notices.push({ type: 'admin', ...d }));
       } catch(e) {}
     }
 

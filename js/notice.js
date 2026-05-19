@@ -17,11 +17,7 @@ async function renderHomeNotice() {
       </div>`).join('');
     el.innerHTML =
       '<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-          '<div style="font-size:13px;font-weight:800;color:var(--text1,#111)">📢 공지사항</div>' +
-          '<button onclick="localStorage.setItem(\'wd-notice-off\',\'1\');document.getElementById(\'home-notice-section\').innerHTML=\'\';toast(\'🔕 공지 꺼짐\')" ' +
-            'style="background:none;border:none;font-size:18px;cursor:pointer;color:#D1D5DB;padding:0;line-height:1">×</button>' +
-        '</div>' +
+        '<div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">📢 공지사항</div>' +
         items +
       '</div>';
   } catch(e) { el.innerHTML=''; }

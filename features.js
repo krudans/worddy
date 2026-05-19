@@ -738,7 +738,7 @@ function showUploadMarket() {
     </div>
 
     <div style="padding:12px 20px;border-top:1px solid var(--border,#E5E7EB);flex-shrink:0">
-      <button onclick="submitUploadMarket()" style="width:100%;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
+      <button id="submit-mkt-btn" onclick="this.disabled=true;this.textContent='⏳ 업로드 중...';submitUploadMarket().catch(e=>{this.disabled=false;this.textContent='📤 마켓에 공유하기';})" style="width:100%;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer">
         📤 마켓에 공유하기
       </button>
     </div>

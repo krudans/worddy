@@ -827,7 +827,7 @@ function showButterflyDetail(id) {
       </div>
       ${b.feature?`<div style="background:#F9FAFB;border-radius:12px;padding:14px;margin-bottom:12px">
         <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:6px">특징</div>
-        <div style="font-size:13px;color:#111;line-height:1.7">${b.feature}</div>
+        <div style="font-size:13px;color:#111;line-height:1.7;white-space:pre-wrap">${b.feature}</div>
       </div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         ${b.habitat?`<div style="background:#F9FAFB;border-radius:12px;padding:12px">
@@ -849,15 +849,15 @@ function showButterflyDetail(id) {
       </div>
       ${b.threat?`<div style="background:#FEF2F2;border-radius:12px;padding:14px;margin-bottom:12px;border-left:4px solid #EF4444">
         <div style="font-size:11px;font-weight:700;color:#DC2626;margin-bottom:6px">⚠️ 위협 요인</div>
-        <div style="font-size:13px;color:#7F1D1D;line-height:1.6">${b.threat}</div>
+        <div style="font-size:13px;color:#7F1D1D;line-height:1.6;white-space:pre-wrap">${b.threat}</div>
       </div>`:''}
       ${b.story?`<div style="background:#FFFBEB;border-radius:12px;padding:14px;margin-bottom:12px;border-left:4px solid #F59E0B">
         <div style="font-size:11px;font-weight:700;color:#92400E;margin-bottom:6px">📖 에피소드</div>
-        <div style="font-size:13px;color:#451A03;line-height:1.8">${b.story}</div>
+        <div style="font-size:13px;color:#451A03;line-height:1.8;white-space:pre-wrap">${b.story}</div>
       </div>`:''}
       ${b.msg?`<div style="background:#F0FDF4;border-radius:12px;padding:14px;margin-bottom:12px;border-left:4px solid #16A34A">
         <div style="font-size:11px;font-weight:700;color:#15803D;margin-bottom:6px">💚 환경 메시지</div>
-        <div style="font-size:13px;color:#14532D;line-height:1.7;font-style:italic">"${b.msg}"</div>
+        <div style="font-size:13px;color:#14532D;line-height:1.7;font-style:italic;white-space:pre-wrap">"${b.msg}"</div>
       </div>`:''}
       <div style="display:flex;gap:8px;margin-top:4px">
         <button onclick="saveButterflyCard('${b.id}')" style="flex:1;padding:13px;background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:800;cursor:pointer">🖼️ 이미지 저장</button>

@@ -1,5 +1,5 @@
 // 홈 공지사항 섹션
-async function renderHomeNotice() {
+window.renderHomeNotice = async function() {
   const el = document.getElementById('home-notice-section');
   if(!el) return;
   if(localStorage.getItem('wd-notice-off') === '1') { el.innerHTML=''; return; }
@@ -24,7 +24,7 @@ async function renderHomeNotice() {
 }
 
 // 관리자 공지 작성
-function showAdminNoticeEditor() {
+window.showAdminNoticeEditor = function() {
   if(!S.user || S.user.email !== 'krudans@gmail.com') { toast('관리자만 접근 가능해요'); return; }
   document.getElementById('mr').innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:17px;font-weight:900;margin-bottom:14px">📢 공지사항 작성</div>
@@ -37,7 +37,7 @@ function showAdminNoticeEditor() {
   </div></div>`;
 }
 
-async function submitAdminNotice() {
+window.submitAdminNotice = async function() {
   const title = document.getElementById('ntc-title')?.value.trim();
   const subtitle = document.getElementById('ntc-sub')?.value.trim();
   const content = document.getElementById('ntc-body')?.value.trim();
@@ -53,7 +53,7 @@ async function submitAdminNotice() {
   } catch(e) { toast('등록 실패: '+e.message); }
 }
 
-async function loadAdminNotices() {
+window.loadAdminNotices = async function() {
   const mr = document.getElementById('mr');
   try {
     const snap = await db.collection('announcements').orderBy('createdAt','desc').limit(20).get();
@@ -80,12 +80,12 @@ async function loadAdminNotices() {
   } catch(e) { toast('로드 실패'); }
 }
 
-async function toggleNotice(id, active) {
+window.toggleNotice = async function(id, active) {
   try { await db.collection('announcements').doc(id).update({active}); loadAdminNotices(); }
   catch(e) { toast('실패'); }
 }
 
-async function deleteNotice(id) {
+window.deleteNotice = async function(id) {
   if(!confirm('삭제할까요?')) return;
   try { await db.collection('announcements').doc(id).delete(); loadAdminNotices(); }
   catch(e) { toast('실패'); }

@@ -986,8 +986,8 @@ function logStudy(type) {
   if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0, min:0};
   if(!S.studyLog[t].min) S.studyLog[t].min = 0;
   S.studyLog[t][type]++;
-  if(type==='words') S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.1)*10)/10;
-  else if(type==='quiz') S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10;
+  if(type==='words') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.1)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.1)*10)/10; }
+  else if(type==='quiz') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.05)*10)/10; }
   updStreak();
   // 단어 학습 → 배부름 직접 연결 (10개마다 +1)
   if(type==='words') {
@@ -3375,6 +3375,7 @@ function load() {
   S._dcClaimed = localStorage.getItem('wd-dcc')||'';
   S._srsCount = parseInt(localStorage.getItem('wd-srsc')||'0');
   S._totalStudyMins = parseInt(localStorage.getItem('wd-tsm')||'0');
+  S._totalXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || 0;
   S.dList = JSON.parse(localStorage.getItem('wd-dl')||'[]');
   S.goal = localStorage.getItem('wd-gl')||null;
   S.goalTotal = +(localStorage.getItem('wd-glt')||0);
@@ -3459,6 +3460,7 @@ function sv() {
   localStorage.setItem('wd-dd', S._dailyDate||'');
   localStorage.setItem('wd-dxg', JSON.stringify(S._dailyXpGiven||{}));
   localStorage.setItem('wd-txp', String(S._totalXp||0)); // 누적 XP
+  localStorage.setItem('wd-tsm', String(S._totalStudyMins||0)); // 누적 학습시간(분)
   localStorage.setItem('wd-ach', JSON.stringify(S._achievements||[]));
   // Firebase 동기화 (로그인 상태일 때)
   if(S.user && S.user.uid && typeof db !== 'undefined' && !window._svDisabled) {
@@ -11895,6 +11897,11 @@ auth.onAuthStateChanged(async user => {
       const dd=ls.getItem('wd-dd'); if(dd) S._dailyDate=dd;
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
       const txp=ls.getItem('wd-txp'); if(txp) S._totalXp=Number(txp)||0;
+      const tsm=ls.getItem('wd-tsm'); if(tsm) S._totalStudyMins=Number(tsm)||0;
+      const sl2=ls.getItem('wd-sl'); if(sl2) S.studyLog=JSON.parse(sl2);
+      const ad=ls.getItem('wd-ad'); if(ad) S.attendDates=JSON.parse(ad);
+      const ac=ls.getItem('wd-ac'); if(ac) S.attendCount=Number(ac)||0;
+      const pc=ls.getItem('wd-pet-color'); if(pc) S._petColor=pc;
     } catch(e) {}
 
     // ── STEP 2: localStorage 데이터 있으면 즉시 앱 시작, Firebase는 백그라운드 동기화 ──
@@ -11915,7 +11922,20 @@ auth.onAuthStateChanged(async user => {
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
-          if(_data.studyLog) { S.studyLog = Object.assign({}, _data.studyLog, S.studyLog||{}); }
+          if(_data.studyLog) {
+            // 날짜별로 더 큰 값 유지 (로컬과 Firebase 중 최신 데이터 보존)
+            const merged = Object.assign({}, _data.studyLog);
+            Object.entries(S.studyLog||{}).forEach(([date, local]) => {
+              const fb = merged[date] || {};
+              merged[date] = {
+                words: Math.max(local.words||0, fb.words||0),
+                quiz:  Math.max(local.quiz||0,  fb.quiz||0),
+                min:   Math.max(local.min||0,   fb.min||0),
+                xp:    Math.max(local.xp||0,    fb.xp||0),
+              };
+            });
+            S.studyLog = merged;
+          }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
           if(Array.isArray(_data.myButterflies)) {
@@ -11964,7 +11984,20 @@ auth.onAuthStateChanged(async user => {
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
           ].forEach(k => { if(_data[k]!==undefined) S[k]=_data[k]; });
-          if(_data.studyLog) { S.studyLog = Object.assign({}, _data.studyLog, S.studyLog||{}); }
+          if(_data.studyLog) {
+            // 날짜별로 더 큰 값 유지 (로컬과 Firebase 중 최신 데이터 보존)
+            const merged = Object.assign({}, _data.studyLog);
+            Object.entries(S.studyLog||{}).forEach(([date, local]) => {
+              const fb = merged[date] || {};
+              merged[date] = {
+                words: Math.max(local.words||0, fb.words||0),
+                quiz:  Math.max(local.quiz||0,  fb.quiz||0),
+                min:   Math.max(local.min||0,   fb.min||0),
+                xp:    Math.max(local.xp||0,    fb.xp||0),
+              };
+            });
+            S.studyLog = merged;
+          }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
         if(Array.isArray(_data.myButterflies)) {

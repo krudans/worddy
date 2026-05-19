@@ -9510,6 +9510,34 @@ async function aiMFull() {
 // 기존 aiM은 aiMFull로 대체 (하위 호환)
 const aiM = aiMFull;
 
+
+// ── 현재 선택된 단어장에 단어 저장 헬퍼 ──
+function saveWordToCurrentBook(word) {
+  const bookName = S.currentBook || '내 단어장';
+  if(bookName === '내 단어장') {
+    if(!S.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
+      S.words.push(word);
+  } else {
+    const bk = (S.books||[]).find(b=>b.name===bookName);
+    if(bk) {
+      if(!bk.words) bk.words=[];
+      if(!bk.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
+        bk.words.push(word);
+    } else {
+      // 단어장이 없으면 기본 단어장에 저장
+      if(!S.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
+        S.words.push(word);
+    }
+  }
+}
+
+function wordExistsInCurrentBook(en) {
+  const bookName = S.currentBook || '내 단어장';
+  if(bookName === '내 단어장') return !!S.words.find(w=>w.en===en);
+  const bk = (S.books||[]).find(b=>b.name===bookName);
+  return bk ? !!(bk.words||[]).find(w=>w.en===en) : false;
+}
+
 function addW(){
   const en=(document.getElementById('ne')?.value||S.nEn||'').trim();
   const kr=(document.getElementById('nk2')?.value||S.nKr||'').trim();
@@ -9518,7 +9546,7 @@ function addW(){
   const ex2=(document.getElementById('nex2')?.value||S.nEx2||'').trim();
   const ex3=(document.getElementById('nex3')?.value||S.nEx3||'').trim();
   if(!en||!kr){toast('영단어와 뜻 입력');return;}
-  if(S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){toast('이미 있는 단어');return;}
+  if(wordExistsInCurrentBook(en)){toast('이미 있는 단어 (현재 단어장)');return;}
   const aiD=S.nAiData||{};
   const exList=[ex1,ex2,ex3].filter(Boolean);
   const newWord={en,kr,
@@ -9534,7 +9562,7 @@ function addW(){
   if(S.currentBook && S.currentBook!=='내 단어장') {
     const bk = S.books.find(b=>b.name===S.currentBook);
     if(bk) { if(!bk.words) bk.words=[]; bk.words.push(newWord); }
-    else S.words.push(newWord);
+    else saveWordToCurrentBook(newWord);
   } else {
     S.words.push(newWord);
   }
@@ -9543,7 +9571,9 @@ function addW(){
   if(!S.srsMap[en]) srsRate(en, 1);
   S.nEn=''; S.nKr=''; S.nPh=''; S.nEx1=''; S.nEx2=''; S.nEx3=''; S.nAiData=null; S.nImg='📝';
   sv(); SFX.play('correct'); logStudy('words');
-  toast(`✅ "${en}" → [${S.currentBook||'내 단어장'}] 추가! (${(S.currentBook&&S.currentBook!=='내 단어장'?(S.books.find(b=>b.name===S.currentBook)?.words||[]).length:S.words.length)}개)`);
+  const _bk2 = S.currentBook&&S.currentBook!=='내 단어장' ? (S.books||[]).find(b=>b.name===S.currentBook) : null;
+  const _cnt2 = _bk2 ? (_bk2.words||[]).length : S.words.length;
+  toast(`✅ "${en}" → [${S.currentBook||'내 단어장'}] 저장! (${_cnt2}개)`);
   go('mybooks','add');
 }
 
@@ -9589,11 +9619,11 @@ function showExtracted(words){
     const add=words.filter((_,i)=>sel.has(i));
     if(!add.length){toast('선택한 단어가 없어요');return;}
     add.forEach(w=>{
-      if(!S.words.find(x=>x.en===w.en))
-        S.words.push({...w,ph:w.ph||'',ex:w.ex||w.en+'.',tip:w.en+' = '+w.kr,meanings:[w.kr],img:'📝'});
+      saveWordToCurrentBook({...w,ph:w.ph||'',ex:w.ex||w.en+'.',tip:w.en+' = '+w.kr,meanings:[w.kr],img:'📝'});
     });
     sv(); cm();
-    toast('✅ '+add.length+'개 추가! AI가 발음/예문을 완성 중...');
+    const _bookName = S.currentBook||'내 단어장';
+    toast('✅ '+add.length+'개 → ['+_bookName+'] 저장! AI 발음/예문 완성 중...');
     go('mybooks','add');
     // 백그라운드에서 AI 자동완성 (발음기호/예문 없는 단어만)
     const noInfo = add.filter(w=>!w.ph||!w.ex);
@@ -9602,7 +9632,9 @@ function showExtracted(words){
         try {
           const t=await geminiText(`"${w.en}" JSON only: {"ph":"[발음기호]","ex":"예문 1개","tip":"암기팁"}`,150);
           const p=parseGeminiJson(t);
-          const found=S.words.find(x=>x.en===w.en);
+          const bookName4 = S.currentBook||'내 단어장';
+          const wordList4 = bookName4==='내 단어장' ? S.words : ((S.books||[]).find(b=>b.name===bookName4)||{}).words||S.words;
+          const found=wordList4.find(x=>x.en===w.en);
           if(found&&p){if(p.ph)found.ph=p.ph;if(p.ex)found.ex=p.ex;if(p.tip)found.tip=p.tip;}
         } catch(e){break;} // 할당량 초과 시 중단
       }
@@ -9614,6 +9646,7 @@ function showExtracted(words){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">
       <div>
         <div style="font-size:16px;font-weight:900">📋 단어 ${words.length}개 추출됨</div>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:2px">저장 위치: <b style="color:#1E5FA5">${S.currentBook||'내 단어장'}</b></div>
         <div id="ext-count" style="font-size:12px;color:#9CA3AF;margin-top:2px">${words.length}/${words.length}개 선택</div>
       </div>
       <button id="ext-all-btn" onclick="extSelAll()" style="background:#EFF6FF;color:#1E5FA5;border:1.5px solid #BFDBFE;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer">전체 해제</button>
@@ -9627,7 +9660,7 @@ function showExtracted(words){
   rl();
 }
 function blkModal(){document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:16px;font-weight:800;margin-bottom:8px">📋 여러 단어 붙여넣기</div><div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">한 줄에 하나, 쉼표나 = 로 구분</div><textarea id="bt" placeholder="apple, 사과&#10;book = 책" style="min-height:100px;resize:none;font-size:13px;margin-bottom:10px"></textarea><button class="btn bg" onclick="addBlk()">추가하기</button></div></div>`;}
-function addBlk(){const t=document.getElementById('bt')?.value||'';let cnt=0;t.split('\n').filter(l=>l.trim()).forEach(ln=>{const p=ln.split(/[,=\t]/);if(p.length>=2){const en=p[0].trim(),kr=p[1].trim();if(en&&kr&&!S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())){S.words.push({en,kr,ph:'',ex:en+'.',tip:en+' = '+kr,meanings:[kr],img:'📝'});cnt++;}}});sv();cm();toast(`✅ ${cnt}개 추가!`);go('mybooks','add');}
+function addBlk(){const t=document.getElementById('bt')?.value||'';let cnt=0;t.split('\n').filter(l=>l.trim()).forEach(ln=>{const p=ln.split(/[,=\t]/);if(p.length>=2){const en=p[0].trim(),kr=p[1].trim();if(en&&kr&&!wordExistsInCurrentBook(en)){saveWordToCurrentBook({en,kr,ph:'',ex:en+'.',tip:en+' = '+kr,meanings:[kr],img:'📝'});cnt++;}}});sv();cm();toast(`✅ ${cnt}개 추가!`);go('mybooks','add');}
 function rList(){
   // 현재 단어장 기준 단어 목록 가져오기
   const bookName = S.currentBook || '내 단어장';

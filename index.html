@@ -9290,10 +9290,19 @@ async function handleBulkFile(file) {
     if(!words.length){toast('단어를 찾지 못했어요. 형식: A열=영어, B열=한국어');return;}
     showExtracted(words);
   } else if(['xlsx','xls'].includes(ext)) {
-    // Excel: SheetJS 우선 파싱, 실패시 AI 폴백
+    // Excel: SheetJS 동적 로드 후 파싱, 실패시 AI 폴백
     try {
+      // SheetJS 동적 로드 (필요할 때만)
+      if(typeof XLSX==='undefined') {
+        await new Promise((res,rej)=>{
+          const s=document.createElement('script');
+          s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          s.onload=res; s.onerror=rej;
+          document.head.appendChild(s);
+        });
+      }
       const ab=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsArrayBuffer(file);});
-      if(typeof XLSX==='undefined') throw new Error('SheetJS 미로드');
+      if(typeof XLSX==='undefined') throw new Error('SheetJS 로드 실패');
       const wb=XLSX.read(ab,{type:'arraybuffer'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1});

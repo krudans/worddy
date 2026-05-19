@@ -838,3 +838,232 @@ function _exportUploadJSON(book, cat, desc) {
   toast(`✅ JSON 파일로 내보냈어요! 관리자에게 전달해주세요 😊`);
 }
 
+
+// ════════════════════════════════════════════════
+// 공지사항 & 랭킹 공지 시스템
+// ════════════════════════════════════════════════
+
+// ── 공지 팝업 표시 (앱 시작 후 호출) ──
+async function showAnnouncementPopup() {
+  // 수신 거부 체크
+  if(localStorage.getItem('wd-notice-off') === '1') return;
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const seenKey = 'wd-notice-seen-' + today;
+    if(localStorage.getItem(seenKey)) return; // 오늘 이미 봄
+
+    const notices = [];
+
+    // ─ 1. Firebase에서 관리자 공지 로드 ─
+    if(typeof db !== 'undefined') {
+      try {
+        const snap = await db.collection('announcements')
+          .where('active', '==', true)
+          .orderBy('createdAt', 'desc')
+          .limit(5)
+          .get();
+        snap.docs.forEach(d => notices.push({ type: 'admin', ...d.data() }));
+      } catch(e) {}
+    }
+
+    // ─ 2. 오늘 XP 상위 3 ─
+    const todayRank = await _fetchRankTop3('today');
+    if(todayRank.length) notices.push({ type: 'rank', period: 'today', list: todayRank });
+
+    // ─ 3. 주간 XP 상위 3 ─
+    const weekRank = await _fetchRankTop3('week');
+    if(weekRank.length) notices.push({ type: 'rank', period: 'week', list: weekRank });
+
+    // ─ 4. 월간 XP 상위 3 ─
+    const monthRank = await _fetchRankTop3('month');
+    if(monthRank.length) notices.push({ type: 'rank', period: 'month', list: monthRank });
+
+    if(!notices.length) return;
+
+    localStorage.setItem(seenKey, '1');
+    _renderNoticePopup(notices);
+  } catch(e) {}
+}
+
+// 기간별 상위 3명 조회
+async function _fetchRankTop3(period) {
+  if(typeof db === 'undefined') return [];
+  try {
+    const now = new Date();
+    let from = new Date();
+    if(period === 'today') from.setHours(0, 0, 0, 0);
+    else if(period === 'week') from.setDate(from.getDate() - 7);
+    else if(period === 'month') from.setMonth(from.getMonth() - 1);
+
+    const snap = await db.collection('rankings')
+      .orderBy('score', 'desc')
+      .limit(100)
+      .get();
+
+    const list = snap.docs
+      .map(d => d.data())
+      .filter(r => r.date && new Date(r.date) >= from)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    return list;
+  } catch(e) { return []; }
+}
+
+// 공지 팝업 렌더링
+function _renderNoticePopup(notices) {
+  const mr = document.getElementById('mr');
+  if(!mr) return;
+
+  let idx = 0;
+
+  const PERIOD_LABELS = { today: '오늘', week: '이번 주', month: '이번 달' };
+  const PERIOD_ICONS  = { today: '📅', week: '📆', month: '🗓️' };
+  const MEDALS = ['🥇', '🥈', '🥉'];
+
+  function renderPage(i) {
+    const n = notices[i];
+    const isLast = i === notices.length - 1;
+    let body = '';
+
+    if(n.type === 'admin') {
+      // 관리자 공지
+      body = `
+        <div style="text-align:center;margin-bottom:12px">
+          <div style="font-size:40px;margin-bottom:6px">📢</div>
+          <div style="font-size:16px;font-weight:900;color:#111">${n.title || '공지사항'}</div>
+          ${n.subtitle ? `<div style="font-size:12px;color:#9CA3AF;margin-top:2px">${n.subtitle}</div>` : ''}
+        </div>
+        <div style="background:#EFF6FF;border-radius:14px;padding:14px;font-size:13px;color:#374151;line-height:1.8;margin-bottom:14px;white-space:pre-wrap">${n.content || ''}</div>`;
+    } else {
+      // 랭킹 공지
+      const label = PERIOD_LABELS[n.period] || n.period;
+      const icon  = PERIOD_ICONS[n.period]  || '🏆';
+      body = `
+        <div style="text-align:center;margin-bottom:12px">
+          <div style="font-size:36px;margin-bottom:6px">${icon}</div>
+          <div style="font-size:16px;font-weight:900;color:#111">${label} 경험치 랭킹</div>
+          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">열심히 공부한 분들이에요! 👏</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+          ${n.list.map((r, ri) => {
+            const isMe = r.uid === S.user?.uid || r.nick === S.nick;
+            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:${isMe ? '#EFF6FF' : '#F9FAFB'};border:1.5px solid ${isMe ? '#1E5FA5' : '#E5E7EB'}">
+              <div style="font-size:22px;width:28px;text-align:center">${MEDALS[ri]}</div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:800;color:${isMe ? '#1E5FA5' : '#111'}">${isMe ? '👉 ' : ''}${r.nick || '이름없음'}</div>
+                <div style="font-size:11px;color:#9CA3AF">${r.level || ''}</div>
+              </div>
+              <div style="font-size:14px;font-weight:900;color:${isMe ? '#1E5FA5' : '#374151'}">⚡${(r.score || 0).toLocaleString()}</div>
+            </div>`;
+          }).join('')}
+        </div>`;
+    }
+
+    const dots = notices.length > 1
+      ? `<div style="display:flex;justify-content:center;gap:4px;margin-bottom:10px">
+          ${notices.map((_, di) =>
+            `<div style="width:6px;height:6px;border-radius:50%;background:${di === i ? '#1E5FA5' : '#D1D5DB'}"></div>`
+          ).join('')}
+        </div>` : '';
+
+    mr.innerHTML = `<div class="mbg" onclick="cm()">
+      <div class="modal" style="max-height:85vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div style="flex-shrink:0;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-size:11px;color:#9CA3AF;font-weight:600">공지사항 ${i+1}/${notices.length}</div>
+          <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF;padding:0;line-height:1">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto">${body}</div>
+        ${dots}
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="localStorage.setItem('wd-notice-off','1');cm();toast('공지 수신이 꺼졌어요. 프로필에서 다시 켤 수 있어요.')"
+            style="flex:1;background:#F3F4F6;color:#9CA3AF;border:none;border-radius:12px;padding:10px;font-size:11px;font-weight:700;cursor:pointer">
+            🔕 그만 받기
+          </button>
+          ${isLast
+            ? `<button onclick="cm()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">확인 ✓</button>`
+            : `<button onclick="window._noticeNext()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">다음 →</button>`
+          }
+        </div>
+      </div>
+    </div>`;
+  }
+
+  window._noticeNext = () => { idx++; if(idx < notices.length) renderPage(idx); else cm(); };
+  renderPage(0);
+}
+
+// ── 관리자 공지 작성 (admin 전용) ──
+function showAdminNoticeEditor() {
+  if(!S.user || S.user.email !== 'krudans@gmail.com') {
+    toast('관리자만 접근 가능해요'); return;
+  }
+  const mr = document.getElementById('mr');
+  mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:900;margin-bottom:14px">📢 공지사항 작성</div>
+    <input id="ntc-title" placeholder="제목 (예: 서버 점검 안내)" style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:8px">
+    <input id="ntc-sub" placeholder="부제목 (선택)" style="width:100%;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:8px">
+    <textarea id="ntc-body" placeholder="공지 내용을 입력하세요..." style="width:100%;min-height:100px;resize:vertical;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:8px"></textarea>
+    <button onclick="submitAdminNotice()" class="btn bb" style="margin-bottom:8px">📤 공지 등록</button>
+    <button onclick="loadAdminNotices()" class="btn" style="margin-bottom:8px">📋 공지 목록</button>
+    <button onclick="cm()" class="btn bgr">닫기</button>
+  </div></div>`;
+}
+
+async function submitAdminNotice() {
+  const title = document.getElementById('ntc-title')?.value.trim();
+  const subtitle = document.getElementById('ntc-sub')?.value.trim();
+  const content = document.getElementById('ntc-body')?.value.trim();
+  if(!title || !content) { toast('제목과 내용을 입력해주세요', 'err'); return; }
+  try {
+    await db.collection('announcements').add({
+      title, subtitle, content,
+      active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: S.user.email,
+    });
+    cm();
+    toast('✅ 공지사항이 등록됐어요!');
+    // 오늘 본 공지 초기화 → 다음 방문 시 팝업 표시
+    localStorage.removeItem('wd-notice-seen-' + new Date().toISOString().slice(0,10));
+  } catch(e) { toast('등록 실패: ' + e.message, 'err'); }
+}
+
+async function loadAdminNotices() {
+  const mr = document.getElementById('mr');
+  try {
+    const snap = await db.collection('announcements').orderBy('createdAt', 'desc').limit(20).get();
+    if(!snap.docs.length) { toast('등록된 공지가 없어요'); return; }
+    const rows = snap.docs.map(d => {
+      const dat = d.data();
+      return `<div style="padding:10px 0;border-bottom:1px solid #F3F4F6">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:13px;font-weight:700">${dat.title}</div>
+          <div style="display:flex;gap:4px">
+            <button onclick="toggleNotice('${d.id}',${!dat.active})" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none;cursor:pointer;background:${dat.active?'#D1FAE5':'#FEE2E2'};color:${dat.active?'#065F46':'#991B1B'};font-weight:700">${dat.active?'활성':'비활성'}</button>
+            <button onclick="deleteNotice('${d.id}')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none;cursor:pointer;background:#FEE2E2;color:#991B1B;font-weight:700">삭제</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${dat.content?.slice(0,40)}...</div>
+      </div>`;
+    }).join('');
+    mr.innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+      <div style="font-size:16px;font-weight:900;margin-bottom:12px">📋 공지 목록</div>
+      <div style="max-height:300px;overflow-y:auto">${rows}</div>
+      <button onclick="showAdminNoticeEditor()" class="btn bb" style="margin-top:10px;margin-bottom:8px">+ 새 공지 작성</button>
+      <button onclick="cm()" class="btn">닫기</button>
+    </div></div>`;
+  } catch(e) { toast('로드 실패', 'err'); }
+}
+
+async function toggleNotice(id, active) {
+  try { await db.collection('announcements').doc(id).update({ active }); loadAdminNotices(); }
+  catch(e) { toast('실패', 'err'); }
+}
+
+async function deleteNotice(id) {
+  if(!confirm('공지를 삭제할까요?')) return;
+  try { await db.collection('announcements').doc(id).delete(); loadAdminNotices(); }
+  catch(e) { toast('실패', 'err'); }
+}

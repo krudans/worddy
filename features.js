@@ -1070,3 +1070,98 @@ async function deleteNotice(id) {
   try { await db.collection('announcements').doc(id).delete(); loadAdminNotices(); }
   catch(e) { toast('실패', 'err'); }
 }
+
+// ════════════════════════════════════════════════
+// 홈 공지사항 섹션 (팝업 아닌 인라인)
+// ════════════════════════════════════════════════
+async function renderHomeNotice() {
+  const el = document.getElementById('home-notice-section');
+  if(!el) return;
+
+  // 수신 거부면 표시 안함
+  if(localStorage.getItem('wd-notice-off') === '1') return;
+
+  el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">⏳ 공지 로딩 중...</div>';
+
+  try {
+    const sections = [];
+
+    // ── 1. 관리자 공지 ──
+    if(typeof db !== 'undefined') {
+      try {
+        const snap = await db.collection('announcements')
+          .orderBy('createdAt','desc').limit(5).get();
+        const notices = snap.docs.map(d=>d.data()).filter(d=>d.active!==false);
+        if(notices.length) sections.push({ type:'notices', items: notices });
+      } catch(e){}
+    }
+
+    // ── 2. 오늘/주간/월간 랭킹 ──
+    for(const p of ['today','week','month']) {
+      const list = await _fetchRankTop3(p);
+      if(list.length) sections.push({ type:'rank', period:p, list });
+    }
+
+    if(!sections.length) { el.innerHTML=''; return; }
+
+    _renderHomeSections(el, sections);
+  } catch(e) { el.innerHTML=''; }
+}
+
+function _renderHomeSections(el, sections) {
+  const PERIOD_LABELS = { today:'오늘', week:'이번 주', month:'이번 달' };
+  const PERIOD_ICONS  = { today:'📅', week:'📆', month:'🗓️' };
+  const MEDALS = ['🥇','🥈','🥉'];
+
+  // 활성 탭 상태
+  if(!window._noticeTab) window._noticeTab = 0;
+  const activeIdx = window._noticeTab;
+  const s = sections[activeIdx] || sections[0];
+
+  // 탭 버튼 생성
+  const tabs = sections.map((sec, i) => {
+    const label = sec.type==='notices' ? '📢 공지'
+      : (PERIOD_ICONS[sec.period]||'🏆') + ' ' + (PERIOD_LABELS[sec.period]||sec.period);
+    const active = i === activeIdx;
+    return `<button onclick="window._noticeTab=${i};if(typeof renderHomeNotice==='function')renderHomeNotice()"
+      style="padding:4px 10px;border-radius:20px;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+        background:${active?'#1E5FA5':'#F3F4F6'};color:${active?'#fff':'#6B7280'};transition:all .15s">${label}</button>`;
+  }).join('');
+
+  // 콘텐츠
+  let content = '';
+  if(s.type === 'notices') {
+    content = s.items.map(n => `
+      <div style="padding:10px 12px;border-radius:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:800;color:#1E5FA5;margin-bottom:3px">📢 ${n.title||''}</div>
+        ${n.subtitle?`<div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">${n.subtitle}</div>`:''}
+        <div style="font-size:12px;color:#374151;line-height:1.7;white-space:pre-wrap">${n.content||''}</div>
+      </div>`).join('');
+  } else {
+    content = s.list.map((r, ri) => {
+      const isMe = r.uid === S.user?.uid || r.nick === S.nick;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;
+          background:${isMe?'#EFF6FF':'#F9FAFB'};border:1.5px solid ${isMe?'#1E5FA5':'#E5E7EB'};margin-bottom:6px">
+        <div style="font-size:18px;width:24px;text-align:center">${MEDALS[ri]}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:800;color:${isMe?'#1E5FA5':'#111'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isMe?'👉 ':''}${r.nick||'이름없음'}</div>
+          <div style="font-size:10px;color:#9CA3AF">${r.level||''}</div>
+        </div>
+        <div style="font-size:13px;font-weight:900;color:${isMe?'#1E5FA5':'#374151'}">⚡${(r.score||0).toLocaleString()}</div>
+      </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = `
+    <div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">📋 공지 & 랭킹</div>
+        <button onclick="localStorage.setItem('wd-notice-off','1');document.getElementById('home-notice-section').innerHTML='';toast('🔕 공지 알림 꺼짐. 프로필에서 다시 켤 수 있어요')"
+          style="background:none;border:none;font-size:18px;cursor:pointer;color:#D1D5DB;padding:0;line-height:1" title="공지 닫기">×</button>
+      </div>
+      <div style="display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin-bottom:10px;padding-bottom:2px">
+        ${tabs}
+      </div>
+      <div>${content}</div>
+    </div>`;
+}

@@ -1741,7 +1741,12 @@ async function saveBF(id){
     await db.collection('butterflies').doc(bid).set(data,{merge:true});
     toast('✅ '+(id?'수정':'등록')+' 완료','ok');
     cm(); rBF();
-  }catch(e){toast('저장 실패: '+e.message,'err');}
+  }catch(e){
+    let msg = e.message || '알 수 없는 오류';
+    if(e.code === 'invalid-argument' || msg.includes('maximum')) msg = '데이터가 너무 큽니다. 이미지를 더 작게 압축하거나 스토리 내용을 줄여주세요.';
+    toast('저장 실패: '+msg,'err');
+    console.error('[saveBF] 저장 실패:', e.code, e.message);
+  }
 }
 async function editBF(id){
   // Firebase에서 먼저 찾기
@@ -3771,7 +3776,12 @@ async function saveAIPackWords(wsJson) {
     // Firebase 저장
     try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
     showPackWordTab('list');
-  }catch(e){toast('저장 실패: '+e.message,'err');}
+  }catch(e){
+    let msg = e.message || '알 수 없는 오류';
+    if(e.code === 'invalid-argument' || msg.includes('maximum')) msg = '데이터가 너무 큽니다. 이미지를 더 작게 압축하거나 스토리 내용을 줄여주세요.';
+    toast('저장 실패: '+msg,'err');
+    console.error('[saveBF] 저장 실패:', e.code, e.message);
+  }
 }
 
 async function deletePackWord(packId, idx) {
@@ -4620,16 +4630,16 @@ async function handleBFFileUpload(event) {
   try {
     setStatus('압축 중...', '#1E5FA5');
 
-    // 이미지 압축
+    // 이미지 압축 (Firestore 1MB 제한 고려)
     let uploadBlob = file;
-    try {
-      const r = await _bfCompressImage(file, 1024, 0.85);
-      uploadBlob = r.blob;
-    } catch(_) {}
-
-    if(uploadBlob.size > 10 * 1024 * 1024) {
-      setStatus('파일이 너무 큽니다 (10MB 이하)', '#DC2626');
-      if(typeof toast === 'function') toast('파일이 너무 큽니다 (10MB 이하)','err');
+    try { const r = await _bfCompressImage(file, 800, 0.8); uploadBlob = r.blob; } catch(_) {}
+    // 여전히 크면 더 압축
+    if(uploadBlob.size > 400 * 1024) {
+      try { const r = await _bfCompressImage(file, 500, 0.7); uploadBlob = r.blob; } catch(_) {}
+    }
+    if(uploadBlob.size > 600 * 1024) {
+      setStatus('파일이 너무 큽니다. 더 작은 이미지를 사용해주세요', '#DC2626');
+      if(typeof toast === 'function') toast('이미지가 너무 큽니다','err');
       return;
     }
 

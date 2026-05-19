@@ -812,7 +812,7 @@ function showButterflyDetail(id) {
       <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕</button>
     </div>
     <div style="padding:20px">
-      <div style="background:${b.bg||'#F9FAFB'};border-radius:20px;padding:30px;text-align:center;margin-bottom:16px;border:1px solid #E5E7EB;display:flex;align-items:center;justify-content:center;min-height:200px">
+      <div style="background:#ffffff;border-radius:20px;padding:30px;text-align:center;margin-bottom:16px;border:1px solid #E5E7EB;display:flex;align-items:center;justify-content:center;min-height:200px">
         ${svgHtml}
       </div>
       <div style="margin-bottom:16px">

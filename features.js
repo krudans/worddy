@@ -843,161 +843,6 @@ function _exportUploadJSON(book, cat, desc) {
 // 공지사항 & 랭킹 공지 시스템
 // ════════════════════════════════════════════════
 
-// ── 공지 팝업 표시 (앱 시작 후 호출) ──
-async function showAnnouncementPopup() {
-  // 수신 거부 체크
-  if(localStorage.getItem('wd-notice-off') === '1') return;
-
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const seenKey = 'wd-notice-seen-' + today;
-    if(localStorage.getItem(seenKey)) return; // 오늘 이미 봄
-
-    const notices = [];
-
-    // ─ 1. Firebase에서 관리자 공지 로드 (인덱스 없이 단순 조회) ─
-    if(typeof db !== 'undefined') {
-      try {
-        const snap = await db.collection('announcements')
-          .orderBy('createdAt', 'desc')
-          .limit(10)
-          .get();
-        snap.docs
-          .map(d => d.data())
-          .filter(d => d.active !== false)
-          .slice(0, 5)
-          .forEach(d => notices.push({ type: 'admin', ...d }));
-      } catch(e) {}
-    }
-
-    // ─ 2. 오늘 XP 상위 3 ─
-    const todayRank = await _fetchRankTop3('today');
-    if(todayRank.length) notices.push({ type: 'rank', period: 'today', list: todayRank });
-
-    // ─ 3. 주간 XP 상위 3 ─
-    const weekRank = await _fetchRankTop3('week');
-    if(weekRank.length) notices.push({ type: 'rank', period: 'week', list: weekRank });
-
-    // ─ 4. 월간 XP 상위 3 ─
-    const monthRank = await _fetchRankTop3('month');
-    if(monthRank.length) notices.push({ type: 'rank', period: 'month', list: monthRank });
-
-    if(!notices.length) return;
-
-    localStorage.setItem(seenKey, '1');
-    _renderNoticePopup(notices);
-  } catch(e) {}
-}
-
-// 기간별 상위 3명 조회
-async function _fetchRankTop3(period) {
-  if(typeof db === 'undefined') return [];
-  try {
-    const now = new Date();
-    let from = new Date();
-    if(period === 'today') from.setHours(0, 0, 0, 0);
-    else if(period === 'week') from.setDate(from.getDate() - 7);
-    else if(period === 'month') from.setMonth(from.getMonth() - 1);
-
-    const snap = await db.collection('rankings')
-      .orderBy('score', 'desc')
-      .limit(100)
-      .get();
-
-    const list = snap.docs
-      .map(d => d.data())
-      .filter(r => r.date && new Date(r.date) >= from)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-
-    return list;
-  } catch(e) { return []; }
-}
-
-// 공지 팝업 렌더링
-function _renderNoticePopup(notices) {
-  const mr = document.getElementById('mr');
-  if(!mr) return;
-
-  let idx = 0;
-
-  const PERIOD_LABELS = { today: '오늘', week: '이번 주', month: '이번 달' };
-  const PERIOD_ICONS  = { today: '📅', week: '📆', month: '🗓️' };
-  const MEDALS = ['🥇', '🥈', '🥉'];
-
-  function renderPage(i) {
-    const n = notices[i];
-    const isLast = i === notices.length - 1;
-    let body = '';
-
-    if(n.type === 'admin') {
-      // 관리자 공지
-      body = `
-        <div style="text-align:center;margin-bottom:12px">
-          <div style="font-size:40px;margin-bottom:6px">📢</div>
-          <div style="font-size:16px;font-weight:900;color:#111">${n.title || '공지사항'}</div>
-          ${n.subtitle ? `<div style="font-size:12px;color:#9CA3AF;margin-top:2px">${n.subtitle}</div>` : ''}
-        </div>
-        <div style="background:#EFF6FF;border-radius:14px;padding:14px;font-size:13px;color:#374151;line-height:1.8;margin-bottom:14px;white-space:pre-wrap">${n.content || ''}</div>`;
-    } else {
-      // 랭킹 공지
-      const label = PERIOD_LABELS[n.period] || n.period;
-      const icon  = PERIOD_ICONS[n.period]  || '🏆';
-      body = `
-        <div style="text-align:center;margin-bottom:12px">
-          <div style="font-size:36px;margin-bottom:6px">${icon}</div>
-          <div style="font-size:16px;font-weight:900;color:#111">${label} 경험치 랭킹</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">열심히 공부한 분들이에요! 👏</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-          ${n.list.map((r, ri) => {
-            const isMe = r.uid === S.user?.uid || r.nick === S.nick;
-            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:${isMe ? '#EFF6FF' : '#F9FAFB'};border:1.5px solid ${isMe ? '#1E5FA5' : '#E5E7EB'}">
-              <div style="font-size:22px;width:28px;text-align:center">${MEDALS[ri]}</div>
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:800;color:${isMe ? '#1E5FA5' : '#111'}">${isMe ? '👉 ' : ''}${r.nick || '이름없음'}</div>
-                <div style="font-size:11px;color:#9CA3AF">${r.level || ''}</div>
-              </div>
-              <div style="font-size:14px;font-weight:900;color:${isMe ? '#1E5FA5' : '#374151'}">⚡${(r.score || 0).toLocaleString()}</div>
-            </div>`;
-          }).join('')}
-        </div>`;
-    }
-
-    const dots = notices.length > 1
-      ? `<div style="display:flex;justify-content:center;gap:4px;margin-bottom:10px">
-          ${notices.map((_, di) =>
-            `<div style="width:6px;height:6px;border-radius:50%;background:${di === i ? '#1E5FA5' : '#D1D5DB'}"></div>`
-          ).join('')}
-        </div>` : '';
-
-    mr.innerHTML = `<div class="mbg" onclick="cm()">
-      <div class="modal" style="max-height:85vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
-        <div style="flex-shrink:0;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div style="font-size:11px;color:#9CA3AF;font-weight:600">공지사항 ${i+1}/${notices.length}</div>
-          <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF;padding:0;line-height:1">×</button>
-        </div>
-        <div style="flex:1;overflow-y:auto">${body}</div>
-        ${dots}
-        <div style="display:flex;gap:8px;flex-shrink:0">
-          <button onclick="localStorage.setItem('wd-notice-off','1');cm();toast('공지 수신이 꺼졌어요. 프로필에서 다시 켤 수 있어요.')"
-            style="flex:1;background:#F3F4F6;color:#9CA3AF;border:none;border-radius:12px;padding:10px;font-size:11px;font-weight:700;cursor:pointer">
-            🔕 그만 받기
-          </button>
-          ${isLast
-            ? `<button onclick="cm()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">확인 ✓</button>`
-            : `<button onclick="window._noticeNext()" style="flex:2;background:#1E5FA5;color:#fff;border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">다음 →</button>`
-          }
-        </div>
-      </div>
-    </div>`;
-  }
-
-  window._noticeNext = () => { idx++; if(idx < notices.length) renderPage(idx); else cm(); };
-  renderPage(0);
-}
-
-// ── 관리자 공지 작성 (admin 전용) ──
 function showAdminNoticeEditor() {
   if(!S.user || S.user.email !== 'krudans@gmail.com') {
     toast('관리자만 접근 가능해요'); return;
@@ -1077,91 +922,32 @@ async function deleteNotice(id) {
 async function renderHomeNotice() {
   const el = document.getElementById('home-notice-section');
   if(!el) return;
-
-  // 수신 거부면 표시 안함
-  if(localStorage.getItem('wd-notice-off') === '1') return;
-
-  el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">⏳ 공지 로딩 중...</div>';
+  if(localStorage.getItem('wd-notice-off') === '1') { el.innerHTML=''; return; }
 
   try {
-    const sections = [];
+    if(typeof db === 'undefined') { el.innerHTML=''; return; }
 
-    // ── 1. 관리자 공지 ──
-    if(typeof db !== 'undefined') {
-      try {
-        const snap = await db.collection('announcements')
-          .orderBy('createdAt','desc').limit(5).get();
-        const notices = snap.docs.map(d=>d.data()).filter(d=>d.active!==false);
-        if(notices.length) sections.push({ type:'notices', items: notices });
-      } catch(e){}
-    }
+    const snap = await db.collection('announcements')
+      .orderBy('createdAt','desc').limit(5).get();
+    const notices = snap.docs.map(d=>d.data()).filter(d=>d.active!==false).slice(0,5);
 
-    // ── 2. 오늘/주간/월간 랭킹 ──
-    for(const p of ['today','week','month']) {
-      const list = await _fetchRankTop3(p);
-      if(list.length) sections.push({ type:'rank', period:p, list });
-    }
+    if(!notices.length) { el.innerHTML=''; return; }
 
-    if(!sections.length) { el.innerHTML=''; return; }
-
-    _renderHomeSections(el, sections);
-  } catch(e) { el.innerHTML=''; }
-}
-
-function _renderHomeSections(el, sections) {
-  const PERIOD_LABELS = { today:'오늘', week:'이번 주', month:'이번 달' };
-  const PERIOD_ICONS  = { today:'📅', week:'📆', month:'🗓️' };
-  const MEDALS = ['🥇','🥈','🥉'];
-
-  // 활성 탭 상태
-  if(!window._noticeTab) window._noticeTab = 0;
-  const activeIdx = window._noticeTab;
-  const s = sections[activeIdx] || sections[0];
-
-  // 탭 버튼 생성
-  const tabs = sections.map((sec, i) => {
-    const label = sec.type==='notices' ? '📢 공지'
-      : (PERIOD_ICONS[sec.period]||'🏆') + ' ' + (PERIOD_LABELS[sec.period]||sec.period);
-    const active = i === activeIdx;
-    return `<button onclick="window._noticeTab=${i};if(typeof renderHomeNotice==='function')renderHomeNotice()"
-      style="padding:4px 10px;border-radius:20px;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
-        background:${active?'#1E5FA5':'#F3F4F6'};color:${active?'#fff':'#6B7280'};transition:all .15s">${label}</button>`;
-  }).join('');
-
-  // 콘텐츠
-  let content = '';
-  if(s.type === 'notices') {
-    content = s.items.map(n => `
-      <div style="padding:10px 12px;border-radius:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:6px">
-        <div style="font-size:13px;font-weight:800;color:#1E5FA5;margin-bottom:3px">📢 ${n.title||''}</div>
-        ${n.subtitle?`<div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">${n.subtitle}</div>`:''}
-        <div style="font-size:12px;color:#374151;line-height:1.7;white-space:pre-wrap">${n.content||''}</div>
+    const items = notices.map(n => `
+      <div style="padding:12px 14px;border-radius:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:800;color:#1E5FA5;margin-bottom:${n.subtitle||n.content?'4px':'0'}">📢 ${n.title||''}</div>
+        ${n.subtitle ? `<div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">${n.subtitle}</div>` : ''}
+        ${n.content  ? `<div style="font-size:12px;color:#374151;line-height:1.7;white-space:pre-wrap">${n.content}</div>` : ''}
       </div>`).join('');
-  } else {
-    content = s.list.map((r, ri) => {
-      const isMe = r.uid === S.user?.uid || r.nick === S.nick;
-      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;
-          background:${isMe?'#EFF6FF':'#F9FAFB'};border:1.5px solid ${isMe?'#1E5FA5':'#E5E7EB'};margin-bottom:6px">
-        <div style="font-size:18px;width:24px;text-align:center">${MEDALS[ri]}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:800;color:${isMe?'#1E5FA5':'#111'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isMe?'👉 ':''}${r.nick||'이름없음'}</div>
-          <div style="font-size:10px;color:#9CA3AF">${r.level||''}</div>
-        </div>
-        <div style="font-size:13px;font-weight:900;color:${isMe?'#1E5FA5':'#374151'}">⚡${(r.score||0).toLocaleString()}</div>
-      </div>`;
-    }).join('');
-  }
 
-  el.innerHTML = `
-    <div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">📋 공지 & 랭킹</div>
-        <button onclick="localStorage.setItem('wd-notice-off','1');document.getElementById('home-notice-section').innerHTML='';toast('🔕 공지 알림 꺼짐. 프로필에서 다시 켤 수 있어요')"
-          style="background:none;border:none;font-size:18px;cursor:pointer;color:#D1D5DB;padding:0;line-height:1" title="공지 닫기">×</button>
-      </div>
-      <div style="display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin-bottom:10px;padding-bottom:2px">
-        ${tabs}
-      </div>
-      <div>${content}</div>
-    </div>`;
+    el.innerHTML = `
+      <div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">📢 공지사항</div>
+          <button onclick="localStorage.setItem('wd-notice-off','1');document.getElementById('home-notice-section').innerHTML='';toast('🔕 공지 꺼짐. 프로필에서 다시 켤 수 있어요')"
+            style="background:none;border:none;font-size:18px;cursor:pointer;color:#D1D5DB;padding:0;line-height:1" title="닫기">×</button>
+        </div>
+        ${items}
+      </div>`;
+  } catch(e) { el.innerHTML=''; }
 }

@@ -3896,7 +3896,7 @@ async function rLV(){
 // ── 공지사항 ──
 async function rNT(){
   let ns=[];
-  try{const s=await db.collection('notices').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
+  try{const s=await db.collection('announcements').orderBy('createdAt','desc').limit(20).get();ns=s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
   const elNT=document.getElementById('main-inner');
   const typeMap={notice:{label:'공지',color:'#1E5FA5',bg:'#EFF6FF'},update:{label:'업데이트',color:'#059669',bg:'#ECFDF5'},event:{label:'이벤트',color:'#7C3AED',bg:'#F5F3FF'}};
   elNT.innerHTML=`
@@ -3932,14 +3932,40 @@ async function rNT(){
     }`;
 }
 
+function showAddNT(){
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:16px">📢 공지사항 작성</h3>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">제목 *</label>
+      <input id="ntitle" placeholder="공지 제목을 입력하세요" style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">부제목 (선택)</label>
+      <input id="nsubtitle" placeholder="예: 2026년 5월" style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">내용 *</label>
+      <textarea id="nbody" placeholder="공지 내용을 입력하세요..." style="width:100%;min-height:120px;resize:vertical;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box"></textarea>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <input type="checkbox" id="nactive" checked style="width:16px;height:16px;cursor:pointer">
+      <label for="nactive" style="font-size:13px;font-weight:600;color:#374151;cursor:pointer">즉시 게시</label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer">취소</button>
+      <button onclick="saveNT()" style="flex:2;padding:12px;background:#1E5FA5;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer">📤 등록</button>
+    </div>
+  </div></div>`;
+}
+
 async function saveNT(){
   const t=document.getElementById('ntitle')?.value.trim();
   const b=document.getElementById('nbody')?.value.trim();
   if(!t||!b){toast('제목과 내용을 입력하세요','err');return;}
   try{
-    await db.collection('notices').add({
-      title:t, body:b,
-      type:document.getElementById('ntype')?.value||'notice',
+    const subtitle = document.getElementById('nsubtitle')?.value.trim()||'';
+    await db.collection('announcements').add({
+      title:t, content:b, subtitle,
       active:document.getElementById('nactive')?.checked!==false,
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
       createdBy:currentAdmin?.email
@@ -3949,7 +3975,7 @@ async function saveNT(){
     rNT();
   }catch(e){toast('오류: '+e.message,'err');}
 }
-async function toggleNT(id,active){try{await db.collection('notices').doc(id).update({active});toast(active?'✅ 게시됨':'🙈 숨김','ok');rNT();}catch(e){toast('오류','err');}}
+async function toggleNT(id,active){try{await db.collection('announcements').doc(id).update({active});toast(active?'✅ 게시됨':'🙈 숨김','ok');rNT();}catch(e){toast('오류','err');}}
 async function delNT(id){
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
     <div style="font-size:36px;margin-bottom:12px">🗑️</div>
@@ -3957,7 +3983,7 @@ async function delNT(id){
     <div style="font-size:13px;color:#9CA3AF;margin-bottom:20px">삭제하면 복구할 수 없습니다.</div>
     <div style="display:flex;gap:8px">
       <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer">취소</button>
-      <button onclick="cm();db.collection('notices').doc('${id}').delete().then(()=>{toast('🗑 삭제 완료','ok');rNT();}).catch(e=>toast('오류','err'))" style="flex:1;padding:12px;background:#DC2626;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+      <button onclick="cm();db.collection('announcements').doc('${id}').delete().then(()=>{toast('🗑 삭제 완료','ok');rNT();}).catch(e=>toast('오류','err'))" style="flex:1;padding:12px;background:#DC2626;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
     </div>
   </div></div>`;
 }

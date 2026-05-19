@@ -3500,8 +3500,26 @@ function sv() {
     // throttle: 3초에 1번만
     clearTimeout(window._svTimer);
     window._svTimer = setTimeout(()=>{
-      db.collection('users').doc(uid).set(saveData, {merge:true})
+      // 메인 user 문서 저장 (단어 제외 - 용량 절약)
+      const saveDataLite = {...saveData};
+      // books/words는 별도 컬렉션에 저장 (Firestore 1MB 제한 방지)
+      const booksData = {books: S.books||[], words: S.words||[], updatedAt: new Date().toISOString()};
+      db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
+      // 단어장 별도 저장
+      db.collection('user_words').doc(uid).set(booksData, {merge:false})
+        .catch(e=>console.warn('단어장 저장 오류',e));
+      // 일별 백업 (하루 1번)
+      const today = new Date().toISOString().slice(0,10);
+      const lastBackup = localStorage.getItem('wd-last-backup');
+      if(lastBackup !== today && (S.books||[]).some(b=>(b.words||[]).length>0)) {
+        localStorage.setItem('wd-last-backup', today);
+        db.collection('user_backups').doc(uid+'_'+today).set({
+          ...booksData,
+          xp: S.xp, nick: S.nick, lid: S.lid,
+          backupDate: today
+        }).catch(()=>{});
+      }
     }, 3000);
   }
 }
@@ -11695,6 +11713,12 @@ function showDataBackup() {
       </div>
     </div>
 
+    <div style="background:#FFF7ED;border-radius:14px;padding:14px;margin-bottom:10px;border:1.5px solid #FED7AA">
+      <div style="font-size:13px;font-weight:800;color:#C2410C;margin-bottom:8px">☁️ Firebase 백업에서 복구</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">서버에 저장된 최근 백업에서 단어장을 복구합니다</div>
+      <button onclick="restoreFromBackup()" style="width:100%;background:#EA580C;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">🔄 백업에서 단어장 복구</button>
+    </div>
+
     <div style="background:#F9FAFB;border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📊 현재 데이터</div>
       <div style="font-size:12px;color:#6B7280;line-height:1.8">
@@ -11704,6 +11728,42 @@ function showDataBackup() {
     </div>
     <button onclick="cm()" class="btn bgr">닫기</button>
   </div></div>`;
+}
+
+async function restoreFromBackup() {
+  if(!S.user?.uid) { toast('로그인이 필요합니다','err'); return; }
+  toast('백업 검색 중...');
+  try {
+    // user_words 컬렉션에서 복구
+    const wdoc = await db.collection('user_words').doc(S.user.uid).get();
+    if(wdoc.exists) {
+      const wd = wdoc.data();
+      const totalWords = (wd.books||[]).reduce((s,b)=>s+(b.words||[]).length,0) + (wd.words||[]).length;
+      if(totalWords > 0) {
+        if(!confirm('user_words 백업에서 단어 '+totalWords+'개를 복구할까요?')) return;
+        if(wd.books?.some(b=>(b.words||[]).length>0)) { S.books = wd.books; localStorage.setItem('wd-bks', JSON.stringify(wd.books)); }
+        if(wd.words?.length>0) { S.words = wd.words; localStorage.setItem('wd-w', JSON.stringify(wd.words)); }
+        sv(); cm(); go(); toast('✅ 단어 '+totalWords+'개 복구 완료!'); return;
+      }
+    }
+    // 일별 백업에서 복구 (최근 7일)
+    const today_ = new Date().toISOString().slice(0,10);
+    for(let i=1; i<=7; i++) {
+      const d = new Date(Date.now() - i*86400000).toISOString().slice(0,10);
+      const bak = await db.collection('user_backups').doc(S.user.uid+'_'+d).get();
+      if(bak.exists) {
+        const b = bak.data();
+        const total = (b.books||[]).reduce((s,bk)=>s+(bk.words||[]).length,0) + (b.words||[]).length;
+        if(total > 0) {
+          if(!confirm(d+' 백업에서 단어 '+total+'개를 복구할까요?')) return;
+          if(b.books?.some(bk=>(bk.words||[]).length>0)) { S.books = b.books; localStorage.setItem('wd-bks', JSON.stringify(b.books)); }
+          if(b.words?.length>0) { S.words = b.words; localStorage.setItem('wd-w', JSON.stringify(b.words)); }
+          sv(); cm(); go(); toast('✅ '+d+' 백업에서 단어 '+total+'개 복구!'); return;
+        }
+      }
+    }
+    toast('복구 가능한 백업이 없습니다','err');
+  } catch(e) { toast('복구 실패: '+e.message,'err'); }
 }
 
 function exportCSV() {
@@ -11984,9 +12044,26 @@ auth.onAuthStateChanged(async user => {
     // Firebase에서 최신 데이터 먼저 로드한 뒤 startApp (타임아웃 5초)
     if(typeof db !== 'undefined') {
       try {
-        const _fbPromise = db.collection('users').doc(user.uid).get();
+        // users + user_words 동시 로드
+        const _fbPromise = Promise.all([
+          db.collection('users').doc(user.uid).get(),
+          db.collection('user_words').doc(user.uid).get()
+        ]);
         const _timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000));
-        const _doc = await Promise.race([_fbPromise, _timeout]);
+        const [_doc, _wdoc] = await Promise.race([_fbPromise, _timeout]);
+        // user_words에서 단어장 복원
+        if(_wdoc && _wdoc.exists) {
+          const _wd = _wdoc.data();
+          if(_wd.books && _wd.books.some(b=>(b.words||[]).length>0)) {
+            S.books = _wd.books;
+            localStorage.setItem('wd-bks', JSON.stringify(_wd.books));
+          }
+          if(_wd.words && _wd.words.length>0) {
+            S.words = _wd.words;
+            localStorage.setItem('wd-w', JSON.stringify(_wd.words));
+          }
+          console.log('[앱] user_words 로드:', (S.books||[]).map(b=>b.name+':'+b.words?.length).join(', '));
+        }
         if(_doc.exists) {
           const _data = _doc.data();
           // ── Firebase 데이터 유효성 검사 후 머지 ──

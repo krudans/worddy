@@ -390,20 +390,42 @@ function renderRankList(list) {
 }
 
 // 게임 점수 Firestore 저장
-async function saveGameScore(score) {
+function saveGameScore(score) {
+  if(!S.bestScores) S.bestScores={};
+  const gid = S.gameId;
+  if(!gid) return;
+  // 최고 점수 저장
+  if(!S.bestScores[gid] || score > S.bestScores[gid]) {
+    S.bestScores[gid] = score;
+    localStorage.setItem('wd-bs', JSON.stringify(S.bestScores));
+  }
+  // 게임별 단어 수 저장
+  const _wc = (S.gWords||[]).length || 0;
+  if(!S.gamePlayCount) S.gamePlayCount={};
+  S.gamePlayCount[gid] = (S.gamePlayCount[gid]||0) + _wc;
+  const _gt = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+  if(!S.gameDailyCount) S.gameDailyCount={};
+  if(!S.gameDailyCount[_gt]) S.gameDailyCount[_gt]={};
+  S.gameDailyCount[_gt][gid] = (S.gameDailyCount[_gt][gid]||0) + _wc;
+  localStorage.setItem('wd-gpc', JSON.stringify(S.gamePlayCount));
+  localStorage.setItem('wd-gdc', JSON.stringify(S.gameDailyCount));
+  // Firebase 랭킹 저장 (비동기, 실패해도 무시)
   try {
     const docId=`${S.user?.uid}_${Date.now()}`;
-    await db.collection('rankings').doc(docId).set({
-      uid: S.user?.uid,
-      nick: S.nick,
-      level: S.lid,
-      emoji: lv(S.lid).emoji,
-      score,
-      game: S.gameId,
-      date: new Date().toISOString(),
-      period_today: new Date().toISOString().slice(0,10),
-    });
+    db && db.collection('rankings').doc(docId).set({uid:S.user?.uid,nick:S.nick,level:S.lid,score,game:gid,date:new Date().toISOString()}).catch(()=>{});
   } catch(e) {}
+  // XP 계산
+  const xpTable = GAME_XP[gid] || {base:10, perfect:20};
+  const words = (S.gWords||[]).length || 1;
+  const right = Math.round(score/100);
+  const pct = Math.round(right/words*100);
+  let xpGain = xpTable.base;
+  if(pct===100) xpGain = xpTable.perfect;
+  else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
+  const streak = S.streak||0;
+  xpGain = Math.round(xpGain * (streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0));
+  if(xpGain>0 && typeof earnXP==='function') earnXP(xpGain, '게임 완료');
+  if(typeof sv==='function') sv();
 }
 
 // ── 일기 공유 ──

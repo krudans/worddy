@@ -4542,7 +4542,7 @@ function showOnboarding() {
 }
 
 // ── 라우터 ──
-const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'butterfly',ic:'🦋',lb:'나비키우기'},{id:'profile',ic:'👤',lb:'프로필'}];
+const TABS=[{id:'home',ic:'🏠',lb:'홈'},{id:'mybooks',ic:'📚',lb:'단어장'},{id:'learn',ic:'🎓',lb:'학습'},{id:'game',ic:'🎮',lb:'게임'},{id:'butterfly',ic:'🦋',lb:'나비'},{id:'profile',ic:'👤',lb:'프로필'}];
 
 function renderBFDogamGrid() {
   const grid = document.getElementById('bf-dogam-grid');
@@ -4576,8 +4576,9 @@ function go(tab,sub) {
     if(tab==='study'&&!sub) S.stab='books';
     if(tab==='mybooks'&&!sub) S.stab='books';
     if(tab==='butterfly'&&!sub) S.stab=null;
-    // 나비키우기 탭 벗어날 때 배경음악 정지
-    if(S.tab==='butterfly' && tab!=='butterfly') { if(typeof SFX!=='undefined') SFX.stopBG(); }
+    if(tab==='game'&&!sub) S.stab=null;
+    // 나비키우기/게임 탭 벗어날 때 배경음악 정지
+    if((S.tab==='butterfly'||S.tab==='game') && tab!=='butterfly' && tab!=='game') { if(typeof SFX!=='undefined') SFX.stopBG(); }
     // 학습탭 이탈 시 공부시간 계산
     if((S.tab==='learn'||S.tab==='study'||S.tab==='mybooks') && tab && tab!==S.tab) {
       if(S._learnEnterTime) {
@@ -4620,17 +4621,17 @@ function go(tab,sub) {
   const hdEl = document.getElementById('hd');
   if(hdEl && hdEl.style.display==='none') hdEl.style.display='';
   nav.innerHTML=TABS.map(t=>`<button class="ni" onclick="go('${t.id}')"><span class="ni-ic">${t.ic}</span><span class="ni-lb ${S.tab===t.id?'on':''}">${t.lb}</span>${S.tab===t.id?'<div class="dot"></div>':''}</button>`).join('');
-  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,butterfly:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rGameTab,profile:rProfile};
+  const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:rGameOnlyTab,butterfly:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rButterflyTab,profile:rProfile};
   const body=document.getElementById('body');
   let newHTML; try { newHTML=(map[S.tab]||rHome)(); } catch(e) { console.error("[go() 렌더링 에러] tab="+S.tab+" stab="+S.stab, e); newHTML='<div style="padding:20px;color:red">에러: '+e.message+'</div>'; }
   // 게임 실행 중이면 나가기 버튼 오버레이 추가
-  if(S.tab==='butterfly' && S.gameId && !S.gDone && S._gameRunning) {
+  if((S.tab==='butterfly'||S.tab==='game') && S.gameId && !S.gDone && S._gameRunning) {
     newHTML = `<div style="position:relative">
-      <div onclick="S._gameRunning=false;S.gDone=true;go('butterfly')" style="position:fixed;top:calc(env(safe-area-inset-top,0px)+8px);left:12px;z-index:999;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:20px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px)">✕ 나가기</div>
+      <div onclick="S._gameRunning=false;S.gDone=true;go(S._prevTab||'game')" style="position:fixed;top:calc(env(safe-area-inset-top,0px)+8px);left:12px;z-index:999;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:20px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px)">✕ 나가기</div>
     </div>` + newHTML;
   }
   body.innerHTML=newHTML;
-  if(S.tab==='butterfly') setTimeout(renderBFDogamGrid,50);
+  if(S.tab==='butterfly'||S.tab==='game') setTimeout(renderBFDogamGrid,50);
   // 광고 배너 고정 div에 렌더링
   const adEl=document.getElementById('ad-banner-fixed');
   if(adEl) adEl.innerHTML=renderAdBanner()||'';
@@ -5212,8 +5213,59 @@ function showLevelUpFlash(cb) {
   setTimeout(()=>{el.remove();if(cb)cb();},600);
 }
 
-// ── 게임 탭 (벌거지 + 게임 + 나비도감) ──
-function rGameTab() {
+// ── 나비 탭 (벌거지 + 나비도감) / 게임 탭 ──
+function rGameOnlyTab() {
+  // 게임 실행 중이면 게임 렌더
+  if(S._gameRunning && S.gameId && !S.gDone) return rGame();
+
+  const allBooks = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
+  const bookName = S.currentBook||'내 단어장';
+  let html = '<div class="pad" style="padding-bottom:24px">';
+
+  // ── 단어장 선택 ──
+  html += `<div style="margin-bottom:10px">
+    <div style="position:relative">
+      <select onchange="S.currentBook=this.value;go('game')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
+        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${(b.words||[]).length}개)</option>`).join('')}
+      </select>
+      <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
+    </div>
+  </div>`;
+
+  // ── 게임 목록 ──
+  html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:16px">
+    <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🎮 게임</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
+  const games = [
+    {id:'quiz',ic:'🎯',nm:'뜻 맞추기',c:'#1E5FA5',bg:'#EFF6FF'},
+    {id:'fill',ic:'📝',nm:'빈칸 채우기',c:'#D97706',bg:'#FFFBEB'},
+    {id:'typing',ic:'✏️',nm:'받아쓰기',c:'#16A34A',bg:'#F0FDF4'},
+    {id:'match',ic:'⚡',nm:'스피드 매칭',c:'#0D9488',bg:'#F0FDFA'},
+    {id:'chain',ic:'🔗',nm:'단어 체인',c:'#7C3AED',bg:'#F5F3FF'},
+    {id:'wc',ic:'🔡',nm:'단어 완성',c:'#BE185D',bg:'#FDF2F8'},
+    {id:'ssort',ic:'🔀',nm:'문장 배열',c:'#B45309',bg:'#FFFBEB'},
+    {id:'scramble',ic:'🔤',nm:'스크램블',c:'#0369A1',bg:'#EFF6FF'},
+    {id:'sentence',ic:'📖',nm:'문장 구성',c:'#E91E63',bg:'#FCE4EC'},
+    {id:'listen',ic:'🔊',nm:'듣고 완성',c:'#880E4F',bg:'#FCE4EC'},
+    {id:'wordfind',ic:'🔍',nm:'단어 찾기',c:'#16A34A',bg:'#ECFDF5'},
+    {id:'wordle',ic:'🟩',nm:'워들',c:'#92400E',bg:'#FEF3C7'},
+  ];
+  games.forEach(g => {
+    const best=S.bestScores?.[g.id];
+    html += `<div onclick="showGameSettings('${g.id}')" style="background:${g.bg};border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid ${g.c}22;position:relative">
+      ${!best?`<span style="position:absolute;top:8px;right:8px;background:${g.c};color:#fff;font-size:9px;font-weight:700;border-radius:20px;padding:2px 6px">NEW</span>`:''}
+      <div style="font-size:28px;margin-bottom:4px">${g.ic}</div>
+      <div style="font-size:12px;font-weight:800;color:${g.c}">${g.nm}</div>
+      ${best?`<div style="font-size:9px;color:#9CA3AF;margin-top:2px">🏆 ${best}%</div>`:'<div style="font-size:9px;color:'+g.c+';font-weight:700;margin-top:2px">도전해봐!</div>'}
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  html += '</div>';
+  return html;
+}
+
+function rButterflyTab() {
   // 최초 방문 시 소개 (1회만)
   if(!localStorage.getItem('bw-intro-seen')) setTimeout(showGameIntro, 300);
   // 서브탭: 돌보기 화면
@@ -5337,34 +5389,6 @@ function rGameTab() {
     html += '</div>';
   }
 
-  // ── 게임 목록 ──
-  html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:16px">
-    <div style="font-size:14px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">🎮 게임</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
-  const games = [
-    {id:'quiz',ic:'🎯',nm:'뜻 맞추기',c:'#1E5FA5',bg:'#EFF6FF'},
-    {id:'fill',ic:'📝',nm:'빈칸 채우기',c:'#D97706',bg:'#FFFBEB'},
-    {id:'typing',ic:'✏️',nm:'받아쓰기',c:'#16A34A',bg:'#F0FDF4'},
-    {id:'match',ic:'⚡',nm:'스피드 매칭',c:'#0D9488',bg:'#F0FDFA'},
-    {id:'chain',ic:'🔗',nm:'단어 체인',c:'#7C3AED',bg:'#F5F3FF'},
-    {id:'wc',ic:'🔡',nm:'단어 완성',c:'#BE185D',bg:'#FDF2F8'},
-    {id:'ssort',ic:'🔀',nm:'문장 배열',c:'#B45309',bg:'#FFFBEB'},
-    {id:'scramble',ic:'🔤',nm:'스크램블',c:'#0369A1',bg:'#EFF6FF'},
-    {id:'sentence',ic:'📖',nm:'문장 구성',c:'#E91E63',bg:'#FCE4EC'},
-    {id:'listen',ic:'🔊',nm:'듣고 완성',c:'#880E4F',bg:'#FCE4EC'},
-    {id:'wordfind',ic:'🔍',nm:'단어 찾기',c:'#16A34A',bg:'#ECFDF5'},
-    {id:'wordle',ic:'🟩',nm:'워들',c:'#92400E',bg:'#FEF3C7'},
-  ];
-  games.forEach(g => {
-    const best=S.bestScores?.[g.id];
-    html += `<div onclick="showGameSettings('${g.id}')" style="background:${g.bg};border-radius:14px;padding:14px;cursor:pointer;border:1.5px solid ${g.c}22;position:relative">
-      ${!best?`<span style="position:absolute;top:8px;right:8px;background:${g.c};color:#fff;font-size:9px;font-weight:700;border-radius:20px;padding:2px 6px">NEW</span>`:''}
-      <div style="font-size:28px;margin-bottom:4px">${g.ic}</div>
-      <div style="font-size:12px;font-weight:800;color:${g.c}">${g.nm}</div>
-      ${best?`<div style="font-size:9px;color:#9CA3AF;margin-top:2px">🏆 ${best}%</div>`:'<div style="font-size:9px;color:'+g.c+';font-weight:700;margin-top:2px">도전해봐!</div>'}
-    </div>`;
-  });
-  html += `</div></div>`;
 
   // ── 반려나비 도감 (나비 + 캐릭터 수집) ──
   const butterflies = getMyButterflies();
@@ -10079,7 +10103,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='butterfly'||S.tab==='game')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -10105,8 +10129,8 @@ function startGameW(id, ws) {
     return;
   }
 
-  // 나비 탭으로 전환
-  S.tab='butterfly'; S.stab=null; updHD();
+  // 게임 탭 또는 나비 탭으로 전환 (호출된 탭 기준)
+  if(S.tab!=='game') S.tab='butterfly'; S.stab=null; updHD();
   showCountdown(()=>go());
 }
 

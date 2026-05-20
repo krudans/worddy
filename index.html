@@ -1364,6 +1364,15 @@ function saveGameScore(score) {
   if(!S.bestScores[gid] || score > S.bestScores[gid]) {
     S.bestScores[gid] = score;
   }
+  // 게임별 플레이 횟수 & 오늘 플레이 기록
+  if(!S.gamePlayCount) S.gamePlayCount={};
+  S.gamePlayCount[gid] = (S.gamePlayCount[gid]||0) + 1;
+  const _gt = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+  if(!S.gameDailyCount) S.gameDailyCount={};
+  if(!S.gameDailyCount[_gt]) S.gameDailyCount[_gt]={};
+  S.gameDailyCount[_gt][gid] = (S.gameDailyCount[_gt][gid]||0) + 1;
+  localStorage.setItem('wd-gpc', JSON.stringify(S.gamePlayCount));
+  localStorage.setItem('wd-gdc', JSON.stringify(S.gameDailyCount));
   // XP 계산
   const xpTable = GAME_XP[gid] || {base:10, perfect:20};
   const words = (S.gWords||[]).length || 1;
@@ -3456,6 +3465,8 @@ function load() {
   S.srsReps = JSON.parse(localStorage.getItem('wd-sr')||'{}');
   S.friends = JSON.parse(localStorage.getItem('wd-fr')||'[]');
   S.bestScores = JSON.parse(localStorage.getItem('wd-bs')||'{}');
+  S.gamePlayCount = JSON.parse(localStorage.getItem('wd-gpc')||'{}');
+  S.gameDailyCount = JSON.parse(localStorage.getItem('wd-gdc')||'{}');
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
@@ -5366,17 +5377,21 @@ function rGameOnlyTab() {
     ${(()=>{
       const _t=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
       const _wAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
-      const _sl=S.studyLog||{};
-      const _todayQuiz=(_sl[_t]||{}).quiz||0;
-      const _weekQuiz=Object.entries(_sl).filter(([k])=>k>=_wAgo).reduce((s,[,v])=>s+(v.quiz||0),0);
+      const _gdc=S.gameDailyCount||{};
+      const _gpc=S.gamePlayCount||{};
+      // 오늘 총 플레이 횟수
+      const _todayTotal=Object.values(_gdc[_t]||{}).reduce((s,v)=>s+v,0);
+      // 주간 총 플레이 횟수
+      const _weekTotal=Object.entries(_gdc).filter(([k])=>k>=_wAgo).reduce((s,[,v])=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+      // 전체 플레이 횟수
+      const _allTotal=Object.values(_gpc).reduce((s,v)=>s+v,0);
       const _cleared=Object.keys(bestScores).length;
-      const _best=Math.max(...Object.values(bestScores).concat([0]));
       return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
         ${[
-          {v:_todayQuiz+'회', lb:'오늘 게임', color:'#F59E0B'},
-          {v:_weekQuiz+'회', lb:'주간 게임', color:'#10B981'},
+          {v:_todayTotal>0?_todayTotal+'회':'없음', lb:'오늘 게임', color:_todayTotal>0?'#F59E0B':'#9CA3AF'},
+          {v:_weekTotal>0?_weekTotal+'회':'없음', lb:'주간 게임', color:_weekTotal>0?'#10B981':'#9CA3AF'},
           {v:_cleared+'/12', lb:'클리어', color:'#6366F1'},
-          {v:_best>0?_best+'%':'-', lb:'최고점', color:'#F43F5E'},
+          {v:_allTotal>0?_allTotal+'회':'없음', lb:'누적 게임', color:_allTotal>0?'#8B5CF6':'#9CA3AF'},
         ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:10px;padding:8px 4px;text-align:center;border:1px solid var(--border,#E2E8F0)">
           <div style="font-size:15px;font-weight:900;color:${s.color};line-height:1.2">${s.v}</div>
           <div style="font-size:9px;color:var(--text3,#9CA3AF);margin-top:2px">${s.lb}</div>

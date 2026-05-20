@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v=ui-final-v1 -->
+<!-- v=ui-final-v2 -->
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -3495,9 +3495,9 @@ function load() {
   S.bestScores = JSON.parse(localStorage.getItem('wd-bs')||'{}');
   S.gamePlayCount = JSON.parse(localStorage.getItem('wd-gpc')||'{}');
   S.gameDailyCount = JSON.parse(localStorage.getItem('wd-gdc')||'{}');
-  // 게임 점수 저장 함수 강제 패치 (CDN 캐시 우회)
+  // ── 런타임 패치: SW 캐시 우회 (CDN 갱신 전까지) ──
   setTimeout(()=>{
-    const _origSave = saveGameScore;
+    // saveGameScore 패치
     saveGameScore = function(score) {
       if(!S.bestScores) S.bestScores={};
       const gid = S.gameId; if(!gid) return;
@@ -3518,6 +3518,8 @@ function load() {
       if(typeof sv==='function') sv();
     };
   }, 100);
+  // updHD 100ms 후 재실행 (DOM 준비 후)
+  setTimeout(()=>{ if(typeof updHD==='function') updHD(); }, 200);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
@@ -3950,50 +3952,59 @@ function updHD() {
   const l=lv(S.lid);
   const hdEl=document.getElementById('hd');
   if(hdEl && hdEl.style.display==='none') hdEl.style.display='';
-  // 캐릭터 아이콘 (hd-char-icon) - 레벨 SVG 캐릭터
+
+  // ── 캐릭터 아이콘 ──
   const charIcon=document.getElementById('hd-char-icon');
-  if(charIcon) {
-    const charSvg = typeof charSVGAnimated==='function'
-      ? `<div style="transform:scale(.9);transform-origin:center">${charSVGAnimated(S.lid,34,'normal')}</div>`
+  if(charIcon && charIcon.dataset.lid!==S.lid) {
+    charIcon.innerHTML = typeof charSVGAnimated==='function'
+      ? `<div style="transform:scale(.88);transform-origin:center">${charSVGAnimated(S.lid,34,'normal')}</div>`
       : `<span style="font-size:20px">${l.emoji||'🐛'}</span>`;
-    if(!charIcon.dataset.lid || charIcon.dataset.lid!==S.lid) {
-      charIcon.innerHTML = charSvg;
-      charIcon.dataset.lid = S.lid;
-    }
+    charIcon.dataset.lid = S.lid;
   }
+
+  // ── C안: 오늘 요약 우측 ──
+  const sumEl=document.getElementById('hd-today-sum');
+  if(sumEl) {
+    const _t=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+    const _tl=(S.studyLog||{})[_t]||{};
+    const _w=_tl.words||0;
+    const _m=_tl.min||0;
+    const _mStr=_m>=60?Math.floor(_m/60)+'h'+Math.round(_m%60)+'m':_m>=1?Math.round(_m)+'분':_m>0?Math.round(_m*60)+'초':'0분';
+    const ns=`<div style="font-size:14px;font-weight:900;color:var(--hd-xp,#1565C0);line-height:1">${_w.toLocaleString()}단어</div><div style="font-size:9px;color:var(--hd-sub,#2E7D32);margin-top:2px">${_mStr} 학습</div>`;
+    if(sumEl.innerHTML!==ns) sumEl.innerHTML=ns;
+  }
+
+  // ── XP 바 ──
+  const xpFill=document.getElementById('xpfill');
+  const curLvXp=(typeof LEVELS!=='undefined'?LEVELS.find(lx=>lx.id===S.lid):null)?.xp||100;
+  const newW=Math.min(100,Math.round((S.xp||0)/curLvXp*100))+'%';
+  if(xpFill && xpFill.style.width!==newW) xpFill.style.width=newW;
+  const xpLbl=document.getElementById('xp-label');
+  const newXp=(S.xp||0)+' / '+curLvXp+' XP';
+  if(xpLbl && xpLbl.textContent!==newXp) xpLbl.textContent=newXp;
+
+  // ── 공부시간 바 ──
+  const _t2=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+  const _studied=((S.studyLog||{})[_t2]||{}).min||0;
+  const _goal=S._dailyGoalMin||60;
+  const _pct=_goal>0?Math.min(100,Math.round(_studied/_goal*100)):0;
+  const txtEl=document.getElementById('study-mini-text');
+  const nt=_studied.toFixed(1)+' / '+_goal+'분';
+  if(txtEl && txtEl.textContent!==nt) txtEl.textContent=nt;
+  const fillEl=document.getElementById('study-mini-fill');
+  const nfW=_pct+'%';
+  if(fillEl && fillEl.style.width!==nfW) fillEl.style.width=nfW;
+  const pctEl=document.getElementById('study-mini-pct');
+  const np=_pct+'%';
+  if(pctEl && pctEl.textContent!==np) pctEl.textContent=np;
+
   // lbadge 숨김
   const badge=document.getElementById('lbadge');
   if(badge) badge.style.display='none';
-  const xpFill=document.getElementById('xpfill');
-  const newW=Math.min(100,Math.round((S.xp||0)/((typeof LEVELS!=='undefined'?LEVELS.find(lx=>lx.id===S.lid):null)?.xp||100)*100))+'%';
-  if(xpFill && xpFill.style.width!==newW) xpFill.style.width=newW;
-  const xpLbl=document.getElementById('xp-label');
-  const newXp=(S.xp||0)+' XP';
-  if(xpLbl && xpLbl.textContent!==newXp) xpLbl.textContent=newXp;
-  // 학습시간 미니 카드 업데이트
-  const studied = (S._dailyStudiedMin||0);
-  const goal = (S._dailyGoalMin||30);
-  const pct = Math.min(100, Math.round(studied/goal*100));
-  const remain = Math.max(0, goal - studied);
-  const mini = document.getElementById('study-mini');
-  if(mini && goal > 0) {
-    if(mini.style.display!=='block') mini.style.display='block';
-    const txtEl=document.getElementById('study-mini-text');
-    const newTxt=`${studied.toFixed(1)} / ${goal}분`;
-    if(txtEl && txtEl.textContent!==newTxt) txtEl.textContent=newTxt;
-    const fillEl=document.getElementById('study-mini-fill');
-    const newW=pct+'%';
-    if(fillEl && fillEl.style.width!==newW) fillEl.style.width=newW;
-    const pctEl=document.getElementById('study-mini-pct');
-    const newPct=pct+'%';
-    if(pctEl && pctEl.textContent!==newPct) pctEl.textContent=newPct;
-    if(pctEl) pctEl.style.color=pct>=100?'#16A34A':'#059669';
-    const remEl=document.getElementById('study-mini-rem');
-    if(remEl) remEl.textContent=pct>=100?'🎉 달성!':remain.toFixed(1)+'분 남음';
-  }
-  // 콕 찌르기 알림 뱃지 (Firebase에서 비동기 체크)
-  if(S.user?.uid) {
-    db.collection('pokes').where('to','==',S.user.uid).where('read','==',false).get()
+
+  // poke 버튼
+  if(window.db&&S.uid){
+    window.db.collection('pokes').where('to','==',S.uid).where('read','==',false).get()
       .then(snap=>{
         const cnt=snap.size;
         const btn=document.getElementById('poke-btn');

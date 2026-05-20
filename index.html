@@ -333,7 +333,7 @@ body.fs-lg{font-size:17px!important}
     <div class="hd-row" style="padding:2px 0 6px">
       <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
         <!-- 캐릭터 아이콘: updHD에서 레벨에 따라 업데이트 -->
-        <div id="hd-char-icon" onclick="showLevelModal()" style="width:38px;height:38px;background:rgba(255,255,255,.7);border-radius:12px;border:1.5px solid rgba(129,199,132,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.08);font-size:22px"></div>
+        <div id="hd-char-icon" onclick="showLevelModal()" style="width:38px;height:38px;background:rgba(255,255,255,.7);border-radius:12px;border:1.5px solid rgba(129,199,132,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden"></div>
         <div style="flex:1;min-width:0;overflow:hidden">
           <div style="font-size:12px;font-weight:900;color:var(--hd-title,#1B5E20);letter-spacing:0px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Butterfly Word &nbsp;·&nbsp; 단어를 외울수록 애벌레가 자라나요 🐛</div>
         </div>
@@ -3877,11 +3877,16 @@ function updHD() {
   const l=lv(S.lid);
   const hdEl=document.getElementById('hd');
   if(hdEl && hdEl.style.display==='none') hdEl.style.display='';
-  // 캐릭터 아이콘 (hd-char-icon) - 레벨 이모지로 표시
+  // 캐릭터 아이콘 (hd-char-icon) - 레벨 SVG 캐릭터
   const charIcon=document.getElementById('hd-char-icon');
   if(charIcon) {
-    const lvEmoji = l.emoji || '🐛';
-    if(charIcon.textContent.trim() !== lvEmoji) charIcon.textContent = lvEmoji;
+    const charSvg = typeof charSVGAnimated==='function'
+      ? `<div style="transform:scale(.9);transform-origin:center">${charSVGAnimated(S.lid,34,'normal')}</div>`
+      : `<span style="font-size:20px">${l.emoji||'🐛'}</span>`;
+    if(!charIcon.dataset.lid || charIcon.dataset.lid!==S.lid) {
+      charIcon.innerHTML = charSvg;
+      charIcon.dataset.lid = S.lid;
+    }
   }
   // lbadge 숨김
   const badge=document.getElementById('lbadge');
@@ -5360,16 +5365,18 @@ function rGameOnlyTab() {
     <!-- 통계 4칸 한 줄 -->
     ${(()=>{
       const _t=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
-      const _todayMin=Math.round((S.studyLog||{})[_t]?.min||0);
-      const _weekMin=Math.round(Object.entries(S.studyLog||{}).filter(([k])=>k>=new Date(Date.now()-7*86400000).toISOString().slice(0,10)).reduce((s,[,v])=>s+(v.min||0),0));
+      const _wAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+      const _sl=S.studyLog||{};
+      const _todayQuiz=(_sl[_t]||{}).quiz||0;
+      const _weekQuiz=Object.entries(_sl).filter(([k])=>k>=_wAgo).reduce((s,[,v])=>s+(v.quiz||0),0);
       const _cleared=Object.keys(bestScores).length;
       const _best=Math.max(...Object.values(bestScores).concat([0]));
       return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
         ${[
-          {v:_todayMin+'분', lb:'오늘 학습', color:'#F59E0B'},
-          {v:_weekMin+'분', lb:'주간 학습', color:'#10B981'},
+          {v:_todayQuiz+'회', lb:'오늘 게임', color:'#F59E0B'},
+          {v:_weekQuiz+'회', lb:'주간 게임', color:'#10B981'},
           {v:_cleared+'/12', lb:'클리어', color:'#6366F1'},
-          {v:_best+'%', lb:'최고점', color:'#F43F5E'},
+          {v:_best>0?_best+'%':'-', lb:'최고점', color:'#F43F5E'},
         ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:10px;padding:8px 4px;text-align:center;border:1px solid var(--border,#E2E8F0)">
           <div style="font-size:15px;font-weight:900;color:${s.color};line-height:1.2">${s.v}</div>
           <div style="font-size:9px;color:var(--text3,#9CA3AF);margin-top:2px">${s.lb}</div>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v=result-right-wrong-v1 -->
+<!-- v=result-patch-v1 -->
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -3683,6 +3683,21 @@ function load() {
   // saveGameScore 패치 제거됨 (원본 함수에 통합)
   // updHD 100ms 후 재실행 (DOM 준비 후)
   setTimeout(()=>{ if(typeof updHD==='function') updHD(); }, 200);
+  // rGameDone 패치 - 정답/오답 섹션 (SW 캐시 우회)
+  setTimeout(()=>{
+    if(typeof rGameDone==='function' && !rGameDone.toString().includes('문제 중')) {
+      const _o=rGameDone;
+      rGameDone=function(){
+        const html=_o.call(this,...arguments);
+        if(typeof html!=='string') return html;
+        const tot=Math.max((S.gWords||[]).length,1);
+        const right=Math.round((S.gScore||0)/100);
+        const wrong=tot-right;
+        const ns=`<div style="background:var(--bg,#F4F6F8);border-radius:14px;padding:12px 16px;width:100%;text-align:center;border:1px solid var(--border,#E5E7EB)"><div style="font-size:15px;font-weight:900;color:var(--text1,#111)">${tot}문제 중</div><div style="display:flex;justify-content:center;gap:20px;margin-top:8px"><div><span style="font-size:26px;font-weight:900;color:#16A34A">${right}개</span><div style="font-size:11px;color:#9CA3AF">정답</div></div><div style="border-left:1px solid #E5E7EB;margin:0 4px"></div><div><span style="font-size:26px;font-weight:900;color:#DC2626">${wrong}개</span><div style="font-size:11px;color:#9CA3AF">오답</div></div></div></div>`;
+        return html.replace(/<div style="font-size:12px;color:#9CA3AF;text-align:center">최고점:[^<]*<\/div>/,ns).replace(/<div style="background:linear-gradient\(135deg,#FFF8E1[^>]*>[\s\S]{0,300}?<\/div>/,ns);
+      };
+    }
+  }, 500);
   // saveGameScore 400ms 패치 제거됨
   // 헤더 padding CSS 직접 주입 (SW 캐시 우회)
   if(!document.getElementById('hd-padding-fix')) {

@@ -165,7 +165,7 @@ body { background: var(--bg) !important; }
 html,body{height:100%;width:100%;overflow:hidden;margin:0;padding:0}
 body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(--bg,var(--bg,#FFFFFF));display:flex;justify-content:center;align-items:flex-start}
 #app{width:100%;max-width:430px;height:100%;height:100svh;height:-webkit-fill-available;background:var(--bg,var(--bg,#FFFFFF));display:flex;flex-direction:column;overflow:hidden;position:relative}
-.hd{background:var(--hd-bg,linear-gradient(160deg,#E8F5E9 0%,#E3F2FD 50%,#E8EAF6 100%));padding:calc(env(safe-area-inset-top,0px)+12px) 0 4px;flex-shrink:0;box-shadow:0 1px 0 var(--hd-border,rgba(255,255,255,.8)),0 4px 20px rgba(0,0,0,.08);position:relative;overflow:hidden;border-bottom:1px solid var(--hd-border,rgba(0,0,0,.06))}
+.hd{background:var(--hd-bg,linear-gradient(160deg,#E8F5E9 0%,#E3F2FD 50%,#E8EAF6 100%));padding:calc(env(safe-area-inset-top,0px)+16px) 0 6px;flex-shrink:0;box-shadow:0 1px 0 var(--hd-border,rgba(255,255,255,.8)),0 4px 20px rgba(0,0,0,.08);position:relative;overflow:hidden;border-bottom:1px solid var(--hd-border,rgba(0,0,0,.06))}
 .hd-row{display:flex;justify-content:space-between;align-items:center;padding:0 14px;margin-bottom:6px}
 .logo{font-size:20px;font-weight:900;color:#fff;letter-spacing:1px}
 .lbadge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);cursor:pointer}
@@ -173,6 +173,25 @@ body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(-
 .xpfill{height:100%;background:#fff;border-radius:3px;transition:width .5s}
 .body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;width:100%;position:relative;padding-bottom:70px}
 .body::-webkit-scrollbar{display:none}
+/* ── 나비 날갯짓 애니메이션 ── */
+@keyframes bf-fly {
+  0%,100%{transform:translateY(0) rotate(-15deg) scaleX(1);}
+  25%{transform:translateY(-4px) rotate(-20deg) scaleX(.85);}
+  50%{transform:translateY(-7px) rotate(-12deg) scaleX(1);}
+  75%{transform:translateY(-3px) rotate(-18deg) scaleX(.9);}
+}
+@keyframes bf-fly2 {
+  0%,100%{transform:translateY(0) rotate(8deg) scaleX(1);}
+  30%{transform:translateY(-5px) rotate(12deg) scaleX(.8);}
+  60%{transform:translateY(-8px) rotate(5deg) scaleX(1);}
+  80%{transform:translateY(-2px) rotate(10deg) scaleX(.88);}
+}
+@keyframes bf-drift {
+  0%,100%{transform:translateX(0);}
+  50%{transform:translateX(3px);}
+}
+.hd-bf1{animation:bf-fly 2.8s ease-in-out infinite,bf-drift 4s ease-in-out infinite;display:inline-block;transform-origin:center;}
+.hd-bf2{animation:bf-fly2 3.3s ease-in-out infinite,bf-drift 5s ease-in-out infinite reverse;display:inline-block;transform-origin:center;}
 .nav{background:#fff;border-top:1.5px solid #E5E7EB;display:flex;padding:7px 0 calc(env(safe-area-inset-bottom,0px)+5px);flex-shrink:0}
 .ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:none;background:transparent;cursor:pointer;padding:2px 0}
 .ni-ic{font-size:20px;line-height:1.2}
@@ -309,8 +328,8 @@ body.fs-lg{font-size:17px!important}
       <div style="position:absolute;top:-40px;right:-30px;width:160px;height:160px;background:radial-gradient(circle,rgba(129,199,132,.2) 0%,transparent 65%);border-radius:50%"></div>
       <div style="position:absolute;bottom:-30px;left:-20px;width:120px;height:120px;background:radial-gradient(circle,rgba(100,181,246,.15) 0%,transparent 65%);border-radius:50%"></div>
       <!-- 나비들 -->
-      <div style="position:absolute;top:6px;right:14px;font-size:28px;opacity:.18;transform:rotate(-20deg)">🦋</div>
-      <div style="position:absolute;top:18px;right:52px;font-size:14px;opacity:.1;transform:rotate(10deg)">🦋</div>
+      <div class="hd-bf1" style="position:absolute;top:10px;right:16px;font-size:26px;opacity:.2">🦋</div>
+      <div class="hd-bf2" style="position:absolute;top:22px;right:54px;font-size:12px;opacity:.12">🦋</div>
     </div>
     <div class="hd-row" style="padding-bottom:6px">
       <div style="display:flex;align-items:center;gap:10px">
@@ -3857,10 +3876,18 @@ function applyTheme() {
 
 function updHD() {
   const l=lv(S.lid);
-  document.getElementById('hd').style.display='';
-  document.getElementById('lbadge').innerHTML=`<span style="display:inline-flex;align-items:center;gap:4px">${typeof charSVGAnimated==='function'?charSVGAnimated(S.lid,18,'normal'):''}${l.name}</span>`;
-  document.getElementById('xpfill').style.width=Math.min(100,Math.round((S.xp||0)/((typeof LEVELS!=='undefined'?LEVELS.find(lx=>lx.id===S.lid):null)?.xp||100)*100))+'%';
-  const xpLbl=document.getElementById('xp-label');if(xpLbl)xpLbl.textContent=(S.xp||0)+' XP';
+  const hdEl=document.getElementById('hd');
+  if(hdEl && hdEl.style.display==='none') hdEl.style.display='';
+  // 배지는 내용이 바뀔 때만 업데이트
+  const badge=document.getElementById('lbadge');
+  const newBadge=`<span style="display:inline-flex;align-items:center;gap:4px">${typeof charSVGAnimated==='function'?charSVGAnimated(S.lid,18,'normal'):''}${l.name}</span>`;
+  if(badge && badge.innerHTML!==newBadge) badge.innerHTML=newBadge;
+  const xpFill=document.getElementById('xpfill');
+  const newW=Math.min(100,Math.round((S.xp||0)/((typeof LEVELS!=='undefined'?LEVELS.find(lx=>lx.id===S.lid):null)?.xp||100)*100))+'%';
+  if(xpFill && xpFill.style.width!==newW) xpFill.style.width=newW;
+  const xpLbl=document.getElementById('xp-label');
+  const newXp=(S.xp||0)+' XP';
+  if(xpLbl && xpLbl.textContent!==newXp) xpLbl.textContent=newXp;
   // 학습시간 미니 카드 업데이트
   const studied = (S._dailyStudiedMin||0);
   const goal = (S._dailyGoalMin||30);
@@ -3868,12 +3895,19 @@ function updHD() {
   const remain = Math.max(0, goal - studied);
   const mini = document.getElementById('study-mini');
   if(mini && goal > 0) {
-    mini.style.display='block';
-    document.getElementById('study-mini-text').textContent = `⏱ ${studied.toFixed(1)} / ${goal}분`;
-    document.getElementById('study-mini-fill').style.width = pct + '%';
-    const pctEl=document.getElementById('study-mini-pct');if(pctEl)pctEl.textContent=pct+'%';
-    const pctEl2=document.getElementById('study-mini-pct');if(pctEl2)pctEl2.style.color=pct>=100?'#FFD600':'rgba(255,255,255,.8)';
-    document.getElementById('study-mini-rem').textContent = pct >= 100 ? '🎉 달성!' : remain.toFixed(1)+'분 남음';
+    if(mini.style.display!=='block') mini.style.display='block';
+    const txtEl=document.getElementById('study-mini-text');
+    const newTxt=`⏱ ${studied.toFixed(1)} / ${goal}분`;
+    if(txtEl && txtEl.textContent!==newTxt) txtEl.textContent=newTxt;
+    const fillEl=document.getElementById('study-mini-fill');
+    const newW=pct+'%';
+    if(fillEl && fillEl.style.width!==newW) fillEl.style.width=newW;
+    const pctEl=document.getElementById('study-mini-pct');
+    const newPct=pct+'%';
+    if(pctEl && pctEl.textContent!==newPct) pctEl.textContent=newPct;
+    if(pctEl) pctEl.style.color=pct>=100?'#16A34A':'#34D399';
+    const remEl=document.getElementById('study-mini-rem');
+    if(remEl) remEl.textContent=pct>=100?'🎉 달성!':remain.toFixed(1)+'분 남음';
   }
   // 콕 찌르기 알림 뱃지 (Firebase에서 비동기 체크)
   if(S.user?.uid) {

@@ -3365,6 +3365,7 @@ function load() {
   S.lid = localStorage.getItem('wd-l')||'egg';
   S.xp = +(localStorage.getItem('wd-xp')||0);
   S.streak = +(localStorage.getItem('wd-st')||1);
+  S.lastDate = localStorage.getItem('wd-dt') || '';
   S.lastDate = localStorage.getItem('wd-dt')||'';
   S.nick = localStorage.getItem('wd-nk')||'';
   S.words = JSON.parse(localStorage.getItem('wd-w')||'null')||[...DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg];
@@ -3899,6 +3900,44 @@ function addXP(n, silent=false) {
       : '⬆️ 레벨업 가능! 나비 탭에서 레벨업하세요'),800);
   }
 }
+// studyLog 기반 streak 재계산 (진실의 원천)
+function recalcStreak() {
+  const sl = S.studyLog || {};
+  const dates = Object.keys(sl).sort().reverse(); // 최신순
+  if(dates.length === 0) return;
+
+  // 연속 날짜 계산
+  let streak = 0;
+  const today_ = new Date(Date.now() + 9*3600000).toISOString().slice(0,10);
+  const yesterday_ = new Date(Date.now() + 9*3600000 - 86400000).toISOString().slice(0,10);
+
+  // 오늘 또는 어제부터 시작
+  const start = dates[0] === today_ || dates[0] === yesterday_ ? dates[0] : null;
+  if(!start) return; // 최근 학습이 어제/오늘이 아니면 streak 유지하지 않음
+
+  let check = start;
+  for(const d of dates) {
+    if(d === check) {
+      streak++;
+      // 하루 전으로
+      const prev = new Date(new Date(check).getTime() - 86400000).toISOString().slice(0,10);
+      check = prev;
+    } else {
+      break;
+    }
+  }
+
+  const oldStreak = S.streak || 0;
+  if(streak > oldStreak) {
+    // studyLog가 더 많은 연속일을 보여주면 업데이트
+    S.streak = streak;
+    S.lastDate = dates[0]; // 마지막 학습일
+    localStorage.setItem('wd-st', streak);
+    localStorage.setItem('wd-dt', dates[0]);
+    console.log('[recalcStreak] streak 재계산:', oldStreak, '->', streak);
+  }
+}
+
 function updStreak() {
   const td=today(); if(S.lastDate===td) return;
   // 매일 배부름/기분 감소
@@ -4399,6 +4438,8 @@ function cleanDummyWords() {
 
 function startApp() {
   console.log('[앱] startApp 호출');
+  // studyLog 기반 streak 재계산 (복구 후 불일치 방지)
+  setTimeout(recalcStreak, 800);
   if(S.words.length > 0) {
     const _w = S.words[0];
     console.log('[앱] startApp 시점 첫 단어:', JSON.stringify({en:_w.en,kr:_w.kr,ph:_w.ph,ex:_w.ex,pos:_w.pos}));

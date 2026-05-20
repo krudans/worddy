@@ -1,5 +1,5 @@
-// sw.js v4 - 캐시 오류로 인한 앱 재로드 방지
-const CACHE = 'butterfly-word-v4';
+// sw.js v5 - 강제 캐시 갱신
+const CACHE = 'butterfly-word-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -15,7 +15,7 @@ self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
       .then(c => c.addAll(ASSETS))
-      .catch(() => {}) // 실패해도 설치 계속
+      .catch(() => {})
   );
   self.skipWaiting();
 });
@@ -31,32 +31,26 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if(e.request.method !== 'GET') return;
-  
   const url = e.request.url;
-  
-  // Firebase, Google API는 캐시하지 않음
   if(url.includes('firestore.googleapis.com') ||
      url.includes('firebase') ||
      url.includes('googleapis.com') ||
-     url.includes('gstatic.com')) {
-    return; // 네트워크 직접 처리
-  }
+     url.includes('gstatic.com')) return;
   
-  // HTML/manifest는 네트워크 우선, 실패하면 캐시
-  if(url.includes('manifest.json') || url.includes('.html') || url.endsWith('/')) {
+  // index.html + JS: 항상 네트워크 우선 (캐시 무시)
+  if(url.includes('.html') || url.includes('index') || url.endsWith('/') || url.includes('.js')) {
     e.respondWith(
-      fetch(e.request).then(r => {
+      fetch(e.request, {cache: 'no-store'}).then(r => {
         if(r && r.status === 200) {
           const clone = r.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone).catch(()=>{}));
         }
         return r;
-      }).catch(() => caches.match(e.request).then(r => r || fetch(e.request)))
+      }).catch(() => caches.match(e.request))
     );
     return;
   }
   
-  // 나머지: 캐시 우선, 없으면 네트워크
   e.respondWith(
     caches.match(e.request).then(cached => {
       if(cached) return cached;

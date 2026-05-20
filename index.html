@@ -328,8 +328,7 @@ body.fs-lg{font-size:17px!important}
       <div style="position:absolute;top:-40px;right:-30px;width:160px;height:160px;background:radial-gradient(circle,rgba(129,199,132,.2) 0%,transparent 65%);border-radius:50%"></div>
       <div style="position:absolute;bottom:-30px;left:-20px;width:120px;height:120px;background:radial-gradient(circle,rgba(100,181,246,.15) 0%,transparent 65%);border-radius:50%"></div>
       <!-- 나비들 -->
-      <div class="hd-bf1" style="position:absolute;top:10px;right:16px;font-size:26px;opacity:.2">🦋</div>
-      <div class="hd-bf2" style="position:absolute;top:22px;right:54px;font-size:12px;opacity:.12">🦋</div>
+      <div class="hd-bf1" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;opacity:.13;pointer-events:none">🦋</div>
     </div>
     <div class="hd-row" style="padding:2px 0 6px">
       <div style="display:flex;align-items:center;gap:10px">
@@ -4755,14 +4754,14 @@ function rLearnTab() {
   const pct = words.length ? Math.round(marked/words.length*100) : 0;
   const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
   const t = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
-  const todayLog = (S.studyLog||{})[t]||{words:0,quiz:0,min:0};
-  const fmtMin = m => m>=60 ? Math.floor(m/60)+'h'+Math.round(m%60)+'m' : m>=1 ? Math.round(m)+'분' : m>0 ? Math.round(m*60)+'초' : '0';
+  const todayLog = (S.studyLog||{})[t]||{words:0,min:0};
+  const fmtMin = m => m>=1 ? Math.round(m)+'분' : m>0 ? Math.round(m*60)+'초' : '0';
   const _sl = S.studyLog||{};
   const _weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
   const _last7 = Object.entries(_sl).filter(([k])=>k>=_weekAgo).map(([,v])=>v);
   const _week_words = _last7.reduce((s,v)=>s+(v.words||0),0);
   const _week_min = Math.round(_last7.reduce((s,v)=>s+(v.min||0),0));
-  const _active7 = _last7.filter(v=>(v.words||0)+(v.quiz||0)>0).length;
+  const _active7 = _last7.filter(v=>(v.words||0)>0).length;
   const _hist14 = Array.from({length:14},(_,i)=>{
     const d=new Date(); d.setDate(d.getDate()-13+i);
     const k=new Date(d.getTime()+9*3600000).toISOString().slice(0,10);
@@ -4771,48 +4770,47 @@ function rLearnTab() {
   });
   const _maxH = Math.max(..._hist14.map(d=>d.words),1);
 
-  // 학습 모드 정의
+  // ── 학습 모드 (순서: 자동학습, 플래시카드, 말하기, SRS복습, 쉐도잉) ──
   const modes = [
+    {id:'auto', ic:'🎧', nm:'자동학습', dc:'자동 재생 + 발음 듣기',
+     badge: todayLog.words>0 ? `오늘 ${todayLog.words}단어` : '오늘 학습량 : 0 단어',
+     badgeColor: todayLog.words>0?'#0EA5E9':'#9CA3AF',
+     sub: todayLog.min>0 ? `오늘 ${fmtMin(todayLog.min)} 학습` : '아직 학습 전',
+     fn:"startMode('auto')", hot:false},
     {id:'flash', ic:'⚡', nm:'플래시카드', dc:'카드 넘기며 빠르게 암기',
      badge: words.length>0 ? `${pct}% 암기` : '단어 없음',
      badgeColor: pct>=80?'#16A34A':pct>=40?'#D97706':'#6366F1',
      sub: words.length>0 ? `${marked}/${words.length}개 암기 완료` : '단어장에 단어를 추가하세요',
-     fn:"S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:srsToday===0},
-    {id:'srs', ic:'📖', nm:'SRS 복습', dc:'망각곡선 기반 스마트 복습',
-     badge: srsToday>0 ? `${srsToday}개 대기` : '없음',
-     badgeColor: srsToday>0?'#DC2626':'#9CA3AF',
-     sub: srsToday>0 ? `⚠️ 오늘 복습할 단어 ${srsToday}개 있음` : '복습할 단어가 없어요',
-     fn:"startMode('srs')", hot:srsToday>0},
-    {id:'auto', ic:'🎧', nm:'자동학습', dc:'자동 재생 + 발음 듣기',
-     badge: todayLog.words>0 ? `오늘 ${todayLog.words}개` : '시작 전',
-     badgeColor: todayLog.words>0?'#0EA5E9':'#9CA3AF',
-     sub: todayLog.min>0 ? `오늘 ${fmtMin(todayLog.min)} 학습함` : '오늘 아직 학습 전',
-     fn:"startMode('auto')", hot:false},
+     fn:"S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:srsToday===0&&todayLog.words===0},
     {id:'speak', ic:'🗣️', nm:'말하기', dc:'뜻 보고 영어로 말하기',
-     badge: '직접 체험',
-     badgeColor:'#10B981',
-     sub: '뜻을 보고 영어 단어를 직접 말해보세요',
+     badge: todayLog.words>0 ? `오늘 ${todayLog.words}단어` : '오늘 학습량 : 0 단어',
+     badgeColor: todayLog.words>0?'#10B981':'#9CA3AF',
+     sub: '뜻을 보고 영어 단어를 직접 말하는 연습',
      fn:"startMode('speak')", hot:false},
+    {id:'srs', ic:'📖', nm:'SRS 복습', dc:'망각곡선 기반 스마트 복습',
+     badge: srsToday>0 ? `${srsToday}개 대기` : '대기 없음',
+     badgeColor: srsToday>0?'#DC2626':'#9CA3AF',
+     sub: srsToday>0 ? `복습 대기 ${srsToday}개 있음` : '복습할 단어가 없어요',
+     fn:"startMode('srs')", hot:srsToday>0},
     {id:'shadow', ic:'🎤', nm:'쉐도잉', dc:'발음 듣고 따라 말하기',
-     badge: '직접 체험',
-     badgeColor:'#8B5CF6',
+     badge: todayLog.words>0 ? `오늘 ${todayLog.words}단어` : '오늘 학습량 : 0 단어',
+     badgeColor: todayLog.words>0?'#8B5CF6':'#9CA3AF',
      sub: '원어민 발음을 듣고 따라 말하는 연습',
      fn:"startMode('shadow')", hot:false},
   ];
-  const recommend = srsToday>0?'srs':(pct<50?'flash':'auto');
+  // 추천: SRS 대기 있으면 SRS, 아니면 자동학습
+  const recommend = srsToday>0?'srs':'auto';
 
   let html = `<div style="display:flex;flex-direction:column;background:var(--panel-bg,#F4F6F8);min-height:100%">
 
   <!-- 상단 -->
   <div style="padding:14px 14px 0;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E2E8F0)">
-    <!-- 단어장 선택 -->
     <div style="position:relative;margin-bottom:12px">
       <select onchange="S.currentBook=this.value;go('learn')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
         ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${(b.words||[]).length}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
-    <!-- 암기 진행률 -->
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;font-weight:600;color:var(--text2,#374151)">암기 진행률</span>
@@ -4822,16 +4820,16 @@ function rLearnTab() {
         <div style="height:100%;background:linear-gradient(90deg,#6366F1,#8B5CF6);border-radius:99px;width:${pct}%;transition:width .5s"></div>
       </div>
     </div>
-    <!-- 오늘 3칸 -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      ${[
-        {v:todayLog.words||0, lb:'오늘 단어', color:'#6366F1'},
-        {v:todayLog.quiz||0, lb:'오늘 퀴즈', color:'#10B981'},
-        {v:fmtMin(todayLog.min||0), lb:'공부시간', color:'#F59E0B'},
-      ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-        <div style="font-size:20px;font-weight:900;color:${s.color}">${s.v}</div>
-        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">${s.lb}</div>
-      </div>`).join('')}
+    <!-- 오늘 2칸: 단어 + 공부시간 (퀴즈 제거) -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
+        <div style="font-size:22px;font-weight:900;color:#6366F1">${todayLog.words||0}</div>
+        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습 단어</div>
+      </div>
+      <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
+        <div style="font-size:22px;font-weight:900;color:#F59E0B">${fmtMin(todayLog.min||0)}</div>
+        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 공부시간</div>
+      </div>
     </div>
   </div>
 
@@ -4839,9 +4837,9 @@ function rLearnTab() {
   <div style="padding:14px 14px 0">
     <div style="font-size:12px;font-weight:700;color:var(--text3,#9CA3AF);letter-spacing:.5px;margin-bottom:10px">학습 모드</div>
 
-    <!-- 추천 모드 (큰 카드) -->
+    <!-- 추천 카드 -->
     ${modes.filter(m=>m.id===recommend).map(m=>`
-    <div onclick="${m.fn}" style="border-radius:16px;overflow:hidden;margin-bottom:10px;cursor:pointer;box-shadow:0 2px 12px rgba(99,102,241,.2)">
+    <div onclick="${m.fn}" style="border-radius:16px;overflow:hidden;margin-bottom:10px;cursor:pointer;box-shadow:0 2px 12px rgba(99,102,241,.18)">
       <div style="padding:16px 18px;background:linear-gradient(135deg,#6366F1,#8B5CF6);position:relative">
         <div style="position:absolute;top:8px;right:12px;background:rgba(255,255,255,.25);border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;color:#fff">✨ 추천</div>
         <div style="font-size:28px;margin-bottom:6px">${m.ic}</div>
@@ -4850,28 +4848,26 @@ function rLearnTab() {
       </div>
       <div style="background:rgba(99,102,241,.06);padding:10px 18px;display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(99,102,241,.15);border-top:none;border-radius:0 0 16px 16px">
         <span style="font-size:12px;color:var(--text2,#374151)">${m.sub}</span>
-        <span style="font-size:12px;font-weight:700;color:${m.badgeColor};background:${m.badgeColor}15;padding:3px 10px;border-radius:20px">${m.badge}</span>
+        <span style="font-size:12px;font-weight:700;color:${m.badgeColor};background:${m.badgeColor}18;padding:3px 10px;border-radius:20px">${m.badge}</span>
       </div>
     </div>`).join('')}
 
     <!-- 나머지 모드 -->
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
       ${modes.filter(m=>m.id!==recommend).map(m=>`
-      <div onclick="${m.fn}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg-card,#fff);border-radius:14px;cursor:pointer;border:1.5px solid ${m.hot?'rgba(220,38,38,.3)':'var(--border,#E2E8F0)'};box-shadow:0 1px 4px rgba(0,0,0,.06)">
-        <div style="width:42px;height:42px;border-radius:12px;background:${m.hot?'#FEF2F2':'var(--bg,#F4F6F8)'};display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.ic}</div>
+      <div onclick="${m.fn}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg-card,#fff);border-radius:14px;cursor:pointer;border:1.5px solid ${m.hot?'rgba(220,38,38,.25)':'var(--border,#E2E8F0)'};box-shadow:0 1px 4px rgba(0,0,0,.05)">
+        <div style="width:42px;height:42px;border-radius:12px;background:var(--bg,#F4F6F8);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.ic}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:700;color:var(--text1,#111);margin-bottom:2px">${m.nm}</div>
           <div style="font-size:11px;color:var(--text3,#9CA3AF)">${m.sub}</div>
         </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:12px;font-weight:700;color:${m.badgeColor};background:${m.badgeColor}15;padding:3px 10px;border-radius:20px;white-space:nowrap">${m.badge}</div>
-        </div>
+        <div style="font-size:12px;font-weight:700;color:${m.badgeColor};background:${m.badgeColor}18;padding:3px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">${m.badge}</div>
       </div>`).join('')}
     </div>
   </div>
 
   <!-- 이번 주 히스토그램 -->
-  <div style="margin:0 14px 12px;background:var(--bg-card,#fff);border-radius:16px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.06)">
+  <div style="margin:0 14px 12px;background:var(--bg-card,#fff);border-radius:16px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.05)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div>
         <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">이번 주 학습</div>
@@ -4891,31 +4887,29 @@ function rLearnTab() {
     </div>
   </div>
 
-  <!-- 통계 탭 -->
+  <!-- 기간별 통계 -->
   <div style="margin:0 14px 24px">
     <div style="display:flex;gap:6px;margin-bottom:12px">
       ${['week','month','all'].map((p,i)=>`<button onclick="window._statPeriod='${p}';go('learn')" style="flex:1;padding:8px 4px;border-radius:10px;border:1.5px solid ${(window._statPeriod||'week')===p?'#6366F1':'var(--border,#E2E8F0)'};font-size:11px;font-weight:700;cursor:pointer;background:${(window._statPeriod||'week')===p?'#EEF2FF':'var(--bg-card,#fff)'};color:${(window._statPeriod||'week')===p?'#6366F1':'var(--text3,#9CA3AF)'}">${['이번 주','이번 달','전체'][i]}</button>`).join('')}
     </div>
     ${(()=>{
-      const p = window._statPeriod||'week';
-      const ago = p==='week'?new Date(Date.now()-7*86400000).toISOString().slice(0,10):p==='month'?new Date(Date.now()-30*86400000).toISOString().slice(0,10):'1900-01-01';
-      const logs = Object.entries(_sl).filter(([k])=>k>=ago);
+      const p=window._statPeriod||'week';
+      const ago=p==='week'?new Date(Date.now()-7*86400000).toISOString().slice(0,10):p==='month'?new Date(Date.now()-30*86400000).toISOString().slice(0,10):'1900-01-01';
+      const logs=Object.entries(_sl).filter(([k])=>k>=ago);
       const tw=logs.reduce((s,[,v])=>s+(v.words||0),0);
-      const tq=logs.reduce((s,[,v])=>s+(v.quiz||0),0);
       const tm=Math.round(logs.reduce((s,[,v])=>s+(v.min||0),0));
       const tx=logs.reduce((s,[,v])=>s+(v.xp||0),0);
-      const ta=logs.filter(([,v])=>(v.words||0)+(v.quiz||0)>0).length;
+      const ta=logs.filter(([,v])=>(v.words||0)>0).length;
       const avgW=ta>0?Math.round(tw/ta):0;
       const avgM=ta>0?Math.round(tm/ta):0;
-      return `
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px">
+      return `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px">
         ${[
-          {v:tw.toLocaleString(), lb:'단어 학습', sub:avgW>0?'일평균 '+avgW+'개':'', color:'#6366F1'},
-          {v:tq.toLocaleString(), lb:'퀴즈', sub:ta+'일 활동', color:'#10B981'},
-          {v:tm+'분', lb:'공부시간', sub:avgM>0?'일평균 '+avgM+'분':'', color:'#F59E0B'},
+          {v:tw.toLocaleString()+'단어', lb:'총 학습', sub:ta>0?'일평균 '+avgW+'단어':'', color:'#6366F1'},
+          {v:tm+'분', lb:'총 공부시간', sub:ta>0?'일평균 '+avgM+'분':'', color:'#F59E0B'},
+          {v:ta+'일', lb:'활동일', sub:'', color:'#10B981'},
           {v:'⚡'+tx.toLocaleString(), lb:'획득 XP', sub:'', color:'#8B5CF6'},
-        ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 3px rgba(0,0,0,.05)">
-          <div style="font-size:22px;font-weight:900;color:${s.color};margin-bottom:2px">${s.v}</div>
+        ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 3px rgba(0,0,0,.04)">
+          <div style="font-size:20px;font-weight:900;color:${s.color};margin-bottom:2px">${s.v}</div>
           <div style="font-size:11px;font-weight:600;color:var(--text2,#374151)">${s.lb}</div>
           ${s.sub?`<div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:1px">${s.sub}</div>`:''}
         </div>`).join('')}
@@ -4925,29 +4919,21 @@ function rLearnTab() {
     ${(()=>{
       const all=Object.entries(_sl).sort(([a],[b])=>a>b?1:-1);
       const bestDay=all.reduce((b,[k,v])=>((v.words||0)>(b.words||0)?{k,...v}:b),{k:'',words:0});
-      const bestXp=all.reduce((b,[k,v])=>((v.xp||0)>(b.xp||0)?{k,...v}:b),{k:'',xp:0});
       if(!bestDay.k) return '';
-      return `<div style="background:var(--bg-card,#fff);border-radius:14px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:8px">
-        <div style="font-size:11px;font-weight:700;color:var(--text3,#9CA3AF);letter-spacing:.5px;margin-bottom:10px">🏆 최고 기록</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div><div style="font-size:11px;color:var(--text3,#9CA3AF)">최다 학습일</div><div style="font-size:11px;color:var(--text3,#9CA3AF)">${bestDay.k}</div></div>
-          <div style="font-size:18px;font-weight:900;color:#6366F1">${(bestDay.words||0).toLocaleString()}개</div>
-        </div>
-        <div style="height:1px;background:var(--border,#E2E8F0);margin-bottom:8px"></div>
+      return `<div style="background:var(--bg-card,#fff);border-radius:14px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <div><div style="font-size:11px;color:var(--text3,#9CA3AF)">최고 XP일</div><div style="font-size:11px;color:var(--text3,#9CA3AF)">${bestXp.k}</div></div>
-          <div style="font-size:18px;font-weight:900;color:#F59E0B">⚡${(bestXp.xp||0).toLocaleString()}</div>
+          <div><div style="font-size:11px;font-weight:700;color:var(--text3,#9CA3AF)">🏆 최다 학습일</div><div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">${bestDay.k}</div></div>
+          <div style="font-size:20px;font-weight:900;color:#6366F1">${(bestDay.words||0).toLocaleString()}단어</div>
         </div>
       </div>`;
     })()}
-    <!-- 연속/출석/XP -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       ${[
         {v:S.streak||0, lb:'🔥 연속학습', color:'#EF4444'},
         {v:S.attendCount||0, lb:'📅 총 출석', color:'#3B82F6'},
         {v:(S._totalXp||0).toLocaleString(), lb:'⚡ 누적XP', color:'#8B5CF6'},
-      ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:12px;border:1px solid var(--border,#E2E8F0);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)">
-        <div style="font-size:22px;font-weight:900;color:${s.color}">${s.v}</div>
+      ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:12px;border:1px solid var(--border,#E2E8F0);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+        <div style="font-size:20px;font-weight:900;color:${s.color}">${s.v}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">${s.lb}</div>
       </div>`).join('')}
     </div>
@@ -5385,40 +5371,26 @@ function rGameOnlyTab() {
   </div>
 
   <!-- 게임 통계 섹션 -->
-  <div style="margin:0 16px 16px;display:flex;flex-direction:column;gap:8px">
-
-    <!-- 오늘/주간 게임 시간 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div style="background:var(--panel-muted,#fff);border-radius:16px;padding:14px;border:1px solid var(--panel-border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.06)">
-        <div style="font-size:10px;color:var(--panel-text3,#9CA3AF);font-weight:600;letter-spacing:.5px;margin-bottom:6px">⏱ 오늘 게임시간</div>
-        <div style="font-size:26px;font-weight:900;color:#F59E0B">${Math.round((S.studyLog||{})[new Date(Date.now()+9*3600000).toISOString().slice(0,10)]?.min||0)}분</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:3px">학습 포함</div>
-      </div>
-      <div style="background:var(--panel-muted,#fff);border-radius:16px;padding:14px;border:1px solid var(--panel-border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.06)">
-        <div style="font-size:10px;color:var(--panel-text3,#9CA3AF);font-weight:600;letter-spacing:.5px;margin-bottom:6px">📅 주간 게임시간</div>
-        <div style="font-size:26px;font-weight:900;color:#34D399">${Math.round(Object.entries(S.studyLog||{}).filter(([k])=>k>=new Date(Date.now()-7*86400000).toISOString().slice(0,10)).reduce((s,[,v])=>s+(v.min||0),0))}분</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:3px">최근 7일</div>
-      </div>
-    </div>
-
-    <!-- 게임 클리어/최고점/연속 -->
+  <div style="margin:0 16px 12px">
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-      <div style="background:var(--panel-muted,#fff);border-radius:14px;padding:12px;border:1px solid var(--panel-border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#A78BFA">${Object.keys(S.bestScores||{}).length}</div>
-        <div style="font-size:9px;color:var(--panel-text3,#9CA3AF);margin-top:2px">클리어</div>
-      </div>
-      <div style="background:var(--panel-muted,#fff);border-radius:14px;padding:12px;border:1px solid var(--panel-border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#FBBF24">${Math.max(...Object.values(S.bestScores||{}).concat([0]))}%</div>
-        <div style="font-size:9px;color:var(--panel-text3,#9CA3AF);margin-top:2px">최고점</div>
-      </div>
-      <div style="background:var(--panel-muted,#fff);border-radius:14px;padding:12px;border:1px solid var(--panel-border,#E2E8F0);box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#F87171">${12-Object.keys(S.bestScores||{}).length}</div>
-        <div style="font-size:9px;color:var(--panel-text3,#9CA3AF);margin-top:2px">🔥 도전가능</div>
-      </div>
+      ${(()=>{
+        const _t=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+        const _todayMin=Math.round((S.studyLog||{})[_t]?.min||0);
+        const _weekMin=Math.round(Object.entries(S.studyLog||{}).filter(([k])=>k>=new Date(Date.now()-7*86400000).toISOString().slice(0,10)).reduce((s,[,v])=>s+(v.min||0),0));
+        const _cleared=Object.keys(S.bestScores||{}).length;
+        return [
+          {v:_todayMin+'분', lb:'오늘 학습', color:'#F59E0B'},
+          {v:_weekMin+'분', lb:'주간 학습', color:'#34D399'},
+          {v:_cleared+'/12', lb:'게임 클리어', color:'#A78BFA'},
+        ].map(s=>`<div style="background:var(--panel-muted,#fff);border-radius:14px;padding:12px;border:1px solid var(--panel-border,#E2E8F0);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+          <div style="font-size:20px;font-weight:900;color:${s.color}">${s.v}</div>
+          <div style="font-size:9px;color:var(--panel-text3,#94A3B8);margin-top:2px">${s.lb}</div>
+        </div>`).join('');
+      })()}
     </div>
   </div>
 
-  <!-- 카테고리별 게임 -->
+    <!-- 카테고리별 게임 -->
   <div style="padding:0 16px;display:flex;flex-direction:column;gap:14px;padding-bottom:24px">
     ${categories.map(cat=>`
     <div>

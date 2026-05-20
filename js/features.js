@@ -401,12 +401,19 @@ function saveGameScore(score) {
   }
   // 게임별 단어 수 저장
   const _wc = (S.gWords||[]).length || 0;
+  const _right = Math.round(score/100);
+  const _wrong = _wc - _right;
   if(!S.gamePlayCount) S.gamePlayCount={};
   S.gamePlayCount[gid] = (S.gamePlayCount[gid]||0) + _wc;
   const _gt = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   if(!S.gameDailyCount) S.gameDailyCount={};
   if(!S.gameDailyCount[_gt]) S.gameDailyCount[_gt]={};
-  S.gameDailyCount[_gt][gid] = (S.gameDailyCount[_gt][gid]||0) + _wc;
+  const _prev = S.gameDailyCount[_gt][gid] || {words:0,right:0,wrong:0};
+  if(typeof _prev === 'number') {
+    S.gameDailyCount[_gt][gid] = {words:_prev+_wc, right:_right, wrong:_wrong};
+  } else {
+    S.gameDailyCount[_gt][gid] = {words:(_prev.words||0)+_wc, right:(_prev.right||0)+_right, wrong:(_prev.wrong||0)+_wrong};
+  }
   localStorage.setItem('wd-gpc', JSON.stringify(S.gamePlayCount));
   localStorage.setItem('wd-gdc', JSON.stringify(S.gameDailyCount));
   // Firebase 랭킹 저장 (비동기, 실패해도 무시)

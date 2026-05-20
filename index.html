@@ -4800,18 +4800,120 @@ function rLearnTab() {
     </div>
   </div>
 
-  <!-- 이번 달/전체 통계 -->
-  <div style="margin:0 16px 24px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:14px;border:1px solid rgba(255,255,255,.07)">
-      <div style="font-size:10px;color:rgba(255,255,255,.35);font-weight:600;margin-bottom:6px">이번 달</div>
-      <div style="font-size:22px;font-weight:900;color:#fff">${Object.entries(_sl).filter(([k])=>k>=new Date(Date.now()-30*86400000).toISOString().slice(0,10)).reduce((s,[,v])=>s+(v.words||0),0).toLocaleString()}</div>
-      <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px">단어 학습</div>
+  <!-- 상세 통계 섹션 -->
+  <div style="margin:0 16px 24px">
+
+    <!-- 탭 전환 -->
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      ${['week','month','all'].map((p,i)=>
+        `<button onclick="window._statPeriod='${p}';go('learn')" style="flex:1;padding:7px 4px;border-radius:10px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:${(window._statPeriod||'week')===p?'rgba(167,139,250,.25)':'rgba(255,255,255,.05)'};color:${(window._statPeriod||'week')===p?'#A78BFA':'rgba(255,255,255,.4)'}">${['이번 주','이번 달','전체'][i]}</button>`
+      ).join('')}
     </div>
-    <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:14px;border:1px solid rgba(255,255,255,.07)">
-      <div style="font-size:10px;color:rgba(255,255,255,.35);font-weight:600;margin-bottom:6px">활동일</div>
-      <div style="font-size:22px;font-weight:900;color:#fff">${Object.values(_sl).filter(v=>(v.words||0)+(v.quiz||0)>0).length}</div>
-      <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px">누적 학습일</div>
+
+    ${(()=>{
+      const p = window._statPeriod||'week';
+      const ago = p==='week'? new Date(Date.now()-7*86400000).toISOString().slice(0,10)
+                : p==='month'? new Date(Date.now()-30*86400000).toISOString().slice(0,10) : '1900-01-01';
+      const logs = Object.entries(_sl).filter(([k])=>k>=ago);
+      const tw = logs.reduce((s,[,v])=>s+(v.words||0),0);
+      const tq = logs.reduce((s,[,v])=>s+(v.quiz||0),0);
+      const tm = Math.round(logs.reduce((s,[,v])=>s+(v.min||0),0));
+      const tx = logs.reduce((s,[,v])=>s+(v.xp||0),0);
+      const ta = logs.filter(([,v])=>(v.words||0)+(v.quiz||0)>0).length;
+      const days = p==='week'?7:p==='month'?30:Math.max(ta,1);
+      const avgW = ta>0?Math.round(tw/ta):0;
+      const avgM = ta>0?Math.round(tm/ta):0;
+
+      return `
+      <!-- 4개 핵심 수치 -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px">
+        ${[
+          {v:tw.toLocaleString(), lb:'단어 학습', sub:avgW>0?'일평균 '+avgW+'개':'', color:'#A78BFA'},
+          {v:tq.toLocaleString(), lb:'퀴즈', sub:'정답 집계 중', color:'#60A5FA'},
+          {v:tm+'분', lb:'총 공부시간', sub:avgM>0?'일평균 '+avgM+'분':'', color:'#34D399'},
+          {v:'⚡'+tx.toLocaleString(), lb:'획득 XP', sub:ta+'일 활동', color:'#FBBF24'},
+        ].map(s=>`<div style="background:rgba(255,255,255,.04);border-radius:16px;padding:14px;border:1px solid rgba(255,255,255,.07)">
+          <div style="font-size:22px;font-weight:900;color:${s.color};margin-bottom:4px">${s.v}</div>
+          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7)">${s.lb}</div>
+          ${s.sub?`<div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px">${s.sub}</div>`:''}
+        </div>`).join('')}
+      </div>`;
+    })()}
+
+    <!-- 최고 기록 -->
+    ${(()=>{
+      const _allLog = Object.entries(_sl).sort(([a],[b])=>a>b?1:-1);
+      const bestDay = _allLog.reduce((best,[k,v])=>((v.words||0)>(best.words||0)?{k,...v}:best),{k:'',words:0});
+      const bestXp  = _allLog.reduce((best,[k,v])=>((v.xp||0)>(best.xp||0)?{k,...v}:best),{k:'',xp:0});
+      if(!bestDay.k) return '';
+      return `
+      <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:14px;border:1px solid rgba(255,255,255,.07);margin-bottom:10px">
+        <div style="font-size:10px;color:rgba(255,255,255,.35);font-weight:600;letter-spacing:.5px;margin-bottom:10px">🏆 최고 기록</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:11px;color:rgba(255,255,255,.5)">최다 학습일</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.3)">${bestDay.k}</div>
+            </div>
+            <div style="font-size:20px;font-weight:900;color:#A78BFA">${(bestDay.words||0).toLocaleString()}개</div>
+          </div>
+          <div style="height:1px;background:rgba(255,255,255,.06)"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:11px;color:rgba(255,255,255,.5)">최고 XP 일</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.3)">${bestXp.k}</div>
+            </div>
+            <div style="font-size:20px;font-weight:900;color:#FBBF24">⚡${(bestXp.xp||0).toLocaleString()}</div>
+          </div>
+        </div>
+      </div>`;
+    })()}
+
+    <!-- 연속 학습 & 출석 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+      <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:12px;border:1px solid rgba(255,255,255,.07);text-align:center">
+        <div style="font-size:26px;font-weight:900;color:#FB923C">${S.streak||0}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">🔥 연속학습</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:12px;border:1px solid rgba(255,255,255,.07);text-align:center">
+        <div style="font-size:26px;font-weight:900;color:#60A5FA">${S.attendCount||0}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">📅 총 출석</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:12px;border:1px solid rgba(255,255,255,.07);text-align:center">
+        <div style="font-size:26px;font-weight:900;color:#34D399">${(S._totalXp||0).toLocaleString()}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">⚡ 누적 XP</div>
+      </div>
     </div>
+
+    <!-- 단어장별 암기 진행률 -->
+    ${(()=>{
+      const allBooks = [{name:'내 단어장', words:S.words||[], markMap:S.markMap||{}},
+        ...(S.books||[]).map(b=>({name:b.name, words:b.words||[], markMap:b.markMap||{}}))];
+      const booksWithWords = allBooks.filter(b=>(b.words||[]).length>0);
+      if(!booksWithWords.length) return '';
+      return `
+      <div style="background:rgba(255,255,255,.04);border-radius:16px;padding:14px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:10px;color:rgba(255,255,255,.35);font-weight:600;letter-spacing:.5px;margin-bottom:12px">📚 단어장별 암기율</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${booksWithWords.map(b=>{
+            const total = (b.words||[]).length;
+            const mem = (b.words||[]).filter(w=>(b.markMap[w.en]||0)===1).length;
+            const pct = total ? Math.round(mem/total*100) : 0;
+            const color = pct>=80?'#34D399':pct>=50?'#FBBF24':pct>=20?'#60A5FA':'#A78BFA';
+            return `<div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+                <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,.8);max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</span>
+                <span style="font-size:12px;font-weight:700;color:${color}">${mem}/${total} · ${pct}%</span>
+              </div>
+              <div style="background:rgba(255,255,255,.08);border-radius:99px;height:5px;overflow:hidden">
+                <div style="height:100%;background:${color};border-radius:99px;width:${pct}%;transition:width .6s"></div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })()}
+
   </div>
 
   </div>`;

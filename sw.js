@@ -1,67 +1,32 @@
-// sw.js v5 - 강제 캐시 갱신
-const CACHE = 'butterfly-word-v5';
-const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json?v=2',
-  './js/features.js',
-  './js/wordpacks.js',
-  './js/default-words.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
-];
+// sw.js v6 - 캐시 완전 비활성화, 항상 네트워크 직접
+const CACHE = 'butterfly-word-v6';
 
 self.addEventListener('install', e => {
+  // 이전 캐시 전부 삭제
   e.waitUntil(
-    caches.open(CACHE)
-      .then(c => c.addAll(ASSETS))
-      .catch(() => {})
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
   );
   self.clients.claim();
 });
 
+// 모든 요청을 캐시 없이 네트워크에서 직접
 self.addEventListener('fetch', e => {
   if(e.request.method !== 'GET') return;
   const url = e.request.url;
-  if(url.includes('firestore.googleapis.com') ||
-     url.includes('firebase') ||
-     url.includes('googleapis.com') ||
-     url.includes('gstatic.com')) return;
   
-  // index.html + JS: 항상 네트워크 우선 (캐시 무시)
-  if(url.includes('.html') || url.includes('index') || url.endsWith('/') || url.includes('.js')) {
-    e.respondWith(
-      fetch(e.request, {cache: 'no-store'}).then(r => {
-        if(r && r.status === 200) {
-          const clone = r.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone).catch(()=>{}));
-        }
-        return r;
-      }).catch(() => caches.match(e.request))
-    );
-    return;
-  }
-  
+  // Firebase는 그냥 통과
+  if(url.includes('googleapis.com') || url.includes('firebase') || url.includes('gstatic.com')) return;
+
+  // 나머지 모두 네트워크 직접 (캐시 완전 무시)
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if(cached) return cached;
-      return fetch(e.request).then(r => {
-        if(r && r.status === 200) {
-          const clone = r.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone).catch(()=>{}));
-        }
-        return r;
-      });
-    }).catch(() => fetch(e.request))
+    fetch(e.request, {cache: 'no-store'}).catch(() => fetch(e.request))
   );
 });
 
@@ -88,8 +53,8 @@ self.addEventListener('message', e => {
     setTimeout(() => {
       self.registration.showNotification(title, {
         body, icon: './icons/icon-192.png',
-        badge: './icons/icon-72.png',
-        tag, vibrate: [100, 50, 100, 50, 200],
+        badge: './icons/icon-72.png', tag,
+        vibrate: [100, 50, 100, 50, 200],
         data: { url: './' }
       });
     }, delay);

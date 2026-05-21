@@ -2743,7 +2743,7 @@ function showAlarmSettings() {
 function renderAdBanner() {
   const ad = S._adConfig;
   if(!ad || !ad.on) return '';
-  return `<div onclick="${ad.link?`window.open('${ad.link}','_blank')`:''}" style="background:${ad.bg||'#FFF8E1'};padding:8px 16px;text-align:center;font-size:12px;font-weight:700;color:${ad.textColor||'#374151'};cursor:${ad.link?'pointer':'default'};border-top:1px solid rgba(0,0,0,.06);flex-shrink:0">
+  return `<div onclick="${ad.link?`(function(){window.open('${ad.link}','_blank','noopener,noreferrer');return false;})()`:''}" style="background:${ad.bg||'#FFF8E1'};padding:8px 16px;text-align:center;font-size:12px;font-weight:700;color:${ad.textColor||'#374151'};cursor:${ad.link?'pointer':'default'};border-top:1px solid rgba(0,0,0,.06);flex-shrink:0">
     ${ad.text||''}
   </div>`;
 }
@@ -4647,12 +4647,7 @@ function go(tab,sub) {
   const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:rGameOnlyTab,butterfly:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rButterflyTab,profile:rProfile};
   const body=document.getElementById('body');
   let newHTML; try { newHTML=(map[S.tab]||rHome)(); } catch(e) { console.error("[go() 렌더링 에러] tab="+S.tab+" stab="+S.stab, e); newHTML='<div style="padding:20px;color:red">에러: '+e.message+'</div>'; }
-  // 게임 실행 중이면 나가기 버튼 오버레이 추가
-  if((S.tab==='butterfly'||S.tab==='game') && S.gameId && !S.gDone && S._gameRunning) {
-    newHTML = `<div style="position:relative">
-      <button onclick="SFX.stopBG();S._gameRunning=false;S.gDone=true;go(S._prevTab||'game')" style="position:fixed;top:calc(env(safe-area-inset-top,0px)+8px);left:12px;z-index:9999;background:rgba(0,0,0,.65);color:#fff;border:none;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none">✕ 나가기</button>
-    </div>` + newHTML;
-  }
+  // 게임 화면 자체에 ← 나가기 버튼이 있으므로 오버레이 제거
   body.innerHTML=newHTML;
   if(S.tab==='butterfly'||S.tab==='game') setTimeout(renderBFDogamGrid,50);
   // 광고 배너 고정 div에 렌더링
@@ -10245,7 +10240,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -10852,7 +10847,7 @@ function rWF(){
     ${hint}
     <div style="display:flex;justify-content:center;overflow-x:auto">
       <div class="wf-grid" style="grid-template-columns:repeat(${sz},1fr)">
-        ${(function(){return S.wfGrid.map(function(row,r){return row.map(function(cell,cc){var k=r+','+cc;var isSel=S.wfSel.includes(k);var isFnd=(S.wfFound||[]).some(function(f){return f.includes(k);});return '<div class="wf-cell '+(isFnd?'fnd':isSel?'sel':'')+' " onclick="selWF('+r+','+cc+')" style="'+(isSel?'background:#1E5FA5!important;color:#fff!important;transform:scale(1.1);':'')+(isFnd?'background:#10B981!important;color:#fff!important;':'')+'">'+cell+'</div>';}).join('');}).join('');})()}
+        ${(function(){return S.wfGrid.map(function(row,r){return row.map(function(cell,cc){var k=r+','+cc;var isSel=S.wfSel.includes(k);var isFnd=foundCells&&foundCells.has(k);return '<div class="wf-cell '+(isFnd?'fnd':isSel?'sel':'')+' " onclick="selWF('+r+','+cc+')" style="'+(isSel?'background:#1E5FA5!important;color:#fff!important;transform:scale(1.1);':'')+(isFnd?'background:#10B981!important;color:#fff!important;':'')+'">'+cell+'</div>';}).join('');}).join('');})()}
       </div>
     </div>
     ${selCount>0?`<div style="display:flex;gap:8px;margin-top:6px">

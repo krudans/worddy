@@ -3661,25 +3661,25 @@ function _arToggleShadow(){if(window._auto)window._auto.shadow=!window._auto.sha
 
 // ── Wake Lock (화면 꺼짐 방지) ──
 window._wakeLock = null;
-async function _requestWakeLock() {
+window._requestWakeLock = async function() {
   try {
     if('wakeLock' in navigator) {
       window._wakeLock = await navigator.wakeLock.request('screen');
       window._wakeLock.addEventListener('release', () => { window._wakeLock = null; });
     }
   } catch(e) {}
-}
-function _releaseWakeLock() {
+};
+window._releaseWakeLock = function() {
   try { if(window._wakeLock) { window._wakeLock.release(); window._wakeLock = null; } } catch(e) {}
-}
+};
 // 페이지 다시 보일 때 Wake Lock 재획득
 document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'visible' && window._autoPlaying) _requestWakeLock();
+  if(document.visibilityState === 'visible' && window._autoPlaying) window._requestWakeLock();
 });
 
 // ── 화면 잠금 (주머니 모드) ──
 window._autoLocked = false;
-function _toggleAutoLock() {
+window._toggleAutoLock = function() {
   window._autoLocked = !window._autoLocked;
   const overlay = document.getElementById('auto-lock-overlay');
   if(window._autoLocked) {
@@ -3696,7 +3696,7 @@ function _toggleAutoLock() {
         _lockProgress = document.getElementById('lock-progress');
         if(_lockProgress) _lockProgress.style.transition = 'width 2s linear'; 
         if(_lockProgress) _lockProgress.style.width = '100%';
-        _lockTimer = setTimeout(() => { _toggleAutoLock(); }, 2000);
+        _lockTimer = setTimeout(() => { window._toggleAutoLock(); }, 2000);
       }, {passive:false});
       el.addEventListener('touchend', (e) => {
         e.preventDefault();
@@ -3829,7 +3829,7 @@ window._autoRender = function() {
           +'<div style="display:flex;gap:6px;align-items:center">'
           +(_LT&&_LT.barHTML?_LT.barHTML():'')
           +'<button onclick="window._autoToggle&&window._autoToggle()" style="background:'+(window._autoPlaying?'#22C55E':'rgba(255,255,255,.15)')+';border:none;border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">'+(window._autoPlaying?'⏸ 일시정지':'▶ 자동재생')+'</button>'
-          +'<button onclick="_toggleAutoLock()" style="background:'+(window._autoLocked?'rgba(239,68,68,.5)':'rgba(255,255,255,.1)')+';border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer" title="화면 잠금 (주머니 모드)">'+(window._autoLocked?'🔒':'🔓')+'</button>'
+          +'<button onclick="window._toggleAutoLock()" style="background:'+(window._autoLocked?'rgba(239,68,68,.5)':'rgba(255,255,255,.1)')+';border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer" title="화면 잠금 (주머니 모드)">'+(window._autoLocked?'🔒':'🔓')+'</button>'
           +'<button onclick="cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;cursor:pointer">✕</button>'
           +'</div>'
         +'</div>'
@@ -3877,12 +3877,12 @@ window._autoToggle = async () => {
     if(window._autoPlaying) {
       window._autoPlaying = false;
       window.speechSynthesis.cancel();
-      _releaseWakeLock(); // 화면 꺼짐 방지 해제
+      window._releaseWakeLock(); // 화면 꺼짐 방지 해제
       window._autoRender();
       return;
     }
     window._autoPlaying = true;
-    _requestWakeLock(); // 화면 꺼짐 방지
+    window._requestWakeLock(); // 화면 꺼짐 방지
     window._autoRender();
     while(window._autoPlaying) {
       const w = window._autoWords[window._autoIdx];
@@ -3919,7 +3919,7 @@ window._autoToggle = async () => {
 
 const cm = () => {
   document.getElementById('mr').innerHTML='';
-  _releaseWakeLock();
+  window._releaseWakeLock();
   window._autoPlaying = false;
   window._autoLocked = false;
   const overlay = document.getElementById('auto-lock-overlay');
@@ -5314,7 +5314,7 @@ function _doLevelUp() {
             <div style="background:#FFF8E1;border-radius:12px;padding:10px;margin-bottom:14px;text-align:left">
               ${pct===100?'<div style="font-size:13px;font-weight:700;color:#16A34A;text-align:center">🏆 도감 완성! 진정한 나비의 신!</div>':
                 pct>=50?`<div style="font-size:12px;color:#E65100">🦋 ${totalBf-myBf.length}종 더 모으면 도감 완성!<br>다시 시작해서 새 나비를 뽑아요</div>`:
-                `<div style="font-size:12px;color:#E65100">🦋 아직 ${totalBf-myBf.length}종이 남았어요!<br>다시 알부터 시작해서 수집해요</div>`}
+                `<div style="font-size:12px;color:#7C3AED">🦋 나비 ${myBf.length}/${totalBf}종 수집 중!<br>다시 시작해서 새 나비를 모아요 ✨</div>`}
             </div>
             <button onclick="resetToEgg();cm();go()" class="btn bb" style="margin-bottom:8px">🥚 다시 시작하기</button>
             <button onclick="S.stab=null;go('butterfly');cm()" class="btn" style="background:#F9FAFB;color:#111;border:1px solid #E5E7EB;id #E9D5FF">📚 나비탭으로</button>
@@ -5345,13 +5345,13 @@ function _doLevelUp() {
 
 function resetToEgg() {
   S.lid = 'egg';
-  S.xp = 0;
+  // XP는 유지 (S.xp = 0 제거 - 누적 XP 보존)
   S._lvNotified = false;
   S._sysWords = null;
   S._learnSessionStarted = false;
   sv();
   loadSysWords('egg', null);
-  toast('🥚 다시 알부터 시작!');
+  toast('🥚 다시 알부터 시작! (XP 유지됨)');
 }
 
 function showLevelUpFlash(cb) {

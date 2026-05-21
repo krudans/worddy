@@ -3211,12 +3211,23 @@ function _studyHeader(title, subtitle, onExit, extraBtns='') {
 // ── 암기 체크 버튼 ──
 function _markBtn(wordEn) {
   const m = getMark(wordEn);
-  const labels = {0:'○ 체크',1:'✅ 외움',2:'🔄 복습'};
-  const colors = {0:'rgba(255,255,255,.08)',1:'rgba(16,185,129,.3)',2:'rgba(239,68,68,.2)'};
-  const borders = {0:'rgba(255,255,255,.15)',1:'rgba(52,211,153,.5)',2:'rgba(239,68,68,.4)'};
-  const next = {0:1,1:2,2:0};
-  return `<button onclick="setMark('${wordEn.replace(/'/g,"\\'")}',${next[m]||1});window._curRender&&window._curRender()"
-    style="background:${colors[m]};border:1px solid ${borders[m]};border-radius:20px;padding:5px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s">${labels[m]}</button>`;
+  const safe = wordEn.replace(/'/g,"\\'");
+  const isMemorized = m === 1;
+  const memoBg = isMemorized ? 'rgba(34,197,94,.85)' : 'rgba(255,255,255,.1)';
+  const memoColor = isMemorized ? '#fff' : 'rgba(255,255,255,.6)';
+  const memoShadow = isMemorized ? '0 3px 12px rgba(34,197,94,.4)' : 'none';
+  const freshBg = !isMemorized ? 'rgba(148,163,184,.3)' : 'rgba(255,255,255,.08)';
+  const freshColor = !isMemorized ? '#CBD5E1' : 'rgba(255,255,255,.4)';
+  return `<div style="display:flex;gap:10px;justify-content:center">
+    <button onclick="setMark('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()"
+      style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${memoBg};color:${memoColor};box-shadow:${memoShadow}">
+      ✅ 외웠음
+    </button>
+    <button onclick="setMark('${safe}',0);window._curRender&&window._curRender()"
+      style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${freshBg};color:${freshColor}">
+      📝 미학습
+    </button>
+  </div>`;
 }
 
 function showLevelUpPopup(newLv) {
@@ -9249,12 +9260,16 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   // 마크 배지 (우상단)
   var badgeHtml = curMark>0 ? '<div style="position:absolute;top:16px;right:16px;font-size:24px;opacity:.9;z-index:2">'+(curMark===1?'✅':'🔁')+'</div>' : '';
 
+  // 탭바·헤더 숨기기 (전체화면)
+  var _nav=document.getElementById('nav');var _hd=document.getElementById('hd');
+  if(_nav)_nav.style.display='none';if(_hd)_hd.style.display='none';
+
   var html = '<div style="position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden;background:'+cardGrad+'">';
 
   // ── 헤더 ──
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex-shrink:0">';
   html += '<div style="display:flex;align-items:center;gap:10px">';
-  html += '<button onclick="S.stab=\'mode\';go(\'mybooks\',\'mode\')" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">‹ 나가기</button>';
+  html += '<button onclick="var n=document.getElementById(\'nav\');var h=document.getElementById(\'hd\');if(n)n.style.display=\'\';if(h)h.style.display=\'\';S.stab=\'mode\';go(\'mybooks\',\'mode\')" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">‹ 나가기</button>';
   html += '<div style="font-size:11px;color:rgba(255,255,255,.5)">'+(idx+1)+' / '+total+'</div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
@@ -9302,12 +9317,11 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   }
   html += '</div>';
 
-  // ── 마크 버튼 ──
-  html += '<div style="padding:0 16px 8px;display:flex;gap:6px;flex-shrink:0">';
-  [[0,'📝','미학습'],[1,'✅','외웠음'],[2,'🔁','복습']].forEach(function(item){
-    var v=item[0],ic=item[1],lb=item[2],active=curMark===v;
-    html += '<button onclick="window._doMark('+v+')" style="flex:1;padding:12px 4px;border:none;border-radius:14px;background:'+(active?markActiveColors[v]:'rgba(255,255,255,.08)')+';color:'+(active?markTextColors[v]:'rgba(255,255,255,.6)')+';font-size:14px;font-weight:'+(active?800:500)+';cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .15s">'+ic+'<span style="font-size:10px">'+lb+'</span></button>';
-  });
+  // ── 마크 버튼: 외웠음 / 미학습 2개 ──
+  var isMemorized = curMark === 1;
+  html += '<div style="padding:0 16px 8px;display:flex;gap:10px;flex-shrink:0">';
+  html += '<button onclick="window._doMark('+(isMemorized?0:1)+')" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
+  html += '<button onclick="window._doMark(0)" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(!isMemorized?'rgba(148,163,184,.3)':'rgba(255,255,255,.08)')+';color:'+(!isMemorized?'#CBD5E1':'rgba(255,255,255,.4)')+'">📝 미학습</button>';
   html += '</div>';
 
   // ── 이전/다음 버튼 ──

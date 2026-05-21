@@ -3623,8 +3623,24 @@ async function _autoReadWord(w) {
 
 // 자동학습 설정 헬퍼 함수들
 function _arSetSort(v){S.autoSort=v;showAutoMode();}
-function _arSetUnit(v){if(window._auto)window._auto.unit=v;window._autoRender&&window._autoRender();}
-function _arSetRange(v){if(window._auto)window._auto.range=v;window._autoRender&&window._autoRender();}
+function _arSetUnit(v){if(window._auto)window._auto.unit=v;_autoRefilter();window._autoRender&&window._autoRender();}
+function _arSetRange(v){if(window._auto)window._auto.range=v;_autoRefilter();window._autoRender&&window._autoRender();}
+
+// 학습범위/단위 변경 시 _autoWords 재필터링
+function _autoRefilter() {
+  const rawWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!rawWords||!rawWords.length) return;
+  const A = window._auto||{};
+  let words = [...rawWords];
+  const range = parseInt(A.range??-1);
+  if(range===0){ words=words.filter(w=>(getMark(w.en)||0)===0); if(!words.length){toast('미학습 단어가 없어요!');words=[...rawWords];} }
+  else if(range===1){ words=words.filter(w=>getMark(w.en)===1); if(!words.length){toast('외웠음 표시 단어가 없어요!');words=[...rawWords];} }
+  else if(range===2){ words=words.filter(w=>getMark(w.en)===2); if(!words.length){toast('복습 표시 단어가 없어요!');words=[...rawWords];} }
+  const unit = A.unit||'all';
+  if(unit!=='all'){const n=parseInt(unit);if(!isNaN(n)&&n>0)words=words.slice(0,n);}
+  window._autoWords = words;
+  window._autoIdx = 0;
+}
 function _arSetRead(v){if(window._auto)window._auto.read=v;window._autoRender&&window._autoRender();}
 function _arSetSpeed(sr,sp){if(window._auto){window._auto.shadowRate=sr;window._auto.speed=sp;}window._autoRender&&window._autoRender();}
 function _arSetExCount(v){if(window._auto)window._auto.exCount=v;window._autoRender&&window._autoRender();}
@@ -9206,6 +9222,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   var html='<div style="display:flex;flex-direction:column;height:100%;background:#F0F7F4">';
   html+='<div style="padding:10px 12px 6px;flex-shrink:0;background:#fff;border-bottom:1px solid #E8F5EE">';
   html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+  html+='<button onclick="S.stab=\'mode\';go(\'mybooks\',\'mode\')" style="background:none;border:none;font-size:18px;cursor:pointer;padding:0 2px;color:var(--text3,#9CA3AF);flex-shrink:0">‹</button>';
   html+='<span style="font-size:11px;color:var(--text3,#9CA3AF);white-space:nowrap">'+(idx+1)+'/'+total+'</span>';
   html+='<div style="flex:1;background:#E8F5EE;border-radius:3px;height:4px;overflow:hidden"><div style="height:100%;background:#4CAF7D;border-radius:3px;width:'+pct+'%;transition:width .3s"></div></div>';
   html+='<span style="font-size:11px;color:#4CAF7D;font-weight:700;white-space:nowrap">'+pct+'%</span>';

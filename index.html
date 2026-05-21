@@ -1187,6 +1187,7 @@ const XP_DEFAULT = {
   game_wc_base:      10,  game_wc_perfect:      20,
   game_ssort_base:   15,  game_ssort_perfect:   25,
   xpMultiplier: 1.0,  // 전체 배율
+  streak_per_day: 0.02, // 연속 학습 1일당 보너스 배율 (ex: 0.02 → 5일=+10%)
 };
 window._XPC = {...XP_DEFAULT};
 
@@ -1272,7 +1273,8 @@ function saveGameScore(score) {
   if(pct===100) xpGain = xpTable.perfect;
   else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
   const streak = S.streak||0;
-  let mult = streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0;
+  const _spd1 = (window._XPC?.streak_per_day??0.02);
+  let mult = 1.0 + streak * _spd1;
   xpGain = Math.round(xpGain * mult);
   if(xpGain>0) earnXP(xpGain, '게임 완료');
   sv();
@@ -1297,7 +1299,8 @@ function earnTestXP(pct) {
   else if(pct>=80) base=xp('test_80');
   else if(pct>=60) base=xp('test_60');
   const streak=S.streak||0;
-  const mult=streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0;
+  const _spd2 = (window._XPC?.streak_per_day??0.02);
+  const mult=1.0 + streak * _spd2;
   const total = Math.round(base*mult);
   if(total>0) earnXP(total, '테스트 통과');
 }
@@ -3901,10 +3904,9 @@ function updHD() {
 
 function getStreakBonus() {
   const s = S.streak||0;
-  if(s>=30) return 2.0;
-  if(s>=7)  return 1.5;
-  if(s>=3)  return 1.2;
-  return 1.0;
+  if(s <= 0) return 1.0;
+  const perDay = (window._XPC?.streak_per_day ?? 0.02);
+  return 1.0 + s * perDay;
 }
 
 function showXpGain(xp, hasBonus=false) {

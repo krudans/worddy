@@ -3659,6 +3659,64 @@ function _arToggleLoop(){if(window._auto)window._auto.loop=!window._auto.loop;wi
 function _arToggleShadow(){if(window._auto)window._auto.shadow=!window._auto.shadow;window._autoRender&&window._autoRender();}
 
 
+// ── Wake Lock (화면 꺼짐 방지) ──
+window._wakeLock = null;
+async function _requestWakeLock() {
+  try {
+    if('wakeLock' in navigator) {
+      window._wakeLock = await navigator.wakeLock.request('screen');
+      window._wakeLock.addEventListener('release', () => { window._wakeLock = null; });
+    }
+  } catch(e) {}
+}
+function _releaseWakeLock() {
+  try { if(window._wakeLock) { window._wakeLock.release(); window._wakeLock = null; } } catch(e) {}
+}
+// 페이지 다시 보일 때 Wake Lock 재획득
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && window._autoPlaying) _requestWakeLock();
+});
+
+// ── 화면 잠금 (주머니 모드) ──
+window._autoLocked = false;
+function _toggleAutoLock() {
+  window._autoLocked = !window._autoLocked;
+  const overlay = document.getElementById('auto-lock-overlay');
+  if(window._autoLocked) {
+    // 오버레이 생성 - 터치/클릭 전부 차단
+    if(!overlay) {
+      const el = document.createElement('div');
+      el.id = 'auto-lock-overlay';
+      el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;touch-action:none;-webkit-user-select:none;user-select:none;';
+      // 길게 누르면 잠금 해제
+      let _lockTimer = null;
+      let _lockProgress = null;
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        _lockProgress = document.getElementById('lock-progress');
+        if(_lockProgress) _lockProgress.style.transition = 'width 2s linear'; 
+        if(_lockProgress) _lockProgress.style.width = '100%';
+        _lockTimer = setTimeout(() => { _toggleAutoLock(); }, 2000);
+      }, {passive:false});
+      el.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        clearTimeout(_lockTimer);
+        if(_lockProgress) { _lockProgress.style.transition='none'; _lockProgress.style.width='0%'; }
+      }, {passive:false});
+      el.addEventListener('touchmove', (e) => { e.preventDefault(); }, {passive:false});
+      el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
+      document.body.appendChild(el);
+    } else {
+      overlay.style.display = '';
+    }
+    toast('🔒 화면 잠금 ON · 길게 눌러서 해제');
+  } else {
+    if(overlay) overlay.style.display = 'none';
+    toast('🔓 화면 잠금 해제');
+  }
+  window._autoRender && window._autoRender();
+}
+
 function showAutoMode() {
   const rawWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   if(!rawWords || !rawWords.length) { toast('단어가 없어요!'); return; }
@@ -3815,66 +3873,7 @@ window._autoRender = function() {
   };
   
   // 자동 재생 토글
-
-// ── Wake Lock (화면 꺼짐 방지) ──
-window._wakeLock = null;
-async function _requestWakeLock() {
-  try {
-    if('wakeLock' in navigator) {
-      window._wakeLock = await navigator.wakeLock.request('screen');
-      window._wakeLock.addEventListener('release', () => { window._wakeLock = null; });
-    }
-  } catch(e) {}
-}
-function _releaseWakeLock() {
-  try { if(window._wakeLock) { window._wakeLock.release(); window._wakeLock = null; } } catch(e) {}
-}
-// 페이지 다시 보일 때 Wake Lock 재획득
-document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'visible' && window._autoPlaying) _requestWakeLock();
-});
-
-// ── 화면 잠금 (주머니 모드) ──
-window._autoLocked = false;
-function _toggleAutoLock() {
-  window._autoLocked = !window._autoLocked;
-  const overlay = document.getElementById('auto-lock-overlay');
-  if(window._autoLocked) {
-    // 오버레이 생성 - 터치/클릭 전부 차단
-    if(!overlay) {
-      const el = document.createElement('div');
-      el.id = 'auto-lock-overlay';
-      el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;touch-action:none;-webkit-user-select:none;user-select:none;';
-      // 길게 누르면 잠금 해제
-      let _lockTimer = null;
-      let _lockProgress = null;
-      el.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        _lockProgress = document.getElementById('lock-progress');
-        if(_lockProgress) _lockProgress.style.transition = 'width 2s linear'; 
-        if(_lockProgress) _lockProgress.style.width = '100%';
-        _lockTimer = setTimeout(() => { _toggleAutoLock(); }, 2000);
-      }, {passive:false});
-      el.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        clearTimeout(_lockTimer);
-        if(_lockProgress) { _lockProgress.style.transition='none'; _lockProgress.style.width='0%'; }
-      }, {passive:false});
-      el.addEventListener('touchmove', (e) => { e.preventDefault(); }, {passive:false});
-      el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
-      document.body.appendChild(el);
-    } else {
-      overlay.style.display = '';
-    }
-    toast('🔒 화면 잠금 ON · 길게 눌러서 해제');
-  } else {
-    if(overlay) overlay.style.display = 'none';
-    toast('🔓 화면 잠금 해제');
-  }
-  window._autoRender && window._autoRender();
-}
-
-  window._autoToggle = async () => {
+window._autoToggle = async () => {
     if(window._autoPlaying) {
       window._autoPlaying = false;
       window.speechSynthesis.cancel();

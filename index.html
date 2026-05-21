@@ -863,12 +863,23 @@ function logStudy(type) {
   // 헤더 미니 카드 업데이트
   if(typeof updHD==='function') updHD();
   // XP 지급
-  if(type==='words') { addXP(xp('daily_first'), true); checkXpUsable(); }
-  else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
   const t = today();
   if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0, min:0};
   if(!S.studyLog[t].min) S.studyLog[t].min = 0;
+  const _prevCount = S.studyLog[t][type] || 0;
   S.studyLog[t][type]++;
+  // XP 지급 (카운트 증가 후 판단)
+  if(type==='words') {
+    if(_prevCount === 0) {
+      // 하루 첫 단어 학습: daily_first 보너스
+      addXP(xp('daily_first'), true);
+    } else {
+      // 이후 단어들: word_learn XP
+      addXP(xp('word_learn'), true);
+    }
+    checkXpUsable();
+  }
+  else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
   if(type==='words') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.1)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.1)*10)/10; }
   else if(type==='quiz') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.05)*10)/10; }
   updStreak();
@@ -2830,7 +2841,7 @@ function showSpeakMode() {
       <!-- 하단 버튼 -->
       <div style="padding:8px 16px calc(env(safe-area-inset-bottom,0px)+8px);flex-shrink:0;display:flex;gap:8px">
         <button onclick="window._spkIdx=Math.max(0,window._spkIdx-1);window._spkShow=false;_spkRender()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
-        <button onclick="window._spkShow=false;window._spkIdx++;logStudy&&logStudy('words');addXP&&addXP(xp&&xp('word_flip')||1);_spkRender()" style="flex:2;background:linear-gradient(135deg,#7C3AED,#6D28D9);border:none;border-radius:14px;padding:13px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">✅ 다음</button>
+        <button onclick="window._spkShow=false;window._spkIdx++;logStudy&&logStudy('words');addXP&&addXP(xp&&xp('speak_word')||5);_spkRender()" style="flex:2;background:linear-gradient(135deg,#7C3AED,#6D28D9);border:none;border-radius:14px;padding:13px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">✅ 다음</button>
         <button onclick="window._spkIdx=Math.min(window._spkWords.length-1,window._spkIdx+1);window._spkShow=false;_spkRender()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏭</button>
       </div>
     </div></div>`;
@@ -3789,8 +3800,7 @@ window._autoRender = function() {
         }
       }
       window._autoRender();
-      logStudy('words');
-      addXP(xp('word_flip'));
+      logStudy('words'); // word_learn XP는 logStudy 안에서 처리
     }
     window._autoRender();
   };
@@ -7957,7 +7967,7 @@ ${[['느리게',5000],['보통',3000],['빠르게',1500],['매우빠름',800]].m
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);
     }
-    logStudy('words');addXP(xp('word_learn'));
+    logStudy('words'); // word_learn XP는 logStudy 내부에서 처리
   };
 
   window._stNext=()=>{
@@ -8043,7 +8053,7 @@ function showAudioMode() {
       await window._audSpeak2(item.text, item.lang);
       await new Promise(res=>setTimeout(res,400));
     }
-    logStudy('words');addXP(3);
+    logStudy('words'); // word_learn XP는 logStudy 내부에서 처리
     window._audIdx++;
     if(window._audPlaying) window._audPlay();
   };
@@ -8329,7 +8339,7 @@ function showSleepMode() {
     </div></div>`;
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.8;speechSynthesis.speak(u);
-    logStudy('words');addXP(3);
+    logStudy('words'); // word_learn XP는 logStudy 내부에서 처리
     window._slpIdx++;
     window._slpTimer=setTimeout(window._slpPlay,5000);
   };

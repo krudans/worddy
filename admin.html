@@ -37,28 +37,6 @@
   --radius: 14px;
   --radius-lg: 18px;
 }
-async function generateOneWordEx(packId, wordIdx) {
-  const packs = window._adminPacks||[];
-  const p = packs.find(x=>x.id===packId);
-  if(!p||!p.words[wordIdx]) return;
-  const w = p.words[wordIdx];
-  try {
-    const apiKey = getGeminiKey();
-    if(!apiKey) { toast('Gemini API 키가 필요합니다','err'); return; }
-    const text = await callAI(`"${w.en}" (${w.kr}) 단어를 사용한 영어 예문 3개를 JSON 배열로만 반환해줘. 예: ["ex1","ex2","ex3"]`, 300);
-    const arr = JSON.parse(text.match(/\[[\s\S]+\]/)?.[0]||'[]');
-    if(arr.length) {
-      w.exList = arr.slice(0,3);
-      w.ex = w.exList[0];
-      if(p._fromFirebase) {
-        await db.collection('packs').doc(packId).update({words: p.words});
-      }
-      showPackWordTab('list');
-      toast('✅ 예문 생성 완료','ok');
-    }
-  } catch(e) { toast('예문 생성 실패: '+e.message,'err'); }
-}
-
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; font-size: 14px; line-height: 1.5; }
@@ -387,6 +365,28 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
 </div>
 
 <script>
+async function generateOneWordEx(packId, wordIdx) {
+  const packs = window._adminPacks||[];
+  const p = packs.find(x=>x.id===packId);
+  if(!p||!p.words[wordIdx]) return;
+  const w = p.words[wordIdx];
+  try {
+    const apiKey = getGeminiKey();
+    if(!apiKey) { toast('Gemini API 키가 필요합니다','err'); return; }
+    const text = await callAI(`"${w.en}" (${w.kr}) 단어를 사용한 영어 예문 3개를 JSON 배열로만 반환해줘. 예: ["ex1","ex2","ex3"]`, 300);
+    const arr = JSON.parse(text.match(/\[[\s\S]+\]/)?.[0]||'[]');
+    if(arr.length) {
+      w.exList = arr.slice(0,3);
+      w.ex = w.exList[0];
+      if(p._fromFirebase) {
+        await db.collection('packs').doc(packId).update({words: p.words});
+      }
+      showPackWordTab('list');
+      toast('✅ 예문 생성 완료','ok');
+    }
+  } catch(e) { toast('예문 생성 실패: '+e.message,'err'); }
+}
+
 // ── Google 로그인 ──
 async function rDB(){
   const mi = document.getElementById('main-inner');

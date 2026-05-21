@@ -3436,6 +3436,8 @@ function sv() {
   localStorage.setItem('wd-sr',JSON.stringify(S.srsReps||{}));
   localStorage.setItem('wd-fr',JSON.stringify(S.friends||[]));
   localStorage.setItem('wd-bs',JSON.stringify(S.bestScores||{}));
+  localStorage.setItem('wd-gdc',JSON.stringify(S.gameDailyCount||{}));
+  localStorage.setItem('wd-gpc',JSON.stringify(S.gamePlayCount||{}));
   localStorage.setItem('wd-bks',JSON.stringify(S.books));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
@@ -3481,6 +3483,9 @@ function sv() {
       attendDates:S.attendDates||[],
       lastDate:S.lastDate||'', lastStudyDate:S.lastDate||'',
       lastActive: new Date().toISOString().slice(0,10),
+      gameDailyCount:S.gameDailyCount||{},
+      gamePlayCount:S.gamePlayCount||{},
+      bestScores:S.bestScores||{},
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       updatedAt: new Date().toISOString()
@@ -10273,14 +10278,8 @@ function rGameDone(){
   SFX.stopBG();
   S._gameRunning=false;
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
-  // 게임 완료 XP 지급
+  // XP 지급은 saveGameScore 내부에서 처리 (중복 방지)
   if(!S._inLevelTest && !S._inLearnSession) {
-    const gameXp = {quiz:30,fill:25,typing:35,match:20,sentence:40,listen:35,wordfind:25,wordle:50,wc:25,chain:30};
-    const xpAmt = gameXp[S.gameId]||20;
-    const pct = S.gWords.length>0 ? Math.round(S.gScore/100/S.gWords.length*100) : 0;
-    const bonus = pct>=100?1.5:pct>=80?1.2:1.0;
-    const finalXp = Math.round(xpAmt*bonus);
-    addXP(finalXp);
     checkAchievements();
     checkXpUsable();
   }
@@ -12228,11 +12227,58 @@ auth.onAuthStateChanged(async user => {
             });
             S.studyLog = merged;
           }
+          // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
+          if(_data.gameDailyCount && typeof _data.gameDailyCount === 'object') {
+            const _localGdc = S.gameDailyCount || {};
+            const _mergedGdc = Object.assign({}, _data.gameDailyCount);
+            Object.entries(_localGdc).forEach(([date, games]) => {
+              if(!_mergedGdc[date]) { _mergedGdc[date] = games; return; }
+              Object.entries(games).forEach(([gid, v]) => {
+                const fb = _mergedGdc[date][gid];
+                if(!fb) { _mergedGdc[date][gid] = v; return; }
+                if(typeof v === 'object' && typeof fb === 'object') {
+                  _mergedGdc[date][gid] = {
+                    words: Math.max(v.words||0, fb.words||0),
+                    right: Math.max(v.right||0, fb.right||0),
+                    wrong: Math.max(v.wrong||0, fb.wrong||0),
+                  };
+                }
+              });
+            });
+            S.gameDailyCount = _mergedGdc;
+            localStorage.setItem('wd-gdc', JSON.stringify(_mergedGdc));
+          }
+          if(_data.gamePlayCount && typeof _data.gamePlayCount === 'object') {
+            const _localGpc = S.gamePlayCount || {};
+            const _mergedGpc = Object.assign({}, _data.gamePlayCount);
+            Object.entries(_localGpc).forEach(([gid, v]) => {
+              _mergedGpc[gid] = Math.max(v||0, _mergedGpc[gid]||0);
+            });
+            S.gamePlayCount = _mergedGpc;
+            localStorage.setItem('wd-gpc', JSON.stringify(_mergedGpc));
+          }
+          if(_data.bestScores && typeof _data.bestScores === 'object') {
+            const _localBs = S.bestScores || {};
+            const _mergedBs = Object.assign({}, _data.bestScores);
+            Object.entries(_localBs).forEach(([gid, v]) => {
+              _mergedBs[gid] = Math.max(v||0, _mergedBs[gid]||0);
+            });
+            S.bestScores = _mergedBs;
+            localStorage.setItem('wd-bs', JSON.stringify(_mergedBs));
+          }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
           if(Array.isArray(_data.myButterflies)) {
-            S.myButterflies = _data.myButterflies;
-            localStorage.setItem('wd-butterflies', JSON.stringify(_data.myButterflies));
+            // 로컬과 Firebase 합집합 (더 많은 나비 유지)
+            const _lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
+            const _bfSet = new Set([..._data.myButterflies, ..._lsBf]);
+            const _mergedBf = [..._bfSet];
+            S.myButterflies = _mergedBf;
+            localStorage.setItem('wd-butterflies', JSON.stringify(_mergedBf));
+            // 합집합이 Firebase보다 크면 Firebase도 업데이트
+            if(_mergedBf.length > _data.myButterflies.length && S.user && typeof db!=='undefined') {
+              db.collection('users').doc(S.user.uid).set({myButterflies:_mergedBf},{merge:true}).catch(()=>{});
+            }
           }
           if(Array.isArray(_data.collection)) {
             const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
@@ -12324,12 +12370,58 @@ auth.onAuthStateChanged(async user => {
             });
             S.studyLog = merged;
           }
+          // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
+          if(_data.gameDailyCount && typeof _data.gameDailyCount === 'object') {
+            const _localGdc = S.gameDailyCount || {};
+            const _mergedGdc = Object.assign({}, _data.gameDailyCount);
+            Object.entries(_localGdc).forEach(([date, games]) => {
+              if(!_mergedGdc[date]) { _mergedGdc[date] = games; return; }
+              Object.entries(games).forEach(([gid, v]) => {
+                const fb = _mergedGdc[date][gid];
+                if(!fb) { _mergedGdc[date][gid] = v; return; }
+                if(typeof v === 'object' && typeof fb === 'object') {
+                  _mergedGdc[date][gid] = {
+                    words: Math.max(v.words||0, fb.words||0),
+                    right: Math.max(v.right||0, fb.right||0),
+                    wrong: Math.max(v.wrong||0, fb.wrong||0),
+                  };
+                }
+              });
+            });
+            S.gameDailyCount = _mergedGdc;
+            localStorage.setItem('wd-gdc', JSON.stringify(_mergedGdc));
+          }
+          if(_data.gamePlayCount && typeof _data.gamePlayCount === 'object') {
+            const _localGpc = S.gamePlayCount || {};
+            const _mergedGpc = Object.assign({}, _data.gamePlayCount);
+            Object.entries(_localGpc).forEach(([gid, v]) => {
+              _mergedGpc[gid] = Math.max(v||0, _mergedGpc[gid]||0);
+            });
+            S.gamePlayCount = _mergedGpc;
+            localStorage.setItem('wd-gpc', JSON.stringify(_mergedGpc));
+          }
+          if(_data.bestScores && typeof _data.bestScores === 'object') {
+            const _localBs = S.bestScores || {};
+            const _mergedBs = Object.assign({}, _data.bestScores);
+            Object.entries(_localBs).forEach(([gid, v]) => {
+              _mergedBs[gid] = Math.max(v||0, _mergedBs[gid]||0);
+            });
+            S.bestScores = _mergedBs;
+            localStorage.setItem('wd-bs', JSON.stringify(_mergedBs));
+          }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
         if(Array.isArray(_data.myButterflies)) {
-          // Firebase 데이터 우선 (삭제한 나비가 복원되지 않도록 합집합 제거)
-          S.myButterflies = _data.myButterflies;
-          localStorage.setItem('wd-butterflies', JSON.stringify(_data.myButterflies));
+          // 로컬과 Firebase 합집합 (더 많은 나비 유지, 어느 쪽도 손실 없음)
+          const _lsBf2 = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
+          const _bfSet2 = new Set([..._data.myButterflies, ..._lsBf2]);
+          const _mergedBf2 = [..._bfSet2];
+          S.myButterflies = _mergedBf2;
+          localStorage.setItem('wd-butterflies', JSON.stringify(_mergedBf2));
+          // 합집합이 Firebase보다 크면 Firebase도 업데이트
+          if(_mergedBf2.length > _data.myButterflies.length && S.user && typeof db!=='undefined') {
+            db.collection('users').doc(S.user.uid).set({myButterflies:_mergedBf2},{merge:true}).catch(()=>{});
+          }
         } else {
           // Firebase에 없으면 localStorage 데이터 사용 후 Firebase 저장
           const lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');

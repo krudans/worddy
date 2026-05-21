@@ -421,17 +421,19 @@ function saveGameScore(score) {
     const docId=`${S.user?.uid}_${Date.now()}`;
     db && db.collection('rankings').doc(docId).set({uid:S.user?.uid,nick:S.nick,level:S.lid,score,game:gid,date:new Date().toISOString()}).catch(()=>{});
   } catch(e) {}
-  // XP 계산
-  const xpTable = GAME_XP[gid] || {base:10, perfect:20};
-  const words = (S.gWords||[]).length || 1;
-  const right = Math.round(score/100);
-  const pct = Math.round(right/words*100);
-  let xpGain = xpTable.base;
-  if(pct===100) xpGain = xpTable.perfect;
-  else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
-  const streak = S.streak||0;
-  xpGain = Math.round(xpGain * (streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0));
-  if(xpGain>0 && typeof earnXP==='function') earnXP(xpGain, '게임 완료');
+  // XP 계산 (레벨 테스트/학습 세션 중에는 XP 지급 안 함)
+  if(!S._inLevelTest && !S._inLearnSession) {
+    const xpTable = GAME_XP[gid] || {base:10, perfect:20};
+    const words = (S.gWords||[]).length || 1;
+    const right = Math.round(score/100);
+    const pct = Math.round(right/words*100);
+    let xpGain = xpTable.base;
+    if(pct===100) xpGain = xpTable.perfect;
+    else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
+    const streak = S.streak||0;
+    xpGain = Math.round(xpGain * (streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0));
+    if(xpGain>0 && typeof earnXP==='function') earnXP(xpGain, '게임 완료');
+  }
   if(typeof sv==='function') sv();
 }
 

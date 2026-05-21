@@ -3771,11 +3771,12 @@ window._autoRender = function() {
           +'<div style="display:flex;gap:6px;align-items:center">'
           +(_LT&&_LT.barHTML?_LT.barHTML():'')
           +'<button onclick="window._autoToggle&&window._autoToggle()" style="background:'+(window._autoPlaying?'#22C55E':'rgba(255,255,255,.15)')+';border:none;border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">'+(window._autoPlaying?'⏸ 일시정지':'▶ 자동재생')+'</button>'
+          +'<button onclick="_toggleAutoLock()" style="background:'+(window._autoLocked?'rgba(239,68,68,.5)':'rgba(255,255,255,.1)')+';border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer" title="화면 잠금 (주머니 모드)">'+(window._autoLocked?'🔒':'🔓')+'</button>'
           +'<button onclick="cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;cursor:pointer">✕</button>'
           +'</div>'
         +'</div>'
         // 진행바
-        +'<div style="padding:0 16px 4px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div></div>'
+        +'<div style="padding:0 16px 4px;flex-shrink:0">'        +'<div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div>'        +(window._autoLocked ? '<div style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;margin-top:4px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:11px;color:#FCA5A5">🔒 화면 잠금 중 · 길게 눌러서 해제</span><div id="lock-progress" style="height:3px;width:0%;background:#EF4444;border-radius:2px;transition:none;min-width:0;max-width:80px"></div></div>' : '')        +'</div>'
         // 단어 카드 (kr_first 모드 분기)
         +(A.read==='kr_first'
           ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 영어 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+w.kr+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 영어가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none"><div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'+(w.ph?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')+'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>'+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
@@ -3814,14 +3815,75 @@ window._autoRender = function() {
   };
   
   // 자동 재생 토글
+
+// ── Wake Lock (화면 꺼짐 방지) ──
+window._wakeLock = null;
+async function _requestWakeLock() {
+  try {
+    if('wakeLock' in navigator) {
+      window._wakeLock = await navigator.wakeLock.request('screen');
+      window._wakeLock.addEventListener('release', () => { window._wakeLock = null; });
+    }
+  } catch(e) {}
+}
+function _releaseWakeLock() {
+  try { if(window._wakeLock) { window._wakeLock.release(); window._wakeLock = null; } } catch(e) {}
+}
+// 페이지 다시 보일 때 Wake Lock 재획득
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && window._autoPlaying) _requestWakeLock();
+});
+
+// ── 화면 잠금 (주머니 모드) ──
+window._autoLocked = false;
+function _toggleAutoLock() {
+  window._autoLocked = !window._autoLocked;
+  const overlay = document.getElementById('auto-lock-overlay');
+  if(window._autoLocked) {
+    // 오버레이 생성 - 터치/클릭 전부 차단
+    if(!overlay) {
+      const el = document.createElement('div');
+      el.id = 'auto-lock-overlay';
+      el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;touch-action:none;-webkit-user-select:none;user-select:none;';
+      // 길게 누르면 잠금 해제
+      let _lockTimer = null;
+      let _lockProgress = null;
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        _lockProgress = document.getElementById('lock-progress');
+        if(_lockProgress) _lockProgress.style.transition = 'width 2s linear'; 
+        if(_lockProgress) _lockProgress.style.width = '100%';
+        _lockTimer = setTimeout(() => { _toggleAutoLock(); }, 2000);
+      }, {passive:false});
+      el.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        clearTimeout(_lockTimer);
+        if(_lockProgress) { _lockProgress.style.transition='none'; _lockProgress.style.width='0%'; }
+      }, {passive:false});
+      el.addEventListener('touchmove', (e) => { e.preventDefault(); }, {passive:false});
+      el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
+      document.body.appendChild(el);
+    } else {
+      overlay.style.display = '';
+    }
+    toast('🔒 화면 잠금 ON · 길게 눌러서 해제');
+  } else {
+    if(overlay) overlay.style.display = 'none';
+    toast('🔓 화면 잠금 해제');
+  }
+  window._autoRender && window._autoRender();
+}
+
   window._autoToggle = async () => {
     if(window._autoPlaying) {
       window._autoPlaying = false;
       window.speechSynthesis.cancel();
+      _releaseWakeLock(); // 화면 꺼짐 방지 해제
       window._autoRender();
       return;
     }
     window._autoPlaying = true;
+    _requestWakeLock(); // 화면 꺼짐 방지
     window._autoRender();
     while(window._autoPlaying) {
       const w = window._autoWords[window._autoIdx];
@@ -3856,7 +3918,14 @@ window._autoRender = function() {
   setTimeout(()=>window._autoSpeakNow(), 300);
 }
 
-const cm = () => document.getElementById('mr').innerHTML='';
+const cm = () => {
+  document.getElementById('mr').innerHTML='';
+  _releaseWakeLock();
+  window._autoPlaying = false;
+  window._autoLocked = false;
+  const overlay = document.getElementById('auto-lock-overlay');
+  if(overlay) overlay.remove();
+};
 const cm2 = () => { const el=document.getElementById('ma'); if(el) el.innerHTML=''; };
 
 function applyTheme() {

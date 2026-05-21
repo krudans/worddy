@@ -10693,6 +10693,7 @@ function guessWC(letter){
 }
 
 function rMatch(){
+  if(!S.mPairs||!S.mPairs.length){S.mPairs=S.gWords.slice(0,Math.min(5,S.gWords.length));S.mEn=S.mPairs.map(p=>p.en);S.mKr=S.mPairs.map(p=>p.kr);S.mMatched=new Set();S.mScore=0;}
   const all=S.mMatched.size>=S.mPairs.length*2;
   if(all&&!S.gDone){
     // 남은 단어 있으면 다음 세트, 없으면 종료
@@ -10848,10 +10849,11 @@ function buildWF(src){
   S.wfGridSz=gridSz;
 }
 function rWF(){
-  if(!S.wfGrid.length)buildWF(S.gWords);
-  const sz=S.wfGrid.length;
-  const foundCells=new Set(S.wfWords.filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));
-  const all=S.wfFound.size>=S.wfWords.length;
+  if(!S.wfGrid||!S.wfGrid.length)buildWF(S.gWords);
+  if(!S.wfWords||!S.wfFound){S.wfWords=S.wfWords||[];S.wfFound=S.wfFound||new Set();}
+  const sz=(S.wfGrid||[]).length;
+  const foundCells=new Set((S.wfWords||[]).filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));
+  const all=(S.wfWords||[]).length>0&&S.wfFound.size>=(S.wfWords||[]).length;
   if(all&&!S.gDone){S.gDone=true;S.gScore=S.wfFound.size*100;setTimeout(()=>go(),300);}
   const selCount=S.wfSel.length;
   const hint=selCount>0
@@ -10859,7 +10861,7 @@ function rWF(){
     :`<div style="text-align:center;font-size:12px;color:#9CA3AF;margin-bottom:6px">💡 찾는 단어의 첫 글자 → 마지막 글자 순서로 탭하세요</div>`;
   return ghdr('🔍 단어 찾기',`${S.wfFound.size}/${S.wfWords.length}`)+`<div class="pad">
     ${cbrow(all?'모두 찾았어! 🎉':'격자에서 단어를 찾아봐! 🔍',S.lid,all?'happy':'normal')}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">${S.wfWords.map(w=>{const ww=S.gWords.find(x=>x.en.toUpperCase().replace(/[^A-Z]/g,'')===w.word);const found=S.wfFound.has(w.word);return `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:monospace;background:${found?'#DCFCE7':'#F3F4F6'};color:${found?'#16A34A':'#374151'};text-decoration:${found?'line-through':'none'};border:1.5px solid ${found?'#86EFAC':'#E5E7EB'}">${ww?.img||'📝'} ${w.word}${found?' ✅':''}</span>`;}).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">${(S.wfWords||[]).map(w=>{const ww=S.gWords.find(x=>x.en.toUpperCase().replace(/[^A-Z]/g,'')===w.word);const found=S.wfFound.has(w.word);return `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:monospace;background:${found?'#DCFCE7':'#F3F4F6'};color:${found?'#16A34A':'#374151'};text-decoration:${found?'line-through':'none'};border:1.5px solid ${found?'#86EFAC':'#E5E7EB'}">${ww?.img||'📝'} ${w.word}${found?' ✅':''}</span>`;}).join('')}</div>
     ${hint}
     <div style="display:flex;justify-content:center;overflow-x:auto">
       <div class="wf-grid" style="grid-template-columns:repeat(${sz},1fr)">
@@ -10906,6 +10908,7 @@ function selWF(r,c){
 function scoreW(g,t){const r=Array(t.length).fill('absent'),tA=[...t],gA=[...g];gA.forEach((c,i)=>{if(c===tA[i]){r[i]='correct';tA[i]=gA[i]=null;}});gA.forEach((c,i)=>{if(!c)return;const j=tA.indexOf(c);if(j>-1){r[i]='present';tA[j]=null;}});return r;}
 function rWordle(){
   if(!S.wWord){S.gDone=true;return rGame();}
+  if(!S.wGuess)S.wGuess=[];
   const W=S.wWord.en.toLowerCase(),LEN=W.length,cw=Math.min(46,250/LEN);
   return ghdr('🟩 워들','')+`<div class="pad" style="align-items:center;gap:10px">
     ${cbrow(S.wOver?(S.wWon?'맞췄어! 🎉':'아쉬워!'):S.wGuess.length===0?`힌트: "${S.wWord.kr}" · 6번 안에!`:`힌트: "${S.wWord.kr}"`,S.lid,S.wOver?(S.wWon?'happy':'sad'):'normal')}

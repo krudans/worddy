@@ -431,7 +431,11 @@ function saveGameScore(score) {
     if(pct===100) xpGain = xpTable.perfect;
     else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
     const streak = S.streak||0;
-    xpGain = Math.round(xpGain * (streak>=30?2.0:streak>=7?1.5:streak>=3?1.2:1.0));
+    const _spd = (typeof window!=='undefined'&&window._XPC?.streak_per_day)||0.02;
+    xpGain = Math.round(xpGain * (1.0 + streak * _spd));
+    // xpMultiplier 적용 (관리자 XP 설정)
+    const _mult = (typeof window !== 'undefined' && window._XPC) ? (window._XPC.xpMultiplier||1) : 1;
+    xpGain = Math.round(xpGain * _mult);
     if(xpGain>0 && typeof earnXP==='function') earnXP(xpGain, '게임 완료');
   }
   if(typeof sv==='function') sv();

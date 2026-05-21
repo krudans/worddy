@@ -3301,7 +3301,10 @@ const CONV_DEFAULT = [
   {cat:"일상대화",en:"No worries!",kr:"괜찮아요!",level:1},
   {cat:"일상대화",en:"Let me know if you need anything.",kr:"필요한 게 있으면 알려주세요.",level:2},
 ];
-function getMark(en) { return S.markMap[en]||0; }
+function getMark(en) {
+  const mm = (typeof getCurrentBookMarkMap==='function') ? getCurrentBookMarkMap() : S.markMap;
+  return mm[en]||0;
+}
 function toggleFav(en) {
   if(!Array.isArray(S.favorites)) S.favorites = S.favorites ? [...S.favorites] : [];
   const i = S.favorites.indexOf(en);
@@ -3311,7 +3314,18 @@ function toggleFav(en) {
 }
 
 function setMark(en, val) {
-  S.markMap[en] = val;
+  // 현재 단어장 markMap에 저장
+  if(S.currentBook && S.currentBook !== '내 단어장') {
+    const bk = (S.books||[]).find(b=>b.name===S.currentBook);
+    if(bk) {
+      if(!bk.markMap) bk.markMap = {};
+      bk.markMap[en] = val;
+    } else {
+      S.markMap[en] = val;
+    }
+  } else {
+    S.markMap[en] = val;
+  }
   // 외운 단어 → learned에도 추가
   if(val===1) S.learned.add(en);
   else if(val===2) S.learned.delete(en);
@@ -12214,7 +12228,7 @@ auth.onAuthStateChanged(async user => {
           if(!_isFirebaseValid) {
             console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
           } else {
-            ['xp','lid','streak','nick','words','books','currentBook',
+            ['xp','lid','streak','nick','words','books',
              'markMap','_achievements','_acc','_equipped','_ownedPacks',
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
@@ -12223,7 +12237,7 @@ auth.onAuthStateChanged(async user => {
               if(k === 'xp' && _data[k] === 0 && (S.xp||0) > 100) return;
               if(k === '_totalXp' && _data[k] === 0 && (S._totalXp||0) > 100) return;
               if(k === 'nick' && _data[k] === '' && S.nick) return;
-              if(_data[k]!==undefined) S[k]=_data[k];
+              if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
           }
           if(_data.studyLog) {
@@ -12357,7 +12371,7 @@ auth.onAuthStateChanged(async user => {
           if(!_isFirebaseValid) {
             console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
           } else {
-            ['xp','lid','streak','nick','words','books','currentBook',
+            ['xp','lid','streak','nick','words','books',
              'markMap','_achievements','_acc','_equipped','_ownedPacks',
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
@@ -12366,7 +12380,7 @@ auth.onAuthStateChanged(async user => {
               if(k === 'xp' && _data[k] === 0 && (S.xp||0) > 100) return;
               if(k === '_totalXp' && _data[k] === 0 && (S._totalXp||0) > 100) return;
               if(k === 'nick' && _data[k] === '' && S.nick) return;
-              if(_data[k]!==undefined) S[k]=_data[k];
+              if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
           }
           if(_data.studyLog) {
@@ -12481,7 +12495,7 @@ auth.onAuthStateChanged(async user => {
           S.books = (S.books||[]).map(bk => ({...bk, words:_fix(bk.words||[])}));
           console.log('[앱] Firebase 선로드 완료, words:', S.words.length, 'books:', S.books.length);
           // 로컬스토리지에도 반영
-          ['lid','xp','streak','nick','currentBook','markMap','attendCount','attendDates','_totalXp'].forEach(k=>{ if(S[k]!==undefined) {} });
+          ['lid','xp','streak','nick','markMap','attendCount','attendDates','_totalXp'].forEach(k=>{ if(S[k]!==undefined) {} }); // currentBook 제외
           sv();
         }
       } catch(_e) { console.log('[앱] Firebase 선로드 실패, localStorage 사용'); setSplash(90,'시작합니다! 🦋','로컬 데이터로 시작'); }
@@ -12494,11 +12508,12 @@ auth.onAuthStateChanged(async user => {
       db.collection('users').doc(user.uid).get().then(doc => {
         if(doc.exists) {
           const data = doc.data();
-          ['xp','lid','streak','nick','words','books','currentBook',
+          ['xp','lid','streak','nick','words','books',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'
           ].forEach(k => { if(data[k]!==undefined) S[k]=data[k]; });
+          // currentBook은 로컬 유지 (Firebase 동기화 제외 - 사용자 위치 보존)
           // 필드 순서 오류 자동 수정 (en↔ex 뒤바뀐 경우)
           const _fixWords = (arr) => (arr||[]).map(w => {
             if(!w||!w.en||!w.kr) return w;

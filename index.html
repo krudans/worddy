@@ -218,7 +218,7 @@ body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(-
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .gc{background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;cursor:pointer;text-align:center;transition:transform .1s}
 .gc:active{transform:scale(.97)}
-.mbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:flex-end;justify-content:center;pointer-events:all}
 .modal{background:#fff;border-radius:24px 24px 0 0;padding:22px 20px;width:100%;max-width:430px;max-height:90vh;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom,0px)+22px)}
 .tw{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px)+82px);left:50%;transform:translateX(-50%);z-index:400;pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center}
 .toast{background:#1A1A2E;color:#fff;padding:10px 22px;border-radius:22px;font-size:13px;font-weight:700;white-space:nowrap;animation:pop .25s ease}
@@ -346,7 +346,7 @@ body.fs-lg{font-size:17px!important}
 <div class="nav" id="nav" style="display:none"></div>
 </div>
 <div class="tw" id="tw"></div>
-<div id="mr"></div>
+<div id="mr" style="position:fixed;inset:0;z-index:9999"></div>
 <script>
 'use strict';
 window.onerror = function(msg,src,line,col,err) {
@@ -3219,13 +3219,13 @@ function _markBtn(wordEn) {
   const freshBg = !isMemorized ? 'rgba(148,163,184,.3)' : 'rgba(255,255,255,.08)';
   const freshColor = !isMemorized ? '#CBD5E1' : 'rgba(255,255,255,.4)';
   return `<div style="display:flex;gap:10px;justify-content:center">
-    <button onclick="setMark('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()"
-      style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${memoBg};color:${memoColor};box-shadow:${memoShadow}">
-      ✅ 외웠음
-    </button>
     <button onclick="setMark('${safe}',0);window._curRender&&window._curRender()"
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${freshBg};color:${freshColor}">
       📝 미학습
+    </button>
+    <button onclick="setMark('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()"
+      style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${memoBg};color:${memoColor};box-shadow:${memoShadow}">
+      ✅ 외웠음
     </button>
   </div>`;
 }
@@ -3694,9 +3694,9 @@ window._toggleAutoLock = function() {
       el.addEventListener('touchstart', (e) => {
         e.preventDefault();
         _lockProgress = document.getElementById('lock-progress');
-        if(_lockProgress) _lockProgress.style.transition = 'width 2s linear'; 
+        if(_lockProgress) _lockProgress.style.transition = 'width 5s linear'; 
         if(_lockProgress) _lockProgress.style.width = '100%';
-        _lockTimer = setTimeout(() => { window._toggleAutoLock(); }, 2000);
+        _lockTimer = setTimeout(() => { window._toggleAutoLock(); }, 5000);
       }, {passive:false});
       el.addEventListener('touchend', (e) => {
         e.preventDefault();
@@ -3820,6 +3820,7 @@ window._autoRender = function() {
         +'<div style="display:flex;gap:2px">'+btns+'</div></div>';
     }
 
+    mr.style.pointerEvents='auto';
     mr.innerHTML = ''
       +'<div style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E3A5F);z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">'
         // 헤더
@@ -3918,7 +3919,8 @@ window._autoToggle = async () => {
 }
 
 const cm = () => {
-  document.getElementById('mr').innerHTML='';
+  const _mr = document.getElementById('mr');
+  if(_mr) { _mr.innerHTML=''; _mr.style.pointerEvents='none'; }
   window._releaseWakeLock();
   window._autoPlaying = false;
   window._autoLocked = false;
@@ -4729,6 +4731,17 @@ function renderBFDogamGrid() {
       +'</div>';
   }).join('');
 }
+
+// ── mr pointer-events 자동 관리 (내용 있을 때 auto, 없을 때 none) ──
+setTimeout(function() {
+  const _mr = document.getElementById('mr');
+  if(_mr) {
+    _mr.style.pointerEvents = 'none';
+    new MutationObserver(function() {
+      _mr.style.pointerEvents = _mr.innerHTML.trim() ? 'auto' : 'none';
+    }).observe(_mr, {childList: true});
+  }
+}, 800);
 
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
@@ -9331,6 +9344,8 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   // 탭바·헤더 숨기기 (전체화면)
   var _nav=document.getElementById('nav');var _hd=document.getElementById('hd');
   if(_nav)_nav.style.display='none';if(_hd)_hd.style.display='none';
+  // mr pointer-events 활성화
+  var _mrel=document.getElementById('mr');if(_mrel)_mrel.style.pointerEvents='auto';
 
   var html = '<div style="position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden;background:'+cardGrad+'">';
 
@@ -9388,8 +9403,8 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   // ── 마크 버튼: 외웠음 / 미학습 2개 ──
   var isMemorized = curMark === 1;
   html += '<div style="padding:0 16px 8px;display:flex;gap:10px;flex-shrink:0">';
-  html += '<button onclick="window._doMark('+(isMemorized?0:1)+')" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
   html += '<button onclick="window._doMark(0)" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(!isMemorized?'rgba(148,163,184,.3)':'rgba(255,255,255,.08)')+';color:'+(!isMemorized?'#CBD5E1':'rgba(255,255,255,.4)')+'">📝 미학습</button>';
+  html += '<button onclick="window._doMark('+(isMemorized?0:1)+')" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
   html += '</div>';
 
   // ── 이전/다음 버튼 ──

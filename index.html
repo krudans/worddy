@@ -165,7 +165,7 @@ body { background: var(--bg) !important; }
 html,body{height:100%;width:100%;overflow:hidden;margin:0;padding:0}
 body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(--bg,var(--bg,#FFFFFF));display:flex;justify-content:center;align-items:flex-start}
 #app{width:100%;max-width:430px;height:100%;height:100svh;height:-webkit-fill-available;background:var(--bg,var(--bg,#FFFFFF));display:flex;flex-direction:column;overflow:hidden;position:relative}
-.hd{background:var(--hd-bg,linear-gradient(160deg,#2E7D32 0%,#388E3C 40%,#43A047 100%));padding:calc(env(safe-area-inset-top,0px) + 4px) 0 0!important;flex-shrink:0;box-shadow:0 1px 0 var(--hd-border,rgba(255,255,255,.8)),0 4px 20px rgba(0,0,0,.08);position:relative;overflow:hidden;border-bottom:1px solid var(--hd-border,rgba(0,0,0,.06))}
+.hd{background:var(--hd-bg,linear-gradient(160deg,#2E7D32 0%,#388E3C 40%,#43A047 100%));padding:calc(env(safe-area-inset-top,0px) + 4px) 0 0!important;flex-shrink:0;box-shadow:0 1px 0 var(--hd-border,rgba(255,255,255,.8)),0 4px 20px rgba(0,0,0,.08);position:relative;overflow:visible;border-bottom:1px solid var(--hd-border,rgba(0,0,0,.06))}
 .hd-row{display:flex;justify-content:space-between;align-items:center;padding:0 14px;margin-bottom:2px}
 .logo{font-size:20px;font-weight:900;color:#fff;letter-spacing:1px}
 .lbadge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);cursor:pointer}
@@ -325,8 +325,8 @@ body.fs-lg{font-size:17px!important}
 <body>
 <div id="app">
   <div class="hd" id="hd" style="display:none">
-    <div class="hd-row" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 20px 4px;position:relative">
-      <div id="hd-char-icon" onclick="showLevelModal()" style="width:88px;height:88px;border-radius:16px;overflow:hidden;cursor:pointer;flex-shrink:0"></div>
+    <div class="hd-row" style="display:flex;align-items:center;justify-content:flex-start;gap:0;padding:4px 20px 4px 110px;position:relative;min-height:52px">
+      <div id="hd-char-icon" onclick="showLevelModal()" style="width:88px;height:88px;border-radius:16px;overflow:hidden;cursor:pointer;flex-shrink:0;position:absolute;left:12px;bottom:-6px"></div>
       <div style="text-align:left">
         <div style="font-size:18px;font-weight:900;color:var(--hd-title,#FFFFFF);letter-spacing:-.3px;line-height:1.2">Butterfly Word</div>
         <div style="font-size:10px;color:var(--hd-sub,rgba(255,255,255,.85));font-weight:500;margin-top:3px">단어를 외울수록 애벌레가 자라나요 🐛</div>
@@ -872,13 +872,7 @@ function logStudy(type) {
   S.studyLog[t][type]++;
   // XP 지급 (카운트 증가 후 판단)
   if(type==='words') {
-    if(_prevCount === 0) {
-      // 하루 첫 단어 학습: daily_first 보너스
-      addXP(xp('daily_first'), true);
-    } else {
-      // 이후 단어들: word_learn XP
-      addXP(xp('word_learn'), true);
-    }
+    // XP는 외웠음 버튼을 눌렀을 때만 지급 (아래 _doMark, _markBtn 참조)
     checkXpUsable();
   }
   else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
@@ -3210,6 +3204,20 @@ function _studyHeader(title, subtitle, onExit, extraBtns='') {
   </div>`;
 }
 
+// ── 암기 체크 버튼 XP 처리 ──
+window._markBtnXP = function(wordEn, val) {
+  const prevMark = getMark(wordEn);
+  setMark(wordEn, val);
+  // 외웠음(1)으로 새로 표시할 때만 XP 지급
+  if(val === 1 && prevMark !== 1) {
+    const _t = typeof today==='function'?today():new Date().toISOString().slice(0,10);
+    const _pc = S.studyLog?.[_t]?.words || 0;
+    if(_pc === 0) addXP(xp('daily_first'));
+    else addXP(xp('word_learn'));
+    logStudy('words');
+  }
+};
+
 // ── 암기 체크 버튼 ──
 function _markBtn(wordEn) {
   const m = getMark(wordEn);
@@ -3225,7 +3233,7 @@ function _markBtn(wordEn) {
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${freshBg};color:${freshColor}">
       📝 미학습
     </button>
-    <button onclick="setMark('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()"
+    <button onclick="window._markBtnXP('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()"
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${memoBg};color:${memoColor};box-shadow:${memoShadow}">
       ✅ 외웠음
     </button>
@@ -3908,8 +3916,7 @@ window._autoToggle = async () => {
         }
       }
       window._autoRender();
-      logStudy('words'); // word_learn XP는 logStudy 안에서 처리
-      addXP(xp('word_flip')); // 단어 1개 볼 때마다 word_flip XP 추가
+      logStudy('words'); // 카운트/시간 기록만 (XP는 외웠음 버튼에서)
     }
     window._autoRender();
   };
@@ -9248,7 +9255,15 @@ window._doMark = function(v) {
   const words = S._flipWords || [];
   const w = words[S.idx||0];
   if(!w) return;
+  const prevMark = getMark(w.en);
   setMark(w.en, v);
+  // 외웠음(1)으로 새로 표시할 때만 XP 지급
+  if(v === 1 && prevMark !== 1) {
+    const _pc = S.studyLog?.[typeof today==='function'?today():new Date().toISOString().slice(0,10)]?.words || 0;
+    if(_pc === 0) addXP(xp('daily_first'));
+    else addXP(xp('word_learn'));
+    logStudy('words');
+  }
   S.flip = false;
   S.idx = Math.min((S.idx||0)+1, Math.max(0, words.length-1));
   go();
@@ -9451,9 +9466,11 @@ function initFlashSwipe() {
       if(!w) return;
       if(dx > 0) {
         // 오른쪽 스와이프 = ✅ 외웠음
+        const _prevSM = getMark(w.en);
         setMark(w.en, 1);
         if(S.learned && !S.learned.has(w.en)) { S.learned.add(w.en); }
-        logStudy('words');
+        // 외웠음으로 새로 표시할 때만 XP
+        if(_prevSM !== 1) { const _t3=typeof today==='function'?today():new Date().toISOString().slice(0,10); const _pc3=S.studyLog?.[_t3]?.words||0; if(_pc3===0) addXP(xp('daily_first')); else addXP(xp('word_learn')); logStudy('words'); }
         SFX.play && SFX.play('swipe_ok');
         showSwipeHint('✅ 외웠음!', '#16A34A');
         checkAchievements && checkAchievements();
@@ -10558,7 +10575,7 @@ function rGameDone(){
   const pct=Math.round(right/tot*100);
   const hp=pct>=70;
   const _gXpMap={quiz:25,fill:20,typing:30,match:18,sentence:35,listen:30,wordfind:20,wordle:40,wc:20,chain:25};
-  const _gXp=(_gXpMap[S.gameId]||20)+(pct>=100?10:pct>=80?5:0);
+  const _gXp=pct>0?(_gXpMap[S.gameId]||20)+(pct>=100?10:pct>=80?5:0):0; // 정답 없으면 XP 없음
   if(hp){SFX.play('levelup');vib([100,50,100,50,200]);}else{SFX.play('wrong');vib([100,100,200]);}
   const lvInfo=lv(S.lid);
   const msg=pct>=100?['완벽해! 천재다! 🏆',lvInfo.id,'happy']:

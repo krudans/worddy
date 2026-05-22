@@ -219,6 +219,8 @@ body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(-
 .gc{background:#fff;border-radius:16px;border:1.5px solid #E5E7EB;padding:14px;cursor:pointer;text-align:center;transition:transform .1s}
 .gc:active{transform:scale(.97)}
 .mbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:flex-end;justify-content:center;pointer-events:all}
+@keyframes float-bf{0%,100%{transform:translateY(0) rotate(-2deg)}25%{transform:translateY(-4px) rotate(1deg)}50%{transform:translateY(-2px) rotate(-1deg)}75%{transform:translateY(-5px) rotate(2deg)}}
+@keyframes float-char{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.03)}}
 .modal{background:#fff;border-radius:24px 24px 0 0;padding:22px 20px;width:100%;max-width:430px;max-height:90vh;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom,0px)+22px)}
 .tw{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px)+82px);left:50%;transform:translateX(-50%);z-index:400;pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center}
 .toast{background:#1A1A2E;color:#fff;padding:10px 22px;border-radius:22px;font-size:13px;font-weight:700;white-space:nowrap;animation:pop .25s ease}
@@ -3829,7 +3831,7 @@ window._autoRender = function() {
           +'<div style="font-size:10px;color:var(--panel-text3,#9CA3AF)">'+(window._autoIdx+1)+'/'+total+' · '+(A.loop?'무한반복':'1회')+'</div></div>'
           +'<div style="display:flex;gap:6px;align-items:center">'
           +(_LT&&_LT.barHTML?_LT.barHTML():'')
-          +'<button onclick="window._autoToggle&&window._autoToggle()" style="background:'+(window._autoPlaying?'#22C55E':'rgba(255,255,255,.15)')+';border:none;border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">'+(window._autoPlaying?'⏸ 일시정지':'▶ 자동재생')+'</button>'
+          +''  // 일시정지 버튼은 하단 컨트롤에만 표시
           +'<button onclick="window._toggleAutoLock()" style="background:'+(window._autoLocked?'rgba(239,68,68,.5)':'rgba(255,255,255,.1)')+';border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer" title="화면 잠금 (주머니 모드)">'+(window._autoLocked?'🔒':'🔓')+'</button>'
           +'<button onclick="cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;cursor:pointer">✕</button>'
           +'</div>'
@@ -4723,11 +4725,13 @@ function renderBFDogamGrid() {
     const bd = owned ? (b.color||'#7C3AED') : '#E5E7EB';
     const svg = typeof getButterflyCharSVG==='function' ? getButterflyCharSVG(b.id,40,owned) : '<span style="font-size:24px">🦋</span>';
     const nm = owned ? (b.name||b.id) : '???';
+    const rareStr = owned && b.rare ? b.rare : '';
     const onclick_str = owned ? "showButterflyDetail('"+b.id+"')" : '';
     return '<div onclick="'+onclick_str+'" '
-      +'style="text-align:center;padding:6px 3px;border-radius:12px;background:'+bg+';border:1.5px solid '+bd+';overflow:hidden;box-sizing:border-box;cursor:'+(owned?'pointer':'default')+';min-width:0">'
-      +'<div style="width:40px;height:40px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden">'+svg+'</div>'
-      +'<div style="font-size:7px;font-weight:700;color:'+(owned?bd:'#C4A46B')+';margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>'
+      +'style="text-align:center;padding:5px 3px 4px;border-radius:12px;background:'+bg+';border:1.5px solid '+bd+';overflow:hidden;box-sizing:border-box;cursor:'+(owned?'pointer':'default')+';min-width:0;width:100%">'
+      +'<div style="width:40px;height:40px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0'+(owned?';animation:float-bf '+(2.5+Math.random()).toFixed(1)+'s ease-in-out infinite':'')+'">'+svg+'</div>'
+      +(rareStr?'<div style="font-size:7px;line-height:1.2;overflow:hidden;white-space:nowrap;width:100%;text-align:center">'+rareStr+'</div>':'')
+      +'<div style="font-size:7px;font-weight:700;color:'+(owned?bd:'#C4A46B')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;max-width:100%;box-sizing:border-box">'+nm+'</div>'
       +'</div>';
   }).join('');
 }
@@ -4775,11 +4779,11 @@ function go(tab,sub) {
     const _hGoal = S._dailyGoalMin||30;
     const _hStudied = S._dailyStudiedMin||0;
     const _hPct = Math.min(100, Math.round(_hStudied/_hGoal*100));
-    hdrEl.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:6px 14px 0">
-      <div style="display:inline-block;animation:float 3.5s ease-in-out infinite;flex-shrink:0">${typeof charSVGAnimated==="function"?charSVGAnimated(lvInfo.id,26,"normal"):"<span style='font-size:18px'>"+lvI.emoji+"</span>"}</div>
-      <div style="flex:1;font-size:11px;font-weight:700;color:var(--hd-title,#FFFFFF);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Butterfly Word · 단어를 외울수록 애벌레가 자라나요</div>
+    hdrEl.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:3px 14px 0">
+      <div style="display:inline-block;animation:float 3.5s ease-in-out infinite;flex-shrink:0">${typeof charSVGAnimated==="function"?charSVGAnimated(lvInfo.id,20,"normal"):"<span style='font-size:14px'>"+lvI.emoji+"</span>"}</div>
+      <div style="flex:1;font-size:10px;font-weight:700;color:var(--hd-title,#FFFFFF);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Butterfly Word · 단어를 외울수록 애벌레가 자라나요</div>
     </div>
-    <div style="margin:5px 14px 0;height:4px;background:rgba(0,0,0,.07);border-radius:99px;overflow:hidden">
+    <div style="margin:3px 14px 0;height:3px;background:rgba(0,0,0,.07);border-radius:99px;overflow:hidden">
       <div style="height:100%;background:linear-gradient(90deg,#43A047,#1E88E5,#7B1FA2);width:${Math.min(100,Math.round((_hStudied/_hGoal)*100))}%;transition:width .5s;border-radius:99px"></div>
     </div>`;
   }
@@ -5689,7 +5693,7 @@ function rButterflyTab() {
     html += '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">';
     myCol.forEach(function(item) {
       html += '<div onclick="showCollectionDetail(\''+item.id+'\')" style="text-align:center;padding:6px;border-radius:10px;background:#F3F4F6;border:1.5px solid #E5E7EB;cursor:pointer">';
-      html += '<div style="display:inline-block">' + charSVGAnimated(item.lid||item.lvId||'egg',36,'normal') + '</div>';
+      html += '<div style="display:inline-block;animation:float-char '+(2+Math.floor(Math.random()*2)+'.'+Math.floor(Math.random()*9))+'s ease-in-out infinite">' + charSVGAnimated(item.lid||item.lvId||'egg',36,'normal') + '</div>';
       html += '<div style="font-size:8px;font-weight:700;color:#7C3AED">' + (item.level||'알') + '</div>';
       html += '</div>';
     });

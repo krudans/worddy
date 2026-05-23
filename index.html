@@ -16,6 +16,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 <style>
+/* 모달 컨테이너가 비어있으면 클릭을 통과시킴 (빈 모달이 화면 클릭을 가로채는 버그 방지) */
+#mr:empty { pointer-events: none !important; }
 /* ── 꽃밭 테마 배경 ── */
 :root {
   /* ── 라이트 테마 (기본) ── */
@@ -326,7 +328,7 @@ body.fs-lg{font-size:17px!important}
 <div id="app">
   <div class="hd" id="hd" style="display:none">
     <div class="hd-row" style="display:flex;align-items:center;justify-content:flex-start;gap:0;padding:4px 20px 4px 110px;position:relative;min-height:52px">
-      <div id="hd-char-icon" onclick="showLevelModal()" style="width:72px;height:72px;border-radius:14px;overflow:hidden;cursor:pointer;flex-shrink:0;position:absolute;left:12px;bottom:0px"></div>
+      <div id="hd-char-icon" onclick="showLevelModal()" style="width:72px;height:72px;border-radius:14px;overflow:hidden;cursor:pointer;flex-shrink:0;position:absolute;left:24px;bottom:-6px"></div>
       <div style="text-align:left">
         <div style="font-size:18px;font-weight:900;color:var(--hd-title,#FFFFFF);letter-spacing:-.3px;line-height:1.2">Butterfly Word</div>
         <div style="font-size:10px;color:var(--hd-sub,rgba(255,255,255,.85));font-weight:500;margin-top:3px">단어를 외울수록 애벌레가 자라나요 🐛</div>
@@ -348,9 +350,28 @@ body.fs-lg{font-size:17px!important}
 <div class="nav" id="nav" style="display:none"></div>
 </div>
 <div class="tw" id="tw"></div>
-<div id="mr" style="position:fixed;inset:0;z-index:9999"></div>
+<div id="mr" style="position:fixed;inset:0;z-index:9999;pointer-events:none"></div>
 <script>
 'use strict';
+// 모달 컨테이너(mr) 클릭 통과 자동 관리: 내용이 있으면 클릭 받고, 비면 통과시킴
+(function(){
+  function syncMrPointer(){
+    var mr = document.getElementById('mr');
+    if(!mr) return;
+    mr.style.pointerEvents = (mr.innerHTML.trim().length > 0) ? 'auto' : 'none';
+  }
+  function initMrObserver(){
+    var mr = document.getElementById('mr');
+    if(!mr){ setTimeout(initMrObserver, 100); return; }
+    syncMrPointer();
+    try {
+      var obs = new MutationObserver(syncMrPointer);
+      obs.observe(mr, { childList: true, subtree: true });
+    } catch(e){}
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initMrObserver);
+  else initMrObserver();
+})();
 window.onerror = function(msg,src,line,col,err) {
   console.error('[전역에러]',msg,'at',src,line+':'+col);
   const bd = document.getElementById('body');
@@ -825,9 +846,10 @@ function checkAttend() {
   // 출석 처리
   if(!S.attendDates.includes(t)) {
     S.attendDates.push(t);
-    S.attendCount++;
-    sv();
   }
+  // 카운트를 실제 출석일 수와 항상 동기화 (불일치 방지)
+  S.attendCount = S.attendDates.length;
+  sv();
   // 팝업 표시 여부 저장 (새로고침해도 유지)
   localStorage.setItem('wd-aps', t);
   S.attendPopupShown = t;
@@ -3410,6 +3432,10 @@ function load() {
   S.tHistory = JSON.parse(localStorage.getItem('wd-th')||'[]');
   S.attendCount = +(localStorage.getItem('wd-ac')||0);
   S.attendDates = JSON.parse(localStorage.getItem('wd-ad')||'[]');
+  // 카운트가 실제 출석일 수와 다르면 동기화 (데이터 정합성 보정)
+  if(Array.isArray(S.attendDates) && S.attendCount !== S.attendDates.length) {
+    S.attendCount = S.attendDates.length;
+  }
   const _npt = localStorage.getItem('wd-npt')||'';
   S._noPopupToday = (_npt === today()) ? _npt : '';
   S.studyLog = JSON.parse(localStorage.getItem('wd-sl')||'{}');

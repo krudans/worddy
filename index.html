@@ -1152,7 +1152,7 @@ const GAME_XP = {
 
 // ── XP 설정 (관리자에서 Firebase settings/xpConfig 로 관리) ──
 const XP_DEFAULT = {
-  word_learn:    3,   // 단어 1개 학습
+  word_learn:    1,   // 단어 1개 학습
   word_flip:     2,   // 플래시카드 넘기기
   quiz_correct:  5,   // 퀴즈 정답
   srs_hard:      5,   // SRS 헷갈림
@@ -1187,6 +1187,14 @@ const XP_DEFAULT = {
 };
 window._XPC = {...XP_DEFAULT};
 
+// 레벨테스트 설정 (관리자 페이지에서 변경 가능, settings/xpConfig에 저장)
+const LEVELTEST_DEFAULT = {
+  lt_passStreak: 3,   // 레벨 통과에 필요한 연속 정답 수
+  lt_failWrong:  2,   // 레벨 확정(중단)되는 오답 수
+  lt_maxQ:       10   // 레벨테스트 최대 문항 수
+};
+window._LTC = {...LEVELTEST_DEFAULT};
+
 async function loadXPConfig() {
   try {
     if(typeof db === 'undefined') return;
@@ -1194,6 +1202,11 @@ async function loadXPConfig() {
     if(doc.exists) {
       const data = doc.data();
       window._XPC = {...XP_DEFAULT, ...data};
+      window._LTC = {...LEVELTEST_DEFAULT,
+        ...(data.lt_passStreak!=null?{lt_passStreak:data.lt_passStreak}:{}),
+        ...(data.lt_failWrong!=null?{lt_failWrong:data.lt_failWrong}:{}),
+        ...(data.lt_maxQ!=null?{lt_maxQ:data.lt_maxQ}:{})
+      };
     }
   } catch(e) {}
   // GAME_XP 동기화
@@ -4418,7 +4431,7 @@ function showTestIntro(isRetry=false) {
 }
 
 function startTest() {
-  // 적응형 테스트: egg부터 시작, 3연속 정답→상승, 2오답→확정
+  // 적응형 테스트: egg부터 시작, 연속 정답→상승, 오답→확정
   S.tQs = [];
   S.tIdx = 0;
   S.tScore = {};
@@ -4432,15 +4445,74 @@ function startTest() {
   S.tWrongCount = 0;   // 현재 레벨 오답 수
   S.tTotalQ = 0;       // 총 문제 수
   S.tLvResult = {};    // 레벨별 결과
-  renderAdaptiveQ();
+  S._testUsed = {};    // 레벨별 출제된 단어 추적 (중복 차단)
+  // 관리자 단어(system_words)를 모든 레벨에 대해 미리 로드 → 레벨테스트 출제에 사용
+  loadTestWords(() => { renderAdaptiveQ(); });
+}
+
+// system_words를 레벨테스트용으로 로드 (관리자 페이지 단어 사용)
+function loadTestWords(cb) {
+  if(typeof db==='undefined') { if(cb)cb(); return; }
+  window._testWordsByLevel = window._testWordsByLevel || {};
+  const fetch = db.collection('system_words').get()
+    .then(snap=>{
+      const byLv = {};
+      snap.docs.forEach(d=>{
+        const w = d.data();
+        if(!w || !w.en || !w.level) return;
+        const meaning = (w.meanings && w.meanings[0]) || w.kr;
+        if(!meaning) return;
+        (byLv[w.level] = byLv[w.level] || []).push({ en: w.en, kr: meaning, img: w.img||'📘' });
+      });
+      window._testWordsByLevel = byLv;
+    }).catch(()=>{});
+  const timeout = new Promise(res => setTimeout(res, 4000));
+  Promise.race([fetch, timeout]).finally(()=>{ if(cb)cb(); });
 }
 
 // ── 적응형 테스트 핵심 ──
 function renderAdaptiveQ() {
   const lvId = LEVELS[S.tLvIdx]?.id;
   if(!lvId) { finishAdaptiveTest(); return; }
-  const pool = TEST_POOL[lvId] || TEST_POOL.egg;
-  const q = {...rnd(pool), lv: lvId};
+  S._testUsed = S._testUsed || {};
+  S._testUsed[lvId] = S._testUsed[lvId] || [];
+  const usedSet = new Set(S._testUsed[lvId]);
+
+  // 관리자 단어(system_words) 우선 사용, 없으면 기존 TEST_POOL 폴백
+  const sysPool = (window._testWordsByLevel && window._testWordsByLevel[lvId]) || [];
+  let q = null;
+
+  if(sysPool.length >= 4) {
+    // 아직 출제 안 된 단어만 후보로
+    let candidates = sysPool.filter(w => !usedSet.has(w.en));
+    if(candidates.length === 0) {
+      // 이 레벨 단어를 다 썼으면 → 레벨 통과 처리하고 다음 레벨로
+      S.tLvResult[lvId] = 'pass';
+      S.tLvIdx++;
+      S.tConsecRight = 0;
+      S.tWrongCount = 0;
+      return renderAdaptiveQ();
+    }
+    const word = rnd(candidates);
+    S._testUsed[lvId].push(word.en);
+    // 오답 3개: 같은 레벨의 다른 단어 뜻에서 추출
+    const others = sysPool.filter(w => w.en !== word.en && w.kr !== word.kr);
+    const wrongs = shuf(others).slice(0,3).map(w => w.kr);
+    // 후보가 부족하면 채우기
+    while(wrongs.length < 3) wrongs.push('(다른 뜻)');
+    const choices = [word.kr, ...wrongs];
+    const shuffled = shuf(choices.map((c,i)=>({c, orig:i})));
+    const correctNewIdx = shuffled.findIndex(x=>x.orig===0);
+    q = { q: word.en, c: shuffled.map(x=>x.c), a: correctNewIdx, img: word.img, lv: lvId };
+  } else {
+    // 폴백: 하드코딩 TEST_POOL (중복 차단 적용)
+    const pool = (TEST_POOL[lvId] || TEST_POOL.egg).filter(w => !usedSet.has(w.q));
+    const usable = pool.length ? pool : (TEST_POOL[lvId] || TEST_POOL.egg);
+    const picked = rnd(usable);
+    S._testUsed[lvId].push(picked.q);
+    q = {...picked, lv: lvId};
+  }
+
   S.tCurrentQ = q;
   S.tTotalQ++;
   renderAdaptiveMCQ(q);
@@ -4524,7 +4596,7 @@ window.tOptClick = function(ri) {
     S.tAns = false; S.tRes = null;
     S.tCurChoices = null; S.tCorrectIdx = null;
 
-    if(S.tConsecRight >= 3) {
+    if(S.tConsecRight >= (window._LTC?.lt_passStreak||3)) {
       // 레벨 통과 → 다음 레벨
       S.tLvResult[lvId] = 'pass';
       S.tLvIdx++;
@@ -4532,14 +4604,14 @@ window.tOptClick = function(ri) {
       S.tWrongCount = 0;
       if(S.tLvIdx >= LEVELS.length) { finishAdaptiveTest(); return; }
       toast(`✅ ${lv(lvId).name} 통과! 다음 레벨로!`);
-    } else if(S.tWrongCount >= 2) {
+    } else if(S.tWrongCount >= (window._LTC?.lt_failWrong||2)) {
       // 레벨 확정
       S.tLvResult[lvId] = 'fail';
       finishAdaptiveTest(); return;
     }
 
-    // 최대 24문제 제한
-    if(S.tTotalQ >= 24) { finishAdaptiveTest(); return; }
+    // 최대 문항 수 제한
+    if(S.tTotalQ >= (window._LTC?.lt_maxQ||10)) { finishAdaptiveTest(); return; }
     renderAdaptiveQ();
   }, 800);
 };
@@ -4554,7 +4626,13 @@ function finishAdaptiveTest() {
   const finalLv = LEVELS[finalLvIdx];
 
   S.lid = finalLv.id;
-  S.xp = finalLv.min * 10;
+  // 레벨테스트 XP: 맞힌 문항당 2XP + 통과한 레벨마다 10XP 보너스
+  let _testCorrect = 0;
+  Object.keys(S.tScore||{}).forEach(k => { _testCorrect += (S.tScore[k]||0); });
+  let _passCount = 0;
+  LEVELS.forEach(l => { if(S.tLvResult[l.id]==='pass') _passCount++; });
+  const _testXp = _testCorrect * 2 + _passCount * 10;
+  addXP(_testXp);
   sv();
   localStorage.setItem('wd-tested', '1');
   S.tHistory.push({date:today(), lid:finalLv.id, totalQ:S.tTotalQ});
@@ -5167,14 +5245,11 @@ function finishLearnSession(resultMap) {
     S._learnDoneCount=(S._learnDoneCount||0)+correct.length;
     setTimeout(checkMiniQuiz,300);
   }
-  // 정답률 기반 XP
+  // 단어당 1XP + 만점시 5XP 보너스
   const total2 = sw.length||1;
   const pct2 = Math.round(correct.length/total2*100);
-  let xpAmt = 10;
-  if(pct2>=100) { xpAmt=120; S._hadPerfect=true; sv(); }
-  else if(pct2>=90) xpAmt=80;
-  else if(pct2>=80) xpAmt=50;
-  else if(pct2>=60) xpAmt=30;
+  let xpAmt = sw.length * 1;
+  if(pct2>=100) { xpAmt += 5; S._hadPerfect=true; sv(); }
   addXP(xpAmt); checkXpUsable();
   // quiz 카운트를 푼 문제 수만큼 증가
   { const _t=today(); if(!S.studyLog[_t]) S.studyLog[_t]={words:0,quiz:0,min:0}; S.studyLog[_t].quiz=(S.studyLog[_t].quiz||0)+(sw.length||1); updStreak(); }

@@ -1290,10 +1290,23 @@ function xp(key) { const v = window._XPC[key]; return Math.round((v!=null ? v : 
 function savePartialGameScore() {
   const gid = S.gameId;
   if(!gid) return;
-  const _wc = S.gIdx || 0; // 지금까지 진행한 문제 수
+  // 이미 완료 저장된 게임이면 중복 저장 방지 (rGameDone이 처리함)
+  if(S._gameScoreSaved) return;
+  // 실제 진행한 문제 = gResultMap 기록 수 (정확). 없으면 gIdx로 폴백
+  const _rm = S.gResultMap || {};
+  const _rmKeys = Object.keys(_rm);
+  let _wc, _r, _w;
+  if(_rmKeys.length > 0) {
+    _wc = _rmKeys.length;
+    _r = _rmKeys.filter(k => _rm[k] !== false).length;
+    _w = _rmKeys.filter(k => _rm[k] === false).length;
+  } else {
+    _wc = S.gIdx || 0;
+    if(_wc <= 0) return;
+    _r = Math.max(0, Math.min(_wc, Math.round((S.gScore||0)/100)));
+    _w = Math.max(0, _wc - _r);
+  }
   if(_wc <= 0) return;
-  const _r = Math.round((S.gScore||0)/100);
-  const _w = _wc - _r;
   const _t = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   if(!S.gameDailyCount) S.gameDailyCount={};
   if(!S.gameDailyCount[_t]) S.gameDailyCount[_t]={};
@@ -10755,7 +10768,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -10792,6 +10805,7 @@ function rGameDone(){
   SFX.stopBG();
   S._gameRunning=false;
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
+  S._gameScoreSaved=true; // 완료 저장 완료 표시 (부분저장 중복 방지)
   // XP 지급은 saveGameScore 내부에서 처리 (중복 방지)
   if(!S._inLevelTest && !S._inLearnSession) {
     checkAchievements();
@@ -10926,7 +10940,7 @@ function ghdr(title,prog){
     :'<span style="font-size:12px;color:rgba(255,255,255,.8)">'+prog+'</span>';
   return '<div style="background:'+grd+';flex-shrink:0">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px">'
-    +'<button onclick="SFX.stopBG();S._gameRunning=false;S.gDone=true;S._gameUsed&&(S._gameUsed[S.gameId||\'default\']=[]);go(S._prevTab||\'game\')" style="background:rgba(255,255,255,.18);border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#fff">← 나가기</button>'
+    +'<button onclick="SFX.stopBG();if(typeof savePartialGameScore===\'function\')savePartialGameScore();S._gameRunning=false;S.gDone=true;S._gameUsed&&(S._gameUsed[S.gameId||\'default\']=[]);go(S._prevTab||\'game\')" style="background:rgba(255,255,255,.18);border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#fff">← 나가기</button>'
     +'<div style="text-align:center"><div style="font-size:14px;font-weight:900;color:#fff">'+title+'</div></div>'
     +'<div>'+scoreStr+'</div>'
     +'</div>'

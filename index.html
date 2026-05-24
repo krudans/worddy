@@ -3664,14 +3664,14 @@ function sv() {
       db.collection('user_words').doc(uid).set(booksData, {merge:false})
         .catch(e=>console.warn('단어장 저장 오류',e));
       // 일별 백업 (하루 1번)
-      const today = new Date().toISOString().slice(0,10);
+      const _bd = today();
       const lastBackup = localStorage.getItem('wd-last-backup');
-      if(lastBackup !== today && (S.books||[]).some(b=>(b.words||[]).length>0)) {
-        localStorage.setItem('wd-last-backup', today);
-        db.collection('user_backups').doc(uid+'_'+today).set({
+      if(lastBackup !== _bd && (S.books||[]).some(b=>(b.words||[]).length>0)) {
+        localStorage.setItem('wd-last-backup', _bd);
+        db.collection('user_backups').doc(uid+'_'+_bd).set({
           ...booksData,
           xp: S.xp, nick: S.nick, lid: S.lid,
-          backupDate: today
+          backupDate: _bd
         }).catch(()=>{});
       }
     }, 3000);
@@ -7504,14 +7504,14 @@ function _darken(hex){
   catch(e){return hex;}
 }
 function getPetState() {
-  const today = new Date().toISOString().slice(0,10);
+  const _td = today();
   const log = S.studyLog||{};
   const dates = Object.keys(log).sort().reverse();
   const lastStudy = dates[0];
   let daysSince = 0;
-  if(lastStudy){const diff=new Date(today)-new Date(lastStudy);daysSince=Math.floor(diff/(1000*60*60*24));}
+  if(lastStudy){const diff=new Date(_td)-new Date(lastStudy);daysSince=Math.floor(diff/(1000*60*60*24));}
   else{daysSince=99;}
-  const todayDone = log[today]?.words>0||log[today]?.quiz>0;
+  const todayDone = log[_td]?.words>0||log[_td]?.quiz>0;
   const col = PET_COLORS[getPetColor()]||PET_COLORS.green;
   const full = S._petFull||0;
   const happy = S._petHappy||0;
@@ -9015,7 +9015,7 @@ function _renderBookWordList(mr, bookName, searchQ) {
       if(exList.length>0) html += '<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:3px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+exList[0]+'</div>';
       html += '</div>';
       html += '<div style="display:flex;gap:4px;flex-shrink:0">';
-      var safeEn = JSON.stringify(w.en);
+      var safeEn = "'" + String(w.en).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'";
       html += '<button onclick="event.stopPropagation();_bwlSetMark('+safeEn+','+(mark===1?0:1)+')" ';
       html += 'style="padding:5px 8px;border:none;border-radius:8px;background:'+(mark===1?'#22C55E':'#E5E7EB')+';color:'+(mark===1?'#fff':'#374151')+';font-size:11px;font-weight:700;cursor:pointer">✅</button>';
       html += '<button onclick="event.stopPropagation();_bwlSetMark('+safeEn+','+(mark===2?0:2)+')" ';
@@ -9874,8 +9874,7 @@ function rAdd() {
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <input id="ne" placeholder="영단어 입력 후 자동완성..." value="${S.nEn||''}" oninput="S.nEn=this.value"
             style="flex:1;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:16px;font-weight:700;font-family:monospace;outline:none;color:#111"
-            onkeydown="if(event.key==='Enter'&&this.value.trim()){event.preventDefault();S.nEn=this.value.trim();aiMFull();}"
-            onblur="if(this.value.trim()&&!S.nKr&&!S.ai){S.nEn=this.value.trim();aiMFull();}">
+            onkeydown="if(event.key==='Enter'&&this.value.trim()){event.preventDefault();S.nEn=this.value.trim();aiMFull();}">
           <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:10px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
             ${S.ai?'⏳':'✨'}
           </button>

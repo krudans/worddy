@@ -333,6 +333,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('po')" id="ni-po"><span class="ic">👋</span>콕 찌르기</div>
       <div class="ss">설정</div>
       <div class="ni" onclick="T('xp')" id="ni-xp"><span class="ic">⚡</span>XP 설정</div>
+      <div class="ni" onclick="T('pop')" id="ni-pop"><span class="ic">🔔</span>팝업 관리</div>
       <div class="ni" onclick="T('ad')" id="ni-ad"><span class="ic">🎯</span>광고 배너</div>
       <div class="ni" onclick="T('adm')" id="ni-adm"><span class="ic">🔐</span>관리자 관리</div>
     </nav>
@@ -2400,9 +2401,9 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -4253,12 +4254,104 @@ async function rST(){
 }
 
 
+async // ══════════════════════════════════
+// 🔔 팝업 관리
+// ══════════════════════════════════
+const POPUP_LIST = [
+  {id:'attend',         label:'출석 팝업',       desc:'앱 진입 시 출석 체크 팝업 (7/30/100일 마일스톤)', hasText:false},
+  {id:'levelUpFlash',   label:'레벨업 축하',     desc:'레벨이 올랐을 때 축하 효과', hasText:false},
+  {id:'comboFlash',     label:'게임 콤보',       desc:'게임에서 연속 정답(콤보) 달성 시', hasText:false},
+  {id:'xpGain',         label:'XP 획득 표시',    desc:'XP를 얻을 때 우상단에 +XP 표시', hasText:false},
+  {id:'achievement',    label:'업적 달성',       desc:'업적을 달성했을 때 토스트', hasText:false},
+  {id:'swipeHint',      label:'스와이프 힌트',   desc:'플래시카드 스와이프 안내', hasText:false},
+  {id:'butterflyRoll',  label:'나비 뽑기',       desc:'30일 연속 출석 등 나비 뽑기 보너스', hasText:false},
+  {id:'dailyChallenge', label:'일일 챌린지',     desc:'오늘의 도전 과제 팝업', hasText:false},
+  {id:'onboarding',     label:'온보딩(첫 실행)', desc:'앱 첫 실행 시 사용법 안내', hasText:false},
+  {id:'survey',         label:'설문조사',        desc:'사용자 설문 팝업', hasText:false},
+  {id:'countdown',      label:'카운트다운',      desc:'학습/게임 시작 전 카운트다운', hasText:false}
+];
+
+async function rPOP(){
+  const main = document.getElementById('main-inner');
+  main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">팝업 설정 로딩 중...</div>';
+  // 현재 설정 로드
+  let cfg = {};
+  try {
+    const doc = await db.collection('settings').doc('popupConfig').get();
+    if(doc.exists) cfg = doc.data() || {};
+  } catch(e){}
+  window._popCfg = cfg;
+
+  const rows = POPUP_LIST.map(function(p){
+    const c = cfg[p.id] || {};
+    const enabled = c.enabled !== false; // 기본 ON
+    const text = c.text || '';
+    return '<div style="background:#fff;border-radius:14px;border:1.5px solid rgba(0,0,0,.06);padding:16px 20px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.05)">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'
+        +'<div style="flex:1">'
+          +'<div style="font-size:15px;font-weight:800;color:#1F2937">'+p.label+'</div>'
+          +'<div style="font-size:12px;color:#9CA3AF;margin-top:3px">'+p.desc+'</div>'
+        +'</div>'
+        +'<label style="position:relative;display:inline-block;width:52px;height:28px;flex-shrink:0;cursor:pointer">'
+          +'<input type="checkbox" id="pop-en-'+p.id+'" '+(enabled?'checked':'')+' style="opacity:0;width:0;height:0">'
+          +'<span class="pop-slider" style="position:absolute;inset:0;background:'+(enabled?'#22C55E':'#CBD5E1')+';border-radius:28px;transition:.2s"></span>'
+          +'<span class="pop-knob" style="position:absolute;left:'+(enabled?'27px':'3px')+';top:3px;width:22px;height:22px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>'
+        +'</label>'
+      +'</div>'
+      + (p.hasText ?
+        '<div style="margin-top:12px"><input type="text" id="pop-tx-'+p.id+'" value="'+text.replace(/"/g,'&quot;')+'" placeholder="기본 문구 사용 (비워두면 기본값)" style="width:100%;padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;box-sizing:border-box"></div>'
+        : '')
+      +'</div>';
+  }).join('');
+
+  main.innerHTML = ''
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
+      +'<div><h2 style="font-size:22px;font-weight:900">🔔 팝업 관리</h2>'
+      +'<div style="font-size:13px;color:#9CA3AF;margin-top:4px">앱에서 자동으로 뜨는 팝업의 표시 여부를 설정합니다</div></div>'
+      +'<button class="btn bb" onclick="savePopupConfig()" style="font-size:14px;padding:10px 24px">💾 저장</button>'
+    +'</div>'
+    +'<div style="background:#EFF6FF;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#1E5FA5">'
+      +'💡 토글을 끄면 해당 팝업이 앱에서 더 이상 표시되지 않습니다. 저장 후 앱에 반영됩니다.'
+    +'</div>'
+    + rows
+    +'<div style="margin-top:20px;text-align:center">'
+      +'<button class="btn bb" onclick="savePopupConfig()" style="font-size:14px;padding:12px 40px">💾 설정 저장</button>'
+    +'</div>';
+
+  // 토글 시각 효과
+  POPUP_LIST.forEach(function(p){
+    const cb = document.getElementById('pop-en-'+p.id);
+    if(cb) cb.addEventListener('change', function(){
+      const slider = cb.parentElement.querySelector('.pop-slider');
+      const knob = cb.parentElement.querySelector('.pop-knob');
+      if(cb.checked){ slider.style.background='#22C55E'; knob.style.left='27px'; }
+      else { slider.style.background='#CBD5E1'; knob.style.left='3px'; }
+    });
+  });
+}
+
+async function savePopupConfig(){
+  const cfg = {};
+  POPUP_LIST.forEach(function(p){
+    const cb = document.getElementById('pop-en-'+p.id);
+    const tx = document.getElementById('pop-tx-'+p.id);
+    cfg[p.id] = { enabled: cb ? cb.checked : true };
+    if(tx) cfg[p.id].text = tx.value || '';
+  });
+  try {
+    await db.collection('settings').doc('popupConfig').set(cfg, {merge:true});
+    toast('✅ 팝업 설정 저장 완료','ok');
+  } catch(e){
+    toast('저장 오류: '+e.message,'err');
+  }
+}
+
 async function rXP(){
   const main = document.getElementById('main-inner');
   main.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:40px">XP 설정 로딩 중...</div>';
 
   const XP_DEFAULT = {
-    word_learn:3, word_flip:2, quiz_correct:5, srs_hard:5, srs_good:10,
+    word_learn:1, word_flip:2, quiz_correct:5, srs_hard:5, srs_good:10,
     speak_word:5, daily_first:10, chain_step:10, challenge:10, pomodoro:30,
     achievement:30, test_60:30, test_80:50, test_90:80, test_100:120,
     combo_3:10, combo_5:20, combo_10:50, combo_20:100,

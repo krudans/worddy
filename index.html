@@ -918,6 +918,7 @@ function logStudy(type) {
 }
 
 function showAttendPopup() {
+  if(!window._popupOn || !window._popupOn('attend')) return;
   const cnt = S.attendCount;
   const lvInfo = lv(S.lid);
   // 마일스톤 체크
@@ -1216,6 +1217,45 @@ const LEVELTEST_DEFAULT = {
   lt_maxQ:       10   // 레벨테스트 최대 문항 수
 };
 window._LTC = {...LEVELTEST_DEFAULT};
+
+// ── 팝업 관리 시스템 (관리자 settings/popupConfig 로 제어) ──
+// 각 팝업: enabled(표시여부), text(문구, 일부만), 셋팅값
+const POPUP_DEFAULT = {
+  attend:        { enabled:true,  label:'출석 팝업',        text:'' },
+  levelUpFlash:  { enabled:true,  label:'레벨업 축하',      text:'' },
+  comboFlash:    { enabled:true,  label:'게임 콤보',        text:'' },
+  xpGain:        { enabled:true,  label:'XP 획득 표시',     text:'' },
+  achievement:   { enabled:true,  label:'업적 달성',        text:'' },
+  swipeHint:     { enabled:true,  label:'스와이프 힌트',    text:'' },
+  butterflyRoll: { enabled:true,  label:'나비 뽑기',        text:'' },
+  dailyChallenge:{ enabled:true,  label:'일일 챌린지',      text:'' },
+  onboarding:    { enabled:true,  label:'온보딩(첫 실행)',  text:'' },
+  survey:        { enabled:true,  label:'설문조사',         text:'' },
+  countdown:     { enabled:true,  label:'카운트다운',       text:'' }
+};
+window._POPC = JSON.parse(JSON.stringify(POPUP_DEFAULT));
+// 팝업 활성화 여부 확인 (기본 true)
+window._popupOn = function(id) {
+  try { const p = window._POPC && window._POPC[id]; return p ? p.enabled !== false : true; }
+  catch(e){ return true; }
+};
+// 팝업 커스텀 문구 (없으면 기본값 반환)
+window._popupTxt = function(id, def) {
+  try { const p = window._POPC && window._POPC[id]; return (p && p.text) ? p.text : def; }
+  catch(e){ return def; }
+};
+async function loadPopupConfig() {
+  try {
+    if(typeof db === 'undefined') return;
+    const doc = await db.collection('settings').doc('popupConfig').get();
+    if(doc.exists) {
+      const data = doc.data() || {};
+      Object.keys(POPUP_DEFAULT).forEach(k => {
+        window._POPC[k] = Object.assign({}, POPUP_DEFAULT[k], data[k]||{});
+      });
+    }
+  } catch(e) {}
+}
 
 async function loadXPConfig() {
   try {
@@ -2151,6 +2191,7 @@ function showAppGuide() {
 }
 
 function showComboFlash(n, bonus) {
+  if(!window._popupOn || !window._popupOn('comboFlash')) return;
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;text-align:center;animation:comboFlash .9s ease-out forwards';
   el.innerHTML = '<div style="font-size:28px;font-weight:900;color:#F59E0B;text-shadow:0 2px 8px rgba(0,0,0,.3)">'+n+'연속! 🔥</div><div style="font-size:16px;font-weight:700;color:#FDE68A">'+bonus+'</div>';
@@ -2159,6 +2200,7 @@ function showComboFlash(n, bonus) {
 }
 
 function showSwipeHint(msg, color) {
+  if(!window._popupOn || !window._popupOn('swipeHint')) return;
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;top:35%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;animation:comboFlash .7s ease-out forwards';
   el.innerHTML = '<div style="font-size:24px;font-weight:900;color:'+color+';background:white;border-radius:20px;padding:10px 24px;box-shadow:0 4px 20px rgba(0,0,0,.15)">'+msg+'</div>';
@@ -2244,6 +2286,7 @@ function checkAchievements() {
 }
 
 function showAchievementToast(a) {
+  if(!window._popupOn || !window._popupOn('achievement')) return;
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(80px);z-index:9998;opacity:0;transition:all .4s;width:90%;max-width:340px';
   el.innerHTML = `<div style="background:linear-gradient(135deg,#FFF8E1,var(--bg,#FFFFFF));border:2px solid #F6D860;border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(0,0,0,.15)">
@@ -2306,6 +2349,7 @@ function getDailyChallenge() {
 }
 
 function showDailyChallenge() {
+  if(!window._popupOn || !window._popupOn('dailyChallenge')) return;
   const ch = getDailyChallenge();
   if(!ch) return;
   const mr=document.getElementById('mr');
@@ -2447,6 +2491,7 @@ function toggleFavorite(en) {
 }
 
 function showCountdown(cb) {
+  if(!window._popupOn || !window._popupOn('countdown')) { if(typeof cb==='function') cb(); return; }
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9997;display:flex;align-items:center;justify-content:center;pointer-events:none';
   document.body.appendChild(overlay);
@@ -3268,7 +3313,7 @@ function _markBtn(wordEn) {
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${freshBg};color:${freshColor}">
       📝 미학습
     </button>
-    <button onclick="window._markBtnXP('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()"
+    <button onclick="if(window._curRender&&window._curRender===window._autoRender&&window._autoMarkMemorized){window._autoMarkMemorized('${safe}')}else{window._markBtnXP('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()}"
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;background:${memoBg};color:${memoColor};box-shadow:${memoShadow}">
       ✅ 외웠음
     </button>
@@ -3644,7 +3689,17 @@ async function _autoReadWord(w) {
     }
   };
 
-  if(m === 'en') {
+  if(m === 'spell') {
+    // 스펠링만 읽기: 단어의 철자를 한 글자씩 읽어줌
+    const letters = (w.en||'').split('');
+    for(const ch of letters) {
+      if(!window._autoPlaying && window._autoPlaying !== undefined) {}
+      const say = /[a-zA-Z]/.test(ch) ? ch.toUpperCase() : ch;
+      await _autoSpeak(say, 'en-US');
+      await new Promise(r=>setTimeout(r,120));
+    }
+    await speakExamples();
+  } else if(m === 'en') {
     await _autoSpeak(w.en, 'en-US');
     await speakExamples();
   } else if(m === 'kr') {
@@ -3812,6 +3867,38 @@ function showAutoMode() {
   window._autoIdx = 0;
   window._autoPlaying = false;
   window._autoWords = words;
+  // 전체 원본 개수 저장 (진행률 표시용)
+  window._autoTotalCount = words.length;
+  // 자동학습 외웠음 처리: 해당 단어를 목록에서 제거하고 다음 단어로 진행, 0개면 완료
+  window._autoMarkMemorized = function(en) {
+    // 마크 저장 + XP (기존 로직 재사용)
+    if(typeof window._markBtnXP === 'function') window._markBtnXP(en, 1);
+    var arr = window._autoWords || [];
+    var pos = arr.findIndex(function(w){ return w.en === en; });
+    if(pos >= 0) arr.splice(pos, 1);
+    // 모든 단어를 외웠으면 완료
+    if(arr.length === 0) {
+      window._autoPlaying = false;
+      try { window.speechSynthesis.cancel(); } catch(e){}
+      try { window._releaseWakeLock && window._releaseWakeLock(); } catch(e){}
+      var mr2 = document.getElementById('mr');
+      if(mr2) {
+        mr2.style.pointerEvents='auto';
+        mr2.innerHTML = '<div style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E3A5F);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:18px">'
+          +'<div style="font-size:60px">🎉</div>'
+          +'<div style="font-size:22px;font-weight:900">모든 단어를 외웠어요!</div>'
+          +'<div style="font-size:14px;color:#9CA3AF">'+(window._autoTotalCount||0)+'개 단어 학습 완료</div>'
+          +'<button onclick="cm()" style="margin-top:10px;padding:12px 32px;border-radius:24px;border:none;background:#3B82F6;color:#fff;font-size:15px;font-weight:800;cursor:pointer">완료 ✓</button>'
+          +'</div>';
+      }
+      if(typeof toast === 'function') toast('🎉 모든 단어를 외웠어요!');
+      return;
+    }
+    // 인덱스 보정: 제거된 위치가 자연스럽게 다음 단어가 되도록
+    if(window._autoIdx >= arr.length) window._autoIdx = 0;
+    window._autoRender && window._autoRender();
+    window._autoSpeakNow && window._autoSpeakNow();
+  };
   _LT.start();
   
   // 렌더 함수
@@ -3851,7 +3938,7 @@ window._autoRender = function() {
       .map(function(it){return btn(it[0],'_arSetRange('+it[1]+')',(A.range??-1)===it[1]);}).join('');
 
     // 발음 버튼
-    var readBtns = [['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['전체','all']]
+    var readBtns = [['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']]
       .map(function(it){return btn(it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]);}).join('');
     var krDelayBtns = [['3초',3],['5초',5],['7초',7]]
       .map(function(it){return btn(it[0],'window._auto.krFirstDelay='+it[1]+';window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]);}).join('');
@@ -3875,7 +3962,7 @@ window._autoRender = function() {
         // 헤더
         +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;flex-shrink:0">'
           +'<div><div style="font-size:14px;font-weight:900">⚡ 자동 학습</div>'
-          +'<div style="font-size:10px;color:var(--panel-text3,#9CA3AF)">'+(window._autoIdx+1)+'/'+total+' · '+(A.loop?'무한반복':'1회')+'</div></div>'
+          +'<div style="font-size:10px;color:var(--panel-text3,#9CA3AF)">남은 '+total+'개 / 전체 '+(window._autoTotalCount||total)+'개 · '+(A.loop?'무한반복':'1회')+'</div></div>'
           +'<div style="display:flex;gap:6px;align-items:center">'
           +(_LT&&_LT.barHTML?_LT.barHTML():'')
           +''  // 일시정지 버튼은 하단 컨트롤에만 표시
@@ -4069,6 +4156,7 @@ function getStreakBonus() {
 }
 
 function showXpGain(xp, hasBonus=false) {
+  if(!window._popupOn || !window._popupOn('xpGain')) return;
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;top:60px;right:16px;background:#7C3AED;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;z-index:9999;animation:pop .3s ease';
   el.textContent = '+' + xp + ' XP' + (hasBonus ? ' 🔥' : '');
@@ -4363,6 +4451,7 @@ function svNick() {
 
 // ── 학습 스타일 설문 ──
 function showSurvey() {
+  if(!window._popupOn || !window._popupOn('survey')) return;
   document.getElementById('hd').style.display='none';
   // nav 항상 표시
   S.surveyAns = [];
@@ -4765,6 +4854,7 @@ function startApp() {
 }
 
 function showOnboarding() {
+  if(!window._popupOn || !window._popupOn('onboarding')) return;
   const steps = [
     {ic:'🏠', title:'홈', desc:'오늘의 학습 현황과 추천 학습 순서를 확인해요', color:'#1E5FA5'},
     {ic:'📚', title:'플래시카드', desc:'카드를 탭하면 뜻이 나와요. 좌우로 스와이프해서 넘길 수 있어요', color:'#16A34A'},
@@ -5480,6 +5570,7 @@ function resetToEgg() {
 }
 
 function showLevelUpFlash(cb) {
+  if(!window._popupOn || !window._popupOn('levelUpFlash')) { if(typeof cb==='function') cb(); return; }
   // 진동
   vib([100,50,100,50,200,100,400]);
   // SFX
@@ -7436,6 +7527,7 @@ function rollButterfly() {
 }
 
 function showButterflyRoll(butterfly, onClose) {
+  if(!window._popupOn || !window._popupOn('butterflyRoll')) { if(typeof onClose==='function') onClose(); return; }
   window._bfRollCallback = onClose||null;
   const mr=document.getElementById('mr');
   if(!mr) return;
@@ -12525,6 +12617,7 @@ auth.onAuthStateChanged(async user => {
     if(_hasLocalData) {
       setSplash(60, '거의 다 됐어요!', 'XP 설정 로드 중');
       await loadXPConfig();
+      await loadPopupConfig();
       setSplash(90, '시작합니다! 🦋', '앱 시작 중');
       startApp();
       // Firebase 백그라운드 동기화 (앱 시작 후)
@@ -12649,6 +12742,7 @@ auth.onAuthStateChanged(async user => {
     // ── 첫 로그인 or localStorage 없음: Firebase에서 직접 로드 (타임아웃 5초) ──
     setSplash(40, '계정 데이터 로드 중...', 'Firebase 연결 중');
     await loadXPConfig();
+    await loadPopupConfig();
     setSplash(60, '계정 데이터 로드 중...', '사용자 데이터 받아오는 중');
 
     // Firebase에서 최신 데이터 먼저 로드한 뒤 startApp (타임아웃 5초)

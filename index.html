@@ -1320,8 +1320,19 @@ function saveGameScore(score) {
   }
   // 게임별 단어 수 저장 (플레이 횟수 아닌 단어 수 기준)
   const _wc = (S.gWords||[]).length || 0;
-  const _right = Math.round(score/100);
-  const _wrong = _wc - _right;
+  // 맞은/틀린 수: 정답 기록(gResultMap)이 있으면 정확히 계산, 없으면 점수 기반 추정
+  const _rm = S.gResultMap || {};
+  const _rmKeys = Object.keys(_rm);
+  let _right, _wrong;
+  if(_rmKeys.length > 0) {
+    // 정확: gResultMap에서 true=정답, false=오답 집계
+    _right = _rmKeys.filter(k => _rm[k] !== false).length;
+    _wrong = _rmKeys.filter(k => _rm[k] === false).length;
+  } else {
+    // 폴백: 점수 기반 추정 (정답당 100점 가정), 범위 보정
+    _right = Math.max(0, Math.min(_wc, Math.round(score/100)));
+    _wrong = Math.max(0, _wc - _right);
+  }
   if(!S.gamePlayCount) S.gamePlayCount={};
   S.gamePlayCount[gid] = (S.gamePlayCount[gid]||0) + _wc;
   const _gt = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
@@ -1338,7 +1349,7 @@ function saveGameScore(score) {
   // XP 계산
   const xpTable = GAME_XP[gid] || {base:10, perfect:20};
   const words = (S.gWords||[]).length || 1;
-  const right = Math.round(score/100);
+  const right = _right;
   const pct = Math.round(right/words*100);
   let xpGain = xpTable.base;
   if(pct===100) xpGain = xpTable.perfect;
@@ -12155,7 +12166,14 @@ function doRestore() {
       if(data.markMap) S.markMap = data.markMap;
       if(data.srsMap) S.srsMap = data.srsMap;
       if(data.dList) S.dList = data.dList;
-      if(data.books) S.books = data.books;
+      if(data.books) {
+        // 안전망: 로컬에 단어 있는 책이 있는데 클라우드가 비었으면 덮어쓰지 않음
+        const _cloudHasWords = Array.isArray(data.books) && data.books.some(b=>(b.words||[]).length>0);
+        const _localHasWords = Array.isArray(S.books) && S.books.some(b=>(b.words||[]).length>0);
+        if(_cloudHasWords || !_localHasWords) {
+          S.books = data.books;
+        }
+      }
       if(data.streak) S.streak = data.streak;
       if(data.nick) S.nick = data.nick;
       if(data.lid) S.lid = data.lid;

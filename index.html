@@ -7510,44 +7510,44 @@ function getMyButterflies() {
 
 function rollButterfly() {
   const owned = getMyButterflies();
-  const available = BUTTERFLY_LIST.filter(b=>!owned.includes(b.id));
-  if(available.length===0) return null;
+  // 기존 보유 나비도 후보에 포함 (전체 나비 풀)
+  const pool = BUTTERFLY_LIST.slice();
+  if(pool.length === 0) return null;
 
-  // ── 확률 설계 ──
-  // ⭐⭐⭐⭐ 전설 (score>=80)  : 0.001%  → weight 0.001
-  // ⭐⭐⭐   영웅 (score>=65)  : 1%      → weight 1
-  // ⭐⭐     희귀 (score>=40)  : 20%     → weight 20
-  // ⭐       일반 (score<40)   : 78.999% → weight 78.999
-  // 총합 100이 되도록 맞춤
-  // 전설급은 랜덤 0~100000 중 1 이하일 때만 (0.001%)
+  // ── score 기반 희소성 확률 ──
+  // 최고점(100) 나비는 정확히 0.01%씩 고정 배정.
+  // 나머지 확률(99.99%…)은 (101 - score)^2 가중치로 분배해
+  // 점수가 높을수록 희귀, 낮을수록 흔하게 한다.
+  //  예) 100점 = 0.01%, 95점 ≈ 0.06%, 50점대 ≈ 2.9%, 10점 ≈ 13.6%
+  const TOP_PROB = 0.0001; // 100점 1종당 0.01%
+  const topIdx = [], restIdx = [];
+  pool.forEach((b,i) => { ((b.score||0) >= 100 ? topIdx : restIdx).push(i); });
+  const restBudget = Math.max(0, 1 - topIdx.length * TOP_PROB); // 나머지가 나눠가질 확률
+  const restWeights = restIdx.map(i => Math.pow(101 - (pool[i].score||50), 2));
+  const restWsum = restWeights.reduce((a,c)=>a+c, 0) || 1;
+  // 각 나비의 최종 확률 배열 (pool 인덱스 순서)
+  const probs = new Array(pool.length).fill(0);
+  topIdx.forEach(i => { probs[i] = TOP_PROB; });
+  restIdx.forEach((poolI, k) => { probs[poolI] = restWeights[k] / restWsum * restBudget; });
 
-  const LEGEND_CHANCE = 0.00001; // 0.001%
-  const HERO_CHANCE   = 0.01;    // 1%
-  const RARE_CHANCE   = 0.20;    // 20%
-  // 나머지 ~79%는 일반
-
-  const roll = Math.random(); // 0~1
-
-  let targetRare;
-  if(roll < LEGEND_CHANCE) targetRare = '⭐⭐⭐⭐⭐';
-  else if(roll < LEGEND_CHANCE + HERO_CHANCE) targetRare = '⭐⭐⭐⭐';
-  else if(roll < LEGEND_CHANCE + HERO_CHANCE + RARE_CHANCE) targetRare = '⭐⭐⭐';
-  else targetRare = '⭐⭐';
-
-  // 해당 등급 중 미획득 나비 필터
-  let pool = available.filter(b=>b.rare===targetRare);
-  // 해당 등급 없으면 일반으로 폴백
-  if(!pool.length) pool = available.filter(b=>b.rare==='⭐⭐');
-  if(!pool.length) pool = available; // 최후 폴백
-  
-  const chosen = pool[Math.floor(Math.random()*pool.length)];
-  owned.push(chosen.id);
-  localStorage.setItem('wd-butterflies', JSON.stringify(owned));
-  S.myButterflies = owned;
-  // Firebase에도 동기화
-  if(S.user && typeof db !== 'undefined') {
-    try { db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true}); } catch(e) {}
+  // 확률 룰렛 (probs 합 = 1)
+  let r = Math.random();
+  let chosen = pool[pool.length - 1];
+  for(let i=0; i<pool.length; i++) {
+    r -= probs[i];
+    if(r <= 0) { chosen = pool[i]; break; }
   }
+
+  // 보유 목록에 없으면 추가 (이미 있으면 중복 추가 안 함)
+  if(!owned.includes(chosen.id)) {
+    owned.push(chosen.id);
+    localStorage.setItem('wd-butterflies', JSON.stringify(owned));
+    S.myButterflies = owned;
+    if(S.user && typeof db !== 'undefined') {
+      try { db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true}); } catch(e) {}
+    }
+  }
+  // 이미 보유한 나비여도 chosen을 반환 (뽑기 결과로 표시)
   return chosen;
 }
 
@@ -10998,10 +10998,10 @@ function ansQ(c,ok2){
   S._gSc=c; // 선택한 답 저장
   S.gAns=true; S.gRes=c===ok2?'ok':'ng';
   if(c===ok2){
-    S.gScore+=100; ok(); S.gResultMap[ok2]=true;
+    S.gScore+=100; ok(); S.gResultMap[S.gIdx]=true;
     checkAchievements();
   } else {
-    ng(); S.gResultMap[ok2]=false;
+    ng(); S.gResultMap[S.gIdx]=false;
   }
   logStudy('quiz'); go();
   const delay=S.gameSettings?.autoNext?600:900;
@@ -11103,12 +11103,12 @@ function chkT2(inputVal, ok2){
   const v=(inputVal||'').trim().toLowerCase();
   const r=v===ok2.toLowerCase();
   S.gAns=true; S.gRes=r?'ok':'ng';
-  if(r){S.gScore+=100;ok();S.gResultMap[ok2]=true;}
-  else{ng();toast('❌ 정답: '+ok2);S.gResultMap[ok2]=false;}
+  if(r){S.gScore+=100;ok();S.gResultMap[S.gIdx]=true;}
+  else{ng();toast('❌ 정답: '+ok2);S.gResultMap[S.gIdx]=false;}
   logStudy('quiz'); go();
   setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);
 }
-function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[ok2]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[ok2]=false;}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';S._gSc=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
+function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[S.gIdx]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[S.gIdx]=false;}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';S._gSc=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
 
 // 단어 완성하기
 function rWC(){
@@ -11220,6 +11220,7 @@ function selM(t,v){
       S.mMatched.add(enVal);
       S.mMatched.add('kr_'+krIdx);
       S.mScore+=100; ok(); logStudy('quiz');
+      if(!S.gResultMap) S.gResultMap={}; S.gResultMap[enVal]=true; // 통계 기록
       S.mEn0=null; S.mKr0=null;
     } else {
       // 오답: 잠깐 빨간색으로 표시 후 초기화
@@ -11392,7 +11393,7 @@ function rWordle(){
     <button class="btn" onclick="subW('${W}')" style="background:#D97706;color:#fff;width:100%">제출</button>`}
   </div>`;
 }
-function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(v===t){S.wWon=true;S.wOver=true;ok();}else if(ng2.length>=6){S.wOver=true;ng();}go();}
+function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;}go();}
 
 function speak(text){try{if('speechSynthesis'in window){window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u);}}catch(e){}}
 const SORT_SENTENCES=[{en:'I study hard every day',kr:'나는 매일 열심히 공부한다',words:['I','study','hard','every','day']},{en:'She has a beautiful smile',kr:'그녀는 아름다운 미소를 가지고 있다',words:['She','has','a','beautiful','smile']},{en:'We learn new words together',kr:'우리는 함께 새 단어를 배운다',words:['We','learn','new','words','together']}];

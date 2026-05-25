@@ -427,7 +427,6 @@ function saveGameScore(score) {
     const words = (S.gWords||[]).length || 1;
     const right = Math.round(score/100);
     const pct = Math.round(right/words*100);
-    if(pct === 0) return; // 정답 0개면 XP 없음
     let xpGain = xpTable.base;
     if(pct===100) xpGain = xpTable.perfect;
     else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);

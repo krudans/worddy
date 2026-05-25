@@ -3903,57 +3903,35 @@ function showAutoMode() {
   window._autoTotalCount = words.length;
   // 자동학습 외웠음 처리: 해당 단어를 목록에서 제거하고 다음 단어로 진행, 0개면 완료
   window._autoMarkMemorized = function(en) {
-    // 버튼에 박힌 실제 표시 단어(en)를 우선 신뢰한다.
-    // 인자가 없을 때만 현재 인덱스 단어로 폴백.
-    if(!en) {
-      en = (window._autoWords && window._autoWords[window._autoIdx]) ? window._autoWords[window._autoIdx].en : null;
-    }
+    var aw = window._autoWords || [];
+    if(!en) { en = aw[window._autoIdx] ? aw[window._autoIdx].en : null; }
     if(!en) return;
-    // 자동재생 정지: 처리 도중 루프가 _autoIdx를 바꿔 엉뚱한 단어가 처리되는 것을 방지
-    window._autoPlaying = false;
-    // 진행 중인 음성 취소 (자동재생 루프와의 충돌로 엉뚱한 단어가 표시되는 것 방지)
-    try { window.speechSynthesis.cancel(); } catch(e){}
-    // 외웠음 시각 피드백: 초록 체크 플래시 (사용자가 처리됨을 인지하도록)
+    if(typeof window._markBtnXP === "function") window._markBtnXP(en, 1);
     try {
-      var mrF = document.getElementById('mr');
-      if(mrF) {
-        var flash = document.createElement('div');
-        flash.style.cssText = 'position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(34,197,94,0.18);animation:none';
-        flash.innerHTML = '<div style="font-size:90px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4))">✅</div>';
-        mrF.appendChild(flash);
-        setTimeout(function(){ try{ flash.remove(); }catch(e){} }, 350);
+      var _btns = document.querySelectorAll("button");
+      for(var _i=0;_i<_btns.length;_i++){
+        if(_btns[_i].textContent.indexOf("외웠음")>=0){
+          _btns[_i].style.background="#22C55E";
+          _btns[_i].style.color="#fff";
+          _btns[_i].style.borderColor="#22C55E";
+          break;
+        }
       }
     } catch(e){}
-    // 마크 저장 + XP (기존 로직 재사용)
-    if(typeof window._markBtnXP === 'function') window._markBtnXP(en, 1);
-    var arr = window._autoWords || [];
-    var pos = arr.findIndex(function(w){ return w.en === en; });
-    if(pos >= 0) arr.splice(pos, 1);
-    // 모든 단어를 외웠으면 완료
-    if(arr.length === 0) {
-      window._autoPlaying = false;
-      try { window.speechSynthesis.cancel(); } catch(e){}
-      try { window._releaseWakeLock && window._releaseWakeLock(); } catch(e){}
-      var mr2 = document.getElementById('mr');
-      if(mr2) {
-        mr2.style.pointerEvents='auto';
-        mr2.innerHTML = '<div style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E3A5F);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:18px">'
-          +'<div style="font-size:60px">🎉</div>'
-          +'<div style="font-size:22px;font-weight:900">모든 단어를 외웠어요!</div>'
-          +'<div style="font-size:14px;color:#9CA3AF">'+(window._autoTotalCount||0)+'개 단어 학습 완료</div>'
-          +'<button onclick="cm()" style="margin-top:10px;padding:12px 32px;border-radius:24px;border:none;background:#3B82F6;color:#fff;font-size:15px;font-weight:800;cursor:pointer">완료 ✓</button>'
-          +'</div>';
-      }
-      if(typeof toast === 'function') toast('🎉 모든 단어를 외웠어요!');
-      return;
-    }
-    // 인덱스 보정: splice로 배열이 당겨졌으므로 현재 인덱스가 곧 다음 단어. 범위만 보정
-    if(window._autoIdx >= arr.length) window._autoIdx = 0;
-    window._autoRender && window._autoRender();
-    // 자동재생 중이 아닐 때만 즉시 발음 (재생 중이면 루프가 알아서 읽음 → 중복/충돌 방지)
-    if(!window._autoPlaying) {
-      window._autoSpeakNow && window._autoSpeakNow();
-    }
+    setTimeout(function(){
+      try {
+        var arr = window._autoWords || [];
+        var rmIdx = -1;
+        for(var j=0;j<arr.length;j++){ if(arr[j].en===en){ rmIdx=j; break; } }
+        if(rmIdx>=0){
+          arr.splice(rmIdx,1);
+          if(rmIdx < window._autoIdx) window._autoIdx--;
+          if(window._autoIdx >= arr.length) window._autoIdx = 0;
+        }
+        if(typeof window._autoRender==="function") window._autoRender();
+      } catch(e){}
+    }, 450);
+    return en;
   };
   _LT.start();
   
@@ -5667,7 +5645,7 @@ function showLevelUpFlash(cb) {
 
 // ── 나비 탭 (벌거지 + 나비도감) / 게임 탭 ──
 function rGameOnlyTab() {
-  if(S._gameRunning && S.gameId && !S.gDone) return '<div style="max-width:600px;margin:0 auto;width:100%">'+rGame()+'</div>';
+  if(S._gameRunning && S.gameId) return '<div style="max-width:600px;margin:0 auto;width:100%">'+rGame()+'</div>';
 
   const allBooks = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
   const bookName = S.currentBook||'내 단어장';
@@ -11574,8 +11552,8 @@ function rProfile(){
   const petCol=PET_COLORS[getPetColor()]||PET_COLORS.green;
   const pet=getPetState();
   // 단어 현황은 내 단어장 기준으로 계산 (markMap은 전체 단어장 포함이라 음수 방지)
-  const _curWords=S.words||[];
-  const _mm=S.markMap||{};
+  const _curWords=((typeof getCurrentBookWords==="function"&&getCurrentBookWords())||S.words)||[];
+  const _mm=((typeof getCurrentBookMarkMap==="function"&&getCurrentBookMarkMap())||S.markMap)||{};
   const marked1=_curWords.filter(w=>(_mm[w.en]||0)===1).length;
   const marked2=_curWords.filter(w=>(_mm[w.en]||0)===2).length;
   const myB=getMyButterflies();

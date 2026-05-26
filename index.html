@@ -12195,6 +12195,30 @@ function doRestore() {
           S.books = data.books;
         }
       }
+      // [markMap 마이그레이션] 인덱스 키 잔재 → 단어명 키 통일 (데이터 분열 방지)
+      try {
+        var _mmKeys = Object.keys(S.markMap||{});
+        var _isIndexKey = _mmKeys.length>0 && /^[0-9]+$/.test(_mmKeys[0]);
+        if(_isIndexKey){
+          var _curBk = (S.books||[]).find(function(b){return b.name===S.currentBook;});
+          if(_curBk && _curBk.markMap && Object.keys(_curBk.markMap).length>0){
+            // 책 markMap(단어명 키)이 정상 데이터 → 전역도 그것으로 통일
+            S.markMap = JSON.parse(JSON.stringify(_curBk.markMap));
+          } else if(_curBk && (_curBk.words||[]).length){
+            // 책 markMap이 비었으면 인덱스 키를 단어로 변환
+            var _conv = {};
+            Object.keys(S.markMap).forEach(function(k){
+              var _i = Number(k);
+              if(!isNaN(_i) && _curBk.words[_i]){ _conv[_curBk.words[_i].en] = S.markMap[k]; }
+              else if(isNaN(_i)){ _conv[k] = S.markMap[k]; }
+            });
+            S.markMap = _conv;
+            if(_curBk){ _curBk.markMap = JSON.parse(JSON.stringify(_conv)); }
+          }
+          try { localStorage.setItem("wd-mk", JSON.stringify(S.markMap)); } catch(e){}
+        }
+      } catch(e){ console.warn("markMap migration skip", e); }
+
       if(data.streak) S.streak = data.streak;
       if(data.nick) S.nick = data.nick;
       if(data.lid) S.lid = data.lid;

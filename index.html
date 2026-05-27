@@ -845,12 +845,14 @@ function checkAttend() {
   // 오늘 이미 팝업 표시했으면 스킵 (localStorage 기반)
   const shown = localStorage.getItem('wd-aps') || '';
   if(shown === t) return;
-  // 출석 처리
+  // 출석 처리 (중복 방지)
   if(!S.attendDates.includes(t)) {
     S.attendDates.push(t);
   }
   // 카운트를 실제 출석일 수와 항상 동기화 (불일치 방지)
   S.attendCount = S.attendDates.length;
+  // streak은 studyLog 기반으로 재계산 (출석과 분리된 개념)
+  recalcStreak();
   sv();
   // 팝업 표시 여부 저장 (새로고침해도 유지)
   localStorage.setItem('wd-aps', t);
@@ -949,11 +951,11 @@ function showAttendPopup() {
       <div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px">
         <div style="text-align:center;background:#EFF6FF;border-radius:12px;padding:10px 16px">
           <div style="font-size:20px;font-weight:900;color:#1E5FA5">${S.streak}</div>
-          <div style="font-size:11px;color:var(--text3,#9CA3AF)">연속 학습일</div>
+          <div style="font-size:11px;color:var(--text3,#9CA3AF)">연속 학습일(공부)</div>
         </div>
         <div style="text-align:center;background:#FDF4FF;border-radius:12px;padding:10px 16px">
           <div style="font-size:20px;font-weight:900;color:#7C3AED">${cnt}</div>
-          <div style="font-size:11px;color:var(--text3,#9CA3AF)">총 출석</div>
+          <div style="font-size:11px;color:var(--text3,#9CA3AF)">총 출석(앱접속)</div>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -3298,6 +3300,8 @@ ${goals.map(([s,lb,ic])=>` <button onclick="_LT.goal=${s};_LT._updateUI();sv();c
 // ── 학습모드 공통 헤더 ──
 function _studyHeader(title, subtitle, onExit, extraBtns='') {
   _LT.start(); // 타이머 자동 시작
+  // onExit가 go() 계열이면 학습 탭(mybooks/learn)으로 복귀하도록 보정
+  const _safeExit = onExit || "go('mybooks','learn')";
   return `<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:900;color:#fff">${title}</div>
@@ -3306,7 +3310,7 @@ function _studyHeader(title, subtitle, onExit, extraBtns='') {
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
       ${_LT.barHTML()}
       ${extraBtns}
-      <button onclick="${onExit}" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕</button>
+      <button onclick="${_safeExit}" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕</button>
     </div>
   </div>`;
 }
@@ -10768,6 +10772,9 @@ function startGameW(id, ws) {
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
   S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null;
   S.gResultMap={};
+  // 게임 시작 시 중복 출제 방지 풀 리셋
+  if(!S._gameUsed) S._gameUsed={};
+  S._gameUsed[id] = [];
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
   S.gWords=ws||pick(src,cnt);
@@ -10775,10 +10782,10 @@ function startGameW(id, ws) {
   if(id==='quiz'||id==='typing') {
     S.gSavedGame={id,words:S.gWords,score:0,idx:0};
   }
-  if(id==='match'){S.mPairs=pick(src,Math.min(5,src.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mEn0=null;S.mKr0=null;S.mScore=0;S.mWrongEn=null;S.mWrongKr=null;}
+  if(id==='match'){S._matchPlayed=0;S.mPairs=pick(S.gWords,Math.min(5,S.gWords.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mEn0=null;S.mKr0=null;S.mScore=0;S.mWrongEn=null;S.mWrongKr=null;}
   if(id==='wordle'){const pool=src.filter(w=>w.en.length>=4&&w.en.length<=7);const wSrc=pool.length?pool:src;if(!wSrc||!wSrc.length){toast('4~7글자 단어가 필요해요!');S.gDone=true;return;}S.wWord=rnd(wSrc);S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
-  if(id==='wordfind'){buildWF(src);}
-  if(id==='wc'){const pool=src.filter(w=>w.en.length>=3);S.wcWord=pool.length?rnd(pool):src[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
+  if(id==='wordfind'){buildWF(S.gWords);}
+  if(id==='wc'){const pool=S.gWords.filter(w=>w.en.length>=3);if(!pool.length){toast('3글자 이상 단어가 필요해요!');S.gDone=true;return;}S.wcWord=pool[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
   if(id==='sentence'||id==='ssort'){buildSentenceFromWords(ws||S.gWords);if(id==='ssort')speak(S.sbS.en);}
   if(id==='chain'){S.chStory=rnd(['Yesterday I went to the park.','One morning a bird sang outside.','My best friend called me last night.']);S.chIdx=0; S._chainSaved=false;S.chIn='';S.chDone=false;}
 
@@ -10855,9 +10862,21 @@ function rGameDone(){
     });
     return '';
   }
-  const tot=Math.max(S.gWords.length,1);
-  const right=Math.round(S.gScore/100);
-  const pct=Math.round(right/tot*100);
+  const rm = S.gResultMap || {};
+  const rmKeys = Object.keys(rm).filter(k => rm[k] !== null); // 건너뜀(null) 제외
+  // gResultMap 기반 정확한 집계 (가장 신뢰할 수 있는 소스)
+  let right, wrong, tot;
+  if(rmKeys.length > 0) {
+    right = rmKeys.filter(k => rm[k] === true).length;
+    wrong = rmKeys.filter(k => rm[k] === false).length;
+    tot = rmKeys.length;
+  } else {
+    // 폴백: 점수 기반 추정
+    tot = Math.max(S.gWords.length, 1);
+    right = Math.min(tot, Math.round(S.gScore/100));
+    wrong = Math.max(0, tot - right);
+  }
+  const pct=tot>0?Math.round(right/tot*100):0;
   const hp=pct>=70;
   const _gXpMap={quiz:25,fill:20,typing:30,match:18,sentence:35,listen:30,wordfind:20,wordle:40,wc:20,chain:25};
   const _gXp=pct>0?(_gXpMap[S.gameId]||20)+(pct>=100?10:pct>=80?5:0):0; // 정답 없으면 XP 없음
@@ -10893,7 +10912,7 @@ function rGameDone(){
       <div style="font-size:14px;color:#9CA3AF;font-weight:700">${right}/${tot}</div>
     </div>
     <div style="display:flex;gap:8px;width:100%">
-      ${[['✅',right+'개','정답','#16A34A'],['❌',(tot-right)+'개','오답','#DC2626'],['📊',pct+'%','정확도','#1E5FA5'],['⚡',(S._maxCombo||0)+'연속','최고콤보','#F59E0B']].map(([ic,v,lb,col])=>`<div style="flex:1;background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:14px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:10px;text-align:center"><div style="font-size:16px">${ic}</div><div style="font-size:16px;font-weight:900;color:${col}">${v}</div><div style="font-size:9px;color:#9CA3AF">${lb}</div></div>`).join('')}
+      ${[['✅',right+'개','정답','#16A34A'],['❌',wrong+'개','오답','#DC2626'],['📊',pct+'%','정확도','#1E5FA5'],['⚡',(S._maxCombo||0)+'연속','최고콤보','#F59E0B']].map(([ic,v,lb,col])=>`<div style="flex:1;background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:14px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:10px;text-align:center"><div style="font-size:16px">${ic}</div><div style="font-size:16px;font-weight:900;color:${col}">${v}</div><div style="font-size:9px;color:#9CA3AF">${lb}</div></div>`).join('')}
     ${isNewBest?`<div style="background:linear-gradient(135deg,#FFF8E1,#FEF3C7);border-radius:12px;padding:10px;text-align:center;border:1.5px solid #F6D860">
       <div style="font-size:14px;font-weight:800;color:#D97706">🏆 신기록 달성!</div>
       <div style="font-size:11px;color:var(--text3,#9CA3AF)">${S.gameId} 최고 점수 ${pct}%</div>
@@ -10904,7 +10923,7 @@ function rGameDone(){
       <div style="display:flex;justify-content:center;gap:16px;margin-top:6px">
         <div><span style="font-size:22px;font-weight:900;color:#16A34A">${right}개</span><span style="font-size:11px;color:#9CA3AF;margin-left:3px">정답</span></div>
         <div style="color:#E5E7EB;font-size:20px">|</div>
-        <div><span style="font-size:22px;font-weight:900;color:#DC2626">${tot-right}개</span><span style="font-size:11px;color:#9CA3AF;margin-left:3px">오답</span></div>
+        <div><span style="font-size:22px;font-weight:900;color:#DC2626">${wrong}개</span><span style="font-size:11px;color:#9CA3AF;margin-left:3px">오답</span></div>
       </div>
       ${isNewBest&&pct>0?`<div style="margin-top:6px;font-size:11px;color:#D97706;font-weight:700">🏆 신기록 ${pct}%</div>`:''}
     </div>
@@ -11058,8 +11077,25 @@ function rFill(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
   const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
-  const ex=exList[0]||'';
-  const blanked=ex?ex.replace(new RegExp('\\b'+w.en+'\\b','gi'),'_____'):('_____ : '+w.kr);
+  // 예문에서 단어를 빈칸으로 바꿀 수 있는 예문 선택
+  let ex='', blanked='';
+  for(const candidate of exList) {
+    const regex = new RegExp('\\b'+w.en.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','gi');
+    const b = candidate.replace(regex,'_____');
+    if(b !== candidate) { ex=candidate; blanked=b; break; }
+  }
+  // 예문에 단어가 없으면 단어의 일부를 힌트로 사용
+  if(!blanked) {
+    if(exList.length>0) {
+      // 예문은 있지만 단어가 예문에 없는 경우 - 다음 단어로 건너뜀
+      S.gResultMap[S.gIdx] = null; // 건너뜀 표시
+      S.gIdx++;
+      if(S.gIdx >= S.gWords.length) { S.gDone=true; return rGame(); }
+      return rFill();
+    }
+    // 예문 자체가 없으면 단어+뜻 형태로 출제
+    blanked = '_____ : ' + w.kr;
+  }
   const answered=!!S.gAns;
   const isCorrect=S.gRes==='ok';
 
@@ -11151,7 +11187,10 @@ function rWC(){
     return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:transparent;margin:0 2px;border-bottom:3px solid ${S.wcWrong>=6?'#DC2626':'#BFDBFE'};padding:0 4px">_</span>`;
   }).join('');
   const allDone=S.wcLetters.every((l,i)=>!l.hidden||S.wcGuessed.has(i));
-  if(allDone){S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
+  if(allDone){
+    if(!S.gResultMap) S.gResultMap={};
+    S.gResultMap[S.gIdx]=true; // 정답 기록
+    S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
       // 다음 단어는 S.gWords에서
       const nw=S.gWords[S.gIdx];
       if(!nw){S.gDone=true;go();return;}
@@ -11192,8 +11231,31 @@ function hintWC(){
 function guessWC(letter){
   SFX.play('tap');vib(20);
   const hits=S.wcLetters.reduce((acc,l,i)=>{if(l.letter===letter&&l.hidden&&!S.wcGuessed.has(i)){acc.push(i);}return acc;},[]);
-  if(hits.length>0){hits.forEach(i=>S.wcGuessed.add(i));ok();}
-  else{S.wcWrong++;ng();if(S.wcWrong>=6){setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length)S.gDone=true;const pool=(S.words.length>=2?S.words:DEFAULT_WORDS[S.lid]).filter(ww=>ww.en.length>=3);S.wcWord=rnd(pool);S.wcLetters=S.wcWord.en.split('').map((l,i2)=>{const hide=Math.random()<.5&&i2>0&&i2<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;go();},1000);}  }
+  if(hits.length>0){
+    hits.forEach(i=>S.wcGuessed.add(i));
+    ok();
+    // 완성 체크 (allDone은 rWC 렌더링 시 처리됨)
+  } else {
+    S.wcWrong++;
+    ng();
+    if(S.wcWrong>=6){
+      // 오답 처리 - 이 단어 실패
+      if(!S.gResultMap) S.gResultMap={};
+      S.gResultMap[S.gIdx]=false;
+      setTimeout(()=>{
+        S.gIdx++;
+        if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
+        const nw=S.gWords[S.gIdx];
+        if(!nw){S.gDone=true;go();return;}
+        S.wcWord=nw;
+        const pool2=S.gWords.slice(S.gIdx).filter(ww=>ww.en.length>=3);
+        const nextW = pool2.length ? pool2[0] : nw;
+        S.wcWord=nextW;
+        S.wcLetters=nextW.en.split('').map((l,i2)=>{const hide=Math.random()<.5&&i2>0&&i2<nextW.en.length-1;return{letter:l,hidden:hide};});
+        S.wcGuessed=new Set();S.wcWrong=0;go();
+      },1000);
+    }
+  }
   go();
 }
 
@@ -11257,6 +11319,9 @@ function selM(t,v){
     } else {
       // 오답: 잠깐 빨간색으로 표시 후 초기화
       ng();
+      if(!S.gResultMap) S.gResultMap={};
+      // 오답은 false로 기록 (나중에 맞추면 덮어씀)
+      if(S.gResultMap[enVal] !== true) S.gResultMap[enVal] = false;
       S.mWrongEn=enVal; S.mWrongKr=krIdx;
       go();
       setTimeout(()=>{S.mWrongEn=null;S.mWrongKr=null;S.mEn0=null;S.mKr0=null;go();},700);

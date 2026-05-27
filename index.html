@@ -7996,6 +7996,29 @@ function rHome() {
 }
 
 // ── 홈 XP 순위 렌더링 ──
+async function getRankSnap(){
+  const _t = (typeof today==='function')?today():new Date(Date.now()+9*36e5).toISOString().slice(0,10);
+  try{
+    const snapDoc = await db.collection('rankings').doc('snapshot').get();
+    if(snapDoc.exists){ const sd=snapDoc.data(); if(sd.date===_t && Array.isArray(sd.users)){ return sd.users; } }
+  }catch(e){}
+  try{
+    const us = await db.collection('users').get();
+    const weekAgo = new Date(Date.now()-7*864e5+9*36e5).toISOString().slice(0,10);
+    const monthAgo = new Date(Date.now()-30*864e5+9*36e5).toISOString().slice(0,10);
+    const arr = us.docs.map(function(d){
+      const x=d.data()||{}; const sl=x.sl||{};
+      const day=(sl[_t]&&sl[_t].xp)||0;
+      const week=Object.keys(sl).filter(function(k){return k>=weekAgo;}).reduce(function(s,k){return s+((sl[k]&&sl[k].xp)||0);},0);
+      const month=Object.keys(sl).filter(function(k){return k>=monthAgo;}).reduce(function(s,k){return s+((sl[k]&&sl[k].xp)||0);},0);
+      const total=Object.values(sl).reduce(function(s,v){return s+((v&&v.xp)||0);},0)||x._totalXp||x.xp||0;
+      return {uid:d.id, nick:x.nick||'익명', streak:x.streak||0, day:day, week:week, month:month, total:total};
+    });
+    arr.sort(function(a,b){return b.total-a.total;});
+    try{ await db.collection('rankings').doc('snapshot').set({date:_t, users:arr, updatedAt:Date.now()}); }catch(e){}
+    return arr;
+  }catch(e){ return []; }
+}
 async function renderHomeRank() {
   const el = document.getElementById('home-rank-body');
   const myEl = document.getElementById('home-my-rank');
@@ -8021,21 +8044,10 @@ async function renderHomeRank() {
   el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">⏳ 불러오는 중...</div>';
 
   try {
-    const snap = await db.collection('users').orderBy('xp','desc').limit(50).get();
-    const today_ = typeof today==='function'?today():new Date().toISOString().slice(0,10);
-    const weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
-    const monthAgo = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-    const myUid = S.user.uid;
-    let all = [];
-    snap.forEach(d => {
-      const x = d.data();
-      const sl = x.studyLog||{};
-      const dayXp = (sl[today_]?.xp)||0;
-      const weekXp = Object.entries(sl).filter(([k])=>k>=weekAgo).reduce((s,[,v])=>s+(v.xp||0),0);
-      const monthXp = Object.entries(sl).filter(([k])=>k>=monthAgo).reduce((s,[,v])=>s+(v.xp||0),0);
-      const totalXp = Object.values(sl).reduce((s,v)=>s+(v.xp||0),0)||x._totalXp||x.xp||0;
-      const xp = {day:dayXp, week:weekXp, month:monthXp, total:totalXp}[mode]||0;
-      all.push({uid:d.id, nick:x.nick||'익명', xp, streak:x.streak||0});
+    const _snapUsers = await getRankSnap();
+    _snapUsers.forEach(function(u){
+      const xp = (u[mode]||0);
+      all.push({uid:u.uid, nick:u.nick||'익명', xp:xp, streak:u.streak||0});
     });
     all.sort((a,b)=>b.xp-a.xp);
     const top5 = all.slice(0,5);
@@ -8065,7 +8077,7 @@ async function renderHomeRank() {
     const rankLabel = ['1위','2위','3위','4위','5위'];
     const rankColor = ['#F59E0B','#94A3B8','#92400E','#6B7280','#6B7280'];
 
-    el.innerHTML = top5.length === 0
+    el.innerHTML = `<div style=\"text-align:center;padding:5px 8px;margin-bottom:6px;color:#9CA3AF;font-size:10px;background:#F9FAFB;border-radius:6px\">\uD83D\uDCC5 \uB7AD\uD0B9\uC740 \uC804\uC77C 24\uC2DC \uAE30\uC900\uC785\uB2C8\uB2E4</div>` + (top5.length === 0
       ? `<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">${modeLabel} XP 데이터 없음</div>`
       : top5.map((u,i) => {
           const bar = Math.round(u.xp/maxXp*100);
@@ -8082,7 +8094,7 @@ async function renderHomeRank() {
               <div style="height:100%;background:${modeColor};border-radius:99px;width:${bar}%"></div>
             </div>
           </div>`;
-        }).join('');
+        }).join(''));
 
     // 내 순위 (5위 밖이면 별도 표시)
     if(myEl) {
@@ -11512,11 +11524,11 @@ async function loadMyRank() {
   if(numEl) numEl.textContent = '...';
   if(subEl) subEl.textContent = '조회 중';
   try {
-    const snap = await db.collection('users').orderBy('xp','desc').limit(50).get();
+    const _snapUsers = await getRankSnap();
     const myUid = S.user.uid;
     let all = [];
-    snap.forEach(d => {
-      all.push({uid:d.id, totalXp:d.data()._totalXp||d.data().xp||0, nick:d.data().nick||'익명'});
+    _snapUsers.forEach(function(u){
+      all.push({uid:u.uid, totalXp:(u.total||0), nick:u.nick||'익명'});
     });
     all.sort((a,b)=>b.totalXp-a.totalXp);
     const myRank = all.findIndex(u=>u.uid===myUid)+1;

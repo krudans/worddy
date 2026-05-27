@@ -842,6 +842,11 @@ function checkAttend() {
   const t = today();
   // 오늘 안보기 선택했으면 무조건 스킵
   if(S._noPopupToday === t) return;
+  // 게임 진행 중이면 게임 끝난 후로 지연
+  if(S._gameRunning && !S.gDone) {
+    setTimeout(checkAttend, 5000);
+    return;
+  }
   // 오늘 이미 팝업 표시했으면 스킵 (localStorage 기반)
   const shown = localStorage.getItem('wd-aps') || '';
   if(shown === t) return;
@@ -923,6 +928,8 @@ function logStudy(type) {
 
 function showAttendPopup() {
   if(!window._popupOn || !window._popupOn('attend')) return;
+  // 게임 진행 중이면 팝업 띄우지 않음
+  if(S._gameRunning && !S.gDone) return;
   const cnt = S.attendCount;
   const lvInfo = lv(S.lid);
   // 마일스톤 체크
@@ -4312,8 +4319,12 @@ function updStreak() {
     S._lvNotified=false;
     if(prevStreak2>=3) {
       setTimeout(()=>{
+        // 게임 진행 중이면 팝업 띄우지 않음 (게임 화면 방해 방지)
+        if(S._gameRunning && !S.gDone) return;
         const mr=document.getElementById('mr');
         if(!mr) return;
+        // 이미 다른 모달이 열려있으면 띄우지 않음
+        if(mr.innerHTML.trim()) return;
         mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:24px">
           <div style="font-size:48px;margin-bottom:8px">💔</div>
           <div style="font-size:17px;font-weight:900;color:#DC2626;margin-bottom:8px">${prevStreak2}일 연속이 끊겼어요</div>

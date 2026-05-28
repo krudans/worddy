@@ -2794,9 +2794,10 @@ function showAddW(){
 function getGeminiKey() {
   return window._geminiApiKey || localStorage.getItem('gemini_api_key') || '';
 }
-async function callAI(prompt, maxTokens=300, _retry=0) {
+async function callAI(prompt, maxTokens=300, _retry=0, _onStatus=null) {
   const apiKey = getGeminiKey();
   if(!apiKey) throw new Error('Gemini API 키가 없습니다. 설정에서 입력해주세요.');
+  if(_onStatus) _onStatus('🌐 API 요청 중...');
   const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -2808,9 +2809,14 @@ async function callAI(prompt, maxTokens=300, _retry=0) {
   if(resp.status === 429) {
     if(_retry >= 5) throw new Error('Gemini 429: 요청 한도 초과. 잠시 후 다시 시도해주세요.');
     const wait = [8000,15000,30000,60000,120000][_retry];
-    console.warn(`[callAI] 429 Rate Limit - ${wait/1000}초 후 재시도 (${_retry+1}/5)`);
+    // 카운트다운 표시
+    if(_onStatus) {
+      let remain = Math.round(wait/1000);
+      const iv = setInterval(()=>{ remain--; if(_onStatus) _onStatus(`⏳ 429 한도 초과 — ${remain}초 후 재시도...`); if(remain<=0) clearInterval(iv); }, 1000);
+      if(_onStatus) _onStatus(`⏳ 429 한도 초과 — ${remain}초 후 재시도...`);
+    }
     await new Promise(r=>setTimeout(r, wait));
-    return callAI(prompt, maxTokens, _retry+1);
+    return callAI(prompt, maxTokens, _retry+1, _onStatus);
   }
   if(!resp.ok) { const e=await resp.json(); throw new Error(`Gemini ${resp.status}: ${e.error?.message||'오류'}`); }
   const d = await resp.json();
@@ -3311,6 +3317,7 @@ async function aiFillPack(packId) {
   try {
     while(added < need) {
       const cnt = Math.min(batchSize, need - added);
+      if(btn) btn.textContent = `📡 ${currentCount+added}/${1000} 생성 중...`;
       const existList = [...existSet].slice(-50).join(', ');
 
       const prompt = `영어 단어 ${cnt}개를 JSON 배열로만 반환. 다른 텍스트 없이 순수 JSON만.
@@ -3320,7 +3327,8 @@ async function aiFillPack(packId) {
 형식: [{"en":"word","kr":"한국어뜻","ph":"[발음기호]","ex":"영어예문","img":"관련이모지"}]`;
 
       let text;
-      try { text = await callAI(prompt, 8192); } catch(e) { console.warn('callAI 실패:', e.message); break; }
+      const onStatus = (msg) => { if(btn) btn.textContent = msg; };
+      try { text = await callAI(prompt, 8192, 0, onStatus); } catch(e) { console.warn('callAI 실패:', e.message); break; }
 
       let ws;
       try { ws = JSON.parse(text); }

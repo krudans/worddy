@@ -2790,11 +2790,11 @@ function showAddW(){
   </div></div>`;
 }
 
-// ── AI 호출 공통 함수 (Gemini) ──
+// ── AI 호출 공통 함수 (Gemini, 429 자동 재시도) ──
 function getGeminiKey() {
   return window._geminiApiKey || localStorage.getItem('gemini_api_key') || '';
 }
-async function callAI(prompt, maxTokens=300) {
+async function callAI(prompt, maxTokens=300, _retry=0) {
   const apiKey = getGeminiKey();
   if(!apiKey) throw new Error('Gemini API 키가 없습니다. 설정에서 입력해주세요.');
   const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
@@ -2805,6 +2805,13 @@ async function callAI(prompt, maxTokens=300) {
       generationConfig: {maxOutputTokens: maxTokens, temperature: 0.7}
     })
   });
+  if(resp.status === 429) {
+    if(_retry >= 5) throw new Error('Gemini 429: 요청 한도 초과. 잠시 후 다시 시도해주세요.');
+    const wait = [8000,15000,30000,60000,120000][_retry];
+    console.warn(`[callAI] 429 Rate Limit - ${wait/1000}초 후 재시도 (${_retry+1}/5)`);
+    await new Promise(r=>setTimeout(r, wait));
+    return callAI(prompt, maxTokens, _retry+1);
+  }
   if(!resp.ok) { const e=await resp.json(); throw new Error(`Gemini ${resp.status}: ${e.error?.message||'오류'}`); }
   const d = await resp.json();
   return (d.candidates?.[0]?.content?.parts?.[0]?.text||'').replace(/```json|```/g,'').trim();
@@ -2987,18 +2994,15 @@ async function rPK(){
   const packs = window._adminPacks||[];
   const cats = [...new Set(packs.map(p=>p.cat))];
   const packRows = packs.map(function(p){
-    const wc = p.words?.length||0;
-    const wcColor = wc>=1000 ? '#16A34A' : wc>=500 ? '#D97706' : '#DC2626';
-    const wcBg = wc>=1000 ? '#F0FDF4' : wc>=500 ? '#FFFBEB' : '#FEF2F2';
-    const needFill = wc < 1000;
     return '<tr>'
       +'<td style="font-size:24px;text-align:center;padding:12px 14px">'+(p.emoji||'📚')+'</td>'
       +'<td style="padding:12px 14px"><div style="font-weight:700">'+(p.name||'')+'</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">'+((p.desc||'').slice(0,30))+(p.desc&&p.desc.length>30?'...':'')+'</div></td>'
       +'<td style="padding:12px 14px"><span style="background:#EFF6FF;color:#1E5FA5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(p.cat||'')+'</span></td>'
-      +'<td style="padding:12px 14px"><span id="wc-'+p.id+'" style="font-weight:800;color:'+wcColor+';background:'+wcBg+';border-radius:8px;padding:3px 8px;font-size:13px">'+wc+'</span>'+(needFill?'<span style="font-size:10px;color:#9CA3AF;margin-left:4px">/ 1000</span>':'')+'</td>'
-      +'<td style="padding:12px 14px"><div style="display:flex;gap:5px;flex-wrap:wrap">'
-        +(needFill?'<button id="ai-btn-'+p.id+'" style="background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap" onclick="aiFillPack(\''+p.id+'\')">🤖 AI채우기</button>':'<span style="font-size:11px;color:#16A34A;font-weight:700;padding:5px 8px">✅ 완료</span>')
+      +'<td style="padding:12px 14px;font-weight:800;color:#1E5FA5">'+(p.words?.length||0)+'</td>'
+      +'<td style="padding:12px 14px"><div style="display:flex;gap:6px">'
         +'<button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="showPackWords(\''+p.id+'\')">단어</button>'
+        +(p._fromFirebase?'':'<button class="btn bg" style="font-size:11px;padding:5px 10px" onclick="uploadLocalPackToFirebase(\''+p.id+'\')">⬆️ FB</button>')
+        +'<button class="btn" style="font-size:11px;padding:5px 10px;background:#7C3AED;color:#fff;border:none;border-radius:8px;cursor:pointer" onclick="aiFillPack(\''+p.id+'\')">🤖 AI채우기</button>'
         +'<button class="btn bp" style="font-size:11px;padding:5px 10px" onclick="showEditPack(\''+p.id+'\')">수정</button>'
         +'<button class="btn bgr" style="font-size:11px;padding:5px 10px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
       +'</div></td></tr>';
@@ -3007,20 +3011,10 @@ async function rPK(){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">🛒 마켓 팩 관리</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button style="background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer" onclick="aiFillAllPacks()">🤖 부족팩 전체 AI채우기</button>
         <button class="btn bg" onclick="showAddPack()">➕ 새 팩 만들기</button>
         <button class="btn bp" onclick="showImportPack()">📤 CSV/JSON 가져오기</button>
+        <button class="btn" style="background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer" onclick="aiFillAllPacks()">🤖 부족팩 전체 AI채우기</button>
       </div>
-    </div>
-    <div id="ai-fill-progress" style="display:none;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:14px;padding:14px 18px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <div style="font-size:14px;font-weight:800;color:#4F46E5">🤖 AI 전체 채우기 진행 중...</div>
-        <div id="ai-fill-count" style="font-size:12px;color:#6B7280"></div>
-      </div>
-      <div style="background:#E0E7FF;border-radius:8px;height:8px;overflow:hidden">
-        <div id="ai-fill-bar" style="height:100%;background:linear-gradient(90deg,#7C3AED,#5B21B6);border-radius:8px;transition:width 0.3s;width:0%"></div>
-      </div>
-      <div id="ai-fill-status" style="font-size:12px;color:#4F46E5;margin-top:6px"></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
       <div style="background:#EFF6FF;border-radius:14px;border:1.5px solid rgba(0,0,0,.06);padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06)"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">🛒 전체 팩</div><div style="font-size:26px;font-weight:900;color:#1E5FA5">${packs.length}</div></div>
@@ -3038,7 +3032,7 @@ async function rPK(){
       </div>
       <div class="tw">
         <table id="pk-table">
-          <tr><th></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>작업</th></tr>
+          <tr><th></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>뱃지</th><th>작업</th></tr>
           ${packRows}
         </table>
       </div>
@@ -3294,6 +3288,112 @@ async function generateExamples(packId) {
   }catch(e){progressEl.remove();toast('저장 오류: '+e.message,'err');}
 }
 
+// ── AI로 팩 단어 1000개 자동 채우기 (Gemini) ──
+async function aiFillPack(packId) {
+  const apiKey = getGeminiKey();
+  if(!apiKey) { toast('Gemini API 키가 필요합니다. 설정에서 입력해주세요.','err'); return; }
+
+  const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  const p = packs.find(x=>x.id===packId);
+  if(!p) { toast('팩 없음','err'); return; }
+
+  const currentCount = (p.words||[]).length;
+  const need = Math.max(0, 1000 - currentCount);
+  if(need === 0) { toast('이미 1000개 이상입니다.','ok'); return; }
+
+  const btn = document.getElementById('ai-btn-'+packId);
+  if(btn) { btn.disabled=true; btn.textContent='⏳ 생성 중...'; btn.style.opacity='0.7'; }
+
+  const existSet = new Set((p.words||[]).map(w=>w.en.toLowerCase()));
+  let added = 0;
+  const batchSize = 30; // 429 방지: 한 번에 30개
+
+  try {
+    while(added < need) {
+      const cnt = Math.min(batchSize, need - added);
+      const existList = [...existSet].slice(-60).join(', ');
+
+      const prompt = `영어 단어 ${cnt}개를 JSON 배열로만 반환. 다른 텍스트 없이 순수 JSON만.
+팩 테마: "${p.name}" (카테고리: ${p.cat})
+설명: ${p.desc||''}
+중복 금지(이미 있는 단어): ${existList||'없음'}
+형식: [{"en":"word","kr":"한국어뜻","ph":"[발음기호]","ex":"영어예문","img":"관련이모지"}]`;
+
+      let text;
+      try { text = await callAI(prompt, 4000); } catch(e) { console.warn('callAI 실패:', e.message); break; }
+
+      let ws;
+      try { ws = JSON.parse(text); }
+      catch(e) { const m=text.match(/\[[\s\S]*\]/); try{ ws=m?JSON.parse(m[0]):[] }catch(e2){ws=[];} }
+
+      let batchAdded = 0;
+      (ws||[]).forEach(w=>{
+        if(!w.en||!w.kr) return;
+        const key=w.en.toLowerCase();
+        if(existSet.has(key)) return;
+        existSet.add(key);
+        if(!p.words) p.words=[];
+        p.words.push({en:w.en,kr:w.kr,ph:w.ph||'',ex:w.ex||'',img:w.img||'📝',meanings:[w.kr]});
+        batchAdded++;
+      });
+      added += batchAdded;
+
+      // 진행률 UI 업데이트
+      const wcEl = document.getElementById('wc-'+packId);
+      if(wcEl) wcEl.textContent = currentCount+added;
+      if(btn) btn.textContent = `⏳ ${currentCount+added}/1000`;
+
+      if(batchAdded === 0) break;
+      await new Promise(r=>setTimeout(r,3000)); // 3초 간격으로 429 방지
+    }
+
+    // Firebase 저장
+    p.count = p.words?.length||0;
+    try {
+      await db.collection('packs').doc(packId).set({...p, updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    } catch(e) { console.warn('FB 저장 실패:', e.message); }
+
+    const finalCount = p.words?.length||0;
+    toast(`✅ "${p.name}" ${finalCount}개 완료!`,'ok');
+    const wcEl2 = document.getElementById('wc-'+packId);
+    if(wcEl2) { wcEl2.textContent=finalCount; wcEl2.style.color='#16A34A'; wcEl2.style.background='#F0FDF4'; }
+    if(btn) { btn.textContent='✅ 완료'; btn.style.background='#16A34A'; btn.style.opacity='1'; }
+  } catch(e) {
+    toast('AI 채우기 실패: '+e.message,'err');
+    if(btn) { btn.disabled=false; btn.textContent='🤖 AI채우기'; btn.style.opacity='1'; }
+    console.error(e);
+  }
+}
+
+// ── 전체 팩 일괄 AI 채우기 ──
+async function aiFillAllPacks() {
+  const apiKey = getGeminiKey();
+  if(!apiKey) { toast('Gemini API 키가 필요합니다.','err'); return; }
+  const packs = (window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).filter(p=>(p.words||[]).length < 1000);
+  if(!packs.length) { toast('모든 팩이 1000개 이상입니다.','ok'); return; }
+  if(!confirm(`단어가 부족한 팩 ${packs.length}개를 순서대로 AI로 채울까요?\n시간이 오래 걸릴 수 있습니다.`)) return;
+
+  const prog = document.getElementById('ai-fill-progress');
+  const bar = document.getElementById('ai-fill-bar');
+  const cntEl = document.getElementById('ai-fill-count');
+  const statusEl = document.getElementById('ai-fill-status');
+  if(prog) prog.style.display='block';
+
+  for(let i=0;i<packs.length;i++) {
+    const p = packs[i];
+    if(cntEl) cntEl.textContent = `(${i+1}/${packs.length})`;
+    if(bar) bar.style.width = Math.round((i/packs.length)*100)+'%';
+    if(statusEl) statusEl.textContent = `진행: ${p.emoji||''} ${p.name} (현재 ${p.words?.length||0}개)`;
+    await aiFillPack(p.id);
+    await new Promise(r=>setTimeout(r,500));
+  }
+
+  if(bar) bar.style.width='100%';
+  if(statusEl) statusEl.textContent=`✅ 전체 완료! ${packs.length}개 팩 처리됨`;
+  if(cntEl) cntEl.textContent=`(${packs.length}/${packs.length})`;
+  toast(`✅ 전체 ${packs.length}개 팩 AI채우기 완료!`,'ok');
+}
+
 async function uploadLocalPackToFirebase(packId) {
   const packs = window._adminPacks||[];
   const p = packs.find(x=>x.id===packId);
@@ -3308,104 +3408,6 @@ async function uploadLocalPackToFirebase(packId) {
   } catch(e) {
     toast('업로드 실패: '+e.message,'err');
   }
-}
-
-// ── AI 팩 채우기 ──
-async function aiFillPack(packId) {
-  const apiKey = getGeminiKey();
-  if(!apiKey) { toast('Gemini API 키가 필요합니다','err'); return; }
-  const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const p = packs.find(x=>x.id===packId);
-  if(!p) { toast('팩을 찾을 수 없어요','err'); return; }
-
-  const btn = document.getElementById('ai-btn-'+packId);
-  if(btn) { btn.disabled=true; btn.textContent='⏳ 생성 중...'; btn.style.opacity='0.6'; }
-
-  const target = 1000;
-  const current = p.words?.length||0;
-  const need = target - current;
-  if(need <= 0) { toast('이미 1000개 이상입니다','ok'); if(btn){btn.disabled=false;btn.textContent='✅ 완료';} return; }
-
-  try {
-    let total = 0;
-    const batchSize = 50;
-    const existSet = new Set((p.words||[]).map(w=>w.en.toLowerCase()));
-
-    while(total < need) {
-      const cnt = Math.min(batchSize, need - total);
-      const existList = [...existSet].slice(-30).join(', ');
-      const prompt = `영어 단어 ${cnt}개를 JSON 배열로만 반환. 순수 JSON만, 다른 텍스트 없이.
-팩 테마: "${p.name}" (카테고리: ${p.cat})
-팩 설명: ${p.desc||''}
-중복 금지 단어: ${existList||'없음'}
-형식: [{"en":"word","kr":"뜻","ph":"[발음기호]","ex":"예문","img":"이모지"}]`;
-
-      const text = await callAI(prompt, 3000);
-      let ws;
-      try {
-        ws = JSON.parse(text);
-      } catch(e) {
-        const m = text.match(/\[[\s\S]*\]/);
-        ws = m ? JSON.parse(m[0]) : [];
-      }
-      let added = 0;
-      (ws||[]).forEach(w=>{
-        if(w.en && !existSet.has(w.en.toLowerCase())) {
-          existSet.add(w.en.toLowerCase());
-          p.words = p.words||[];
-          p.words.push({en:w.en,kr:w.kr||'',ph:w.ph||'',ex:w.ex||'',img:w.img||'📝',meanings:[w.kr||'']});
-          added++;
-        }
-      });
-      total += added;
-      const wcEl = document.getElementById('wc-'+packId);
-      if(wcEl) wcEl.textContent = current+total;
-      if(btn) btn.textContent = `⏳ ${current+total}/1000`;
-      if(added === 0) break; // 더 이상 생성 안 되면 종료
-    }
-
-    // Firebase 저장
-    try {
-      await db.collection('packs').doc(packId).set({...p, updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    } catch(e) { console.warn('FB 저장 실패:', e.message); }
-
-    const finalCount = p.words?.length||0;
-    toast(`✅ "${p.name}" ${finalCount}개 완료!`, 'ok');
-    const wcEl = document.getElementById('wc-'+packId);
-    if(wcEl) { wcEl.textContent = finalCount; wcEl.style.color='#16A34A'; wcEl.style.background='#F0FDF4'; }
-    if(btn) { btn.textContent='✅ 완료'; btn.style.background='#16A34A'; }
-  } catch(e) {
-    toast('AI 채우기 실패: '+e.message,'err');
-    if(btn) { btn.disabled=false; btn.textContent='🤖 AI채우기'; btn.style.opacity='1'; }
-  }
-}
-
-async function aiFillAllPacks() {
-  const apiKey = getGeminiKey();
-  if(!apiKey) { toast('Gemini API 키가 필요합니다','err'); return; }
-  const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const needPacks = packs.filter(p=>(p.words?.length||0)<1000);
-  if(!needPacks.length) { toast('모든 팩이 이미 1000개 이상입니다','ok'); return; }
-  if(!confirm(`1000개 미만인 팩 ${needPacks.length}개를 순서대로 채울까요?\n시간이 다소 걸릴 수 있습니다.`)) return;
-
-  const prog = document.getElementById('ai-fill-progress');
-  const bar = document.getElementById('ai-fill-bar');
-  const cnt = document.getElementById('ai-fill-count');
-  const status = document.getElementById('ai-fill-status');
-  if(prog) prog.style.display='block';
-
-  for(let i=0;i<needPacks.length;i++) {
-    const p = needPacks[i];
-    if(cnt) cnt.textContent = `(${i+1}/${needPacks.length})`;
-    if(bar) bar.style.width = Math.round((i/needPacks.length)*100)+'%';
-    if(status) status.textContent = `진행: ${p.emoji||''} ${p.name} (현재 ${p.words?.length||0}개)`;
-    await aiFillPack(p.id);
-  }
-
-  if(bar) bar.style.width='100%';
-  if(status) status.textContent = `✅ 전체 완료! ${needPacks.length}개 팩 처리됨`;
-  if(cnt) cnt.textContent = `(${needPacks.length}/${needPacks.length})`;
-  toast(`✅ 전체 ${needPacks.length}개 팩 AI채우기 완료!`,'ok');
 }
 
 

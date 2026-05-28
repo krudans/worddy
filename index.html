@@ -10788,6 +10788,10 @@ function startGameW(id, ws) {
   // 게임 시작 시 중복 출제 방지 풀 리셋
   if(!S._gameUsed) S._gameUsed={};
   S._gameUsed[id] = [];
+  // 빈칸 채우기 상태 초기화
+  S._fillInput = '';
+  S._fillCaseMode = 'lower';
+  // 스피드 매칭 좌측 모드 유지 (게임 중 변경 가능하도록 리셋 안 함)
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
   S.gWords=ws||pick(src,cnt);
@@ -11097,22 +11101,26 @@ function rFill(){
     const b = candidate.replace(regex,'_____');
     if(b !== candidate) { ex=candidate; blanked=b; break; }
   }
-  // 예문에 단어가 없으면 단어의 일부를 힌트로 사용
   if(!blanked) {
     if(exList.length>0) {
-      // 예문은 있지만 단어가 예문에 없는 경우 - 다음 단어로 건너뜀
-      S.gResultMap[S.gIdx] = null; // 건너뜀 표시
+      S.gResultMap[S.gIdx] = null;
       S.gIdx++;
       if(S.gIdx >= S.gWords.length) { S.gDone=true; return rGame(); }
       return rFill();
     }
-    // 예문 자체가 없으면 단어+뜻 형태로 출제
     blanked = '_____ : ' + w.kr;
   }
   const answered=!!S.gAns;
   const isCorrect=S.gRes==='ok';
 
-  var html=ghdr('📝 빈칸 채우기',''+( S.gIdx+1)+'/'+S.gWords.length);
+  // 대소문자 모드 (기본: 소문자)
+  if(S._fillCaseMode===undefined) S._fillCaseMode='lower';
+  // 현재 입력값
+  if(!S._fillInput) S._fillInput='';
+  const answer = w.en;
+  const correctLower = answer.toLowerCase();
+
+  var html=ghdr('📝 빈칸 채우기',''+(S.gIdx+1)+'/'+S.gWords.length);
   html+='<div style="padding:12px;display:flex;flex-direction:column;gap:10px;flex:1">';
 
   // 예문 카드
@@ -11123,19 +11131,44 @@ function rFill(){
   html+='<div style="font-size:18px;line-height:1.6;font-style:italic;color:#fff">'+blanked+'</div>';
   if(w.kr) html+='<div style="font-size:13px;opacity:.7;margin-top:8px">뜻: '+w.kr+'</div>';
   if(answered){
-    html+='<div style="margin-top:12px;font-size:16px;font-weight:800">'+(isCorrect?'✅ 정답!':'❌ 정답: <span style="color:#FDE68A">'+w.en+'</span>')+'</div>';
+    html+='<div style="margin-top:12px;font-size:16px;font-weight:800">'+(isCorrect?'✅ 정답!':'❌ 정답: <span style="color:#FDE68A">'+answer+'</span>')+'</div>';
   }
   html+='</div>';
 
-  // 입력 영역
   if(!answered){
-    html+='<input id="fill-inp" type="text" placeholder="영단어를 입력하세요..." autocomplete="off" '
-      +'style="width:100%;padding:14px;border:2px solid #E5E7EB;border-radius:14px;font-size:16px;outline:none;box-sizing:border-box;text-align:center;font-family:monospace" '
-      +'onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(!v)return;S.gAns=v;S.gRes=v.toLowerCase()===\''+w.en.toLowerCase()+'\'?\'ok\':\'no\';if(S.gRes===\'ok\'){if(typeof ok===\'function\')ok();S.gScore+=100;if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=true;}else{if(typeof ng===\'function\')ng();if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=false;}go();}">';
-    html+='<button onclick="var v=document.getElementById(\'fill-inp\').value.trim();if(!v)return;S.gAns=v;S.gRes=v.toLowerCase()===\''+w.en.toLowerCase()+'\'?\'ok\':\'no\';if(S.gRes===\'ok\'){if(typeof ok===\'function\')ok();S.gScore+=100;if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=true;}else{if(typeof ng===\'function\')ng();if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=false;}go()" '
+    // 입력 미리보기 + 대소문자 전환 버튼
+    const displayInput = S._fillInput || '';
+    html+='<div style="display:flex;align-items:center;gap:8px">';
+    html+='<div style="flex:1;background:#F8FAFC;border:2px solid #1E5FA5;border-radius:14px;padding:12px;text-align:center;font-size:20px;font-weight:900;font-family:monospace;min-height:50px;letter-spacing:2px;color:#111">';
+    html+=displayInput || '<span style="color:#CBD5E1;font-size:14px;font-weight:400">글자를 선택하세요</span>';
+    html+='</div>';
+    // 대소문자 토글
+    html+='<div style="display:flex;flex-direction:column;gap:4px">';
+    html+='<button onclick="S._fillCaseMode=\'upper\';go()" style="padding:8px 10px;border:2px solid '+(S._fillCaseMode==='upper'?'#1E5FA5':'#E5E7EB')+';border-radius:10px;background:'+(S._fillCaseMode==='upper'?'#1E5FA5':'#fff')+';color:'+(S._fillCaseMode==='upper'?'#fff':'#374151')+';font-size:13px;font-weight:800;cursor:pointer;font-family:monospace">A</button>';
+    html+='<button onclick="S._fillCaseMode=\'lower\';go()" style="padding:8px 10px;border:2px solid '+(S._fillCaseMode==='lower'?'#1E5FA5':'#E5E7EB')+';border-radius:10px;background:'+(S._fillCaseMode==='lower'?'#1E5FA5':'#fff')+';color:'+(S._fillCaseMode==='lower'?'#fff':'#374151')+';font-size:13px;font-weight:800;cursor:pointer;font-family:monospace">a</button>';
+    html+='<button onclick="S._fillInput=S._fillInput?S._fillInput.slice(0,-1):\'\';go()" style="padding:8px 10px;border:2px solid #E5E7EB;border-radius:10px;background:#FEF2F2;color:#DC2626;font-size:14px;font-weight:800;cursor:pointer">⌫</button>';
+    html+='</div>';
+    html+='</div>';
+
+    // 알파벳 키보드
+    const rows = ['qwertyuiop','asdfghjkl','zxcvbnm'];
+    html+='<div style="display:flex;flex-direction:column;gap:5px">';
+    rows.forEach(row=>{
+      html+='<div style="display:flex;justify-content:center;gap:4px">';
+      row.split('').forEach(ch=>{
+        const letter = S._fillCaseMode==='upper' ? ch.toUpperCase() : ch;
+        html+='<button onclick="S._fillInput=(S._fillInput||\'\')+\''+letter+'\';go()" '
+          +'style="flex:1;max-width:36px;height:42px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace;color:#111;active:background:#EFF6FF">'+letter+'</button>';
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+
+    // 확인 버튼
+    html+='<button onclick="var v=S._fillInput||\'\';;if(!v)return;var isOk=v.toLowerCase()===\''+correctLower+'\';S.gAns=v;S.gRes=isOk?\'ok\':\'no\';if(isOk){if(typeof ok===\'function\')ok();S.gScore+=100;if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=true;}else{if(typeof ng===\'function\')ng();if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=false;}S._fillInput=\'\';go()" '
       +'style="width:100%;padding:14px;border:none;border-radius:14px;background:#1E5FA5;color:#fff;font-size:16px;font-weight:800;cursor:pointer">확인</button>';
   } else {
-    html+='<button onclick="S.gAns=null;S.gRes=null;S.gIdx++;go()" '
+    html+='<button onclick="S.gAns=null;S.gRes=null;S._fillInput=\'\';S.gIdx++;go()" '
       +'style="width:100%;padding:14px;border:none;border-radius:16px;background:#111;color:#fff;font-size:16px;font-weight:800;cursor:pointer">'
       +(S.gIdx+1>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
   }
@@ -11273,10 +11306,11 @@ function guessWC(letter){
 }
 
 function rMatch(){
-  if(!S.mPairs||!S.mPairs.length){S.mPairs=S.gWords.slice(0,Math.min(5,S.gWords.length));S.mEn=S.mPairs.map(p=>p.en);S.mKr=S.mPairs.map(p=>p.kr);S.mMatched=new Set();S.mScore=0;}
+  if(!S.mPairs||!S.mPairs.length){S.mPairs=S.gWords.slice(0,Math.min(5,S.gWords.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mScore=0;}
+  // 좌측 표시 모드 (기본: 영어)
+  if(S._matchLeftMode===undefined) S._matchLeftMode='en';
   const all=S.mMatched.size>=S.mPairs.length*2;
   if(all&&!S.gDone){
-    // 남은 단어 있으면 다음 세트, 없으면 종료
     S._matchPlayed = (S._matchPlayed||0) + S.mPairs.length;
     const remaining = S.gWords.slice(S._matchPlayed);
     if(remaining.length >= 2) {
@@ -11293,15 +11327,66 @@ function rMatch(){
       S.gDone=true; S.gScore=S.mScore; setTimeout(()=>go(),300);
     }
   }
+
+  // 좌/우 결정
+  const leftIsEn = S._matchLeftMode === 'en';
+
+  // 좌측 버튼 렌더
+  const leftBtns = (function(){
+    if(leftIsEn){
+      return S.mEn.map(function(en,ei){
+        var d=S.mMatched.has(en), s=S.mEn0===en;
+        var isWrong=S.mWrongEn===en;
+        var bg=d?'#D1FAE5':isWrong?'#FEE2E2':s?'#1E5FA5':'#fff';
+        var col=d?'#065F46':isWrong?'#991B1B':s?'#fff':'#111';
+        var border=d?'#34D399':isWrong?'#EF4444':s?'#1E5FA5':'#E5E7EB';
+        return '<button onclick="selM(\'en\',\''+en+'\')" style="min-height:56px;padding:10px 8px;border:2px solid '+border+';border-radius:14px;background:'+bg+';color:'+col+';font-size:13px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;width:100%;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;box-sizing:border-box">'+en+'</button>';
+      }).join('');
+    } else {
+      return S.mKr.map(function(kr,ki){
+        var d=S.mMatched.has('kr_'+ki), s=S.mKr0===ki;
+        var isWrongK=S.mWrongKr===ki;
+        var bg=d?'#D1FAE5':isWrongK?'#FEE2E2':s?'#1E5FA5':'#fff';
+        var col=d?'#065F46':isWrongK?'#991B1B':s?'#fff':'#111';
+        var border=d?'#34D399':isWrongK?'#EF4444':s?'#1E5FA5':'#E5E7EB';
+        return '<button onclick="selM(\'kr\','+ki+')" style="min-height:56px;padding:10px 8px;border:2px solid '+border+';border-radius:14px;background:'+bg+';color:'+col+';font-size:13px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;width:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box">'+kr+'</button>';
+      }).join('');
+    }
+  })();
+
+  // 우측 버튼 렌더
+  const rightBtns = (function(){
+    if(leftIsEn){
+      return S.mKr.map(function(kr,ki){
+        var d=S.mMatched.has('kr_'+ki), s=S.mKr0===ki;
+        var isWrongK=S.mWrongKr===ki;
+        var bg=d?'#D1FAE5':isWrongK?'#FEE2E2':s?'#1E5FA5':'#fff';
+        var col=d?'#065F46':isWrongK?'#991B1B':s?'#fff':'#111';
+        var border=d?'#34D399':isWrongK?'#EF4444':s?'#1E5FA5':'#E5E7EB';
+        return '<button onclick="selM(\'kr\','+ki+')" style="min-height:56px;padding:10px 8px;border:2px solid '+border+';border-radius:14px;background:'+bg+';color:'+col+';font-size:13px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;width:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box">'+kr+'</button>';
+      }).join('');
+    } else {
+      return S.mEn.map(function(en,ei){
+        var d=S.mMatched.has(en), s=S.mEn0===en;
+        var isWrong=S.mWrongEn===en;
+        var bg=d?'#D1FAE5':isWrong?'#FEE2E2':s?'#1E5FA5':'#fff';
+        var col=d?'#065F46':isWrong?'#991B1B':s?'#fff':'#111';
+        var border=d?'#34D399':isWrong?'#EF4444':s?'#1E5FA5':'#E5E7EB';
+        return '<button onclick="selM(\'en\',\''+en+'\')" style="min-height:56px;padding:10px 8px;border:2px solid '+border+';border-radius:14px;background:'+bg+';color:'+col+';font-size:13px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;width:100%;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;box-sizing:border-box">'+en+'</button>';
+      }).join('');
+    }
+  })();
+
   return ghdr('⚡ 스피드 매칭',`${S.mMatched.size/2}/${S.mPairs.length}`)+`<div class="pad">
     ${cbrow(all?'완벽해! 🎉':'단어와 뜻을 탭해서 짝 맞추자!',S.lid,all?'happy':'normal')}
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:4px">
+      <span style="font-size:12px;color:#9CA3AF">좌측 표시:</span>
+      <button onclick="S._matchLeftMode='en';go()" style="padding:6px 14px;border-radius:20px;border:2px solid ${S._matchLeftMode==='en'?'#0D9488':'#E5E7EB'};background:${S._matchLeftMode==='en'?'#0D9488':'#fff'};color:${S._matchLeftMode==='en'?'#fff':'#374151'};font-size:12px;font-weight:700;cursor:pointer;font-family:Georgia,serif">English</button>
+      <button onclick="S._matchLeftMode='kr';go()" style="padding:6px 14px;border-radius:20px;border:2px solid ${S._matchLeftMode==='kr'?'#0D9488':'#E5E7EB'};background:${S._matchLeftMode==='kr'?'#0D9488':'#fff'};color:${S._matchLeftMode==='kr'?'#fff':'#374151'};font-size:12px;font-weight:700;cursor:pointer">한국어</button>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${(function(){return S.mEn.map(function(en,ei){var d=S.mMatched.has(en),s=S.mEn0===en;var ww=S.mPairs.find(function(x){return x.en===en;});var isWrong=S.mWrongEn===en;var bg=d?'#D1FAE5':isWrong?'#FEE2E2':s?'#1E5FA5':'#fff';var col=d?'#065F46':isWrong?'#991B1B':s?'#fff':'#111';var border=d?'#34D399':isWrong?'#EF4444':s?'#1E5FA5':'#E5E7EB';return '<button onclick="selM(\'en\',\''+en+'\')" style="padding:12px 8px;border:2px solid '+border+';border-radius:14px;background:'+bg+';color:'+col+';font-size:13px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;width:100%;font-family:Georgia,serif">'+(ww&&ww.img?ww.img+' ':'')+en+'</button>';}).join('');})()}
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${(function(){return S.mKr.map(function(kr,ki){var d=S.mMatched.has('kr_'+ki),s=S.mKr0===ki;var isWrongK=S.mWrongKr===ki;var bg=d?'#D1FAE5':isWrongK?'#FEE2E2':s?'#1E5FA5':'#fff';var col=d?'#065F46':isWrongK?'#991B1B':s?'#fff':'#111';var border=d?'#34D399':isWrongK?'#EF4444':s?'#1E5FA5':'#E5E7EB';return '<button onclick="selM(\'kr\','+ki+')" style="padding:12px 8px;border:2px solid '+border+';border-radius:14px;background:'+bg+';color:'+col+';font-size:13px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;width:100%">'+kr+'</button>';}).join('');})()}
-      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">${leftBtns}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${rightBtns}</div>
     </div>
   </div>`;
 }

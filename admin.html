@@ -2994,6 +2994,8 @@ async function rPK(){
       +'<td style="padding:12px 14px;font-weight:800;color:#1E5FA5">'+(p.words?.length||0)+'</td>'
       +'<td style="padding:12px 14px"><div style="display:flex;gap:6px">'
         +'<button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="showPackWords(\''+p.id+'\')">단어</button>'
+        +(p._fromFirebase?'':'<button class="btn bg" style="font-size:11px;padding:5px 10px" onclick="uploadLocalPackToFirebase(\''+p.id+'\')">⬆️ FB</button>')
+        +'<button class="btn" style="font-size:11px;padding:5px 10px;background:#7C3AED;color:#fff;border:none;border-radius:8px;cursor:pointer" onclick="aiFillPack(\''+p.id+'\')">🤖 AI채우기</button>'
         +'<button class="btn bp" style="font-size:11px;padding:5px 10px" onclick="showEditPack(\''+p.id+'\')">수정</button>'
         +'<button class="btn bgr" style="font-size:11px;padding:5px 10px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
       +'</div></td></tr>';
@@ -3004,6 +3006,7 @@ async function rPK(){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn bg" onclick="showAddPack()">➕ 새 팩 만들기</button>
         <button class="btn bp" onclick="showImportPack()">📤 CSV/JSON 가져오기</button>
+        <button class="btn" style="background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer" onclick="aiFillAllPacks()">🤖 부족팩 전체 AI채우기</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
@@ -3276,6 +3279,147 @@ async function generateExamples(packId) {
     toast('✅ 완료! '+done+'개 성공 / '+failed+'개 실패','ok');
     showPackWordTab('list');
   }catch(e){progressEl.remove();toast('저장 오류: '+e.message,'err');}
+}
+
+// ── AI로 팩 단어 1000개 자동 채우기 ──
+async function aiFillPack(packId) {
+  const packs = window._adminPacks||[];
+  const p = packs.find(x=>x.id===packId);
+  if(!p) { toast('팩 없음','err'); return; }
+
+  const currentCount = (p.words||[]).length;
+  const need = Math.max(0, 1000 - currentCount);
+  if(need === 0) { toast('이미 1000개 이상입니다.'); return; }
+
+  if(!confirm(`"${p.name}" 팩에 단어 ${need}개를 AI로 생성할까요?\n(현재 ${currentCount}개 → 1000개)\n시간이 걸릴 수 있습니다.`)) return;
+
+  const existingEnWords = new Set((p.words||[]).map(w=>w.en.toLowerCase()));
+  const topic = p.name;
+  const cat = p.cat;
+  const desc = p.desc||'';
+
+  const mr = document.getElementById('ma');
+  if(mr) {
+    mr.innerHTML = `<div class="mbg"><div class="modal" style="text-align:center;padding:30px">
+      <div style="font-size:32px;margin-bottom:12px">🤖</div>
+      <div style="font-weight:800;font-size:16px;margin-bottom:8px">"${p.name}" AI 단어 생성 중</div>
+      <div id="ai-fill-progress" style="font-size:13px;color:#6B7280">준비 중...</div>
+      <div style="margin-top:16px;background:#F3F4F6;border-radius:8px;overflow:hidden;height:8px">
+        <div id="ai-fill-bar" style="height:100%;background:#7C3AED;width:0%;transition:width .3s"></div>
+      </div>
+      <div id="ai-fill-count" style="margin-top:8px;font-size:12px;color:#9CA3AF">0 / ${need}</div>
+    </div></div>`;
+  }
+
+  const setProgress = (done, total, msg) => {
+    const el = document.getElementById('ai-fill-progress');
+    const bar = document.getElementById('ai-fill-bar');
+    const cnt = document.getElementById('ai-fill-count');
+    if(el) el.textContent = msg;
+    if(bar) bar.style.width = Math.round(done/total*100)+'%';
+    if(cnt) cnt.textContent = done+' / '+total;
+  };
+
+  let allNewWords = [];
+  const batchSize = 50; // 한 번에 50개씩 요청
+  const batches = Math.ceil(need / batchSize);
+
+  try {
+    for(let b = 0; b < batches; b++) {
+      const remaining = need - allNewWords.length;
+      const batchNeed = Math.min(batchSize, remaining);
+      if(batchNeed <= 0) break;
+
+      setProgress(allNewWords.length, need, `배치 ${b+1}/${batches} 생성 중...`);
+
+      const existingList = [...existingEnWords, ...allNewWords.map(w=>w.en.toLowerCase())].slice(-100).join(', ');
+
+      const prompt = `당신은 영어 단어 학습 앱의 단어 데이터 생성 전문가입니다.
+
+주제: ${topic} (카테고리: ${cat})
+설명: ${desc}
+이미 있는 단어(중복 금지): ${existingList}
+
+위 주제에 맞는 영어 단어 ${batchNeed}개를 JSON 배열로만 반환해주세요.
+- 초급~고급 다양한 난이도
+- 실용적이고 자주 쓰이는 단어
+- 중복 없이
+
+반드시 아래 형식의 JSON 배열만 반환 (다른 텍스트 없이):
+[
+  {"en":"word","kr":"한국어뜻","ph":"[발음기호]","ex":"영어예문"},
+  ...
+]`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{role:'user', content: prompt}]
+        })
+      });
+
+      if(!response.ok) throw new Error('API 오류: ' + response.status);
+      const data = await response.json();
+      const text = data.content?.[0]?.text || '';
+
+      // JSON 파싱
+      const match = text.match(/\[[\s\S]*\]/);
+      if(!match) { console.warn('JSON 파싱 실패:', text.slice(0,200)); continue; }
+
+      let batch;
+      try { batch = JSON.parse(match[0]); } catch(e) { console.warn('파싱 오류:', e); continue; }
+
+      // 중복 제거 및 추가
+      for(const w of batch) {
+        if(!w.en || !w.kr) continue;
+        const key = w.en.toLowerCase();
+        if(existingEnWords.has(key)) continue;
+        existingEnWords.add(key);
+        allNewWords.push({en:w.en, kr:w.kr, ph:w.ph||'', ex:w.ex||''});
+        if(allNewWords.length >= need) break;
+      }
+
+      setProgress(allNewWords.length, need, `${allNewWords.length}개 생성됨...`);
+
+      // API 과부하 방지
+      if(b < batches-1) await new Promise(r=>setTimeout(r, 500));
+    }
+
+    // 단어 추가
+    if(!p.words) p.words = [];
+    p.words.push(...allNewWords);
+    p.count = p.words.length;
+
+    // Firebase 업데이트
+    if(p._fromFirebase) {
+      await db.collection('packs').doc(packId).update({words: p.words, count: p.words.length});
+      toast(`✅ "${p.name}" ${allNewWords.length}개 생성 + Firebase 저장 완료`,'ok');
+    } else {
+      toast(`✅ "${p.name}" ${allNewWords.length}개 생성 완료 (로컬 저장, FB 업로드 필요)`,'ok');
+    }
+
+    cm();
+    rPK();
+  } catch(e) {
+    cm();
+    toast('AI 생성 실패: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+// ── 전체 팩 일괄 AI 채우기 ──
+async function aiFillAllPacks() {
+  const packs = (window._adminPacks||[]).filter(p=>(p.words||[]).length < 1000);
+  if(!packs.length) { toast('모든 팩이 1000개 이상입니다.'); return; }
+  if(!confirm(`단어가 부족한 팩 ${packs.length}개를 순서대로 AI로 채울까요?\n매우 오래 걸릴 수 있습니다.`)) return;
+  for(const p of packs) {
+    await aiFillPack(p.id);
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  toast('✅ 전체 팩 채우기 완료');
 }
 
 async function uploadLocalPackToFirebase(packId) {

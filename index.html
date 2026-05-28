@@ -1726,31 +1726,33 @@ function showReplaceCollection(newData) {
   const col = getMyCollection();
   const mr=document.getElementById('mr');
   if(!mr)return;
+  // newData를 window에 임시 저장 (onclick에서 직접 접근)
+  window._replaceNewData = newData;
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:16px;font-weight:800;margin-bottom:6px;text-align:center">도감이 가득 찼어요!</div>
-    <div style="font-size:12px;color:#6B7280;margin-bottom:14px;text-align:center">뺄 캐릭터를 선택해주세요 (${MAX_COLLECTION}/${MAX_COLLECTION})</div>
+    <div style="font-size:12px;color:#6B7280;margin-bottom:14px;text-align:center">뺄 캐릭터를 선택해주세요 (${col.length}/${MAX_COLLECTION})</div>
     <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
-      ${col.map((item,idx)=>`<div onclick="replaceCollection(${idx},this)" data-new="${JSON.stringify(newData).replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:#F9FAFB;border:1.5px solid #E5E7EB;cursor:pointer">
+      ${col.map((item,idx)=>`<div onclick="event.stopPropagation();replaceCollection(${idx})" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:#F9FAFB;border:1.5px solid #E5E7EB;cursor:pointer">
         ${charSVGAnimated(item.lid||item.lvId||'egg',56,'happy')}
-        <div style="flex:1">
+        <div style="flex:1;pointer-events:none">
           <div style="font-size:13px;font-weight:700">${item.level||item.lid||'알'}</div>
           <div style="font-size:11px;color:var(--text3,#9CA3AF)">${item.addedAt||''}</div>
         </div>
-        <span style="font-size:11px;color:#DC2626;font-weight:700">빼기</span>
+        <span style="font-size:11px;color:#DC2626;font-weight:700;pointer-events:none">빼기</span>
       </div>`).join('')}
     </div>
     <button onclick="cm()" class="btn bgr">취소</button>
   </div></div>`;
 }
 
-function replaceCollection(removeIdx, btn) {
-  const newDataStr = btn.closest('[data-new]')?.getAttribute('data-new') || btn.getAttribute('data-new');
-  if(!newDataStr) return;
-  let newData;
-  try { newData = JSON.parse(newDataStr.replace(/&quot;/g,'"')); } catch(e) { return; }
+function replaceCollection(removeIdx) {
+  const newData = window._replaceNewData;
+  if(!newData) { toast('오류: 데이터 없음'); return; }
   const col = getMyCollection();
+  if(removeIdx < 0 || removeIdx >= col.length) return;
   col.splice(removeIdx, 1, newData);
   saveCollection(col);
+  window._replaceNewData = null;
   cm();
   toast('✅ 도감이 업데이트됐어요!');
   vib(100);

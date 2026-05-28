@@ -2802,7 +2802,7 @@ async function callAI(prompt, maxTokens=300, _retry=0) {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       contents: [{parts: [{text: prompt}]}],
-      generationConfig: {maxOutputTokens: maxTokens, temperature: 0.7}
+      generationConfig: {maxOutputTokens: maxTokens, temperature: 0.8}
     })
   });
   if(resp.status === 429) {
@@ -3306,12 +3306,12 @@ async function aiFillPack(packId) {
 
   const existSet = new Set((p.words||[]).map(w=>w.en.toLowerCase()));
   let added = 0;
-  const batchSize = 30; // 429 방지: 한 번에 30개
+  const batchSize = 100; // 요청 횟수 최소화 (1000개 = 10회)
 
   try {
     while(added < need) {
       const cnt = Math.min(batchSize, need - added);
-      const existList = [...existSet].slice(-60).join(', ');
+      const existList = [...existSet].slice(-50).join(', ');
 
       const prompt = `영어 단어 ${cnt}개를 JSON 배열로만 반환. 다른 텍스트 없이 순수 JSON만.
 팩 테마: "${p.name}" (카테고리: ${p.cat})
@@ -3320,7 +3320,7 @@ async function aiFillPack(packId) {
 형식: [{"en":"word","kr":"한국어뜻","ph":"[발음기호]","ex":"영어예문","img":"관련이모지"}]`;
 
       let text;
-      try { text = await callAI(prompt, 4000); } catch(e) { console.warn('callAI 실패:', e.message); break; }
+      try { text = await callAI(prompt, 8192); } catch(e) { console.warn('callAI 실패:', e.message); break; }
 
       let ws;
       try { ws = JSON.parse(text); }
@@ -3344,7 +3344,7 @@ async function aiFillPack(packId) {
       if(btn) btn.textContent = `⏳ ${currentCount+added}/1000`;
 
       if(batchAdded === 0) break;
-      await new Promise(r=>setTimeout(r,3000)); // 3초 간격으로 429 방지
+      await new Promise(r=>setTimeout(r,6000)); // 6초 간격 (무료 RPM: 15회/분 = 4초/회)
     }
 
     // Firebase 저장

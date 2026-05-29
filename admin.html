@@ -3057,37 +3057,65 @@ function filterPacks(v) {
   });
 }
 
-// 팩 이미지 업로드
+// 팩 이미지 업로드 - 나비 도감과 동일: 압축 후 base64로 Firestore 저장
 async function pkImgUpload(input, prevId, hiddenId) {
   const file = input.files[0];
   if(!file) return;
-  if(file.size > 200*1024) { toast('200KB 이하 이미지를 사용하세요 (현재: '+Math.round(file.size/1024)+'KB)','err'); input.value=''; return; }
-  const reader = new FileReader();
-  reader.onload = async function(e) {
+  input.value = '';
+
+  if(!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+    toast('JPG, PNG, WebP만 지원합니다','err'); return;
+  }
+  if(file.size > 5 * 1024 * 1024) {
+    toast('5MB 이하 이미지를 사용해주세요','err'); return;
+  }
+
+  toast('⏳ 이미지 압축 중...','ok');
+
+  // 이미지 압축 (캔버스 사용)
+  const compress = (f, maxW, quality) => new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(f);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxW / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if(!blob) { rej(new Error('압축 실패')); return; }
+        res({blob, dataUrl: canvas.toDataURL('image/jpeg', quality)});
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = rej;
+    img.src = url;
+  });
+
+  try {
+    // 400px로 압축
+    let result = await compress(file, 400, 0.85);
+    // 아직 크면 더 압축
+    if(result.blob.size > 80 * 1024) result = await compress(file, 300, 0.75);
+    if(result.blob.size > 100 * 1024) result = await compress(file, 200, 0.65);
+
+    const dataUrl = result.dataUrl;
+
+    // 미리보기 업데이트
     const prev = document.getElementById(prevId);
-    if(prev) prev.outerHTML = '<img id="'+prevId+'" src="'+e.target.result+'" style="width:70px;height:70px;object-fit:cover;border-radius:12px;border:2px solid #1E5FA5">';
-    try {
-      if(typeof firebase!=='undefined' && firebase.storage) {
-        const ref = firebase.storage().ref('pack_images/'+Date.now()+'_'+file.name);
-        const snap = await ref.put(file);
-        const url = await snap.ref.getDownloadURL();
-        const hid = document.getElementById(hiddenId);
-        if(hid) hid.value = url;
-        const prev2 = document.getElementById(prevId);
-        if(prev2) prev2.src = url;
-        toast('이미지 업로드 완료 ✅','ok');
-      } else {
-        const hid = document.getElementById(hiddenId);
-        if(hid) hid.value = e.target.result;
-      }
-    } catch(err) {
-      const hid = document.getElementById(hiddenId);
-      if(hid) hid.value = e.target.result;
-      toast('Storage 업로드 실패, 로컬 사용','err');
-    }
-  };
-  reader.readAsDataURL(file);
+    if(prev) prev.outerHTML = '<img id="'+prevId+'" src="'+dataUrl+'" style="width:70px;height:70px;object-fit:cover;border-radius:12px;border:2px solid #1E5FA5">';
+
+    // hidden input에 저장 (저장 버튼 누르면 Firestore에 저장됨)
+    const hid = document.getElementById(hiddenId);
+    if(hid) hid.value = dataUrl;
+
+    toast('✅ 이미지 준비 완료! 저장 버튼을 눌러주세요 ('+Math.round(result.blob.size/1024)+'KB)','ok');
+  } catch(e) {
+    toast('이미지 처리 실패: '+e.message,'err');
+  }
 }
+
 
 function pkImgClear(prevId, hiddenId, emoji) {
   const prev = document.getElementById(prevId);

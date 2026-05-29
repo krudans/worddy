@@ -173,7 +173,7 @@ body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(-
 .lbadge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);cursor:pointer}
 .xpbar{height:6px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden}
 .xpfill{height:100%;background:#fff;border-radius:3px;transition:width .5s}
-.body{flex:1;min-height:0;overflow-y:auto;overflow-x:visible;-webkit-overflow-scrolling:touch;width:100%;position:relative;padding-bottom:70px}
+.body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;width:100%;position:relative;padding-bottom:70px}
 .body::-webkit-scrollbar{display:none}
 /* ── 나비 날갯짓 애니메이션 ── */
 @keyframes bf-fly {
@@ -1648,7 +1648,7 @@ function downloadButterflyCard(bId) {
 }
 
 // ── 도감 수집 시스템 ──
-const MAX_COLLECTION = 10;
+const MAX_COLLECTION = 15;
 
 function getMyCollection() {
   if(Array.isArray(S._collection)) return S._collection;
@@ -1898,132 +1898,132 @@ function resetOwnedPacks() {
 }
 function rMarket() {
   const _allPacks = S._marketPacks||[];
+  // 중복 제거 (id 기준)
   const seen = new Set();
   const packs = _allPacks.filter(p=>{if(seen.has(p.id))return false;seen.add(p.id);return true;});
   const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
   const ownedPacks = S._ownedPacks||[];
-  const mktSort = S._mktSort||'name';
+  const mktSort = S._mktSort||'kr';
   const selCat = S._mktCat||'전체';
+  console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
-  const catOrder = ['전체','📺 영미드라마','💬 회화·표현','🎯 주제별','✏️ 시험대비','📚 수준별','📖 도서'];
-  const extraCats = [...new Set(packs.map(p=>p.cat||'기타'))].filter(c=>!catOrder.includes(c));
-  const cats = [...catOrder.filter(c=>c==='전체'||packs.some(p=>(p.cat||'기타')===c)), ...extraCats];
+  // 카테고리 추출
+  const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
   let filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
+  // 정렬 적용
   if(mktSort==='name') filtered = filtered.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  else if(mktSort==='words') filtered = filtered.slice().sort((a,b)=>(b._wordCount||0)-(a._wordCount||0));
+  else if(mktSort==='words') filtered = filtered.slice().sort((a,b)=>((b.words||[]).length||(b.count||0))-((a.words||[]).length||(a.count||0)));
   else if(mktSort==='owned') filtered = filtered.slice().sort((a,b)=>{ const ao=ownedPacks.includes(a.id),bo=ownedPacks.includes(b.id); return ao===bo?0:ao?-1:1; });
 
-  const total = filtered.length;
-  const CHUNK = Math.max(1, Math.ceil(total / 10));
-  const shownChunks = S._mktChunks || 1;
-  const shownCount = Math.min(shownChunks * CHUNK, total);
-  const pct = total > 0 ? Math.round((shownCount / total) * 100) : 100;
-  const visiblePacks = filtered.slice(0, shownCount);
-  const hasMore = shownCount < total;
-
-  const sortBtns = [['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
-    const v=item[0],lb=item[1],active=mktSort===v;
-    return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'#1E5FA5':'var(--border,#E5E7EB)')+';background:'+(active?'#EFF6FF':'var(--bg-card,#fff)')+';color:'+(active?'#1E5FA5':'var(--text2,#374151)')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
+  // 정렬 버튼 HTML
+  const sortBtns = [['kr','기본'],['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
+    var v=item[0],lb=item[1],active=mktSort===v;
+    return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
   }).join('');
 
-  let html = '<div class="pad" style="padding-bottom:24px">';
-  html += '<div style="background:linear-gradient(135deg,'+petCol.main+','+petCol.main+'bb);border-radius:20px;padding:16px;color:#fff;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:18px;font-weight:900">🛒 단어 마켓</div><div style="font-size:12px;opacity:.8;margin-top:2px">총 '+total+'개 팩</div></div>'+(ownedPacks.length > 0 ? '<button onclick="resetOwnedPacks()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:4px 10px;font-size:10px;color:#fff;cursor:pointer;font-weight:600">보유 초기화</button>' : '')+'</div><div style="margin-top:10px"><div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:4px"><span>'+shownCount+'/'+total+'개 표시</span><span>'+pct+'%</span></div><div style="height:5px;background:rgba(255,255,255,.2);border-radius:10px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#fff;border-radius:10px;transition:width .4s"></div></div></div></div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){const active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';S._mktChunks=1;go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'var(--border,#E5E7EB)')+';background:'+(active?'#EFF6FF':'var(--bg-card,#fff)')+';color:'+(active?'#1E5FA5':'var(--text2,#374151)')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+cat+'</button>';}).join('') + '</div>';
-  html += '<div style="display:flex;gap:5px;margin-bottom:8px">'+sortBtns+'<button onclick="S._marketPacks=null;S._mktChunks=1;loadMarketPacks().then(()=>go())" style="margin-left:auto;padding:4px 10px;border-radius:14px;border:1px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);color:var(--text3,#9CA3AF);font-size:11px;cursor:pointer">🔄</button></div>';
+  let html = `<div class="pad" style="padding-bottom:24px">
+    <div style="background:linear-gradient(135deg,${petCol.main},${petCol.main}bb);border-radius:20px;padding:16px;color:#fff;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:18px;font-weight:900">🛒 단어 마켓</div>
+          <div style="font-size:12px;opacity:.8;margin-top:2px">관리자가 엄선한 단어팩을 내 단어장에 추가해요</div>
+        </div>
+        ${ownedPacks.length > 0 ? `<button onclick="resetOwnedPacks()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:4px 10px;font-size:10px;color:#fff;cursor:pointer;font-weight:600">보유 초기화</button>` : ''}
+      </div>
+    </div>`;
 
-  if(!total) {
-    html += '<div style="text-align:center;padding:48px 20px"><div style="font-size:48px">📦</div><div style="font-size:15px;font-weight:700;color:var(--text1,#111);margin-top:12px">팩이 없어요</div></div>';
+  // 새로고침 버튼
+
+  // 카테고리 탭 + 정렬
+  html += '<div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;scrollbar-width:none;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+  html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
+    html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
+
+  if(!packs.length) {
+    html += `<div style="text-align:center;padding:48px 20px">
+      <div style="font-size:48px;margin-bottom:12px">📦</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text1,var(--text1,#111111));margin-bottom:6px">아직 단어팩이 없어요</div>
+      <div style="font-size:12px;color:var(--text3,var(--text3,#9CA3AF))">관리자가 단어팩을 등록하면 여기에 표시돼요</div>
+    </div>`;
   } else {
-    html += '<div style="display:flex;flex-direction:column;gap:10px">';
-    visiblePacks.forEach(pk => {
-      const owned = ownedPacks.includes(pk.id);
-      const wc = pk._wordCount||(pk.words||[]).length||pk.count||0;
-      html += '<div style="background:var(--bg-card,#fff);border-radius:16px;border:1.5px solid '+(owned?petCol.main+'44':'var(--border,#E5E7EB)')+';padding:14px"><div style="display:flex;align-items:center;gap:12px"><div style="font-size:32px;flex-shrink:0">'+(pk.emoji||'📚')+'</div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text1,#111);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+pk.name+'</div><div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">'+(pk.cat||'기타')+' · <b style="color:var(--point,#1E5FA5)">'+wc+'</b>개 단어</div></div><div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+(owned?'<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 10px;font-size:11px;font-weight:700">✅ 보유</span><button onclick="removePack(\''+pk.id+'\');event.stopPropagation()" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:20px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">🗑</button>':'<button onclick="downloadPack(\''+pk.id+'\');event.stopPropagation()" style="background:'+petCol.main+';color:#fff;border:none;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer">+ 담기</button>')+'</div></div>'+((!owned)?'<div onclick="mktPreview(\''+pk.id+'\',this)" style="cursor:pointer;font-size:11px;color:'+petCol.main+';font-weight:700;margin-top:10px">📖 미리보기 ▾</div><div id="mkt-prev-'+pk.id+'" style="display:none"></div>':'')+'</div>';
-    });
-    html += '</div>';
-    if(hasMore) {
-      const remaining = total - shownCount;
-      html += '<div style="margin-top:14px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3,#9CA3AF);margin-bottom:5px"><span>'+shownCount+'개 표시 · '+remaining+'개 남음</span><span style="color:var(--point,#1E5FA5);font-weight:700">'+pct+'%</span></div><div style="height:4px;background:var(--bg-sub,#F3F4F6);border-radius:10px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+pct+'%;background:'+petCol.main+';border-radius:10px"></div></div><button onclick="S._mktChunks='+(shownChunks+1)+';go()" style="width:100%;padding:12px;background:var(--bg-sub,#F3F4F6);border:1.5px solid var(--border,#E5E7EB);border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text2,#374151)">🔽 다음 '+Math.min(remaining,CHUNK)+'개 더 보기</button></div>';
-    } else if(total > CHUNK) {
-      html += '<div style="text-align:center;padding:8px;font-size:11px;color:var(--text3,#9CA3AF)">✅ 전체 '+total+'개 표시 완료</div>';
+    // 카테고리 탭
+    if(cats.length > 2) {
+      html += `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px">
+        ${cats.map(cat=>`<button onclick="S._mktCat='${cat}';go()" style="background:${selCat===cat?petCol.main:'var(--bg-sub,var(--bg-sub,#F3F4F6))'};color:${selCat===cat?'#fff':'var(--text2,var(--text2,#374151))'};border:1.5px solid ${selCat===cat?petCol.main:'var(--border,var(--border,#E5E7EB))'};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">${cat}</button>`).join('')}
+      </div>`;
     }
+
+    // 팩 목록
+    html += `<div style="display:flex;flex-direction:column;gap:10px">`;
+    filtered.forEach(pk => {
+      const owned = ownedPacks.includes(pk.id);
+      const wordCount = (pk.words||[]).length;
+      const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
+      html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:14px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
+          <div style="font-size:36px">${pk.emoji||'📚'}</div>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:800;color:var(--text1,var(--text1,#111111))">${pk.name}</div>
+            <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">
+              ${pk.cat||'기타'} · ${wordCount}개 단어
+            </div>
+            ${preview?`<div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">${preview}...</div>`:''}
+          </div>
+          ${owned
+            ? `<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700">✅ 보유</span>
+              <button onclick="removePack('${pk.id}')" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">🗑 삭제</button>
+            </div>`
+            : `<button onclick="downloadPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
+        </div>
+        ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
+        <div id="preview-${pk.id}" style="display:none;margin-top:10px">
+          <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">영어</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">한국어</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
+              </tr></thead>
+              <tbody>
+${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}"> <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td> <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td> <td style="padding:6px 8px;color:#6B7280;max-width:200px"> ${(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.map(e=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px">${e}</div>`).join('');})()} </td> </tr>`).join('')}
+              ${wordCount>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${wordCount-10}개 더</td></tr>`:''}
+              </tbody>
+            </table>
+          </div>
+        </div>`:''}
+      </div>`;
+    });
+    html += `</div>`;
   }
-  html += '<button onclick="S.stab=\'books\';go(\'mybooks\')" style="width:100%;background:none;border:none;color:var(--text3,#9CA3AF);font-size:13px;cursor:pointer;padding:12px 0 0">← 단어장으로</button>';
+
+  html += `<button onclick="S.stab='books';go('mybooks')" style="width:100%;background:none;border:none;color:var(--text3,var(--text3,#9CA3AF));font-size:13px;cursor:pointer;padding:12px 0 0">← 단어장으로</button>`;
   html += '</div>';
   return html;
 }
+
 function togglePackPreview(packId) {
-  const btn = document.querySelector('[onclick*="togglePackPreview(\'"+packId+"\')"]') || {textContent:''};
-  mktPreview(packId, btn);
-}
-
-async function loadPackWords(packId) {
-  if(!S._marketPacksFullLoaded) S._marketPacksFullLoaded = new Set();
-  if(S._marketPacksFullLoaded.has(packId)) return;
-  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
-  if(!pk) return;
-  if(pk.words && pk.words.length > 0) { S._marketPacksFullLoaded.add(packId); return; }
-  if(typeof db === 'undefined') return;
-  const doc = await db.collection('packs').doc(packId).get();
-  if(doc.exists) {
-    pk.words = doc.data().words || [];
-    S._marketPacksFullLoaded.add(packId);
-  }
-}
-
-async function mktPreview(packId, btn) {
-  const el = document.getElementById('mkt-prev-'+packId);
+  const el = document.getElementById('preview-'+packId);
   if(!el) return;
-  if(el.style.display === 'block') {
-    el.style.display = 'none';
-    if(btn?.textContent !== undefined) btn.textContent = '📖 미리보기 ▾';
-    return;
-  }
-  if(btn?.textContent !== undefined) btn.textContent = '⏳ 불러오는 중...';
-  try { await loadPackWords(packId); } catch(e) {}
-  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
-  const words = pk?.words||[];
-  if(!words.length) {
-    if(btn?.textContent !== undefined) btn.textContent = '📖 미리보기 (0개)';
-    return;
-  }
-  el.innerHTML = '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border,#E5E7EB);margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg-sub,#F9FAFB)"><th style="padding:6px 8px;text-align:left">영어</th><th style="padding:6px 8px;text-align:left">한국어</th><th style="padding:6px 8px;text-align:left">예문</th></tr></thead><tbody>'
-    + words.slice(0,10).map((w,i)=>'<tr style="'+(i%2?'background:#FAFAFA':'')+'"><td style="padding:6px 8px;font-weight:700;font-family:monospace">'+(w.en||'')+'</td><td style="padding:6px 8px">'+(w.kr||'')+'</td><td style="padding:6px 8px;color:#6B7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(w.ex||'')+'</td></tr>').join('')
-    + (words.length>10?'<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+' + (words.length-10) + '개 더</td></tr>':'')
-    + '</tbody></table></div>';
-  el.style.display = 'block';
-  if(btn?.textContent !== undefined) btn.textContent = '📖 미리보기 ▴';
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
 }
 
 
-async function buyPack(packId) {
+function buyPack(packId) {
   const pk = (S._marketPacks||[]).find(p=>p.id===packId);
   if(!pk) { toast('팩을 찾을 수 없어요'); return; }
   if(!S._ownedPacks) S._ownedPacks = [];
   if(S._ownedPacks.includes(packId)) { toast('이미 보유 중이에요'); return; }
-  // 단어 아직 안 로드됐으면 먼저 로드
-  if(!pk.words || !pk.words.length) {
-    const wordCount = pk._wordCount || pk.count || 0;
-    document.getElementById('mr').innerHTML = `<div class="mbg"><div class="modal" style="text-align:center">
-      <div style="font-size:32px;margin-bottom:12px">⏳</div>
-      <div style="font-size:15px;font-weight:700;margin-bottom:8px">${pk.name}</div>
-      <div style="font-size:13px;color:var(--text3,#9CA3AF);margin-bottom:16px">단어 ${wordCount}개 불러오는 중...</div>
-      <div style="height:6px;background:var(--bg-sub,#F3F4F6);border-radius:10px;overflow:hidden">
-        <div style="height:100%;width:60%;background:#1E5FA5;border-radius:10px;animation:pulse 1s infinite"></div>
-      </div>
-    </div></div>`;
-    await loadPackWords(packId);
-    document.getElementById('mr').innerHTML = '';
-  }
   const words = pk.words||[];
   if(!words.length) { toast('단어가 없는 팩이에요'); return; }
-  // 확인 모달
+
+  // 커스텀 확인 모달
   document.getElementById('mr').innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
     <div style="font-size:36px;margin-bottom:12px">${pk.emoji||'📦'}</div>
     <div style="font-size:16px;font-weight:800;margin-bottom:8px">${pk.name}</div>
-    <div style="font-size:13px;color:var(--text3,#6B7280);margin-bottom:20px">${words.length}개 단어를 내 단어장에 추가할까요?</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">${words.length}개 단어를 내 단어장에 추가할까요?</div>
     <div style="display:flex;gap:8px">
-      <button onclick="cm()" style="flex:1;padding:12px;background:var(--bg-sub,#F3F4F6);border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text2,#374151)">취소</button>
+      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
       <button onclick="cm();_doBuyPack('${packId}')" style="flex:1;padding:12px;background:#1E5FA5;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">추가</button>
     </div>
   </div></div>`;
@@ -2658,48 +2658,34 @@ ${['없음','적음','보통','많음','최다'].map((lb,i)=>` <div style="displ
 }
 
 // ── 마켓 단어팩 Firebase 로드 ──
-async function loadMarketPacks() {
-  const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
-  if(typeof db === 'undefined') { S._marketPacks = localPacks; return; }
-  try {
-    const snap = await Promise.race([
-      db.collection('packs').get(),
-      new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 8000))
-    ]);
-    const fbPacks = snap.docs
-      .map(d => {
-        const data = d.data();
-        const wc = (data.words||[]).length || data.count || 0;
-        const {words, ...meta} = data;
-        return {id: d.id, ...meta, _wordCount: wc, words: []};
-      })
-      .filter(p => p.active !== false && p.name);
-    const fbIds = new Set(fbPacks.map(p => p.id));
-    const localOnly = localPacks.filter(p => !fbIds.has(p.id));
-    S._marketPacks = fbPacks.length ? [...fbPacks, ...localOnly] : localPacks;
-    S._marketPacksFullLoaded = new Set();
-    console.log('[마켓] 로드 완료:', S._marketPacks.length + '개');
-  } catch(e) {
-    console.warn('[마켓] 실패:', e.message);
-    S._marketPacks = localPacks.length ? localPacks : [];
+async function loadMarketPacks(retryCount) {
+  retryCount = retryCount || 0;
+  if(typeof db === 'undefined') {
+    S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
+    return;
   }
-}
-
-async function loadPackWords(packId) {
-  if(!S._marketPacksFullLoaded) S._marketPacksFullLoaded = new Set();
-  if(S._marketPacksFullLoaded.has(packId)) return true;
-  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
-  if(!pk) return false;
-  if(pk.words && pk.words.length > 0) { S._marketPacksFullLoaded.add(packId); return true; }
   try {
-    const doc = await db.collection('packs').doc(packId).get();
-    if(doc.exists) {
-      pk.words = doc.data().words || [];
-      S._marketPacksFullLoaded.add(packId);
-      return true;
+    const [snap, delSnap] = await Promise.all([
+      db.collection('packs').get(),
+      db.collection('config').doc('deleted_packs').get().catch(()=>null)
+    ]);
+    const deletedIds = new Set(delSnap?.exists ? (delSnap.data()?.ids || []) : []);
+    const fbPacks = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.active !== false && p.name);
+    const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
+    const fbIds = new Set(fbPacks.map(p => p.id));
+    const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
+    S._marketPacks = [...fbPacks, ...localOnly];
+    console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
+  } catch(e) {
+    console.warn('[마켓] Firebase 로드 실패 (시도 ' + (retryCount+1) + '):', e.message);
+    if(retryCount < 4) {
+      // 1초, 2초, 4초, 8초 간격으로 최대 4회 재시도
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise(res => setTimeout(res, delay));
+      return loadMarketPacks(retryCount + 1);
     }
-  } catch(e) { console.warn('팩 로드 실패:', packId, e.message); }
-  return false;
+    S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
+  }
 }
 
 // ── 연속 학습 1시간 나비 보상 ──
@@ -3670,7 +3656,7 @@ function sv() {
       gamePlayCount:S.gamePlayCount||{},
       bestScores:S.bestScores||{},
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
-      collection:(S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]')).slice(0,MAX_COLLECTION),
+      collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       updatedAt: new Date().toISOString()
     };
     // throttle: 3초에 1번만
@@ -3683,7 +3669,7 @@ function sv() {
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장
-      db.collection('user_words').doc(uid).set(booksData, {merge:true})
+      db.collection('user_words').doc(uid).set(booksData, {merge:false})
         .catch(e=>console.warn('단어장 저장 오류',e));
       // 일별 백업 (하루 1번)
       const _bd = today();
@@ -4905,22 +4891,12 @@ function startApp() {
     } catch(e) {}
     // _ownedPacks는 users 컬렉션에서 이미 로드됨 (위의 loadWordsFromFirestore에서)
     // 별도 로드 불필요
-  }, 3000); // 마켓 팩 + 구매이력 로드
+  }, 1000); // 마켓 팩 + 구매이력 로드
   // 첫 실행 온보딩 투어
   if(!localStorage.getItem('wd-onboard')) {
     setTimeout(()=>showOnboarding(), 1500);
   }
-  // _ownedPacks 정리: 실제 단어장에 없는 팩은 제거
-  if(S._ownedPacks && S.books) {
-    const bookPackIds = new Set((S.books||[]).map(b=>b.packId).filter(Boolean));
-    const before = S._ownedPacks.length;
-    S._ownedPacks = S._ownedPacks.filter(id => bookPackIds.has(id));
-    if(S._ownedPacks.length !== before && typeof db !== 'undefined' && S.user?.uid) {
-      db.collection('user_packs').doc(S.user.uid).set({owned: S._ownedPacks},{merge:true}).catch(()=>{});
-      db.collection('users').doc(S.user.uid).update({_ownedPacks: S._ownedPacks}).catch(()=>{});
-    }
-  }
-    go('home');
+  go('home');
 }
 
 function showOnboarding() {
@@ -5099,8 +5075,8 @@ function go(tab,sub) {
         const isToday=(k===today30);
         const mm=k.slice(5,7), dd=k.slice(8,10);
         const dow=d.getDay();
-        const col=tot===0?'#F3F4F6':tot<=50?'#DBEAFE':tot<=100?'#93C5FD':tot<=150?'#3B82F6':tot<=200?'#1D4ED8':'#1E3A8A';
-        const tcol=tot===0?'#9CA3AF':tot<=50?'#1E40AF':'#fff';
+        const col=tot===0?'#F3F4F6':tot<5?'#BFDBFE':tot<15?'#60A5FA':tot<30?'#2563EB':'#1D4ED8';
+        const tcol=tot===0?'#C4A46B':tot<15?'#1E5FA5':'#fff';
         const dowColor=dow===0?'#ef4444':dow===6?'#3b82f6':'#9CA3AF';
         html+='<div style="display:flex;flex-direction:column;align-items:center;gap:1px">';
         html+='<div style="font-size:8px;color:'+dowColor+';font-weight:600">'+days[dow]+'</div>';
@@ -5930,7 +5906,7 @@ function rButterflyTab() {
 
   // ── 반려나비 도감 (나비 + 캐릭터 수집) ──
   const butterflies = getMyButterflies();
-  const myCol = getMyCollection().filter(b => b && b.id && b.lid).slice(0, MAX_COLLECTION); // 최대 MAX_COLLECTION개
+  const myCol = getMyCollection().filter(b => b && b.id && b.lid); // 유효 항목만
   // ── 반려나비 도감 섹션 ──
   html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px;margin-bottom:12px">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
@@ -7987,13 +7963,15 @@ function rHome() {
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#E5E7EB)">
       <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:8px">📆 최근 30일 학습 캘린더</div>
       <div id="cal30-${t}" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"></div>
-      <div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap">
-        <div style="width:12px;height:12px;border-radius:3px;background:#F3F4F6;border:1px solid #E5E7EB;flex-shrink:0"></div><span style="font-size:8px;color:#9CA3AF">0</span>
-        <div style="width:12px;height:12px;border-radius:3px;background:#DBEAFE;flex-shrink:0"></div><span style="font-size:8px;color:#9CA3AF">~50</span>
-        <div style="width:12px;height:12px;border-radius:3px;background:#93C5FD;flex-shrink:0"></div><span style="font-size:8px;color:#9CA3AF">~100</span>
-        <div style="width:12px;height:12px;border-radius:3px;background:#3B82F6;flex-shrink:0"></div><span style="font-size:8px;color:#9CA3AF">~150</span>
-        <div style="width:12px;height:12px;border-radius:3px;background:#1D4ED8;flex-shrink:0"></div><span style="font-size:8px;color:#9CA3AF">~200</span>
-        <div style="width:12px;height:12px;border-radius:3px;background:#1E3A8A;flex-shrink:0"></div><span style="font-size:8px;color:#9CA3AF">201+</span>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <span style="font-size:9px;color:#9CA3AF">미학습</span>
+        <div style="width:12px;height:12px;border-radius:3px;background:#F3F4F6;border:1px solid #E5E7EB"></div>
+        <div style="width:12px;height:12px;border-radius:3px;background:#BFDBFE"></div>
+        <div style="width:12px;height:12px;border-radius:3px;background:#60A5FA"></div>
+        <div style="width:12px;height:12px;border-radius:3px;background:#2563EB"></div>
+        <div style="width:12px;height:12px;border-radius:3px;background:#1D4ED8"></div>
+        <span style="font-size:9px;color:#9CA3AF">많음</span>
+        <span style="font-size:9px;color:#9CA3AF;margin-left:auto">숫자=학습량</span>
       </div>
     </div>
   </div>`)
@@ -8025,19 +8003,28 @@ function rHome() {
 
 // ── 홈 XP 순위 렌더링 ──
 async function getRankSnap(){
+  const _t = (typeof today==='function')?today():new Date(Date.now()+9*36e5).toISOString().slice(0,10);
+  try{
+    const snapDoc = await db.collection('rankings').doc('snapshot').get();
+    if(snapDoc.exists){ const sd=snapDoc.data(); if(sd.date===_t && Array.isArray(sd.users)){ return sd.users; } }
+  }catch(e){}
   try{
     const us = await db.collection('users').get();
+    const weekAgo = new Date(Date.now()-7*864e5+9*36e5).toISOString().slice(0,10);
+    const monthAgo = new Date(Date.now()-30*864e5+9*36e5).toISOString().slice(0,10);
     const arr = us.docs.map(function(d){
-      const x=d.data()||{};
-      const total = x._totalXp || x.xp || 0;
-      const day = x.xp || 0;
-      return {uid:d.id, nick:x.nick||'익명', streak:x.streak||0, day:day, week:total, month:total, total:total};
+      const x=d.data()||{}; const sl=x.sl||{};
+      const day=(sl[_t]&&sl[_t].xp)||0;
+      const week=Object.keys(sl).filter(function(k){return k>=weekAgo;}).reduce(function(s,k){return s+((sl[k]&&sl[k].xp)||0);},0);
+      const month=Object.keys(sl).filter(function(k){return k>=monthAgo;}).reduce(function(s,k){return s+((sl[k]&&sl[k].xp)||0);},0);
+      const total=Object.values(sl).reduce(function(s,v){return s+((v&&v.xp)||0);},0)||x._totalXp||x.xp||0;
+      return {uid:d.id, nick:x.nick||'익명', streak:x.streak||0, day:day, week:week, month:month, total:total};
     });
     arr.sort(function(a,b){return b.total-a.total;});
+    try{ await db.collection('rankings').doc('snapshot').set({date:_t, users:arr, updatedAt:Date.now()}); }catch(e){}
     return arr;
   }catch(e){ return []; }
 }
-
 async function renderHomeRank() {
   const el = document.getElementById('home-rank-body');
   const myEl = document.getElementById('home-my-rank');
@@ -8064,8 +8051,6 @@ async function renderHomeRank() {
 
   try {
     const _snapUsers = await getRankSnap();
-    const all = [];
-    const myUid = S.user?.uid || '';
     _snapUsers.forEach(function(u){
       const xp = (u[mode]||0);
       all.push({uid:u.uid, nick:u.nick||'익명', xp:xp, streak:u.streak||0});
@@ -8241,18 +8226,13 @@ function createBook() {
 }
 
 function deleteBook(name) {
-  const book = (S.books||[]).find(b=>b.name===name);
-  S.books = (S.books||[]).filter(b=>b.name!==name);
-  // 마켓 팩이면 _ownedPacks에서도 제거
-  if(book?.packId && S._ownedPacks) {
-    S._ownedPacks = S._ownedPacks.filter(id=>id!==book.packId);
-    if(typeof db!=='undefined'&&S.user?.uid)
-      db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
+  // confirm 없이 바로 삭제 (showBookMenu에서 이미 확인 모달을 거침)
+  S.books=S.books.filter(b=>b.name!==name);
+  if(S.currentBook===name){
+    S.currentBook='내 단어장'; S.idx=0;
   }
-  if(S.currentBook===name){ S.currentBook='내 단어장'; S.idx=0; }
   sv();
 }
-
 
 // ── 목표 설정 ──
 function showGoal() {
@@ -8946,23 +8926,18 @@ function rStudy() {
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
-    if(S.stab==='market') {
-    if(S._marketPacks === null || S._marketPacks === undefined) {
-      S._marketPacks = undefined;
-      loadMarketPacks().then(()=>go()).catch(()=>{ S._marketPacks=[]; go(); });
-      return `<div class="pad" style="padding:60px 20px;text-align:center">
-        <div style="font-size:44px;margin-bottom:14px">🛒</div>
-        <div style="font-size:15px;font-weight:800;color:var(--text1,#111);margin-bottom:6px">단어 마켓 불러오는 중</div>
-        <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-bottom:20px">잠시만 기다려주세요</div>
-        <div style="height:6px;background:var(--bg-sub,#F3F4F6);border-radius:10px;overflow:hidden;max-width:180px;margin:0 auto">
-          <div style="height:100%;background:#1E5FA5;border-radius:10px;animation:mktpg 1.5s ease-in-out infinite alternate"></div>
-        </div>
-        <style>@keyframes mktpg{from{width:15%;margin-left:0}to{width:70%;margin-left:15%}}</style>
-      </div>`;
+  if(S.stab==='market') {
+    if(!S._marketPacks || S._marketPacks.length === 0) {
+      if(!S._mktLoading) {
+        S._mktLoading = true;
+        loadMarketPacks().then(()=>{ S._mktLoading=false; go(); }).catch(()=>{ S._mktLoading=false; go(); });
+      }
+      return `<div class="pad" style="text-align:center;padding:60px 20px;color:var(--text3,#9CA3AF)"><div style="font-size:40px;margin-bottom:12px">🔄</div><div style="font-size:14px;font-weight:700;color:var(--text2,#374151);margin-bottom:6px">단어팩 불러오는 중...</div><div style="font-size:12px">네트워크 상태에 따라 잠시 걸릴 수 있어요</div></div>`;
     }
+    S._mktLoading = false;
     return rMarket();
   }
-    if(S.stab==='add')   return booksBar+tabs+rAdd();
+  if(S.stab==='add')   return booksBar+tabs+rAdd();
   if(S.stab==='list')  return booksBar+tabs+rList();
   return booksBar+tabs+rList();
 }
@@ -12807,7 +12782,7 @@ auth.onAuthStateChanged(async user => {
           if(!_isFirebaseValid) {
             console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
           } else {
-            ['xp','lid','streak','nick',
+            ['xp','lid','streak','nick','words','books',
              'markMap','_achievements','_acc','_equipped','_ownedPacks',
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
@@ -12889,7 +12864,7 @@ auth.onAuthStateChanged(async user => {
           if(Array.isArray(_data.collection)) {
             const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
             const fbIds = new Set(_data.collection.map(x=>x.id));
-            const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))].slice(0, MAX_COLLECTION);
+            const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))];
             S._collection = merged;
             localStorage.setItem('bw-collection', JSON.stringify(merged));
           }
@@ -12951,7 +12926,7 @@ auth.onAuthStateChanged(async user => {
           if(!_isFirebaseValid) {
             console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
           } else {
-            ['xp','lid','streak','nick',
+            ['xp','lid','streak','nick','words','books',
              'markMap','_achievements','_acc','_equipped','_ownedPacks',
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
@@ -13088,7 +13063,7 @@ auth.onAuthStateChanged(async user => {
       db.collection('users').doc(user.uid).get().then(doc => {
         if(doc.exists) {
           const data = doc.data();
-          ['xp','lid','streak','nick',
+          ['xp','lid','streak','nick','words','books',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'

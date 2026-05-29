@@ -2622,11 +2622,6 @@ ${['없음','적음','보통','많음','최다'].map((lb,i)=>` <div style="displ
 async function loadMarketPacks() {
   const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
   if(typeof db === 'undefined') { S._marketPacks = localPacks; return; }
-  const done = (packs) => {
-    S._marketPacks = packs.length ? packs : localPacks.length ? localPacks : [];
-    S._marketPacksFullLoaded = new Set();
-    console.log('[마켓] 완료:', S._marketPacks.length+'개');
-  };
   try {
     const snap = await Promise.race([
       db.collection('packs').get(),
@@ -2637,12 +2632,15 @@ async function loadMarketPacks() {
       .filter(p=>p.active!==false&&p.name);
     const fbIds = new Set(fbPacks.map(p=>p.id));
     const localOnly = localPacks.filter(p=>!fbIds.has(p.id));
-    done([...fbPacks, ...localOnly]);
+    S._marketPacks = fbPacks.length ? [...fbPacks,...localOnly] : localPacks;
+    S._marketPacksFullLoaded = new Set();
+    console.log('[마켓] 로드 완료:', S._marketPacks.length+'개');
   } catch(e) {
-    console.warn('[마켓] 실패, 로컬:', e.message);
-    done(localPacks);
+    console.warn('[마켓] 실패:', e.message);
+    S._marketPacks = localPacks.length ? localPacks : [];
   }
 }
+
 async function loadPackWords(packId) {
   if(!S._marketPacksFullLoaded) S._marketPacksFullLoaded = new Set();
   if(S._marketPacksFullLoaded.has(packId)) return true;

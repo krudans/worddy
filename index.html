@@ -2680,66 +2680,30 @@ async function loadMarketPacks() {
 
     // ── 1단계: 카테고리·제목·단어수만 먼저 (words 필드 제외하여 빠르게) ──
     const [snap, delSnap] = await Promise.all([
-      db.collection('packs').select(
-        'name','cat','category','categoryOrder','emoji','desc','description',
-        'count','active','hidden','price'
-      ).get(),
+      db.collection('packs').get(),
       db.collection('config').doc('deleted_packs').get().catch(()=>null)
     ]);
 
     _mktProgress(40, '팩 목록 처리 중...');
     const deletedIds = new Set(delSnap?.exists ? (delSnap.data()?.ids || []) : []);
     const fbPacksMeta = snap.docs
-      .map(d => {
-        const data = d.data();
-        return {
-          id: d.id, ...data,
-          words: [],
-          _wordsLoaded: false,
-          // 1단계에서는 count 필드를 단어수로 사용 (words 배열 없음)
-          _metaCount: data.count || 0
-        };
-      })
+      .map(d => ({
+        id: d.id, ...d.data(),
+        _wordsLoaded: true  // get()으로 전체 로드됨
+      }))
       .filter(p => p.active !== false && !p.hidden && p.name);
 
     const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacksMeta.map(p => p.id));
     const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
 
-    // 1단계 결과로 즉시 화면 렌더링
+    // Firebase 전체 로드 완료 - 즉시 반영
     S._marketPacks = [...fbPacksMeta, ...localOnly];
     S._mktLoading = false;
-    _mktProgress(60, '화면 표시 중...');
-    go(); // 카테고리+제목만으로 먼저 보여줌
-
-    // ── 2단계: 단어 내용 백그라운드 로드 (팩당 순차 로드) ──
-    const toLoad = fbPacksMeta.filter(p => !p._wordsLoaded);
-    const total = toLoad.length;
-    let done = 0;
-
-    for(const metaPack of toLoad) {
-      try {
-        const doc = await db.collection('packs').doc(metaPack.id).get();
-        if(doc.exists) {
-          const data = doc.data();
-          // S._marketPacks 내 해당 팩 업데이트
-          const idx = S._marketPacks.findIndex(p => p.id === metaPack.id);
-          if(idx !== -1) {
-            S._marketPacks[idx] = {...S._marketPacks[idx], ...data, _wordsLoaded: true};
-          }
-        }
-        done++;
-        const pct = 60 + Math.round((done / total) * 40);
-        _mktProgress(pct, `단어 로딩 중... (${done}/${total})`);
-      } catch(e) {
-        done++;
-      }
-    }
-
     _mktProgress(100, '완료!');
-    setTimeout(()=>{ _mktProgress(0,''); }, 800);
-    go(); // 완료 후 최종 렌더링
-    console.log('[마켓] 전체 로드 완료:', S._marketPacks.length + '개');
+    setTimeout(()=>{ _mktProgress(0,''); }, 600);
+    go();
+    console.log('[마켓] 팩 로드 완료:', S._marketPacks.length + '개');
 
   } catch(e) {
     console.warn('마켓 Firebase 로드 실패, 로컬 사용:', e.message);

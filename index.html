@@ -1953,7 +1953,46 @@ function rMarket() {
   return html;
 }
 function togglePackPreview(packId) {
-  // 구버전 호환 - mktPreview 사용
+  const btn = document.querySelector('[onclick*="togglePackPreview(\'"+packId+"\')"]') || {textContent:''};
+  mktPreview(packId, btn);
+}
+
+async function loadPackWords(packId) {
+  if(!S._marketPacksFullLoaded) S._marketPacksFullLoaded = new Set();
+  if(S._marketPacksFullLoaded.has(packId)) return;
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  if(!pk) return;
+  if(pk.words && pk.words.length > 0) { S._marketPacksFullLoaded.add(packId); return; }
+  if(typeof db === 'undefined') return;
+  const doc = await db.collection('packs').doc(packId).get();
+  if(doc.exists) {
+    pk.words = doc.data().words || [];
+    S._marketPacksFullLoaded.add(packId);
+  }
+}
+
+async function mktPreview(packId, btn) {
+  const el = document.getElementById('mkt-prev-'+packId);
+  if(!el) return;
+  if(el.style.display === 'block') {
+    el.style.display = 'none';
+    if(btn?.textContent !== undefined) btn.textContent = '📖 미리보기 ▾';
+    return;
+  }
+  if(btn?.textContent !== undefined) btn.textContent = '⏳ 불러오는 중...';
+  try { await loadPackWords(packId); } catch(e) {}
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  const words = pk?.words||[];
+  if(!words.length) {
+    if(btn?.textContent !== undefined) btn.textContent = '📖 미리보기 (0개)';
+    return;
+  }
+  el.innerHTML = '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border,#E5E7EB);margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg-sub,#F9FAFB)"><th style="padding:6px 8px;text-align:left">영어</th><th style="padding:6px 8px;text-align:left">한국어</th><th style="padding:6px 8px;text-align:left">예문</th></tr></thead><tbody>'
+    + words.slice(0,10).map((w,i)=>'<tr style="'+(i%2?'background:#FAFAFA':'')+'"><td style="padding:6px 8px;font-weight:700;font-family:monospace">'+(w.en||'')+'</td><td style="padding:6px 8px">'+(w.kr||'')+'</td><td style="padding:6px 8px;color:#6B7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(w.ex||'')+'</td></tr>').join('')
+    + (words.length>10?'<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+' + (words.length-10) + '개 더</td></tr>':'')
+    + '</tbody></table></div>';
+  el.style.display = 'block';
+  if(btn?.textContent !== undefined) btn.textContent = '📖 미리보기 ▴';
 }
 
 
@@ -8192,13 +8231,18 @@ function createBook() {
 }
 
 function deleteBook(name) {
-  // confirm 없이 바로 삭제 (showBookMenu에서 이미 확인 모달을 거침)
-  S.books=S.books.filter(b=>b.name!==name);
-  if(S.currentBook===name){
-    S.currentBook='내 단어장'; S.idx=0;
+  const book = (S.books||[]).find(b=>b.name===name);
+  S.books = (S.books||[]).filter(b=>b.name!==name);
+  // 마켓 팩이면 _ownedPacks에서도 제거
+  if(book?.packId && S._ownedPacks) {
+    S._ownedPacks = S._ownedPacks.filter(id=>id!==book.packId);
+    if(typeof db!=='undefined'&&S.user?.uid)
+      db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
   }
+  if(S.currentBook===name){ S.currentBook='내 단어장'; S.idx=0; }
   sv();
 }
+
 
 // ── 목표 설정 ──
 function showGoal() {

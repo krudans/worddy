@@ -1959,9 +1959,12 @@ function rMarket() {
       const owned = ownedPacks.includes(pk.id);
       const wordCount = (pk.words||[]).length;
       const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
+      const pkIcon = pk.imageUrl
+        ? `<img src="${pk.imageUrl}" style="width:46px;height:46px;border-radius:12px;object-fit:cover;flex-shrink:0">`
+        : `<div style="font-size:36px;flex-shrink:0">${pk.emoji||'📚'}</div>`;
       html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:14px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
-          <div style="font-size:36px">${pk.emoji||'📚'}</div>
+          ${pkIcon}
           <div style="flex:1">
             <div style="font-size:15px;font-weight:800;color:var(--text1,var(--text1,#111111))">${pk.name}</div>
             <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">
@@ -2040,7 +2043,7 @@ function _doBuyPack(packId) {
     const newW = words.filter(w=>!existing.words.find(x=>x.en===w.en));
     existing.words = [...existing.words, ...newW];
   } else {
-    S.books.push({ name:pk.name, emoji:pk.emoji||'📦', words:[...words], markMap:{}, srsMap:{}, learned:[], fromMarket:true, packId:packId });
+    S.books.push({ name:pk.name, packId:packId, fromMarket:true, markMap:{}, srsMap:{}, learned:[] }); // emoji/imageUrl/words는 항상 Firebase에서 조회
   }
   S._ownedPacks.push(packId);
   if(typeof db !== 'undefined' && S.user?.uid) {
@@ -3559,12 +3562,43 @@ function load() {
   setTimeout(()=>{
   }, 150);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
+  S.books.forEach(b => { if(b.packId && b.words !== undefined) delete b.words; }); // 마켓팩 구 단어 즉시 제거
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
   try { S.alStudy = JSON.parse(localStorage.getItem('wd-als')||JSON.stringify(S.alStudy)); } catch(e){}
   try { S.alGoal = JSON.parse(localStorage.getItem('wd-alg')||JSON.stringify(S.alGoal)); } catch(e){}
   try { S.alStreak = JSON.parse(localStorage.getItem('wd-alst')||JSON.stringify(S.alStreak)); } catch(e){}
 }
+// ── 마켓팩 단어는 항상 Firebase _marketPacks에서 실시간 조회 ──
+function getBookWords(book) {
+  if (!book) return [];
+  if (book.packId) {
+    // 마켓팩은 오직 Firebase _marketPacks에서만 조회. 로컬 구 데이터 절대 사용 안 함
+    const livePack = (S._marketPacks || []).find(p => p.id === book.packId);
+    return livePack ? (livePack.words || []) : [];
+  }
+  return book.words || [];
+}
+function _booksForSave() {
+  return (S.books || []).map(b => {
+    if (b.packId) { const {words, ...rest} = b; return rest; }
+    return b;
+  });
+}
+function _migratePackWords() {
+  // 매번 실행 - 플래그 없음. 마켓팩 단어는 메모리/로컬 양쪽에서 항상 제거
+  let changed = false;
+  (S.books || []).forEach(b => {
+    if (b.packId && b.words !== undefined) { delete b.words; changed = true; }
+  });
+  if (changed) {
+    localStorage.setItem('wd-bks', JSON.stringify(S.books));
+    console.log('[마이그레이션] 마켓팩 단어 메모리+로컬 제거 완료');
+  }
+  // 혹시 남아있는 플래그도 제거
+  localStorage.removeItem('wd-pack-migrated');
+}
+
 function sv() {
   localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-xp',S.xp);
   localStorage.setItem('wd-st',S.streak); localStorage.setItem('wd-dt',S.lastDate);
@@ -3607,7 +3641,9 @@ function sv() {
   localStorage.setItem('wd-bs',JSON.stringify(S.bestScores||{}));
   localStorage.setItem('wd-gdc',JSON.stringify(S.gameDailyCount||{}));
   localStorage.setItem('wd-gpc',JSON.stringify(S.gamePlayCount||{}));
-  localStorage.setItem('wd-bks',JSON.stringify(S.books));
+  // 마켓팩은 packId만 저장, 단어는 Firebase packs에서 실시간 조회
+  const _booksToSave = (S.books||[]).map(b => b.packId ? (({words, ...rest}) => rest)(b) : b);
+  localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -3640,7 +3676,7 @@ function sv() {
 
     const saveData = {
       lid:S.lid, xp:S.xp, streak:S.streak, nick:S.nick,
-      words:S.words||[], books:S.books||[], currentBook:S.currentBook||'내 단어장',
+      words:S.words||[], books:(S.books||[]).map(b=>b.packId?(({words,...r})=>r)(b):b), currentBook:S.currentBook||'내 단어장',
       markMap:S.markMap||{}, learned:[...S.learned],
       _achievements:S._achievements||[], _acc:S._acc||[], _equipped:S._equipped||'',
       _ownedPacks:S._ownedPacks||[], alStudy:S.alStudy, alGoal:S.alGoal, alStreak:S.alStreak,
@@ -3665,7 +3701,7 @@ function sv() {
       // 메인 user 문서 저장 (단어 제외 - 용량 절약)
       const saveDataLite = {...saveData};
       // books/words는 별도 컬렉션에 저장 (Firestore 1MB 제한 방지)
-      const booksData = {books: S.books||[], words: S.words||[], updatedAt: new Date().toISOString()};
+      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: S.words||[], updatedAt: new Date().toISOString()};
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장
@@ -4878,6 +4914,7 @@ function startApp() {
   setTimeout(()=>syncProfileToFirebase(), 2000);
   setTimeout(async ()=>{
     await loadMarketPacks();
+    _migratePackWords(); // 기존 마켓팩 단어 로컬 제거 (1회)
     loadFirebaseButterflies(); // Firebase 나비 로드
     // 날짜 초기화 (자정 지나면 공부시간 리셋)
     const _todayKey = new Date().toISOString().slice(0,10);
@@ -5097,7 +5134,7 @@ const LEARN_GAMES=['flip','quiz','fill','typing','wc','match','sentence','chain'
 
 function rLearnTab() {
   const allBooks = [{name:'내 단어장', words:S.words||[], markMap:S.markMap||{}, srsMap:S.srsMap||{}},
-    ...(S.books||[]).map(b=>({name:b.name, words:b.words||[], markMap:b.markMap||{}, srsMap:b.srsMap||{}}))];
+    ...(S.books||[]).map(b=>({name:b.name, words:getBookWords(b), markMap:b.markMap||{}, srsMap:b.srsMap||{}}))];
   const bookName = S.currentBook||'내 단어장';
   const curBook = allBooks.find(b=>b.name===bookName)||allBooks[0];
   const words = curBook?.words||[];
@@ -5159,7 +5196,7 @@ function rLearnTab() {
   <div style="padding:14px 14px 0;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E2E8F0)">
     <div style="position:relative;margin-bottom:12px">
       <select onchange="_selectBook(this.value);go('learn')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${(b.words||[]).length}개)</option>`).join('')}
+        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
@@ -5702,7 +5739,7 @@ function rGameOnlyTab() {
     <!-- 단어장 선택 -->
     <div style="position:relative;margin-bottom:10px">
       <select onchange="_selectBook(this.value);go('game')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:13px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${(b.words||[]).length}개)</option>`).join('')}
+        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
@@ -5808,7 +5845,7 @@ function rButterflyTab() {
   html += `<div style="margin-bottom:10px">
     <div style="position:relative">
       <select onchange="_selectBook(this.value);go('butterfly')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
-        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${(b.words||[]).length}개)</option>`).join('')}
+        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
     </div>
@@ -8963,7 +9000,7 @@ function _renderBookWordList(mr, bookName, searchQ) {
   window._bwlCurrentQ = searchQ || '';
   const allBooks = [{name:'내 단어장', words:S.words, markMap:S.markMap}, ...(S.books||[])];
   const bk = allBooks.find(function(b){return b.name===bookName;}) || allBooks[0];
-  const words = bk.words || [];
+  const words = getBookWords(bk);
   const bkMark = (bookName==='내 단어장') ? (S.markMap||{}) : (bk.markMap||S.markMap||{});
 
   const q = (searchQ||'').toLowerCase().trim();
@@ -9068,7 +9105,7 @@ function rStudyBooks() {
   const m1 = S.words.filter(w => (S.markMap||{})[w.en] === 1).length;
   const pct1 = S.words.length ? Math.min(100, Math.round(m1/S.words.length*100)) : 0;
   const totalAllWords = S.words.length + (S.books||[]).reduce((s,b)=>s+(b.words||[]).length,0);
-  const totalMemorized = m1 + (S.books||[]).reduce((s,b)=>s+((b.words||[]).filter(w=>(b.markMap||{})[w.en]===1).length),0);
+  const totalMemorized = m1 + (S.books||[]).reduce((s,b)=>s+(getBookWords(b).filter(w=>(b.markMap||{})[w.en]===1).length),0);
 
   let html = '<div style="display:flex;flex-direction:column;height:100%;background:var(--bg,#F8F9FA)">';
   html += `<div style="padding:14px 14px 10px;display:flex;align-items:center;justify-content:space-between;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#EFEFEF)">
@@ -9114,15 +9151,22 @@ function rStudyBooks() {
     ['#96CEB4','#6BA888'],['#FFEAA7','#DDB870'],['#DDA0DD','#B87DB8'],
   ];
   books.forEach((bk, bi) => {
-    const bw=bk.words||[];
+    const bw=getBookWords(bk);
     const bm=bw.filter(w=>(bk.markMap||{})[w.en]===1).length;
     const bp=bw.length?Math.min(100,Math.round(bm/bw.length*100)):0;
     const sn=bk.name.replace(/'/g,"\'");
     const [c1,c2]=bookColors[bi%bookColors.length];
+    const bkLivePack = bk.packId ? (S._marketPacks||[]).find(p=>p.id===bk.packId) : null;
+    // 마켓팩은 오직 Firebase 최신값만 사용. 로컬 구 데이터(bk.imageUrl/emoji) 절대 사용 안 함
+    const bkImageUrl = bkLivePack ? (bkLivePack.imageUrl || '') : (bk.packId ? '' : '');
+    const bkEmoji = bkLivePack ? (bkLivePack.emoji || '📖') : (bk.packId ? '📦' : (bk.emoji || '📖'));
+    const bkIcon = bkImageUrl
+      ? `<img src="${bkImageUrl}" style="width:46px;height:46px;border-radius:14px;object-fit:cover;flex-shrink:0">`
+      : `<div style="width:46px;height:46px;background:linear-gradient(135deg,${c1},${c2});border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${bkEmoji}</div>`;
     html += `<div style="background:var(--bg-card,#fff);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
       <div style="padding:16px;cursor:pointer" onclick="showBookWordList('${sn}')">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-          <div style="width:46px;height:46px;background:linear-gradient(135deg,${c1},${c2});border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📖</div>
+          ${bkIcon}
           <div style="flex:1">
             <div style="font-size:15px;font-weight:800;color:var(--text1,#1A1A2E)">${bk.name}</div>
             <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${bw.length}개 단어</div>
@@ -9531,7 +9575,7 @@ function getCurrentBookWords() {
   if(!S.currentBook || S.currentBook==='내 단어장') return S.words;
   // 일반 단어장 + 마켓 단어장 모두 검색
   const bk = (S.books||[]).find(b=>b.name===S.currentBook);
-  if(bk && (bk.words||[]).length) return bk.words;
+  if(bk) { const w=getBookWords(bk); if(w.length) return w; }
   // S.words에서 찾기 (내 단어장 기본)
   return S.words.length ? S.words : [];
 }
@@ -9856,16 +9900,16 @@ function startSGame(id){startGameW(id,S.words.length>=2?S.words:(DEFAULT_WORDS[S
 function rAdd() {
   const allBooks = [
     {name:'내 단어장', cnt:S.words.length},
-    ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length}))
+    ...(S.books||[]).filter(b=>!b.packId).map(b=>({name:b.name, cnt:getBookWords(b).length}))
   ];
   const curBook = S.currentBook||'내 단어장';
   const addTab = S._addTab||'text';
 
   // 단어장 저장 헬퍼
   function _saveWord(w) {
-    const book = allBooks.find(b=>b.name===curBook);
     if(curBook!=='내 단어장') {
       const bk=(S.books||[]).find(b=>b.name===curBook);
+      if(bk && bk.packId) { toast('마켓팩은 단어를 추가할 수 없어요','err'); return; }
       if(bk){if(!bk.words)bk.words=[];bk.words.push(w);}
       else S.words.push(w);
     } else S.words.push(w);
@@ -10298,11 +10342,11 @@ function saveWordToCurrentBook(word) {
   } else {
     const bk = (S.books||[]).find(b=>b.name===bookName);
     if(bk) {
+      if(bk.packId) { toast('마켓팩은 단어를 추가할 수 없어요','err'); return; }
       if(!bk.words) bk.words=[];
       if(!bk.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
         bk.words.push(word);
     } else {
-      // 단어장이 없으면 기본 단어장에 저장
       if(!S.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
         S.words.push(word);
     }
@@ -10339,6 +10383,7 @@ function addW(){
   // 현재 단어장에 저장
   if(S.currentBook && S.currentBook!=='내 단어장') {
     const bk = S.books.find(b=>b.name===S.currentBook);
+    if(bk && bk.packId) { toast('마켓팩은 단어를 추가할 수 없어요','err'); return; }
     if(bk) { if(!bk.words) bk.words=[]; bk.words.push(newWord); }
     else saveWordToCurrentBook(newWord);
   } else {
@@ -12210,10 +12255,10 @@ function doRestore() {
       if(data.dList) S.dList = data.dList;
       if(data.books) {
         // 안전망: 로컬에 단어 있는 책이 있는데 클라우드가 비었으면 덮어쓰지 않음
-        const _cloudHasWords = Array.isArray(data.books) && data.books.some(b=>(b.words||[]).length>0);
-        const _localHasWords = Array.isArray(S.books) && S.books.some(b=>(b.words||[]).length>0);
+        const _cloudHasWords = Array.isArray(data.books) && data.books.some(b=>(b.words||[]).length>0 || b.packId);
+        const _localHasWords = Array.isArray(S.books) && S.books.some(b=>(b.words||[]).length>0 || b.packId);
         if(_cloudHasWords || !_localHasWords) {
-          S.books = data.books;
+          S.books = data.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;});
         }
       }
       // [markMap 마이그레이션] 인덱스 키 잔재 → 단어명 키 통일 (데이터 분열 방지)
@@ -12534,10 +12579,10 @@ async function restoreFromBackup() {
     const wdoc = await db.collection('user_words').doc(S.user.uid).get();
     if(wdoc.exists) {
       const wd = wdoc.data();
-      const totalWords = (wd.books||[]).reduce((s,b)=>s+(b.words||[]).length,0) + (wd.words||[]).length;
+      const totalWords = (wd.books||[]).reduce((s,b)=>s+(b.packId?1:(b.words||[]).length),0) + (wd.words||[]).length;
       if(totalWords > 0) {
         if(!confirm('user_words 백업에서 단어 '+totalWords+'개를 복구할까요?')) return;
-        if(wd.books?.some(b=>(b.words||[]).length>0)) { S.books = wd.books; localStorage.setItem('wd-bks', JSON.stringify(wd.books)); }
+        if(wd.books?.some(b=>(b.words||[]).length>0 || b.packId)) { S.books = wd.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;}); localStorage.setItem('wd-bks', JSON.stringify(S.books)); }
         if(wd.words?.length>0) { S.words = wd.words; localStorage.setItem('wd-w', JSON.stringify(wd.words)); }
         sv(); cm(); go(); toast('✅ 단어 '+totalWords+'개 복구 완료!'); return;
       }
@@ -12549,10 +12594,10 @@ async function restoreFromBackup() {
       const bak = await db.collection('user_backups').doc(S.user.uid+'_'+d).get();
       if(bak.exists) {
         const b = bak.data();
-        const total = (b.books||[]).reduce((s,bk)=>s+(bk.words||[]).length,0) + (b.words||[]).length;
+        const total = (b.books||[]).reduce((s,bk)=>s+(bk.packId?1:(bk.words||[]).length),0) + (b.words||[]).length;
         if(total > 0) {
           if(!confirm(d+' 백업에서 단어 '+total+'개를 복구할까요?')) return;
-          if(b.books?.some(bk=>(bk.words||[]).length>0)) { S.books = b.books; localStorage.setItem('wd-bks', JSON.stringify(b.books)); }
+          if(b.books?.some(bk=>(bk.words||[]).length>0 || bk.packId)) { S.books = b.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;}); localStorage.setItem('wd-bks', JSON.stringify(S.books)); }
           if(b.words?.length>0) { S.words = b.words; localStorage.setItem('wd-w', JSON.stringify(b.words)); }
           sv(); cm(); go(); toast('✅ '+d+' 백업에서 단어 '+total+'개 복구!'); return;
         }
@@ -12726,7 +12771,7 @@ auth.onAuthStateChanged(async user => {
       if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
       if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
       if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
-      const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+      const bks=ls.getItem('wd-bks'); if(bks) { S.books=JSON.parse(bks); S.books.forEach(b=>{if(b.packId && b.words!==undefined)delete b.words;}); }
       const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
       const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
       // 현재 책이 내 단어장이 아니면 해당 책 단어를 활성화 (활성 단어/책 일치)
@@ -12905,7 +12950,7 @@ auth.onAuthStateChanged(async user => {
         if(_wdoc && _wdoc.exists) {
           const _wd = _wdoc.data();
           if(_wd.books && _wd.books.some(b=>(b.words||[]).length>0)) {
-            S.books = _wd.books;
+            S.books = _wd.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;});
             localStorage.setItem('wd-bks', JSON.stringify(_wd.books));
           }
           if(_wd.words && _wd.words.length>0) {
@@ -13108,7 +13153,7 @@ auth.onAuthStateChanged(async user => {
       if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
       if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
       if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
-      const bks=ls.getItem('wd-bks'); if(bks) S.books=JSON.parse(bks);
+      const bks=ls.getItem('wd-bks'); if(bks) { S.books=JSON.parse(bks); S.books.forEach(b=>{if(b.packId && b.words!==undefined)delete b.words;}); }
       const cbk=ls.getItem('wd-cbk'); if(cbk) S.currentBook=cbk;
       const w=ls.getItem('wd-w'); if(w) S.words=JSON.parse(w);
       // 현재 책이 내 단어장이 아니면 해당 책 단어를 활성화 (활성 단어/책 일치)

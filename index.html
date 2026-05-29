@@ -2625,16 +2625,21 @@ async function loadMarketPacks() {
   try {
     const snap = await Promise.race([
       db.collection('packs').get(),
-      new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),8000))
+      new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 8000))
     ]);
     const fbPacks = snap.docs
-      .map(d=>{ const data=d.data(); const wc=(data.words||[]).length||data.count||0; const {words,...meta}=data; return {id:d.id,...meta,_wordCount:wc,words:[]}; })
-      .filter(p=>p.active!==false&&p.name);
-    const fbIds = new Set(fbPacks.map(p=>p.id));
-    const localOnly = localPacks.filter(p=>!fbIds.has(p.id));
-    S._marketPacks = fbPacks.length ? [...fbPacks,...localOnly] : localPacks;
+      .map(d => {
+        const data = d.data();
+        const wc = (data.words||[]).length || data.count || 0;
+        const {words, ...meta} = data;
+        return {id: d.id, ...meta, _wordCount: wc, words: []};
+      })
+      .filter(p => p.active !== false && p.name);
+    const fbIds = new Set(fbPacks.map(p => p.id));
+    const localOnly = localPacks.filter(p => !fbIds.has(p.id));
+    S._marketPacks = fbPacks.length ? [...fbPacks, ...localOnly] : localPacks;
     S._marketPacksFullLoaded = new Set();
-    console.log('[마켓] 로드 완료:', S._marketPacks.length+'개');
+    console.log('[마켓] 로드 완료:', S._marketPacks.length + '개');
   } catch(e) {
     console.warn('[마켓] 실패:', e.message);
     S._marketPacks = localPacks.length ? localPacks : [];

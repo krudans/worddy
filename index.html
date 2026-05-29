@@ -4910,7 +4910,17 @@ function startApp() {
   if(!localStorage.getItem('wd-onboard')) {
     setTimeout(()=>showOnboarding(), 1500);
   }
-  go('home');
+  // _ownedPacks 정리: 실제 단어장에 없는 팩은 제거
+  if(S._ownedPacks && S.books) {
+    const bookPackIds = new Set((S.books||[]).map(b=>b.packId).filter(Boolean));
+    const before = S._ownedPacks.length;
+    S._ownedPacks = S._ownedPacks.filter(id => bookPackIds.has(id));
+    if(S._ownedPacks.length !== before && typeof db !== 'undefined' && S.user?.uid) {
+      db.collection('user_packs').doc(S.user.uid).set({owned: S._ownedPacks},{merge:true}).catch(()=>{});
+      db.collection('users').doc(S.user.uid).update({_ownedPacks: S._ownedPacks}).catch(()=>{});
+    }
+  }
+    go('home');
 }
 
 function showOnboarding() {

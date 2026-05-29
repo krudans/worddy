@@ -1958,7 +1958,9 @@ function rMarket() {
     html += `<div style="display:flex;flex-direction:column;gap:10px">`;
     filtered.forEach(pk => {
       const owned = ownedPacks.includes(pk.id);
-      const wordCount = (pk.words||[]).length;
+      // 1단계(메타만 로드)면 _metaCount, 2단계(words 로드) 완료면 실제 길이
+      const wordCount = pk._wordsLoaded ? (pk.words||[]).length : (pk._metaCount || (pk.words||[]).length);
+      const isLoading = !pk._wordsLoaded && pk._metaCount !== undefined;
       const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
       html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:14px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
@@ -1966,7 +1968,7 @@ function rMarket() {
           <div style="flex:1">
             <div style="font-size:15px;font-weight:800;color:var(--text1,var(--text1,#111111))">${pk.name}</div>
             <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">
-              ${pk.cat||'기타'} · ${wordCount}개 단어
+              ${pk.cat||'기타'} · ${wordCount}개 단어${isLoading?'<span style="color:#9CA3AF;font-size:10px"> ⏳</span>':''}
             </div>
             ${preview?`<div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">${preview}...</div>`:''}
           </div>
@@ -2688,7 +2690,16 @@ async function loadMarketPacks() {
     _mktProgress(40, '팩 목록 처리 중...');
     const deletedIds = new Set(delSnap?.exists ? (delSnap.data()?.ids || []) : []);
     const fbPacksMeta = snap.docs
-      .map(d => ({id: d.id, ...d.data(), words: [], _wordsLoaded: false}))
+      .map(d => {
+        const data = d.data();
+        return {
+          id: d.id, ...data,
+          words: [],
+          _wordsLoaded: false,
+          // 1단계에서는 count 필드를 단어수로 사용 (words 배열 없음)
+          _metaCount: data.count || 0
+        };
+      })
       .filter(p => p.active !== false && !p.hidden && p.name);
 
     const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];

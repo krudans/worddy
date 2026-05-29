@@ -1958,9 +1958,8 @@ function rMarket() {
     html += `<div style="display:flex;flex-direction:column;gap:10px">`;
     filtered.forEach(pk => {
       const owned = ownedPacks.includes(pk.id);
-      // 1단계(메타만 로드)면 _metaCount, 2단계(words 로드) 완료면 실제 길이
-      const wordCount = pk._wordsLoaded ? (pk.words||[]).length : (pk._metaCount || (pk.words||[]).length);
-      const isLoading = !pk._wordsLoaded && pk._metaCount !== undefined;
+      // count 필드 우선, 없으면 words 배열 길이
+      const wordCount = pk.count || (pk.words||[]).length;
       const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
       html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:14px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
@@ -1968,7 +1967,7 @@ function rMarket() {
           <div style="flex:1">
             <div style="font-size:15px;font-weight:800;color:var(--text1,var(--text1,#111111))">${pk.name}</div>
             <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">
-              ${pk.cat||'기타'} · ${wordCount}개 단어${isLoading?'<span style="color:#9CA3AF;font-size:10px"> ⏳</span>':''}
+              ${pk.cat||'기타'} · ${wordCount}개 단어
             </div>
             ${preview?`<div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">${preview}...</div>`:''}
           </div>
@@ -1980,21 +1979,7 @@ function rMarket() {
             : `<button onclick="downloadPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
         </div>
         ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
-        <div id="preview-${pk.id}" style="display:none;margin-top:10px">
-          <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
-                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">영어</th>
-                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">한국어</th>
-                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
-              </tr></thead>
-              <tbody>
-${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}"> <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td> <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td> <td style="padding:6px 8px;color:#6B7280;max-width:200px"> ${(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.map(e=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px">${e}</div>`).join('');})()} </td> </tr>`).join('')}
-              ${wordCount>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${wordCount-10}개 더</td></tr>`:''}
-              </tbody>
-            </table>
-          </div>
-        </div>`:''}
+        <div id="preview-${pk.id}" style="display:none;margin-top:10px"></div>`:''}
       </div>`;
     });
     html += `</div>`;
@@ -2008,7 +1993,34 @@ ${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F
 function togglePackPreview(packId) {
   const el = document.getElementById('preview-'+packId);
   if(!el) return;
-  el.style.display = el.style.display==='none' ? 'block' : 'none';
+  if(el.style.display !== 'none') { el.style.display = 'none'; return; }
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  if(!pk) return;
+  if(pk._wordsLoaded) { el.style.display = 'block'; return; }
+  // words 미로드 - 로드 후 표시
+  el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:12px">⏳ 불러오는 중...</div>';
+  el.style.display = 'block';
+  _loadPackWords(packId).then(p => {
+    if(!p) { el.innerHTML = '<div style="padding:8px;color:#EF4444;font-size:12px">로드 실패</div>'; return; }
+    const words = p.words||[];
+    el.innerHTML = `<div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+          <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">영어</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">한국어</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
+        </tr></thead>
+        <tbody>
+          ${words.slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
+            <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td>
+            <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td>
+            <td style="padding:6px 8px;color:#6B7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.ex||''}</td>
+          </tr>`).join('')}
+          ${words.length>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${words.length-10}개 더</td></tr>`:''}
+        </tbody>
+      </table>
+    </div>`;
+  });
 }
 
 
@@ -2056,7 +2068,17 @@ function _doBuyPack(packId) {
   go('mybooks','market');
 }
 
-function downloadPack(packId) { buyPack(packId); }
+function downloadPack(packId) {
+  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
+  if(!pk) { toast('팩을 찾을 수 없어요'); return; }
+  if(pk._wordsLoaded) { buyPack(packId); return; }
+  // words 아직 미로드 - 먼저 로드 후 담기
+  toast('📦 단어 불러오는 중...');
+  _loadPackWords(packId).then(p => {
+    if(p && (p.words||[]).length > 0) buyPack(packId);
+    else toast('단어 로드 실패, 다시 시도해주세요');
+  });
+}
 
 function removePack(packId) {
   const pk = (S._marketPacks||[]).find(p=>p.id===packId);
@@ -2676,39 +2698,68 @@ async function loadMarketPacks() {
   }
   try {
     S._mktLoading = true;
-    _mktProgress(10, '목록 불러오는 중...');
+    _mktProgress(20, '목록 불러오는 중...');
 
-    // ── 1단계: 카테고리·제목·단어수만 먼저 (words 필드 제외하여 빠르게) ──
+    // ── 메타데이터만 로드 (words 제외) - 빠른 초기 로딩 ──
     const [snap, delSnap] = await Promise.all([
-      db.collection('packs').get(),
+      db.collection('packs')
+        .where('active', '!=', false)
+        .get(),
       db.collection('config').doc('deleted_packs').get().catch(()=>null)
     ]);
 
-    _mktProgress(40, '팩 목록 처리 중...');
+    _mktProgress(70, '목록 구성 중...');
     const deletedIds = new Set(delSnap?.exists ? (delSnap.data()?.ids || []) : []);
-    const fbPacksMeta = snap.docs
-      .map(d => ({
-        id: d.id, ...d.data(),
-        _wordsLoaded: true  // get()으로 전체 로드됨
-      }))
-      .filter(p => p.active !== false && !p.hidden && p.name);
+    const fbPacks = snap.docs
+      .map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name,
+          cat: data.cat,
+          category: data.category,
+          categoryOrder: data.categoryOrder,
+          emoji: data.emoji,
+          desc: data.desc || data.description || '',
+          count: data.count || 0,   // 미리 저장된 단어수
+          active: data.active,
+          hidden: data.hidden,
+          _wordsLoaded: false,       // words는 아직 미로드
+          words: []
+        };
+      })
+      .filter(p => !p.hidden && p.name && !deletedIds.has(p.id));
 
-    const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
-    const fbIds = new Set(fbPacksMeta.map(p => p.id));
-    const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
-
-    // Firebase 전체 로드 완료 - 즉시 반영
-    S._marketPacks = [...fbPacksMeta, ...localOnly];
+    S._marketPacks = fbPacks;
     S._mktLoading = false;
     _mktProgress(100, '완료!');
-    setTimeout(()=>{ _mktProgress(0,''); }, 600);
+    setTimeout(()=>{ _mktProgress(0,''); }, 400);
     go();
-    console.log('[마켓] 팩 로드 완료:', S._marketPacks.length + '개');
+    console.log('[마켓] 메타 로드 완료:', fbPacks.length + '개');
 
   } catch(e) {
-    console.warn('마켓 Firebase 로드 실패, 로컬 사용:', e.message);
+    console.warn('마켓 로드 실패:', e.message);
     S._mktLoading = false;
-    S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
+    S._marketPacks = [];
+    go();
+  }
+}
+
+// 팩 words 개별 로드 (담기/미리보기 클릭 시)
+async function _loadPackWords(packId) {
+  const idx = (S._marketPacks||[]).findIndex(p => p.id === packId);
+  if(idx === -1) return null;
+  if(S._marketPacks[idx]._wordsLoaded) return S._marketPacks[idx];
+  try {
+    const doc = await db.collection('packs').doc(packId).get();
+    if(doc.exists) {
+      const data = doc.data();
+      S._marketPacks[idx] = { ...S._marketPacks[idx], ...data, _wordsLoaded: true };
+    }
+    return S._marketPacks[idx];
+  } catch(e) {
+    console.warn('팩 words 로드 실패:', packId, e.message);
+    return null;
   }
 }
 

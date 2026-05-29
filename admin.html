@@ -2979,76 +2979,189 @@ let selPack = null; // 현재 선택된 팩 ID
 async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
-    const snap = await db.collection('packs').get();
-    const fbPacks = snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
-    const fbIds = new Set(fbPacks.map(p=>p.id));
-
-    // 삭제된 팩 ID 목록 가져오기 (Firebase에서 삭제한 팩은 로컬에도 숨김)
-    let deletedIds = new Set();
-    try {
-      const delSnap = await db.collection('config').doc('deleted_packs').get();
-      if(delSnap.exists) deletedIds = new Set(delSnap.data()?.ids || []);
-    } catch(e) {}
-
-    const localPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
-    // Firebase에 없고 삭제 목록에도 없는 로컬 팩만 추가
-    const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
-    window._adminPacks = [...fbPacks, ...localOnly];
+    const [snap, catSnap] = await Promise.all([
+      db.collection('packs').get(),
+      db.collection('config').doc('pack_categories').get().catch(()=>null)
+    ]);
+    window._adminPacks = snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
+    const savedCats = catSnap?.exists ? (catSnap.data()?.cats||[]) : [];
+    const packCats = [...new Set(window._adminPacks.map(p=>p.cat).filter(Boolean))];
+    window._adminCats = savedCats.length ? savedCats : packCats;
   } catch(e) {
-    window._adminPacks = typeof WORD_PACKS!=='undefined' ? WORD_PACKS : [];
+    window._adminPacks = [];
+    window._adminCats = [];
+    toast('로드 실패: '+e.message,'err');
   }
   const packs = window._adminPacks||[];
-  const cats = [...new Set(packs.map(p=>p.cat))];
-  const packRows = packs.map(function(p){
+  const cats = window._adminCats||[];
+  const selCat = window._adminSelCat||'전체';
+  const filtered = selCat==='전체' ? packs : packs.filter(p=>p.cat===selCat);
+
+  const catTabs = ['전체',...cats].map(c=>{
+    const cnt = c==='전체' ? packs.length : packs.filter(p=>p.cat===c).length;
+    const active = selCat===c;
+    return '<button onclick="window._adminSelCat=\''+c+'\';rPK()" style="padding:5px 14px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#1E5FA5':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap">'+c+' <span style="opacity:.65;font-size:11px">'+cnt+'</span></button>';
+  }).join('');
+
+  const packRows = filtered.map(function(p){
+    const wc = (p.words||[]).length||p.count||0;
+    const imgHtml = p.imageUrl
+      ? '<img src="'+p.imageUrl+'" style="width:36px;height:36px;object-fit:cover;border-radius:8px">'
+      : '<div style="font-size:26px;text-align:center;line-height:36px">'+(p.emoji||'📚')+'</div>';
+    const badge = p.active===false
+      ? '<span style="background:#FEF2F2;color:#DC2626;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">비활성</span>'
+      : '<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">활성</span>';
     return '<tr>'
-      +'<td style="font-size:24px;text-align:center;padding:12px 14px">'+(p.emoji||'📚')+'</td>'
-      +'<td style="padding:12px 14px"><div style="font-weight:700">'+(p.name||'')+'</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">'+((p.desc||'').slice(0,30))+(p.desc&&p.desc.length>30?'...':'')+'</div></td>'
-      +'<td style="padding:12px 14px"><span style="background:#EFF6FF;color:#1E5FA5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(p.cat||'')+'</span></td>'
-      +'<td style="padding:12px 14px;font-weight:800;color:#1E5FA5">'+(p.words?.length||0)+'</td>'
-      +'<td style="padding:12px 14px"><div style="display:flex;gap:6px">'
-        +'<button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="showPackWords(\''+p.id+'\')">단어</button>'
-        +(p._fromFirebase?'':'<button class="btn bg" style="font-size:11px;padding:5px 10px" onclick="uploadLocalPackToFirebase(\''+p.id+'\')">⬆️ FB</button>')
-        +'<button class="btn" style="font-size:11px;padding:5px 10px;background:#7C3AED;color:#fff;border:none;border-radius:8px;cursor:pointer" onclick="aiFillPack(\''+p.id+'\')">🤖 AI채우기</button>'
-        +'<button class="btn bp" style="font-size:11px;padding:5px 10px" onclick="showEditPack(\''+p.id+'\')">수정</button>'
-        +'<button class="btn bgr" style="font-size:11px;padding:5px 10px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
+      +'<td style="padding:10px 12px"><div style="width:36px;height:36px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;margin:0 auto">'+imgHtml+'</div></td>'
+      +'<td style="padding:10px 12px"><div style="font-weight:700">'+(p.name||'')+'</div><div style="font-size:10px;color:#9CA3AF">'+p.id+'</div></td>'
+      +'<td style="padding:10px 12px"><span style="background:#EFF6FF;color:#1E5FA5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(p.cat||'')+'</span></td>'
+      +'<td style="padding:10px 12px;font-weight:800;color:#1E5FA5;text-align:center">'+wc.toLocaleString()+'</td>'
+      +'<td style="padding:10px 12px;text-align:center">'+badge+'</td>'
+      +'<td style="padding:10px 12px"><div style="display:flex;gap:5px">'
+        +'<button class="btn bb" style="font-size:11px;padding:4px 9px" onclick="showPackWords(\''+p.id+'\')">단어</button>'
+        +'<button class="btn bp" style="font-size:11px;padding:4px 9px" onclick="showEditPack(\''+p.id+'\')">수정</button>'
+        +'<button class="btn bgr" style="font-size:11px;padding:4px 9px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
       +'</div></td></tr>';
   }).join('');
+
   document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:22px;font-weight:900">🛒 마켓 팩 관리</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn bg" onclick="showAddPack()">➕ 새 팩 만들기</button>
-        <button class="btn bp" onclick="showImportPack()">📤 CSV/JSON 가져오기</button>
-        <button class="btn" style="background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer" onclick="aiFillAllPacks()">🤖 부족팩 전체 AI채우기</button>
+        <button class="btn bg" onclick="showAddPack()">➕ 새 팩</button>
+        <button class="btn bp" onclick="showManageCats()">📂 카테고리 관리</button>
+        <button class="btn" onclick="activateAllPacks()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #BBF7D0;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">✅ 전체 활성화</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-      <div style="background:#EFF6FF;border-radius:14px;border:1.5px solid rgba(0,0,0,.06);padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06)"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">🛒 전체 팩</div><div style="font-size:26px;font-weight:900;color:#1E5FA5">${packs.length}</div></div>
-      <div style="background:#F0FDF4;border-radius:14px;border:1.5px solid rgba(0,0,0,.06);padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06)"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">📖 총 단어수</div><div style="font-size:26px;font-weight:900;color:#16A34A">${packs.reduce((a,p)=>a+(p.words?.length||0),0).toLocaleString()}</div></div>
-      <div style="background:#FDF4FF;border-radius:14px;border:1.5px solid rgba(0,0,0,.06);padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06)"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">🔥 인기 팩</div><div style="font-size:26px;font-weight:900;color:#EC4899">${packs.filter(p=>p.isPopular).length}</div></div>
-      <div style="background:#FFFBEB;border-radius:14px;border:1.5px solid rgba(0,0,0,.06);padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06)"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">📂 카테고리</div><div style="font-size:26px;font-weight:900;color:#D97706">${cats.length}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
+      <div style="background:#EFF6FF;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">🛒 전체 팩</div><div style="font-size:26px;font-weight:900;color:#1E5FA5">${packs.length}</div></div>
+      <div style="background:#F0FDF4;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">📖 총 단어수</div><div style="font-size:26px;font-weight:900;color:#16A34A">${packs.reduce((a,p)=>a+((p.words||[]).length||p.count||0),0).toLocaleString()}</div></div>
+      <div style="background:#FFFBEB;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">📂 카테고리</div><div style="font-size:26px;font-weight:900;color:#D97706">${cats.length}</div></div>
+      <div style="background:#FDF4FF;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">✅ 활성</div><div style="font-size:26px;font-weight:900;color:#7C3AED">${packs.filter(p=>p.active!==false).length}</div></div>
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;padding:12px;background:#fff;border-radius:12px;border:1.5px solid #E5E7EB;margin-bottom:12px">${catTabs}</div>
     <div class="card">
-      <div class="ct">📦 전체 팩 목록</div>
-      <div style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 12px">
-          <span>🔍</span>
-          <input placeholder="팩 이름 검색..." id="pk-search" oninput="filterPacks(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1">
-        </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <input placeholder="팩 이름 검색..." id="pk-search" oninput="filterPacks(this.value)" style="border:1.5px solid #E5E7EB;background:#F9FAFB;border-radius:10px;padding:7px 12px;font-size:13px;flex:1;outline:none">
+        <span style="font-size:12px;color:#9CA3AF;white-space:nowrap">${filtered.length}개</span>
       </div>
-      <div class="tw">
-        <table id="pk-table">
-          <tr><th></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>뱃지</th><th>작업</th></tr>
-          ${packRows}
-        </table>
-      </div>
+      <div class="tw"><table id="pk-table">
+        <tr><th style="width:50px"></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>상태</th><th>작업</th></tr>
+        ${packRows}
+      </table></div>
     </div>`;
 }
-
 function filterPacks(v) {
   document.querySelectorAll('#pk-table tr:not(:first-child)').forEach(tr=>{
     tr.style.display = tr.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
   });
+}
+
+// 팩 이미지 업로드
+async function pkImgUpload(input, prevId, hiddenId) {
+  const file = input.files[0];
+  if(!file) return;
+  if(file.size > 200*1024) { toast('200KB 이하 이미지를 사용하세요 (현재: '+Math.round(file.size/1024)+'KB)','err'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const prev = document.getElementById(prevId);
+    if(prev) prev.outerHTML = '<img id="'+prevId+'" src="'+e.target.result+'" style="width:70px;height:70px;object-fit:cover;border-radius:12px;border:2px solid #1E5FA5">';
+    try {
+      if(typeof firebase!=='undefined' && firebase.storage) {
+        const ref = firebase.storage().ref('pack_images/'+Date.now()+'_'+file.name);
+        const snap = await ref.put(file);
+        const url = await snap.ref.getDownloadURL();
+        const hid = document.getElementById(hiddenId);
+        if(hid) hid.value = url;
+        const prev2 = document.getElementById(prevId);
+        if(prev2) prev2.src = url;
+        toast('이미지 업로드 완료 ✅','ok');
+      } else {
+        const hid = document.getElementById(hiddenId);
+        if(hid) hid.value = e.target.result;
+      }
+    } catch(err) {
+      const hid = document.getElementById(hiddenId);
+      if(hid) hid.value = e.target.result;
+      toast('Storage 업로드 실패, 로컬 사용','err');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function pkImgClear(prevId, hiddenId, emoji) {
+  const prev = document.getElementById(prevId);
+  if(prev) prev.outerHTML = '<div id="'+prevId+'" style="width:70px;height:70px;border-radius:12px;border:2px dashed #E5E7EB;display:flex;align-items:center;justify-content:center;font-size:32px">'+(emoji||'📚')+'</div>';
+  const hid = document.getElementById(hiddenId);
+  if(hid) hid.value = '';
+}
+
+// 카테고리 관리 모달
+function showManageCats() {
+  const cats = window._adminCats||[];
+  const rows = cats.map(function(c){
+    const cnt = (window._adminPacks||[]).filter(p=>p.cat===c).length;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#F9FAFB;border-radius:10px;border:1.5px solid #E5E7EB;margin-bottom:6px">'
+      +'<span style="flex:1;font-weight:600">'+c+'</span>'
+      +'<span style="font-size:11px;color:#9CA3AF">'+cnt+'개 팩</span>'
+      +'<button onclick="renameCat(\''+c+'\')" style="background:#EFF6FF;color:#1E5FA5;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">이름변경</button>'
+      +'<button onclick="deleteCat(\''+c+'\')" style="background:#FEF2F2;color:#DC2626;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">삭제</button>'
+      +'</div>';
+  }).join('');
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">'
+    +'<div class="mt">📂 카테고리 관리</div>'
+    +'<div style="margin-bottom:14px">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+      +'<input id="new-cat-inp" placeholder="새 카테고리 이름 (예: 📺 영미드라마)" style="flex:1;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;outline:none">'
+      +'<button onclick="addCat()" class="btn bg">추가</button>'
+    +'</div>'
+    +'<button onclick="cm();rPK()" class="btn bgr" style="width:100%">닫기</button>'
+    +'</div></div>';
+}
+
+function addCat() {
+  const val = (document.getElementById('new-cat-inp')?.value||'').trim();
+  if(!val) return;
+  if(!(window._adminCats||[]).includes(val)) {
+    window._adminCats = [...(window._adminCats||[]), val];
+    db.collection('config').doc('pack_categories').set({cats:window._adminCats},{merge:true}).catch(()=>{});
+    toast('카테고리 추가됨','ok');
+    showManageCats();
+  } else toast('이미 있는 카테고리예요','err');
+}
+
+function deleteCat(cat) {
+  if(!confirm('"'+cat+'" 카테고리를 삭제할까요? 팩의 카테고리는 유지됩니다.')) return;
+  window._adminCats = (window._adminCats||[]).filter(c=>c!==cat);
+  db.collection('config').doc('pack_categories').set({cats:window._adminCats},{merge:true}).catch(()=>{});
+  toast('삭제됨','ok');
+  showManageCats();
+}
+
+function renameCat(cat) {
+  const newName = prompt('"'+cat+'" → 새 이름:', cat);
+  if(!newName || newName===cat) return;
+  window._adminCats = (window._adminCats||[]).map(c=>c===cat?newName:c);
+  db.collection('config').doc('pack_categories').set({cats:window._adminCats},{merge:true}).catch(()=>{});
+  const toFix = (window._adminPacks||[]).filter(p=>p.cat===cat);
+  Promise.all(toFix.map(p=>db.collection('packs').doc(p.id).update({cat:newName})))
+    .then(()=>{ toast('"'+cat+'" → "'+newName+'" 변경 완료 ('+toFix.length+'개 팩)','ok'); rPK(); });
+}
+
+// active=undefined 팩 전체 활성화
+async function activateAllPacks() {
+  const packs = window._adminPacks||[];
+  const toFix = packs.filter(p=>p.active===undefined||p.active===null);
+  if(!toFix.length) { toast('모두 이미 활성화됨','ok'); return; }
+  if(!confirm(toFix.length+'개 팩을 활성화할까요?')) return;
+  try {
+    const batch = db.batch();
+    toFix.forEach(p=>batch.update(db.collection('packs').doc(p.id),{active:true}));
+    await batch.commit();
+    toFix.forEach(p=>p.active=true);
+    toast('✅ '+toFix.length+'개 팩 활성화 완료','ok');
+    rPK();
+  } catch(e) { toast('오류: '+e.message,'err'); }
 }
 
 // 새 팩 만들기
@@ -3130,32 +3243,48 @@ function showEditPack(packId) {
   const packs=window._adminPacks||(typeof WORD_PACKS!=="undefined"?WORD_PACKS:[]);
   const p=packs.find(x=>x.id===packId);
   if(!p) return;
-  const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">✏️ 팩 수정: ${p.name}</div>
-    <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:12px">
-      <div class="fg"><label>이모지</label><input id="ep-emoji" value="${p.emoji}" style="text-align:center;font-size:20px"></div>
-      <div class="fg"><label>팩 이름</label><input id="ep-name" value="${p.name}"></div>
-    </div>
-    <div class="fg"><label>카테고리</label>
-      <select id="ep-cat">${cats.map(c=>`<option ${p.cat===c?'selected':''}>${c}</option>`).join('')}</select>
-    </div>
-    <div class="fg"><label>설명</label><input id="ep-desc" value="${p.desc||''}"></div>
-    <div class="fg"><label>목표 단어 수</label><input id="ep-count" type="number" value="${p.count||100}"></div>
-    <div style="display:flex;gap:12px;margin-bottom:14px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="ep-popular" ${p.isPopular?'checked':''}> 🔥 인기 팩
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="ep-new" ${p.addedAt?'checked':''}> ✨ NEW 뱃지
-      </label>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="saveEditPack('${packId}')" style="flex:1">저장</button>
-      <button class="btn bgr" onclick="cm()">취소</button>
-    </div>
-  </div></div>`;
+  const cats = window._adminCats||['📺 영미드라마','💬 회화·표현','🎯 주제별','✏️ 시험대비','📚 수준별','📖 도서'];
+  const catOpts = cats.map(c=>'<option '+(p.cat===c?'selected':'')+'>'+c+'</option>').join('')+'<option value="__new__">직접 입력...</option>';
+  const imgHtml = p.imageUrl
+    ? '<img id="ep-img-prev" src="'+p.imageUrl+'" style="width:70px;height:70px;object-fit:cover;border-radius:12px;border:2px solid #1E5FA5">'
+    : '<div id="ep-img-prev" style="width:70px;height:70px;border-radius:12px;border:2px dashed #E5E7EB;display:flex;align-items:center;justify-content:center;font-size:32px">'+(p.emoji||'📚')+'</div>';
+  const pid = packId;
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">'
+    +'<div class="mt">✏️ 팩 수정: '+p.name+'</div>'
+    +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">'
+      +'<div style="flex-shrink:0;text-align:center">'+imgHtml
+        +'<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">'
+          +'<label style="background:#EFF6FF;color:#1E5FA5;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer">📷 이미지 교체<input type="file" id="ep-file" accept="image/*" style="display:none" onchange="pkImgUpload(this,\'ep-img-prev\',\'ep-imageUrl\')"></label>'
+          +'<button onclick="pkImgClear(\'ep-img-prev\',\'ep-imageUrl\',(window._adminPacks||[]).find(x=>x.id==\''+pid+'\')?.emoji||\'\uD83D\uDCDA\')" style="background:#FEF2F2;color:#DC2626;border:none;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer">🗑 제거</button>'
+        +'</div>'
+      +'</div>'
+      +'<div style="flex:1">'
+        +'<div class="fg" style="margin-bottom:8px"><label>팩 이름</label><input id="ep-name" value="'+p.name+'"></div>'
+        +'<div class="fg"><label>이모지 (이미지 없을 때)</label><input id="ep-emoji" value="'+(p.emoji||'📚')+'" style="font-size:20px;text-align:center"></div>'
+      +'</div>'
+    +'</div>'
+    +'<input type="hidden" id="ep-imageUrl" value="'+(p.imageUrl||'')+'">'
+    +'<div class="fg" style="margin-bottom:10px"><label>카테고리</label>'
+      +'<div style="display:flex;gap:6px">'
+        +'<select id="ep-cat" onchange="document.getElementById(\'ep-cat-new\').style.display=this.value===\'__new__\'?\'block\':\'none\'" style="flex:1">'+catOpts+'</select>'
+        +'<input id="ep-cat-new" placeholder="새 카테고리" style="flex:1;display:none;padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none">'
+      +'</div></div>'
+    +'<div class="fg"><label>설명</label><input id="ep-desc" value="'+(p.desc||'')+'"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+      +'<div class="fg"><label>목표 단어 수</label><input id="ep-count" type="number" value="'+(p.count||100)+'"></div>'
+      +'<div class="fg"><label>마켓 노출</label><select id="ep-active"><option value="true" '+(p.active!==false?'selected':'')+'>\u2705 활성</option><option value="false" '+(p.active===false?'selected':'')+'>\uD83D\uDEAB 비활성</option></select></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:12px;margin-bottom:14px">'
+      +'<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ep-popular" '+(p.isPopular?'checked':'')+'>\uD83D\uDD25 인기</label>'
+      +'<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ep-new" '+(p.addedAt?'checked':'')+'>\u2728 NEW</label>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px">'
+      +'<button class="btn bb" onclick="saveEditPack(\''+pid+'\')" style="flex:1">저장</button>'
+      +'<button class="btn bgr" onclick="cm()">취소</button>'
+    +'</div>'
+  +'</div></div>';
 }
+
 
 async function saveEditPack(packId) {
   const packs=window._adminPacks||(typeof WORD_PACKS!=="undefined"?WORD_PACKS:[]);
@@ -3163,14 +3292,23 @@ async function saveEditPack(packId) {
   if(!p) return;
   p.emoji = document.getElementById('ep-emoji')?.value||p.emoji;
   p.name = document.getElementById('ep-name')?.value.trim()||p.name;
-  p.cat = document.getElementById('ep-cat')?.value||p.cat;
+  const catSel = document.getElementById('ep-cat')?.value;
+  const catNew = document.getElementById('ep-cat-new')?.value.trim();
+  p.cat = (catSel==='__new__' && catNew) ? catNew : (catSel||p.cat);
   p.desc = document.getElementById('ep-desc')?.value||p.desc;
   p.count = +(document.getElementById('ep-count')?.value||p.count);
   p.isPopular = document.getElementById('ep-popular')?.checked||false;
   p.addedAt = document.getElementById('ep-new')?.checked ? (p.addedAt||new Date().toISOString().slice(0,10)) : null;
+  p.active = document.getElementById('ep-active')?.value !== 'false';
+  const imgUrl = document.getElementById('ep-imageUrl')?.value.trim();
+  if(imgUrl) p.imageUrl = imgUrl; else delete p.imageUrl;
+  if(catSel==='__new__' && catNew && !(window._adminCats||[]).includes(catNew)) {
+    window._adminCats = [...(window._adminCats||[]), catNew];
+    db.collection('config').doc('pack_categories').set({cats:window._adminCats},{merge:true}).catch(()=>{});
+  }
   try {
-    await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    toast(`✅ "${p.name}" 수정 완료!`,'ok');
+    await db.collection('packs').doc(packId).set({...p, updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    toast('✅ "'+p.name+'" 수정 완료!','ok');
   } catch(e) { toast('저장 오류: '+e.message,'err'); }
   cm(); rPK();
 }

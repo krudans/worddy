@@ -3586,16 +3586,32 @@ function _booksForSave() {
   });
 }
 function _migratePackWords() {
-  // 매번 실행 - 플래그 없음. 마켓팩 단어는 메모리/로컬 양쪽에서 항상 제거
+  // 매번 실행. 두 가지 작업:
+  // 1. packId 없는 마켓팩 → _marketPacks 이름 매칭으로 packId 복원
+  // 2. packId 있는 마켓팩 → words/imageUrl/emoji 제거 (Firebase에서 실시간 조회)
   let changed = false;
   (S.books || []).forEach(b => {
-    if (b.packId && b.words !== undefined) { delete b.words; changed = true; }
+    // packId 없는데 이름이 _marketPacks와 일치하면 packId 복원
+    if (!b.packId) {
+      const matched = (S._marketPacks || []).find(p => p.name === b.name);
+      if (matched) {
+        b.packId = matched.id;
+        b.fromMarket = true;
+        changed = true;
+        console.log('[마이그레이션] packId 복원:', b.name, '->', matched.id);
+      }
+    }
+    // packId 있으면 로컬에 저장된 구 데이터 완전 제거
+    if (b.packId) {
+      if (b.words !== undefined) { delete b.words; changed = true; }
+      if (b.imageUrl !== undefined) { delete b.imageUrl; changed = true; }
+      if (b.emoji !== undefined) { delete b.emoji; changed = true; }
+    }
   });
   if (changed) {
     localStorage.setItem('wd-bks', JSON.stringify(S.books));
-    console.log('[마이그레이션] 마켓팩 단어 메모리+로컬 제거 완료');
+    console.log('[마이그레이션] 완료');
   }
-  // 혹시 남아있는 플래그도 제거
   localStorage.removeItem('wd-pack-migrated');
 }
 

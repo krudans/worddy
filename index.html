@@ -1903,12 +1903,14 @@ function rMarket() {
   const packs = _allPacks.filter(p=>{if(seen.has(p.id))return false;seen.add(p.id);return true;});
   const petCol = PET_COLORS[getPetColor()]||PET_COLORS.green;
   const ownedPacks = S._ownedPacks||[];
-  const mktSort = S._mktSort||'kr';
+  const mktSort = S._mktSort||'name';
   const selCat = S._mktCat||'전체';
   console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
-  // 카테고리 추출
-  const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
+  // 카테고리 추출 (고정 순서)
+  const catOrder = ['전체','📺 영미드라마','💬 회화·표현','🎯 주제별','✏️ 시험대비','📚 수준별'];
+  const extraCats = [...new Set(packs.map(p=>p.cat||'기타'))].filter(c=>!catOrder.includes(c));
+  const cats = [...catOrder.filter(c=>c==='전체'||packs.some(p=>(p.cat||'기타')===c)), ...extraCats];
   let filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
   // 정렬 적용
   if(mktSort==='name') filtered = filtered.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
@@ -1916,7 +1918,7 @@ function rMarket() {
   else if(mktSort==='owned') filtered = filtered.slice().sort((a,b)=>{ const ao=ownedPacks.includes(a.id),bo=ownedPacks.includes(b.id); return ao===bo?0:ao?-1:1; });
 
   // 정렬 버튼 HTML
-  const sortBtns = [['kr','기본'],['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
+  const sortBtns = [['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
     var v=item[0],lb=item[1],active=mktSort===v;
     return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
   }).join('');
@@ -1935,7 +1937,7 @@ function rMarket() {
   // 새로고침 버튼
 
   // 카테고리 탭 + 정렬
-  html += '<div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;scrollbar-width:none;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+cat+'</button>';}).join('') + '</div>';
   html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
     html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
 
@@ -1948,8 +1950,8 @@ function rMarket() {
   } else {
     // 카테고리 탭
     if(cats.length > 2) {
-      html += `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px">
-        ${cats.map(cat=>`<button onclick="S._mktCat='${cat}';go()" style="background:${selCat===cat?petCol.main:'var(--bg-sub,var(--bg-sub,#F3F4F6))'};color:${selCat===cat?'#fff':'var(--text2,var(--text2,#374151))'};border:1.5px solid ${selCat===cat?petCol.main:'var(--border,var(--border,#E5E7EB))'};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">${cat}</button>`).join('')}
+      html += `<div style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:4px">
+        ${cats.map(cat=>`<button onclick="S._mktCat='${cat}';go()" style="background:${selCat===cat?petCol.main:'var(--bg-sub,var(--bg-sub,#F3F4F6))'};color:${selCat===cat?'#fff':'var(--text2,var(--text2,#374151))'};border:1.5px solid ${selCat===cat?petCol.main:'var(--border,var(--border,#E5E7EB))'};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">${cat}</button>`).join('')}
       </div>`;
     }
 

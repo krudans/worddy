@@ -2686,6 +2686,7 @@ async function loadMarketPacks(retryCount) {
       // 1초, 2초, 4초, 8초 간격으로 최대 4회 재시도
       const delay = Math.pow(2, retryCount) * 1000;
       await new Promise(res => setTimeout(res, delay));
+      if(typeof go === 'function') go(); // 로딩 화면 타이머 업데이트
       return loadMarketPacks(retryCount + 1);
     }
     S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
@@ -8984,11 +8985,22 @@ function rStudy() {
     if(!S._marketPacks || S._marketPacks.length === 0) {
       if(!S._mktLoading) {
         S._mktLoading = true;
+        S._mktLoadStart = Date.now();
         loadMarketPacks().then(()=>{ S._mktLoading=false; go(); }).catch(()=>{ S._mktLoading=false; go(); });
       }
-      return `<div class="pad" style="text-align:center;padding:60px 20px;color:var(--text3,#9CA3AF)"><div style="font-size:40px;margin-bottom:12px">🔄</div><div style="font-size:14px;font-weight:700;color:var(--text2,#374151);margin-bottom:6px">단어팩 불러오는 중...</div><div style="font-size:12px">네트워크 상태에 따라 잠시 걸릴 수 있어요</div></div>`;
+      // 20초 지나면 강제 해제 후 새로고침 유도
+      const _elapsed = Date.now() - (S._mktLoadStart||Date.now());
+      const _timedOut = _elapsed > 20000;
+      if(_timedOut) { S._mktLoading=false; S._mktLoadStart=null; }
+      return `<div class="pad" style="text-align:center;padding:60px 20px">
+        <div style="font-size:40px;margin-bottom:12px">${_timedOut?'😥':'🔄'}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text2,#374151);margin-bottom:6px">${_timedOut?'불러오기 실패':'단어팩 불러오는 중...'}</div>
+        <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-bottom:20px">${_timedOut?'네트워크를 확인해주세요':'네트워크 상태에 따라 잠시 걸릴 수 있어요'}</div>
+        <button onclick="S._mktLoading=false;S._marketPacks=null;go()" style="background:var(--point,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer">🔄 다시 시도</button>
+      </div>`;
     }
     S._mktLoading = false;
+    S._mktLoadStart = null;
     return rMarket();
   }
   if(S.stab==='add')   return booksBar+tabs+rAdd();
@@ -9324,7 +9336,7 @@ function showBookMenu(name, type) {
     ${[
       ['📤', '공유/내보내기', `exportCSV();cm()`],
       ['✏️', '이름 수정', `cm();const n=prompt('새 이름');if(n&&n.trim()){const b=S.books?.find(x=>x.name==='${safeN}');if(b){b.name=n.trim();sv();go();toast('이름 변경 완료!');}}`],
-      ['📋', '복사', `if(S.books){const b=S.books?.find(x=>x.name==='${safeN}');if(b){const copy={...b,name:b.name+' 복사',words:[...b.words]};S.books.push(copy);sv();cm();go();toast('복사 완료!');}}` ],
+      ['📋', '복사', `if(S.books){const b=S.books?.find(x=>x.name==='${safeN}');if(b){if(b.packId){toast('마켓팩은 복사할 수 없어요','err');cm();return;}const copy={...b,name:b.name+' 복사',words:[...(b.words||[])]};S.books.push(copy);sv();cm();go();toast('복사 완료!');}}` ],
       ['🗑️', '단어장 삭제', `cm();_confirmDeleteBook('${safeN}')`],
     ].map(([ic,lb,fn])=>`<div onclick="${fn}" style="display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;border-bottom:1px solid #F3F4F6" ontouchstart="this.style.background='#F9FAFB'" ontouchend="this.style.background=''"> <span style="font-size:18px">${ic}</span> <span style="font-size:15px;font-weight:600;color:#374151">${lb}</span> </div>`).join('')}
     <div onclick="cm()" style="padding:16px 20px;text-align:center;cursor:pointer;font-size:14px;font-weight:700;color:#9CA3AF">취소</div>
@@ -9338,7 +9350,7 @@ function _confirmDeleteBook(name) {
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px">단어장을 삭제할까요?<br>단어 데이터도 함께 삭제됩니다.</div>
     <div style="display:flex;gap:8px">
       <button onclick="cm()" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button onclick="cm();S.books=S.books?.filter(x=>x.name!=='${name.replace(/'/g,"\\'")}');if(S.currentBook==='${name.replace(/'/g,"\\'")}')S.currentBook='내 단어장';sv();go();toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+      <button onclick="cm();const _db=S.books?.find(x=>x.name==='${name.replace(/'/g,"\\'")}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});}S.books=S.books?.filter(x=>x.name!=='${name.replace(/'/g,"\\'")}');if(S.currentBook==='${name.replace(/'/g,"\\'")}')S.currentBook='내 단어장';sv();go();toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
     </div>
   </div></div>`;
 }

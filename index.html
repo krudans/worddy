@@ -751,7 +751,7 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   idx:0, flip:false, streak:1, lastDate:'',
   // 단어장 여러 개
   books:[], currentBook:'내 단어장',
-  // 마켓
+  // 마켓 (null=미로드, []=로드완료)
   _marketPacks:null, _mktLoading:false,
   // 게임 설정
   gameSettings:{count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false},
@@ -2734,14 +2734,17 @@ async function loadMarketPacks() {
     S._mktLoading = false;
     _mktProgress(100, '완료!');
     setTimeout(()=>{ _mktProgress(0,''); }, 400);
-    go();
-    console.log('[마켓] 메타 로드 완료:', fbPacks.length + '개');
+    // go() 대신 마켓 영역만 직접 업데이트 (무한루프 방지)
+    const _body = document.getElementById('body') || document.querySelector('.body');
+    if(_body && S.stab === 'market') _body.innerHTML = rMarket();
+    console.log('[마켓] 로드 완료:', fbPacks.length + '개');
 
   } catch(e) {
     console.warn('마켓 로드 실패:', e.message);
     S._mktLoading = false;
     S._marketPacks = [];
-    go();
+    const _body = document.getElementById('body') || document.querySelector('.body');
+    if(_body && S.stab === 'market') _body.innerHTML = rMarket();
   }
 }
 
@@ -9010,9 +9013,8 @@ function rStudy() {
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
   if(S.stab==='market') {
-    // null: 아직 로드 안함 / []: 로드했으나 0개 / [...]: 정상
-    if(S._marketPacks === null || S._marketPacks === undefined) {
-      if(!S._mktLoading) loadMarketPacks();
+    if(!S._marketPacks && !S._mktLoading) {
+      loadMarketPacks();
       return `<div class="pad" style="text-align:center;padding:40px;color:var(--text3,#9CA3AF)"><div style="font-size:36px;margin-bottom:8px">🔄</div><div>마켓 불러오는 중...</div></div>`;
     }
     if(S._mktLoading) {

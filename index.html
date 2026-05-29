@@ -1907,10 +1907,8 @@ function rMarket() {
   const selCat = S._mktCat||'전체';
   console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
-  // 카테고리 추출 (고정 순서)
-  const catOrder = ['전체','📺 영미드라마','💬 회화·표현','🎯 주제별','✏️ 시험대비','📚 수준별'];
-  const extraCats = [...new Set(packs.map(p=>p.cat||'기타'))].filter(c=>!catOrder.includes(c));
-  const cats = [...catOrder.filter(c=>c==='전체'||packs.some(p=>(p.cat||'기타')===c)), ...extraCats];
+  // 카테고리 추출
+  const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
   let filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
   // 정렬 적용
   if(mktSort==='name') filtered = filtered.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
@@ -1918,7 +1916,7 @@ function rMarket() {
   else if(mktSort==='owned') filtered = filtered.slice().sort((a,b)=>{ const ao=ownedPacks.includes(a.id),bo=ownedPacks.includes(b.id); return ao===bo?0:ao?-1:1; });
 
   // 정렬 버튼 HTML
-  const sortBtns = [['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
+  const sortBtns = [['kr','기본'],['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
     var v=item[0],lb=item[1],active=mktSort===v;
     return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#EFF6FF':'#fff')+';color:'+(active?'#1E5FA5':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
   }).join('');
@@ -3091,7 +3089,7 @@ async function showConversationMode() {
         </div>
       </div>
       <div style="display:flex;gap:6px;padding:0 16px 8px;overflow-x:auto;flex-shrink:0">
-        ${cats.map(cat=>`<button onclick="window._cvSelCat='${cat}';window._cvIdx=0;window._cvFlip=false;window._cvRender()" style="background:${selCat===cat?'rgba(99,179,237,.3)':'rgba(255,255,255,.08)'};color:${selCat===cat?'#63B3ED':'rgba(255,255,255,.5)'};border:1px solid ${selCat===cat?'rgba(99,179,237,.4)':'rgba(255,255,255,.1)'};border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">${cat}</button>`).join('')}
+        ${cats.map(cat=>`<button onclick="window._cvSelCat='${cat}';window._cvIdx=0;window._cvFlip=false;window._cvRender()" style="background:${selCat===cat?'rgba(99,179,237,.3)':'rgba(255,255,255,.08)'};color:${selCat===cat?'#63B3ED':'rgba(255,255,255,.5)'};border:1px solid ${selCat===cat?'rgba(99,179,237,.4)':'rgba(255,255,255,.1)'};border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer">${cat}</button>`).join('')}
       </div>
       <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px">
         <div onclick="window._cvFlip=!window._cvFlip;window._cvRender()" style="width:100%;max-width:360px;background:var(--panel-muted,rgba(0,0,0,.06));border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px 24px;text-align:center;cursor:pointer;min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
@@ -3664,9 +3662,15 @@ function sv() {
       const booksData = {books: S.books||[], words: S.words||[], updatedAt: new Date().toISOString()};
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
-      // 단어장 별도 저장
-      db.collection('user_words').doc(uid).set(booksData, {merge:true})
-        .catch(e=>console.warn('단어장 저장 오류',e));
+      // 단어장 별도 저장 (빈 데이터로 덮어쓰기 방지)
+      const _totalWordCount = (booksData.words||[]).length + (booksData.books||[]).reduce((s,b)=>s+(b.words||[]).length,0);
+      if(_totalWordCount > 0) {
+        db.collection('user_words').doc(uid).set(booksData, {merge:true})
+          .catch(e=>console.warn('단어장 저장 오류',e));
+      } else {
+        // 단어가 0개면 기존 Firebase 데이터 보존 (덮어쓰지 않음)
+        console.warn('[단어장 저장 건너뜀] 단어 0개 - 기존 데이터 보존');
+      }
       // 일별 백업 (하루 1번)
       const _bd = today();
       const lastBackup = localStorage.getItem('wd-last-backup');

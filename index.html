@@ -3681,21 +3681,37 @@ window._auto = window._auto || {
 };
 function _autoSpeak(text, lang='en-US', rateOverride) {
   return new Promise(res => {
-    if(!text) return res();
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang;
-    u.rate = rateOverride != null ? rateOverride : (lang === 'ko-KR' ? 0.95 : (window._auto.shadowRate || 0.85));
-    u.onend = res; u.onerror = res;
-    setTimeout(res, 6000);
-    speechSynthesis.speak(u);
+    text = String(text==null?'':text).trim();
+    if(!text){ res(); return; }
+    try{ speechSynthesis.cancel(); }catch(e){}
+    var rate = rateOverride!=null ? rateOverride : (lang==='ko-KR' ? 0.95 : ((window._auto && window._auto.shadowRate) || 0.85));
+    var isKo = /[\uAC00-\uD7A3]/.test(text) || lang==='ko-KR';
+    var perChar = isKo ? 170 : 90;
+    var estimate = Math.max(450, (text.length*perChar)/rate + 300);
+    var done=false;
+    function finish(){ if(done) return; done=true; res(); }
+    setTimeout(function(){
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = lang; u.rate = rate;
+      try{ var v=(window._bestVoice?_bestVoice(isKo):null); if(v) u.voice=v; }catch(e){}
+      var startT = performance.now();
+      u.onend = function(){ var el=performance.now()-startT; if(el < estimate*0.55){ return; } finish(); };
+      u.onerror = function(){ finish(); };
+      try{ speechSynthesis.speak(u); }catch(e){ finish(); return; }
+      setTimeout(function(){ if(!done) finish(); }, estimate+200);
+      setTimeout(function(){ if(!done) finish(); }, Math.min(estimate*2+1500, 12000));
+    }, 40);
   });
 }
 async function _autoReadWord(w) {
   const m = window._auto.read || 'en+kr';
   const exCount = parseInt(window._auto?.exCount||0);
+  const ws = window._autoWords || [];
+  const single = function(x){ var e=((x&&x.en)||'').trim(); return e.length>0 && !/\s/.test(e); };
+  const sentenceBook = ws.length>=5 && (ws.filter(single).length/ws.length) < 0.5;
+  const isPhrase = /\s/.test((w.en||'').trim());
   const exList = w.exList && w.exList.length ? w.exList : (w.ex ? [w.ex] : []);
-  const exToRead = exList.slice(0, exCount);
+  const exToRead = sentenceBook ? [] : exList.slice(0, exCount);
 
   const speakExamples = async () => {
     for(const ex of exToRead) {
@@ -3704,48 +3720,47 @@ async function _autoReadWord(w) {
     }
   };
 
-  if(m === 'spell') {
-    // 영단어 먼저 읽고 → 그 다음 철자를 한 글자씩 읽어줌
+  // 문장/구는 철자 읽기가 무의미 → 통문장 읽기로 대체
+  const effMode = (m === 'spell' && isPhrase) ? 'en+kr' : m;
+
+  if(effMode === 'spell') {
     await _autoSpeak(w.en, 'en-US');
     await new Promise(r=>setTimeout(r,350));
     const letters = (w.en||'').split('');
     for(const ch of letters) {
-      if(!window._autoPlaying && window._autoPlaying !== undefined) {}
       const say = /[a-zA-Z]/.test(ch) ? ch.toUpperCase() : ch;
-      await _autoSpeak(say, 'en-US', 1.6);
+      if(!/\s/.test(ch)) await _autoSpeak(say, 'en-US', 1.6);
       await new Promise(r=>setTimeout(r,60));
     }
     await speakExamples();
-  } else if(m === 'en') {
+  } else if(effMode === 'en') {
     await _autoSpeak(w.en, 'en-US');
     await speakExamples();
-  } else if(m === 'kr') {
+  } else if(effMode === 'kr') {
     await _autoSpeak(w.kr, 'ko-KR');
-  } else if(m === 'ex') {
+  } else if(effMode === 'ex') {
     if(exToRead.length) { for(const ex of exToRead) await _autoSpeak(ex, 'en-US'); }
-    else if(w.ex) await _autoSpeak(w.ex, 'en-US');
-  } else if(m === 'kr_first') {
-    // 한글 먼저 → N초 후 영어 발음
+    else { await _autoSpeak(w.en, 'en-US'); await new Promise(r=>setTimeout(r,250)); await _autoSpeak(w.kr, 'ko-KR'); }
+  } else if(effMode === 'kr_first') {
     await _autoSpeak(w.kr, 'ko-KR');
     const delay = (window._auto.krFirstDelay||3) * 1000;
     await new Promise(r=>setTimeout(r,delay));
-    // 카드 뒤집기 (영어 표시)
     const cardReveal = document.getElementById('auto-kr-reveal');
     if(cardReveal) cardReveal.style.display='block';
     const krOnly = document.getElementById('auto-kr-only');
     if(krOnly) krOnly.style.display='none';
     await _autoSpeak(w.en, 'en-US');
     await speakExamples();
-  } else if(m === 'en+kr') {
+  } else if(effMode === 'en+kr') {
     await _autoSpeak(w.en, 'en-US');
     await new Promise(r=>setTimeout(r,300));
     await _autoSpeak(w.kr, 'ko-KR');
     await speakExamples();
-  } else if(m === 'en+ex') {
+  } else if(effMode === 'en+ex') {
     await _autoSpeak(w.en, 'en-US');
     await new Promise(r=>setTimeout(r,300));
     await speakExamples();
-  } else if(m === 'all') {
+  } else if(effMode === 'all') {
     await _autoSpeak(w.en, 'en-US');
     await new Promise(r=>setTimeout(r,250));
     await _autoSpeak(w.kr, 'ko-KR');
@@ -3773,7 +3788,7 @@ function _autoRefilter() {
   window._autoWords = words;
   window._autoIdx = 0;
 }
-function _arSetRead(v){if(window._auto)window._auto.read=v;window._autoRender&&window._autoRender();}
+function _arSetRead(v){var ws=window._autoWords||[];var sg=function(x){var e=((x&&x.en)||'').trim();return e.length>0&&!/\s/.test(e);};var sb=ws.length>=5&&(ws.filter(sg).length/ws.length)<0.5;if(v==='spell'&&sb){if(typeof toast==='function')toast('문장 단어장은 스펠링 모드를 쓸 수 없어요');v='en+kr';}if(window._auto)window._auto.read=v;window._autoRender&&window._autoRender();}
 function _arSetSpeed(sr,sp){if(window._auto){window._auto.shadowRate=sr;window._auto.speed=sp;}window._autoRender&&window._autoRender();}
 function _arSetExCount(v){if(window._auto)window._auto.exCount=v;window._autoRender&&window._autoRender();}
 function _arToggleLoop(){if(window._auto)window._auto.loop=!window._auto.loop;window._autoRender&&window._autoRender();}
@@ -3957,7 +3972,7 @@ window._autoRender = function() {
       .map(function(it){return btn(it[0],'_arSetRange('+it[1]+')',(A.range??-1)===it[1]);}).join('');
 
     // 발음 버튼
-    var readBtns = [['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']]
+    var _ws=window._autoWords||[];var _sb=_ws.length>=5&&(_ws.filter(function(x){var e=((x&&x.en)||'').trim();return e.length>0&&!/\s/.test(e);}).length/_ws.length)<0.5;var readBtns = _sb?[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr']]:[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']]
       .map(function(it){return btn(it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]);}).join('');
     var krDelayBtns = [['3초',3],['5초',5],['7초',7]]
       .map(function(it){return btn(it[0],'window._auto.krFirstDelay='+it[1]+';window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]);}).join('');

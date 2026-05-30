@@ -11532,6 +11532,36 @@ function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)retur
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
 function speak(text, force){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var isKo=force==='ko'||(force!=='en'&&/[\uAC00-\uD7A3]/.test(text));var spoken=isKo?(/[.?!\u2026]$/.test(text.trim())?text:text.trim()+'.'):text;var u=new SpeechSynthesisUtterance(spoken);u.lang=isKo?'ko-KR':'en-US';u.rate=isKo?0.92:0.85;u.pitch=1.0;var v=_bestVoice(isKo);if(v)u.voice=v;window.speechSynthesis.speak(u);}catch(e){}}
+/* ===== 음성 강제 적용 (모든 발화 경로 통합 수정) ===== */
+(function(){
+  if(!('speechSynthesis' in window)) return;
+  var _vcache=[];
+  function _loadV(){ try{ _vcache=window.speechSynthesis.getVoices()||[]; }catch(e){} }
+  _loadV();
+  try{ window.speechSynthesis.addEventListener('voiceschanged', _loadV); }catch(e){ try{ window.speechSynthesis.onvoiceschanged=_loadV; }catch(e2){} }
+  window._bestVoice=function(isKo){
+    var vs=_vcache.length?_vcache:(window.speechSynthesis.getVoices()||[]);
+    if(!vs.length) return null;
+    if(isKo) return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;
+    return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;
+  };
+  if(window.speechSynthesis.speak && !window.speechSynthesis.__wrapped){
+    var _orig=window.speechSynthesis.speak.bind(window.speechSynthesis);
+    window.speechSynthesis.speak=function(u){
+      try{
+        if(u){
+          var hangul=/[\uAC00-\uD7A3]/.test(u.text||'');
+          var isKo=(u.lang&&u.lang.toLowerCase().indexOf('ko')===0)||hangul;
+          if(isKo && (!u.lang || u.lang.toLowerCase().indexOf('ko')!==0)) u.lang='ko-KR';
+          if(!u.voice){ var v=window._bestVoice(isKo); if(v) u.voice=v; }
+        }
+      }catch(e){}
+      return _orig(u);
+    };
+    window.speechSynthesis.__wrapped=true;
+  }
+})();
+
 const SORT_SENTENCES=[{en:'I study hard every day',kr:'나는 매일 열심히 공부한다',words:['I','study','hard','every','day']},{en:'She has a beautiful smile',kr:'그녀는 아름다운 미소를 가지고 있다',words:['She','has','a','beautiful','smile']},{en:'We learn new words together',kr:'우리는 함께 새 단어를 배운다',words:['We','learn','new','words','together']}];
 function rSSorting(){
   if(!S.sbS||!S.sbS.words){buildSentenceFromWords&&buildSentenceFromWords(S.gWords);if(!S.sbS||!S.sbS.words){const st=rnd(SORT_SENTENCES);S.sbS=st;S.sbP=shuf([...st.words]);S.sbC=[];S.sbAns=false;S.sbOk=false;}speak(S.sbS?.en||'');}

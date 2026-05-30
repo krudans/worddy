@@ -1596,7 +1596,7 @@ function downloadButterflyCard(bId) {
 }
 
 // ── 도감 수집 시스템 ──
-const MAX_COLLECTION = 15;
+const MAX_COLLECTION = 10;
 
 function getMyCollection() {
   if(Array.isArray(S._collection)) return S._collection;
@@ -2556,7 +2556,7 @@ function showStudyCalendar() {
           const d = i+1;
           const val = monthData[d]||0;
           const isToday = d===now.getDate();
-          const intensity = val===0?0 : val<=50?1 : val<=100?2 : val<=150?3 : 4; // 단어수 50 간격 고정 범례
+          const intensity = val===0?0:Math.ceil(val/maxVal*4);
           const bgColors = ['var(--bg-sub,var(--bg-sub,#F3F4F6))','#FEF9C3','#FDE68A','#F59E0B','#D97706'];
           const bg = isToday ? '#E65100' : bgColors[intensity];
           const col = isToday ? '#fff' : intensity>=3 ? '#1A0A00' : 'var(--text1,var(--text1,#111111))';
@@ -2568,7 +2568,7 @@ function showStudyCalendar() {
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:center">
         <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF))">학습량:</div>
-${['없음','1–50','51–100','101–150','150+'].map((lb,i)=>` <div style="display:flex;align-items:center;gap:3px"> <div style="width:12px;height:12px;border-radius:2px;background:${['var(--bg-sub)','#FEF9C3','#FDE68A','#F59E0B','#D97706'][i]}"></div> <span style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF))">${lb}</span> </div>`).join('')}
+${['없음','적음','보통','많음','최다'].map((lb,i)=>` <div style="display:flex;align-items:center;gap:3px"> <div style="width:12px;height:12px;border-radius:2px;background:${['var(--bg-sub)','#FEF9C3','#FDE68A','#F59E0B','#D97706'][i]}"></div> <span style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF))">${lb}</span> </div>`).join('')}
       </div>
       <div style="margin-top:12px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:12px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${[
@@ -5054,7 +5054,7 @@ function go(tab,sub) {
         const isToday=(k===today30);
         const mm=k.slice(5,7), dd=k.slice(8,10);
         const dow=d.getDay();
-        const col=tot===0?'#F3F4F6':tot<5?'#BFDBFE':tot<15?'#60A5FA':tot<30?'#2563EB':'#1D4ED8';
+        const col=tot===0?'#F3F4F6':tot<=50?'#BFDBFE':tot<=100?'#60A5FA':tot<=150?'#2563EB':'#1D4ED8'; // 단어수 50 간격 고정
         const tcol=tot===0?'#C4A46B':tot<15?'#1E5FA5':'#fff';
         const dowColor=dow===0?'#ef4444':dow===6?'#3b82f6':'#9CA3AF';
         html+='<div style="display:flex;flex-direction:column;align-items:center;gap:1px">';
@@ -8918,11 +8918,12 @@ function rStudy() {
       const _elapsed = Date.now() - (S._mktLoadStart||Date.now());
       const _timedOut = _elapsed > 20000;
       if(_timedOut) { S._mktLoading=false; S._mktLoadStart=null; }
-      return `<div class="pad" style="text-align:center;padding:60px 20px">
-        <div style="font-size:40px;margin-bottom:12px">${_timedOut?'😥':'🔄'}</div>
-        <div style="font-size:14px;font-weight:700;color:var(--text2,#374151);margin-bottom:6px">${_timedOut?'불러오기 실패':'단어팩 불러오는 중...'}</div>
-        <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-bottom:20px">${_timedOut?'네트워크를 확인해주세요':'네트워크 상태에 따라 잠시 걸릴 수 있어요'}</div>
-        <button onclick="S._mktLoading=false;S._marketPacks=null;go()" style="background:var(--point,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer">🔄 다시 시도</button>
+      return `<div class="pad" style="text-align:center;padding:48px 20px">
+        <style>@keyframes mktSpin{to{transform:rotate(360deg)}}</style>
+        <div style="font-size:46px;margin-bottom:14px;display:inline-block;${_timedOut?'':'animation:mktSpin 1s linear infinite'}">${_timedOut?'😥':'🔄'}</div>
+        <div style="font-size:15px;font-weight:800;color:var(--text1,#111);margin-bottom:6px">${_timedOut?'불러오기 실패':'단어팩 불러오는 중...'}</div>
+        <div style="font-size:12px;color:var(--text3,#9CA3AF);margin-bottom:24px">${_timedOut?'네트워크 연결을 확인하고 다시 시도해주세요':'네트워크 상태에 따라 잠시 걸릴 수 있어요'}</div>
+        <button id="mkt-retry-btn" onclick="if(this.dataset.busy)return;this.dataset.busy=1;if(typeof vib==='function')vib(30);if(typeof toast==='function')toast('🔄 다시 불러오는 중...');this.innerHTML='⏳ 불러오는 중...';this.style.opacity='.7';this.style.transform='scale(.96)';S._mktLoading=false;S._marketPacks=null;setTimeout(function(){go();},140);" style="background:linear-gradient(135deg,#2563EB,#1E5FA5);color:#fff;border:none;border-radius:14px;padding:13px 34px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(30,95,165,.35);transition:transform .12s ease,opacity .12s ease;letter-spacing:.3px">🔄 다시 시도</button>
       </div>`;
     }
     S._mktLoading = false;
@@ -12869,7 +12870,7 @@ auth.onAuthStateChanged(async user => {
           if(Array.isArray(_data.collection)) {
             const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
             const fbIds = new Set(_data.collection.map(x=>x.id));
-            const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))];
+            const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))].slice(0, MAX_COLLECTION); // 도감 최대 MAX_COLLECTION개 캡 (무한 누적 방지)
             S._collection = merged;
             localStorage.setItem('bw-collection', JSON.stringify(merged));
           }
@@ -13023,7 +13024,7 @@ auth.onAuthStateChanged(async user => {
           // localStorage 컬렉션과 Firebase 컬렉션 합집합 (id 기준)
           const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
           const fbIds = new Set(_data.collection.map(x=>x.id));
-          const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))];
+          const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))].slice(0, MAX_COLLECTION); // 도감 최대 MAX_COLLECTION개 캡 (무한 누적 방지)
           S._collection = merged;
           localStorage.setItem('bw-collection', JSON.stringify(merged));
           if(merged.length > _data.collection.length && S.user && typeof db!=='undefined') {

@@ -9532,24 +9532,29 @@ function wContentType(w){
 }
 function _wHasEx(w){ return !!((w&&w.ex&&String(w.ex).trim().length>3) || (w&&w.exList&&w.exList.length)); }
 function _wIsSingle(w){ var e=((w&&w.en)||'').trim(); return wContentType(w)==='word' && /^[A-Za-z][A-Za-z'\u2019\-]*$/.test(e); }
+function _isSingleWord(w){ var e=((w&&w.en)||'').trim(); return e.length>0 && !/\s/.test(e); }
 function gamePlayablePred(gameId){
   switch(gameId){
-    case 'wordle': return function(w){ var e=((w.en||'')).trim(); return _wIsSingle(w)&&e.length>=3&&e.length<=10; };
+    case 'wordle': return function(w){ var e=((w.en||'')).trim(); return _isSingleWord(w)&&/^[A-Za-z'\u2019\-]+$/.test(e)&&e.length>=3&&e.length<=10; };
     case 'wordfind':
-    case 'wc': return function(w){ var e=((w.en||'')).trim(); return _wIsSingle(w)&&e.length>=3&&e.length<=12; };
-    case 'fill': return _wHasEx;
+    case 'wc': return function(w){ var e=((w.en||'')).trim(); return _isSingleWord(w)&&/^[A-Za-z'\u2019\-]+$/.test(e)&&e.length>=3&&e.length<=12; };
+    case 'fill':
     case 'sentence':
-    case 'ssort': return function(w){ return wContentType(w)==='sentence'||_wHasEx(w); };
-    default: return function(){ return true; };
+    case 'ssort': return function(w){ return _isSingleWord(w)&&_wHasEx(w); };
+    case 'flip': return function(){ return true; };
+    default: return function(w){ return _isSingleWord(w); };
   }
 }
 function gamePlayableCount(gameId, words){ var p=gamePlayablePred(gameId); return (words||[]).filter(p).length; }
 function filterPlayable(gameId, words){ var p=gamePlayablePred(gameId); return (words||[]).filter(p); }
 function gameContentGate(gameId, words){
   words=words||[];
-  var gated={ wordle:3, wordfind:3, wc:3, fill:3, sentence:3, ssort:3 };
-  if(!(gameId in gated)) return { ok:true };
-  var need=gated[gameId];
+  if(gameId==='flip') return { ok:true };
+  var singles=words.filter(_isSingleWord).length;
+  if(words.length>=5 && (singles/words.length)<0.5){
+    return { ok:false, playable:singles, total:words.length, need:3, bookBlock:true };
+  }
+  var need=3;
   var playable=gamePlayableCount(gameId, words);
   return { ok: playable>=need, playable:playable, total:words.length, need:need };
 }
@@ -9560,19 +9565,28 @@ function showGameGate(gameId, gate){
     wc:{ nm:'단어 완성', why:'단어의 빠진 철자를 채우는 게임이라, 숙어·문장에는 적합하지 않아요.', rec:['flip','quiz','typing'] },
     fill:{ nm:'빈칸 채우기', why:'예문 속 단어를 맞히는 게임이라, 예문이 있는 단어가 필요해요.', rec:['flip','quiz','typing'] },
     sentence:{ nm:'문장 구성', why:'예문(문장)을 단어 순서대로 재배열하는 게임이라, 예문이나 문장으로 된 단어가 필요해요.', rec:['flip','quiz','typing'] },
-    ssort:{ nm:'문장 배열', why:'예문(문장)을 듣고 순서를 맞추는 게임이라, 예문이나 문장으로 된 단어가 필요해요.', rec:['flip','quiz','listen'] }
+    ssort:{ nm:'문장 배열', why:'1단어 단어장의 예문으로만 진행돼요.' },
+    quiz:{ nm:'객관식 퀴즈', why:'2단어 이상(구·문장)은 게임에서 제외돼요.' },
+    typing:{ nm:'받아쓰기', why:'2단어 이상(구·문장)은 게임에서 제외돼요.' },
+    match:{ nm:'스피드 매칭', why:'2단어 이상(구·문장)은 게임에서 제외돼요.' },
+    listen:{ nm:'듣고 완성', why:'2단어 이상(구·문장)은 게임에서 제외돼요.' }
   };
   var recNames={ flip:'플래시카드', quiz:'객관식 퀴즈', match:'스피드 매칭', typing:'받아쓰기', listen:'듣고 완성', sentence:'문장 구성', ssort:'문장 배열' };
-  var m=meta[gameId]||{ nm:'이 게임', why:'이 단어장과 맞지 않아요.', rec:['flip','quiz'] };
+  var m=meta[gameId]||{ nm:'이 게임', why:'2단어 이상(구·문장)으로 된 단어장은 이 게임에 사용할 수 없어요.' };
+  if(gate&&gate.bookBlock){ m={ nm:(m.nm||'게임'), why:'이 단어장은 문장·구 위주라 게임을 이용할 수 없어요. 플래시카드나 자동학습으로 학습해 주세요.' }; }
   var mr=document.getElementById('mr'); if(!mr) return;
-  var recBtns=(m.rec||[]).map(function(r){
+  var _cw=(typeof getCurrentBookWords==='function')?getCurrentBookWords():[];
+  var _cand=['quiz','typing','match','listen','wordle','fill'];
+  var _valid=_cand.filter(function(r){ var g=gameContentGate(r,_cw); return g&&g.ok; });
+  var _recs=['flip'].concat(_valid).slice(0,3);
+  var recBtns=_recs.map(function(r){
     return '<button onclick="cm();showGameSettings(\'' + r + '\')" style="flex:1;background:#EFF6FF;border:1.5px solid #BFDBFE;color:#1E5FA5;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">' + (recNames[r]||r) + '</button>';
   }).join('');
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
     + '<div style="font-size:42px;margin-bottom:8px">🚧</div>'
     + '<div style="font-size:17px;font-weight:800;margin-bottom:8px">' + m.nm + ' — 이 단어장은 이용할 수 없어요</div>'
     + '<div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:6px">' + m.why + '</div>'
-    + '<div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">(이 게임에 사용 가능한 단어 ' + ((gate&&gate.playable)||0) + '개 / 최소 ' + ((gate&&gate.need)||0) + '개 필요)</div>'
+    + '<div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">(' + ((gate&&gate.bookBlock)?'문장·구 위주 단어장 — 게임 미지원':('이 게임에 사용 가능한 단어 ' + ((gate&&gate.playable)||0) + '개 / 최소 ' + ((gate&&gate.need)||0) + '개 필요')) + ')</div>'
     + '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">이 단어장에 추천하는 학습 ↓</div>'
     + '<div style="display:flex;gap:8px;margin-bottom:10px">' + recBtns + '</div>'
     + '<button onclick="cm()" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">닫기</button>'

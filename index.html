@@ -9871,12 +9871,15 @@ function startAutoPlay() {
   const next=()=>{
     if(!playing||idx>=S.words.length){playing=false;cm();return;}
     const w=S.words[idx];
-    const u=new SpeechSynthesisUtterance(w.en+'. '+w.kr);
-    u.lang='ko-KR'; u.rate=0.9;
-    window.speechSynthesis.speak(u);
+    window.speechSynthesis.cancel();
+    var _ue=new SpeechSynthesisUtterance(w.en||'');_ue.lang='en-US';_ue.rate=0.85;var _ev=_bestVoice(false);if(_ev)_ue.voice=_ev;
+    var _krt=(w.kr||'').trim();if(_krt&&!/[.?!\u2026]$/.test(_krt))_krt+='.';
+    var _uk=null;if(_krt){_uk=new SpeechSynthesisUtterance(_krt);_uk.lang='ko-KR';_uk.rate=0.92;var _kv=_bestVoice(true);if(_kv)_uk.voice=_kv;}
+    _ue.onend=function(){if(!playing)return;if(_uk){window.speechSynthesis.speak(_uk);}else{setTimeout(next,600);}};
+    if(_uk){_uk.onend=function(){if(playing)setTimeout(next,600);};}
+    window.speechSynthesis.speak(_ue);
     S.idx=idx; S.flip=false; go();
     idx++;
-    u.onend=()=>{if(playing)setTimeout(next,600);};
   };
   document.getElementById('mr').innerHTML=`<div class="mbg"><div class="modal" style="text-align:center">
     <div style="font-size:16px;font-weight:800;margin-bottom:8px">▶ 자동 재생 중</div>
@@ -11516,7 +11519,8 @@ function rWordle(){
 }
 function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;}go();}
 
-function speak(text){try{if('speechSynthesis'in window){window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u);}}catch(e){}}
+function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
+function speak(text, force){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var isKo=force==='ko'||(force!=='en'&&/[\uAC00-\uD7A3]/.test(text));var spoken=isKo?(/[.?!\u2026]$/.test(text.trim())?text:text.trim()+'.'):text;var u=new SpeechSynthesisUtterance(spoken);u.lang=isKo?'ko-KR':'en-US';u.rate=isKo?0.92:0.85;u.pitch=1.0;var v=_bestVoice(isKo);if(v)u.voice=v;window.speechSynthesis.speak(u);}catch(e){}}
 const SORT_SENTENCES=[{en:'I study hard every day',kr:'나는 매일 열심히 공부한다',words:['I','study','hard','every','day']},{en:'She has a beautiful smile',kr:'그녀는 아름다운 미소를 가지고 있다',words:['She','has','a','beautiful','smile']},{en:'We learn new words together',kr:'우리는 함께 새 단어를 배운다',words:['We','learn','new','words','together']}];
 function rSSorting(){
   if(!S.sbS||!S.sbS.words){buildSentenceFromWords&&buildSentenceFromWords(S.gWords);if(!S.sbS||!S.sbS.words){const st=rnd(SORT_SENTENCES);S.sbS=st;S.sbP=shuf([...st.words]);S.sbC=[];S.sbAns=false;S.sbOk=false;}speak(S.sbS?.en||'');}

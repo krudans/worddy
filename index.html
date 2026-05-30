@@ -1019,18 +1019,24 @@ const MARK_INFO = [
 ];
 
 function buildSentenceFromWords(wordList) {
-  const candidates=(wordList||S.gWords||[]).filter(w=>w.ex&&w.ex.trim().length>3);
-  let chosen=candidates.length>0?rnd(candidates):null;
-  if(chosen){
-    const sentence=chosen.ex.replace(/[.,!?;:]/g,'').trim();
+  const pool=(wordList||S.gWords||[]);
+  // 문장형(en 자체가 3~12단어) 우선, 없으면 예문(ex) 사용
+  const _cnt=w=>(((w&&w.en)||'').trim().split(/\s+/).filter(Boolean)).length;
+  const sentPool=pool.filter(w=>{const n=_cnt(w);return n>=3&&n<=12;});
+  const exPool=pool.filter(w=>{if(!w.ex||w.ex.trim().length<=3)return false;const n=w.ex.trim().split(/\s+/).filter(Boolean).length;return n>=3&&n<=12;});
+  let chosen=null, source=null, hint=null;
+  if(sentPool.length){ chosen=rnd(sentPool); source=chosen.en; hint=chosen.kr||''; }
+  else if(exPool.length){ chosen=rnd(exPool); source=chosen.ex; hint=(chosen.kr||'')+' (예문)'; }
+  if(chosen&&source){
+    const sentence=source.replace(/[.,!?;:]/g,'').trim();
     const words=sentence.split(/\s+/).filter(w=>w.length>0);
     if(words.length>=3){
-      const wrongPool=(wordList||S.gWords||[])
+      const wrongPool=pool
         .filter(w=>w.en!==chosen.en)
-        .map(w=>w.en.split(/\s+/)[0])
-        .filter(w=>!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()))
+        .map(w=>((w.en||'').split(/\s+/)[0]))
+        .filter(w=>w&&!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()))
         .slice(0,3);
-      S.sbS={kr:chosen.kr+'(예문)',en:sentence,words};
+      S.sbS={kr:hint,en:sentence,words};
       S.sbP=shuf([...words,...wrongPool].slice(0,words.length+2));
       S.sbC=[];S.sbAns=false;S.sbOk=false;return;
     }
@@ -11037,6 +11043,16 @@ function ghdr(title,prog){
     +'</div>';
 }
 
+function pickQ4(ci){
+  var cs=S._gCs||[]; var w=S.gWords[S.gIdx]; var ch=cs[ci];
+  if(!ch||!w||S.gAns)return;
+  S.gAns=ch.en;
+  var okk=ch.en===w.en;
+  S.gRes=okk?'ok':'no';
+  if(!S.gResultMap)S.gResultMap={};
+  if(okk){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; go(); setTimeout(function(){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();},800); }
+  else{ if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; go(); }
+}
 function rQ4(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
@@ -11074,7 +11090,7 @@ function rQ4(){
 
   // 보기 버튼
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-  cs.forEach(function(ch) {
+  cs.forEach(function(ch, _ci) {
     var isAns=ch.en===w.en;
     var picked=answered&&S.gAns===ch.en;
     var bg,border,col;
@@ -11084,12 +11100,7 @@ function rQ4(){
     else{bg='#F9FAFB';border='#E5E7EB';col='#9CA3AF';}
 
     // 클릭 시: 정답이면 1초 후 자동 넘어가기, 오답이면 수동으로 넘어가기
-    var onclickCode = answered ? '' :
-      'S.gAns=\''+ch.en+'\';'
-      +'S.gRes=(\''+ch.en+'\'===\''+w.en+'\'?\'ok\':\'no\');'
-      +'if(!S.gResultMap)S.gResultMap={};'
-      +'if(\''+ch.en+'\'===\''+w.en+'\'){if(typeof ok===\'function\')ok();S.gScore+=100;S.gResultMap[S.gIdx]=true;go();setTimeout(function(){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();},800);}'
-      +'else{if(typeof ng===\'function\')ng();S.gResultMap[S.gIdx]=false;go();}';
+    var onclickCode = answered ? '' : ('pickQ4('+_ci+')');
 
     html+='<button onclick="'+onclickCode+'" '
       +'style="background:'+bg+';border:2px solid '+border+';border-radius:16px;padding:18px 10px;font-size:15px;font-weight:700;color:'+col+';cursor:'+(answered?'default':'pointer')+';text-align:center;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.06);min-height:58px;display:flex;align-items:center;justify-content:center">'

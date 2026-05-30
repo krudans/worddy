@@ -835,7 +835,7 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
 
 const lv = id => LEVELS.find(l=>l.id===id)||LEVELS[0];
 const shuf = a => [...a].sort(()=>Math.random()-.5);
-const pick=(a,n)=>{if(!a||!a.length)return[];n=Math.min(n,a.length);const gk=S.gameId||'default';if(!S._gameUsed)S._gameUsed={};if(!S._gameUsed[gk])S._gameUsed[gk]=[];const used=new Set(S._gameUsed[gk]);let pool=a.filter(w=>!used.has(w.en));if(pool.length<n){S._gameUsed[gk]=[];pool=[...a];}const sel=pool.sort(()=>Math.random()-.5).slice(0,n);sel.forEach(w=>S._gameUsed[gk].push(w.en));return sel;};
+const pick=(a,n)=>{if(!a||!a.length)return[];n=Math.min(n,a.length);const gk=S.gameId||'default';if(!S._gameUsed)S._gameUsed={};if(!S._gameUsed[gk])S._gameUsed[gk]=[];const used=new Set(S._gameUsed[gk]);let pool=a.filter(w=>!used.has(w.en+'|'+(w.kr||'')));if(pool.length<n){S._gameUsed[gk]=[];pool=[...a];}const sel=pool.sort(()=>Math.random()-.5).slice(0,n);sel.forEach(w=>S._gameUsed[gk].push(w.en+'|'+(w.kr||'')));return sel;};
 const rnd = a => a[Math.floor(Math.random()*a.length)];
 
 // ── 출석 체크 & 학습 기록 ──
@@ -9507,6 +9507,64 @@ ${[['word','단어'],['meaning','의미'],['pronunciation','발음'],['example',
   </div></div>`;
 }
 
+// ===== 콘텐츠 유형 판별 & 게임 게이트 (단어 / 숙어 / 문장) =====
+function wContentType(w){
+  var en=((w&&w.en)||'').trim();
+  if(!en) return 'word';
+  var sp=(en.match(/\s/g)||[]).length;
+  if(/[.?!]/.test(en) || sp>=3) return 'sentence';
+  if(sp>=1) return 'phrase';
+  return 'word';
+}
+function _wHasEx(w){ return !!((w&&w.ex&&String(w.ex).trim().length>3) || (w&&w.exList&&w.exList.length)); }
+function _wIsSingle(w){ var e=((w&&w.en)||'').trim(); return wContentType(w)==='word' && /^[A-Za-z][A-Za-z'\u2019\-]*$/.test(e); }
+function gamePlayablePred(gameId){
+  switch(gameId){
+    case 'wordle': return function(w){ var e=((w.en||'')).trim(); return _wIsSingle(w)&&e.length>=3&&e.length<=10; };
+    case 'wordfind':
+    case 'wc': return function(w){ var e=((w.en||'')).trim(); return _wIsSingle(w)&&e.length>=3&&e.length<=12; };
+    case 'fill': return _wHasEx;
+    case 'sentence':
+    case 'ssort': return function(w){ return wContentType(w)==='sentence'||_wHasEx(w); };
+    default: return function(){ return true; };
+  }
+}
+function gamePlayableCount(gameId, words){ var p=gamePlayablePred(gameId); return (words||[]).filter(p).length; }
+function filterPlayable(gameId, words){ var p=gamePlayablePred(gameId); return (words||[]).filter(p); }
+function gameContentGate(gameId, words){
+  words=words||[];
+  var gated={ wordle:3, wordfind:3, wc:3, fill:3, sentence:3, ssort:3 };
+  if(!(gameId in gated)) return { ok:true };
+  var need=gated[gameId];
+  var playable=gamePlayableCount(gameId, words);
+  return { ok: playable>=need, playable:playable, total:words.length, need:need };
+}
+function showGameGate(gameId, gate){
+  var meta={
+    wordle:{ nm:'워들', why:'단일 영단어(3~10글자)의 철자를 맞히는 게임이라, 숙어나 문장이 많은 단어장에서는 진행할 수 없어요.', rec:['flip','quiz','sentence'] },
+    wordfind:{ nm:'단어 찾기', why:'글자 격자에서 한 단어를 찾는 게임이라, 띄어쓰기가 있는 숙어·문장에는 사용할 수 없어요.', rec:['flip','quiz','match'] },
+    wc:{ nm:'단어 완성', why:'단어의 빠진 철자를 채우는 게임이라, 숙어·문장에는 적합하지 않아요.', rec:['flip','quiz','typing'] },
+    fill:{ nm:'빈칸 채우기', why:'예문 속 단어를 맞히는 게임이라, 예문이 있는 단어가 필요해요.', rec:['flip','quiz','typing'] },
+    sentence:{ nm:'문장 구성', why:'예문(문장)을 단어 순서대로 재배열하는 게임이라, 예문이나 문장으로 된 단어가 필요해요.', rec:['flip','quiz','typing'] },
+    ssort:{ nm:'문장 배열', why:'예문(문장)을 듣고 순서를 맞추는 게임이라, 예문이나 문장으로 된 단어가 필요해요.', rec:['flip','quiz','listen'] }
+  };
+  var recNames={ flip:'플래시카드', quiz:'객관식 퀴즈', match:'스피드 매칭', typing:'받아쓰기', listen:'듣고 완성', sentence:'문장 구성', ssort:'문장 배열' };
+  var m=meta[gameId]||{ nm:'이 게임', why:'이 단어장과 맞지 않아요.', rec:['flip','quiz'] };
+  var mr=document.getElementById('mr'); if(!mr) return;
+  var recBtns=(m.rec||[]).map(function(r){
+    return '<button onclick="cm();showGameSettings(\'' + r + '\')" style="flex:1;background:#EFF6FF;border:1.5px solid #BFDBFE;color:#1E5FA5;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">' + (recNames[r]||r) + '</button>';
+  }).join('');
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
+    + '<div style="font-size:42px;margin-bottom:8px">🚧</div>'
+    + '<div style="font-size:17px;font-weight:800;margin-bottom:8px">' + m.nm + ' — 이 단어장은 이용할 수 없어요</div>'
+    + '<div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:6px">' + m.why + '</div>'
+    + '<div style="font-size:12px;color:#9CA3AF;margin-bottom:16px">(이 게임에 사용 가능한 단어 ' + ((gate&&gate.playable)||0) + '개 / 최소 ' + ((gate&&gate.need)||0) + '개 필요)</div>'
+    + '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">이 단어장에 추천하는 학습 ↓</div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:10px">' + recBtns + '</div>'
+    + '<button onclick="cm()" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">닫기</button>'
+    + '</div></div>';
+}
+
 function startGameWithSettings(gameId) {
   S.gameId = gameId;
   S._prevTab = S.tab; // 현재 탭 저장 → 나가기 시 복귀
@@ -9531,6 +9589,10 @@ function startGameWithSettings(gameId) {
     src = allWords.filter(w=>(_mm[w.en]||0) === gs.markFilter);
   }
   if(!src.length) src = allWords;
+  // ── 콘텐츠 게이트: 단어장이 이 게임에 맞지 않으면 안내 후 중단 ──
+  if(typeof gameContentGate==='function'){ var _gate=gameContentGate(gameId, allWords); if(_gate&&!_gate.ok){ showGameGate(gameId,_gate); return; } }
+  // 혼합 단어장 대비: 이 게임에 맞는 단어만 사용
+  if(typeof filterPlayable==='function'){ var _fp=filterPlayable(gameId, src); if(_fp.length) src=_fp; }
   startGameW(gameId, pick(src, Math.min(gs.count, src.length)));
 }
 
@@ -11072,12 +11134,13 @@ function ansQIdx(ci,wIdx){
   setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
 
+function reEsc(s){return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 function rFill(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
   const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
   const ex=exList[0]||'';
-  const blanked=ex?ex.replace(new RegExp('\\b'+w.en+'\\b','gi'),'_____'):('_____ : '+w.kr);
+  const blanked=ex?ex.replace(new RegExp('\\b'+reEsc(w.en)+'\\b','gi'),'_____'):('_____ : '+w.kr);
   const answered=!!S.gAns;
   const isCorrect=S.gRes==='ok';
 

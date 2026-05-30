@@ -2556,7 +2556,7 @@ function showStudyCalendar() {
           const d = i+1;
           const val = monthData[d]||0;
           const isToday = d===now.getDate();
-          const intensity = val===0?0:Math.ceil(val/maxVal*4);
+          const intensity = val===0?0 : val<=50?1 : val<=100?2 : val<=150?3 : 4; // 단어수 50 간격 고정 범례
           const bgColors = ['var(--bg-sub,var(--bg-sub,#F3F4F6))','#FEF9C3','#FDE68A','#F59E0B','#D97706'];
           const bg = isToday ? '#E65100' : bgColors[intensity];
           const col = isToday ? '#fff' : intensity>=3 ? '#1A0A00' : 'var(--text1,var(--text1,#111111))';
@@ -2568,7 +2568,7 @@ function showStudyCalendar() {
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:center">
         <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF))">학습량:</div>
-${['없음','적음','보통','많음','최다'].map((lb,i)=>` <div style="display:flex;align-items:center;gap:3px"> <div style="width:12px;height:12px;border-radius:2px;background:${['var(--bg-sub)','#FEF9C3','#FDE68A','#F59E0B','#D97706'][i]}"></div> <span style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF))">${lb}</span> </div>`).join('')}
+${['없음','1–50','51–100','101–150','150+'].map((lb,i)=>` <div style="display:flex;align-items:center;gap:3px"> <div style="width:12px;height:12px;border-radius:2px;background:${['var(--bg-sub)','#FEF9C3','#FDE68A','#F59E0B','#D97706'][i]}"></div> <span style="font-size:10px;color:var(--text3,var(--text3,#9CA3AF))">${lb}</span> </div>`).join('')}
       </div>
       <div style="margin-top:12px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:12px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${[
@@ -8029,6 +8029,8 @@ async function renderHomeRank() {
   el.innerHTML = '<div style="text-align:center;padding:12px;color:#9CA3AF;font-size:11px">⏳ 불러오는 중...</div>';
 
   try {
+    const myUid = (S.user && S.user.uid) || null;  // 누락 선언 복구 (XP 순위 오류 수정)
+    let all = [];
     const _snapUsers = await getRankSnap();
     _snapUsers.forEach(function(u){
       const xp = (u[mode]||0);
@@ -8906,7 +8908,7 @@ function rStudy() {
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
   if(S.stab==='market') {
-    if(!S._marketPacks || S._marketPacks.length === 0) {
+    if(S._marketPacks == null) {  // 로드 전(null/undefined)일 때만 로딩화면. 빈 배열([])=로드됐으나 0개 → rMarket 빈상태로 표시(무한 재로드 루프 방지)
       if(!S._mktLoading) {
         S._mktLoading = true;
         S._mktLoadStart = Date.now();

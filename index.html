@@ -1325,58 +1325,7 @@ function savePartialGameScore() {
   S._gameScoreSaved = true;
 }
 
-function saveGameScore(score) {
-  if(!S.bestScores) S.bestScores={};
-  const gid = S.gameId;
-  if(!gid) return;
-  // 최고 점수 저장
-  if(!S.bestScores[gid] || score > S.bestScores[gid]) {
-    S.bestScores[gid] = score;
-    localStorage.setItem('wd-bs', JSON.stringify(S.bestScores));
-  }
-  // 게임별 단어 수: gResultMap 기록이 있으면 그 수, 없으면 gWords 길이
-  const _rm = S.gResultMap || {};
-  const _rmKeys = Object.keys(_rm);
-  const _wc = _rmKeys.length > 0 ? _rmKeys.length : ((S.gWords||[]).length || 0);
-  // 맞은/틀린 수: 정답 기록(gResultMap)이 있으면 정확히 계산, 없으면 점수 기반 추정
-  let _right, _wrong;
-  if(_rmKeys.length > 0) {
-    // 정확: gResultMap에서 true=정답, false=오답 집계
-    _right = _rmKeys.filter(k => _rm[k] !== false).length;
-    _wrong = _rmKeys.filter(k => _rm[k] === false).length;
-  } else {
-    // 폴백: 점수 기반 추정 (정답당 100점 가정), 범위 보정
-    _right = Math.max(0, Math.min(_wc, Math.round(score/100)));
-    _wrong = Math.max(0, _wc - _right);
-  }
-  if(!S.gamePlayCount) S.gamePlayCount={};
-  S.gamePlayCount[gid] = (S.gamePlayCount[gid]||0) + _wc;
-  const _gt = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
-  if(!S.gameDailyCount) S.gameDailyCount={};
-  if(!S.gameDailyCount[_gt]) S.gameDailyCount[_gt]={};
-  const _prev = S.gameDailyCount[_gt][gid] || {words:0,right:0,wrong:0};
-  if(typeof _prev === 'number') {
-    S.gameDailyCount[_gt][gid] = {words:_prev+_wc, right:_right, wrong:_wrong};
-  } else {
-    S.gameDailyCount[_gt][gid] = {words:(_prev.words||0)+_wc, right:(_prev.right||0)+_right, wrong:(_prev.wrong||0)+_wrong};
-  }
-  localStorage.setItem('wd-gpc', JSON.stringify(S.gamePlayCount));
-  localStorage.setItem('wd-gdc', JSON.stringify(S.gameDailyCount));
-  // XP 계산
-  const xpTable = GAME_XP[gid] || {base:10, perfect:20};
-  const words = (S.gWords||[]).length || 1;
-  const right = _right;
-  const pct = Math.round(right/words*100);
-  let xpGain = xpTable.base;
-  if(pct===100) xpGain = xpTable.perfect;
-  else if(pct>=80) xpGain = Math.round(xpTable.base*1.5);
-  const streak = S.streak||0;
-  const _spd1 = (window._XPC?.streak_per_day??0.02);
-  let mult = 1.0 + streak * _spd1;
-  xpGain = Math.round(xpGain * mult);
-  if(xpGain>0) earnXP(xpGain, '게임 완료');
-  sv();
-}
+/* saveGameScore: js/features.js 단일 정의로 통합 (중복 제거) */
 
 // XP 획득 (표시 포함)
 function earnXP(amount, reason) {
@@ -2056,36 +2005,11 @@ function _doBuyPack(packId) {
   go('mybooks','market');
 }
 
-function downloadPack(packId) { buyPack(packId); }
+/* downloadPack: js/features.js 단일 정의로 통합 (중복 제거) */
 
-function removePack(packId) {
-  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
-  const name = pk ? pk.name : packId;
-  // confirm 대신 인라인 확인 모달 사용
-  document.getElementById('mr').innerHTML = `<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
-    <div style="font-size:36px;margin-bottom:12px">🗑️</div>
-    <div style="font-size:16px;font-weight:800;margin-bottom:8px">"${name}" 삭제</div>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">내 단어장에서 삭제할까요?<br>마켓에서 다시 추가할 수 있어요.</div>
-    <div style="display:flex;gap:8px">
-      <button onclick="cm()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button onclick="cm();_doRemovePack('${packId}')" style="flex:1;padding:12px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
-    </div>
-  </div></div>`;
-}
+/* removePack: js/features.js 단일 정의로 통합 (중복 제거) */
 
-function _doRemovePack(packId) {
-  const pk = (S._marketPacks||[]).find(p=>p.id===packId);
-  const name = pk ? pk.name : packId;
-  if(!S._ownedPacks) S._ownedPacks = [];
-  S._ownedPacks = S._ownedPacks.filter(id=>id!==packId);
-  if(S.books) S.books = S.books.filter(b=>b.packId!==packId && b.name!==name);
-  if(typeof db !== 'undefined' && S.user?.uid) {
-    db.collection('user_packs').doc(S.user.uid).set({owned: S._ownedPacks}, {merge: true}).catch(()=>{});
-  }
-  sv();
-  toast('🗑️ "'+name+'" 삭제됨');
-  go('mybooks','market');
-}
+/* _doRemovePack: js/features.js 단일 정의로 통합 (중복 제거) */
 
 function removeButterflyFromCollection(bId) {
   const b = BUTTERFLY_LIST.find(x=>x.id===bId);

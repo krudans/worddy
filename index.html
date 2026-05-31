@@ -3693,6 +3693,7 @@ function _autoSpeak(text, lang='en-US', rateOverride) {
     setTimeout(function(){
       var u = new SpeechSynthesisUtterance(text);
       u.lang = lang; u.rate = rate;
+      try{ if(isKo && window._isKoQuestion && _isKoQuestion(text)) u.pitch = 1.4; }catch(e){}
       try{ var v=(window._bestVoice?_bestVoice(isKo):null); if(v) u.voice=v; }catch(e){}
       var startT = performance.now();
       u.onend = function(){ var el=performance.now()-startT; if(el < estimate*0.55){ return; } finish(); };
@@ -11578,7 +11579,8 @@ function rWordle(){
 function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;}go();}
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
-function speak(text, force){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var isKo=force==='ko'||(force!=='en'&&/[\uAC00-\uD7A3]/.test(text));var spoken=isKo?(/[.?!\u2026]$/.test(text.trim())?text:text.trim()+'.'):text;var u=new SpeechSynthesisUtterance(spoken);u.lang=isKo?'ko-KR':'en-US';u.rate=isKo?0.92:0.85;u.pitch=1.0;var v=_bestVoice(isKo);if(v)u.voice=v;window.speechSynthesis.speak(u);}catch(e){}}
+function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[?？]$/.test(t))return true;return /(까요|ㄹ까요|을까요|나요|은가요|는가요|습니까|ㅂ니까|읍니까)[.\u2026]?$/.test(t);}
+function speak(text, force){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var isKo=force==='ko'||(force!=='en'&&/[\uAC00-\uD7A3]/.test(text));var t=text.trim();if(isKo&&_isKoQuestion(t)){var qt=t.replace(/[?？]+$/,'').replace(/[.\u2026]+$/,'').trim();var vq=_bestVoice(true);var spk=function(s,p){if(!s)return;var uu=new SpeechSynthesisUtterance(s);uu.lang='ko-KR';uu.rate=0.92;uu.pitch=p;if(vq)uu.voice=vq;window.speechSynthesis.speak(uu);};var parts=qt.split(/\s+/);if(parts.length>=2){var tail=parts.pop();spk(parts.join(' '),1.0);spk(tail+'?',1.6);}else{spk(qt+'?',1.5);}return;}var spoken=isKo?(/[.?!\u2026]$/.test(t)?t:t+'.'):text;var u=new SpeechSynthesisUtterance(spoken);u.lang=isKo?'ko-KR':'en-US';u.rate=isKo?0.92:0.85;u.pitch=1.0;var v2=_bestVoice(isKo);if(v2)u.voice=v2;window.speechSynthesis.speak(u);}catch(e){}}
 /* ===== 음성 강제 적용 (모든 발화 경로 통합 수정) ===== */
 (function(){
   if(!('speechSynthesis' in window)) return;
@@ -11601,6 +11603,7 @@ function speak(text, force){try{if(!('speechSynthesis'in window))return;text=Str
           var isKo=(u.lang&&u.lang.toLowerCase().indexOf('ko')===0)||hangul;
           if(isKo && (!u.lang || u.lang.toLowerCase().indexOf('ko')!==0)) u.lang='ko-KR';
           if(!u.voice){ var v=window._bestVoice(isKo); if(v) u.voice=v; }
+          if(isKo && window._isKoQuestion && _isKoQuestion(u.text||'') && (u.pitch==null||u.pitch===1)) u.pitch=1.35;
         }
       }catch(e){}
       return _orig(u);

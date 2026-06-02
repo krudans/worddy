@@ -3833,18 +3833,19 @@ window._toggleAutoLock = function() {
         + '<div style="height:6px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden"><div id="auto-lock-fill" style="height:100%;width:0%;background:#EF4444"></div></div>';
       overlay.appendChild(bar);
 
-      // 누르고 있는 동안의 경과시간(rAF)으로 진행률을 직접 계산 → CSS transition/재렌더에 의존하지 않음
-      let _holdStart = 0, _rafId = 0;
+      // 누르고 있는 동안의 경과시간으로 진행률을 직접 계산 → CSS transition/재렌더에 의존하지 않음.
+      // setInterval 사용(rAF는 백그라운드 탭에서 멈추므로 회피).
+      let _holdStart = 0, _holdIv = 0;
       const _fill = () => document.getElementById('auto-lock-fill');
+      const _stopIv = () => { if(_holdIv){ clearInterval(_holdIv); _holdIv = 0; } };
       const _tick = () => {
         if(!_holdStart) return;
         const p = Math.min(100, (performance.now() - _holdStart) / 5000 * 100);
         const f = _fill(); if(f) f.style.width = p + '%';
-        if(p >= 100) { _holdStart = 0; cancelAnimationFrame(_rafId); window._toggleAutoLock(); return; }
-        _rafId = requestAnimationFrame(_tick);
+        if(p >= 100) { _holdStart = 0; _stopIv(); window._toggleAutoLock(); }
       };
-      const _startHold = (e) => { if(e && e.preventDefault) e.preventDefault(); if(_holdStart) return; _holdStart = performance.now(); cancelAnimationFrame(_rafId); _rafId = requestAnimationFrame(_tick); };
-      const _endHold = (e) => { if(e && e.preventDefault) e.preventDefault(); _holdStart = 0; cancelAnimationFrame(_rafId); const f = _fill(); if(f) f.style.width = '0%'; };
+      const _startHold = (e) => { if(e && e.preventDefault) e.preventDefault(); if(_holdStart) return; _holdStart = performance.now(); _stopIv(); _holdIv = setInterval(_tick, 50); };
+      const _endHold = (e) => { if(e && e.preventDefault) e.preventDefault(); _holdStart = 0; _stopIv(); const f = _fill(); if(f) f.style.width = '0%'; };
       overlay.addEventListener('touchstart', _startHold, {passive:false});
       overlay.addEventListener('touchend', _endHold, {passive:false});
       overlay.addEventListener('touchcancel', _endHold, {passive:false});

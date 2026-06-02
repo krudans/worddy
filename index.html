@@ -3780,9 +3780,10 @@ function _autoRefilter() {
   const A = window._auto||{};
   let words = [...rawWords];
   const range = parseInt(A.range??-1);
-  if(range===0){ words=words.filter(w=>(getMark(w.en)||0)===0); if(!words.length){toast('미학습 단어가 없어요!');words=[...rawWords];} }
-  else if(range===1){ words=words.filter(w=>getMark(w.en)===1); if(!words.length){toast('외웠음 표시 단어가 없어요!');words=[...rawWords];} }
-  else if(range===2){ words=words.filter(w=>getMark(w.en)===2); if(!words.length){toast('복습 표시 단어가 없어요!');words=[...rawWords];} }
+  window._autoRangeFallback = false;
+  if(range===0){ words=words.filter(w=>(getMark(w.en)||0)===0); if(!words.length){toast('미학습 단어가 없어요!');words=[...rawWords];window._autoRangeFallback=true;} }
+  else if(range===1){ words=words.filter(w=>getMark(w.en)===1); if(!words.length){toast('외웠음 표시 단어가 없어요!');words=[...rawWords];window._autoRangeFallback=true;} }
+  else if(range===2){ words=words.filter(w=>getMark(w.en)===2); if(!words.length){toast('복습 표시 단어가 없어요!');words=[...rawWords];window._autoRangeFallback=true;} }
   const unit = A.unit||'all';
   if(unit!=='all'){const n=parseInt(unit);if(!isNaN(n)&&n>0)words=words.slice(0,n);}
   window._autoWords = words;
@@ -3817,37 +3818,49 @@ document.addEventListener('visibilitychange', () => {
 window._autoLocked = false;
 window._toggleAutoLock = function() {
   window._autoLocked = !window._autoLocked;
-  const overlay = document.getElementById('auto-lock-overlay');
+  let overlay = document.getElementById('auto-lock-overlay');
   if(window._autoLocked) {
-    // 오버레이 생성 - 터치/클릭 전부 차단
+    // 오버레이 생성 - 터치/클릭 전부 차단. 진행바를 오버레이 안에 둬서
+    // 단어가 바뀌어 본문(mr)이 다시 그려져도 해제 진행률이 리셋되지 않게 한다.
     if(!overlay) {
-      const el = document.createElement('div');
-      el.id = 'auto-lock-overlay';
-      el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;touch-action:none;-webkit-user-select:none;user-select:none;';
-      // 길게 누르면 잠금 해제
-      let _lockTimer = null;
-      let _lockProgress = null;
-      el.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        _lockProgress = document.getElementById('lock-progress');
-        if(_lockProgress) _lockProgress.style.transition = 'width 5s linear'; 
-        if(_lockProgress) _lockProgress.style.width = '100%';
-        _lockTimer = setTimeout(() => { window._toggleAutoLock(); }, 5000);
-      }, {passive:false});
-      el.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        clearTimeout(_lockTimer);
-        if(_lockProgress) { _lockProgress.style.transition='none'; _lockProgress.style.width='0%'; }
-      }, {passive:false});
-      el.addEventListener('touchmove', (e) => { e.preventDefault(); }, {passive:false});
-      el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
-      document.body.appendChild(el);
+      overlay = document.createElement('div');
+      overlay.id = 'auto-lock-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;touch-action:none;-webkit-user-select:none;user-select:none;';
+      const bar = document.createElement('div');
+      bar.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:230px;max-width:74vw;background:rgba(15,23,42,.85);border:1px solid rgba(239,68,68,.5);border-radius:14px;padding:14px 16px;text-align:center;pointer-events:none';
+      bar.innerHTML = '<div style="font-size:13px;color:#FCA5A5;font-weight:700;margin-bottom:8px">🔒 화면 잠금 중</div>'
+        + '<div style="font-size:11px;color:rgba(252,165,165,.8);margin-bottom:8px">화면을 5초간 길게 누르면 해제돼요</div>'
+        + '<div style="height:6px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden"><div id="auto-lock-fill" style="height:100%;width:0%;background:#EF4444"></div></div>';
+      overlay.appendChild(bar);
+
+      // 누르고 있는 동안의 경과시간(rAF)으로 진행률을 직접 계산 → CSS transition/재렌더에 의존하지 않음
+      let _holdStart = 0, _rafId = 0;
+      const _fill = () => document.getElementById('auto-lock-fill');
+      const _tick = () => {
+        if(!_holdStart) return;
+        const p = Math.min(100, (performance.now() - _holdStart) / 5000 * 100);
+        const f = _fill(); if(f) f.style.width = p + '%';
+        if(p >= 100) { _holdStart = 0; cancelAnimationFrame(_rafId); window._toggleAutoLock(); return; }
+        _rafId = requestAnimationFrame(_tick);
+      };
+      const _startHold = (e) => { if(e && e.preventDefault) e.preventDefault(); if(_holdStart) return; _holdStart = performance.now(); cancelAnimationFrame(_rafId); _rafId = requestAnimationFrame(_tick); };
+      const _endHold = (e) => { if(e && e.preventDefault) e.preventDefault(); _holdStart = 0; cancelAnimationFrame(_rafId); const f = _fill(); if(f) f.style.width = '0%'; };
+      overlay.addEventListener('touchstart', _startHold, {passive:false});
+      overlay.addEventListener('touchend', _endHold, {passive:false});
+      overlay.addEventListener('touchcancel', _endHold, {passive:false});
+      overlay.addEventListener('touchmove', (e) => { e.preventDefault(); }, {passive:false});
+      overlay.addEventListener('mousedown', _startHold);
+      overlay.addEventListener('mouseup', _endHold);
+      overlay.addEventListener('mouseleave', _endHold);
+      overlay.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+      document.body.appendChild(overlay);
     } else {
       overlay.style.display = '';
     }
     toast('🔒 화면 잠금 ON · 길게 눌러서 해제');
   } else {
-    if(overlay) overlay.style.display = 'none';
+    // 해제 시 오버레이를 완전히 제거 → 다음 잠금 때 새 핸들러로 깨끗하게 재생성
+    if(overlay) overlay.remove();
     toast('🔓 화면 잠금 해제');
   }
   window._autoRender && window._autoRender();
@@ -3867,15 +3880,16 @@ function showAutoMode() {
   // ── 학습범위 필터링 ──
   let words = [...rawWords];
   const range = parseInt(A.range ?? -1);
+  window._autoRangeFallback = false;
   if(range === 0) {
     words = words.filter(w => (getMark(w.en)||0) === 0);
-    if(!words.length) { toast('미학습 단어가 없어요!'); words = [...rawWords]; }
+    if(!words.length) { toast('미학습 단어가 없어요!'); words = [...rawWords]; window._autoRangeFallback = true; }
   } else if(range === 1) {
     words = words.filter(w => getMark(w.en) === 1);
-    if(!words.length) { toast('외웠음 표시 단어가 없어요!'); words = [...rawWords]; }
+    if(!words.length) { toast('외웠음 표시 단어가 없어요!'); words = [...rawWords]; window._autoRangeFallback = true; }
   } else if(range === 2) {
     words = words.filter(w => getMark(w.en) === 2);
-    if(!words.length) { toast('복습 표시 단어가 없어요!'); words = [...rawWords]; }
+    if(!words.length) { toast('복습 표시 단어가 없어요!'); words = [...rawWords]; window._autoRangeFallback = true; }
   }
 
   // ── 정렬 ──
@@ -4005,7 +4019,7 @@ window._autoRender = function() {
           +'</div>'
         +'</div>'
         // 진행바
-        +'<div style="padding:0 16px 4px;flex-shrink:0">'        +'<div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div>'        +(window._autoLocked ? '<div style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;margin-top:4px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:11px;color:#FCA5A5">🔒 화면 잠금 중 · 길게 눌러서 해제</span><div id="lock-progress" style="height:3px;width:0%;background:#EF4444;border-radius:2px;transition:none;min-width:0;max-width:80px"></div></div>' : '')        +'</div>'
+        +'<div style="padding:0 16px 4px;flex-shrink:0">'        +'<div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div>'        +(window._autoLocked ? '<div style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;margin-top:4px;text-align:center"><span style="font-size:11px;color:#FCA5A5">🔒 화면 잠금 중 · 화면을 길게 눌러서 해제</span></div>' : '')        +'</div>'
         // 단어 카드 (kr_first 모드 분기)
         +(A.read==='kr_first'
           ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 영어 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+w.kr+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 영어가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none"><div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'+(w.ph?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')+'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>'+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
@@ -4056,13 +4070,33 @@ window._autoToggle = async () => {
     window._requestWakeLock(); // 화면 꺼짐 방지
     window._autoRender();
     while(window._autoPlaying) {
-      const w = window._autoWords[window._autoIdx];
+      let w = window._autoWords[window._autoIdx];
       if(!w) break;
+      // ── 학습범위 강제 (버그1): 활성 범위와 맞지 않는 단어(예: '미학습' 모드인데
+      //    재생 중 외웠음 처리되거나 외부 동기화로 마크가 바뀐 단어)는 목록에서 빼고 건너뜀.
+      //    단, 필터 결과가 비어 전체로 폴백한 경우(_autoRangeFallback)에는 강제하지 않음. ──
+      if(!window._autoRangeFallback) {
+        const _rng = parseInt((window._auto && window._auto.range != null) ? window._auto.range : -1);
+        if((_rng === 0 || _rng === 1 || _rng === 2) && window._autoWords.length > 1) {
+          const _mk = getMark(w.en) || 0;
+          const _ok = _rng === 0 ? _mk === 0 : _mk === _rng;
+          if(!_ok) {
+            window._autoWords.splice(window._autoIdx, 1);
+            if(window._autoIdx >= window._autoWords.length) window._autoIdx = 0;
+            window._autoRender();
+            continue;
+          }
+        }
+      }
       const _curEn = w.en;
+      const _cycleStart = performance.now();
       await _autoReadWord(w);
       if(!window._autoPlaying) break;
-      // 단어 간 간격
-      await new Promise(r => setTimeout(r, 600));
+      // 단어 간 간격 (버그3): 속도 설정(_auto.speed, ms)을 한 단어 사이클 길이로 사용.
+      // 읽는 데 걸린 시간을 빼서 '느림(5.5s)~최대(2s)'가 실제 체감 속도로 반영되게 함.
+      const _budget = (window._auto && window._auto.speed) || 4000;
+      const _gap = Math.max(350, _budget - (performance.now() - _cycleStart));
+      await new Promise(r => setTimeout(r, _gap));
       if(!window._autoPlaying) break;
       // 읽는 동안 이 단어가 외웠음으로 제거됐는지 확인
       const _stillExists = window._autoWords.some(function(x){ return x.en === _curEn; });

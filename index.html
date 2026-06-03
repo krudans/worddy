@@ -3290,6 +3290,14 @@ function _studyHeader(title, subtitle, onExit, extraBtns='') {
 }
 
 // ── 암기 체크 버튼 XP 처리 ──
+// 오늘 '외웠음'으로 새로 표시한 단어 수 카운트 (학습탭 '오늘 외운 단어' 표시용)
+function _markTodayMemorized(){
+  try{
+    const t = today();
+    if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0, min:0};
+    S.studyLog[t].marked = (S.studyLog[t].marked||0) + 1;
+  }catch(e){}
+}
 window._markBtnXP = function(wordEn, val) {
   const prevMark = getMark(wordEn);
   setMark(wordEn, val);
@@ -3297,6 +3305,7 @@ window._markBtnXP = function(wordEn, val) {
   if(val === 1 && prevMark !== 1) {
     addXP(xp('word_flip'), true);   // word_flip = 외웠음 표시 보너스
     logStudy('words', wordEn);      // 단어 학습 XP(word_learn/daily_first)는 logStudy가 처리(하루 1회)
+    _markTodayMemorized();
   }
 };
 
@@ -3470,6 +3479,12 @@ function load() {
   S._srsCount = parseInt(localStorage.getItem('wd-srsc')||'0');
   S._totalStudyMins = parseInt(localStorage.getItem('wd-tsm')||'0');
   S._totalXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || 0;
+  // 누적 XP 보정: 일별 획득 XP 합(studyLog)이 누적보다 크면 누적을 그 값으로 맞춤.
+  // (누적 XP는 전체 획득 합이므로 어떤 기간 합보다도 작을 수 없음)
+  try{
+    const _xpSum = Object.values(S.studyLog||{}).reduce((s,v)=>s+((v&&v.xp)||0),0);
+    if(_xpSum > (S._totalXp||0)) S._totalXp = _xpSum;
+  }catch(e){}
   S.dList = JSON.parse(localStorage.getItem('wd-dl')||'[]');
   S.goal = localStorage.getItem('wd-gl')||null;
   S.goalTotal = +(localStorage.getItem('wd-glt')||0);
@@ -5206,6 +5221,7 @@ function rLearnTab() {
   const _weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
   const _last7 = Object.entries(_sl).filter(([k])=>k>=_weekAgo).map(([,v])=>v);
   const _week_words = _last7.reduce((s,v)=>s+(v.words||0),0);
+  const _week_marked = _last7.reduce((s,v)=>s+(v.marked||0),0);
   const _week_min = Math.round(_last7.reduce((s,v)=>s+(v.min||0),0));
   const _active7 = _last7.filter(v=>(v.words||0)>0).length;
   const _hist14 = Array.from({length:14},(_,i)=>{
@@ -5266,11 +5282,15 @@ function rLearnTab() {
         <div style="height:100%;background:linear-gradient(90deg,#6366F1,#8B5CF6);border-radius:99px;width:${pct}%;transition:width .5s"></div>
       </div>
     </div>
-    <!-- 오늘 2칸: 단어 + 공부시간 (퀴즈 제거) -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <!-- 오늘 3칸: 학습 단어 + 외운 단어 + 공부시간 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
         <div style="font-size:22px;font-weight:900;color:#6366F1">${todayLog.words||0}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습 단어</div>
+      </div>
+      <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
+        <div style="font-size:22px;font-weight:900;color:#16A34A">${todayLog.marked||0}</div>
+        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 외운 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
         <div style="font-size:22px;font-weight:900;color:#F59E0B">${fmtMin(todayLog.min||0)}</div>
@@ -5324,12 +5344,34 @@ function rLearnTab() {
     <div style="display:flex;align-items:flex-end;gap:3px;height:64px">
       ${_hist14.map(d=>{
         const h = Math.max(Math.round((d.words/_maxH)*44), d.words>0?5:0);
-        const color = d.isToday ? '#6366F1' : d.words>0 ? '#C4B5FD' : '#E5E7EB';
+        const color = d.words>0 ? _wordTierColor(d.words) : '#E5E7EB';
         return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:64px">
-          <div style="width:100%;border-radius:4px 4px 0 0;background:${color};height:${h}px;min-height:${d.words>0?4:2}px"></div>
+          <div style="width:100%;border-radius:4px 4px 0 0;background:${color};height:${h}px;min-height:${d.words>0?4:2}px${d.isToday?';outline:2px solid #6366F1;outline-offset:1px':''}"></div>
           <div style="font-size:8px;color:${d.isToday?'#6366F1':'var(--text3,#9CA3AF)'};font-weight:${d.isToday?'700':'400'}">${d.dow}</div>
         </div>`;
       }).join('')}
+    </div>
+    <!-- 범례 (홈 캘린더와 동일: 0~1,000단어 100단위) -->
+    <div style="display:flex;align-items:center;gap:4px;margin-top:10px;flex-wrap:wrap">
+      <span style="font-size:9px;color:#9CA3AF">0</span>
+      <div style="width:11px;height:11px;border-radius:3px;background:#F3F4F6;border:1px solid #E5E7EB"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#E0EFFF"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#BFDBFE"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#93C5FD"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#60A5FA"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#3B82F6"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#2563EB"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#1D4ED8"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#1E40AF"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#1E3A8A"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:#172554"></div>
+      <span style="font-size:9px;color:#9CA3AF">1,000단어</span>
+      <span style="font-size:9px;color:#9CA3AF;margin-left:auto">100단위</span>
+    </div>
+    <!-- 이번주 외운 단어 -->
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#E5E7EB);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;font-weight:700;color:var(--text2,#374151)">📘 이번주 외운 단어</span>
+      <span style="font-size:15px;font-weight:900;color:#16A34A">${_week_marked.toLocaleString()}개</span>
     </div>
   </div>
 
@@ -5868,7 +5910,7 @@ function rGameOnlyTab() {
               </div>
             </div>
             <div style="text-align:right;flex-shrink:0;min-width:60px">
-              ${(()=>{const _tdi2=((S.gameDailyCount||{})[new Date(Date.now()+9*3600000).toISOString().slice(0,10)]||{})[g.id];if(_tdi2&&(typeof _tdi2==='object'?_tdi2.words>0:_tdi2>0)){const _w2=typeof _tdi2==='object'?(_tdi2.words||0):_tdi2;const _r2=typeof _tdi2==='object'?(_tdi2.right||0):0;const _x2=typeof _tdi2==='object'?(_tdi2.wrong||0):(_w2-_r2);return `<div style="font-size:11px;font-weight:700;color:${cat.color};line-height:1.4">전체 ${_w2}개</div><div style="font-size:11px;font-weight:700;color:#16A34A;line-height:1.4">맞은수 ${_r2}개</div><div style="font-size:11px;font-weight:700;color:#DC2626;line-height:1.4">틀린수 ${_x2}개</div>`;}else if(cleared){return `<div style="font-size:13px;font-weight:800;color:${cat.color}">${Math.round(best/100)}개</div><div style="font-size:9px;color:var(--text3,#9CA3AF)">최고정답</div>`;}else{return `<span style="color:var(--text3,#D1D5DB);font-size:18px">›</span>`;}})()}
+              ${(()=>{const _tdi2=((S.gameDailyCount||{})[new Date(Date.now()+9*3600000).toISOString().slice(0,10)]||{})[g.id];if(_tdi2&&(typeof _tdi2==='object'?_tdi2.words>0:_tdi2>0)){const _w2=typeof _tdi2==='object'?(_tdi2.words||0):_tdi2;const _r2=typeof _tdi2==='object'?(_tdi2.right||0):0;const _x2=typeof _tdi2==='object'?(_tdi2.wrong||0):(_w2-_r2);return `<div style="font-size:11px;font-weight:700;color:${cat.color};line-height:1.4">전체 ${_w2}개</div><div style="font-size:11px;font-weight:700;color:#16A34A;line-height:1.4">맞은수 ${_r2}개</div><div style="font-size:11px;font-weight:700;color:#DC2626;line-height:1.4">틀린수 ${_x2}개</div>`;}else{return `<span style="color:var(--text3,#D1D5DB);font-size:18px">›</span>`;}})()}
             </div>
           </div>`;
         }).join('')}
@@ -5949,17 +5991,7 @@ function rButterflyTab() {
       </div>
     </div>
   </div>`;
-  // ── 내 벌거지 색상 선택 (캐릭터 카드 바로 아래) ──
-  const _colKey = getPetColor();
-  html += `<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:12px;margin-bottom:10px">
-    <div style="font-size:12px;font-weight:800;color:#111;margin-bottom:8px">🎨 내 벌거지 색상</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px">
-      ${Object.entries(PET_COLORS).map(([k,v])=>`<div onclick="setPetColor('${k}');go('butterfly')" style="text-align:center;padding:7px;border-radius:10px;background:${v.light};border:2px solid ${k===_colKey?v.main:'transparent'};cursor:pointer">
-        <div style="width:20px;height:20px;border-radius:50%;background:${v.main};margin:0 auto 3px"></div>
-        <div style="font-size:9px;font-weight:700;color:${v.main}">${v.name}</div>
-      </div>`).join('')}
-    </div>
-  </div>`;
+  // (색상 선택은 프로필 탭으로 이동됨)
 
 
   // ── XP 사용 버튼 ──
@@ -8060,7 +8092,7 @@ function rHome() {
       <div style="font-size:11px;font-weight:700;color:#9CA3AF;margin-bottom:8px">📆 최근 30일 학습 캘린더</div>
       <div id="cal30-${t}" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"></div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
-        <span style="font-size:9px;color:#9CA3AF">미학습</span>
+        <span style="font-size:9px;color:#9CA3AF">0</span>
         <div style="width:12px;height:12px;border-radius:3px;background:#F3F4F6;border:1px solid #E5E7EB"></div>
         <div style="width:12px;height:12px;border-radius:3px;background:#E0EFFF"></div>
         <div style="width:12px;height:12px;border-radius:3px;background:#BFDBFE"></div>
@@ -8072,21 +8104,8 @@ function rHome() {
         <div style="width:12px;height:12px;border-radius:3px;background:#1E40AF"></div>
         <div style="width:12px;height:12px;border-radius:3px;background:#1E3A8A"></div>
         <div style="width:12px;height:12px;border-radius:3px;background:#172554"></div>
-        <span style="font-size:9px;color:#9CA3AF">많음</span>
-        <span style="font-size:9px;color:#9CA3AF;margin-left:auto">숫자=학습량</span>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;font-size:9px;color:#6B7280">
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#F3F4F6;border:1px solid #E5E7EB;display:inline-block"></span>0개 (미학습)</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#E0EFFF;display:inline-block"></span>1~100개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#BFDBFE;display:inline-block"></span>101~200개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#93C5FD;display:inline-block"></span>201~300개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#60A5FA;display:inline-block"></span>301~400개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#3B82F6;display:inline-block"></span>401~500개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#2563EB;display:inline-block"></span>501~600개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#1D4ED8;display:inline-block"></span>601~700개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#1E40AF;display:inline-block"></span>701~800개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#1E3A8A;display:inline-block"></span>801~900개</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#172554;display:inline-block"></span>901개 이상</span>
+        <span style="font-size:9px;color:#9CA3AF">1,000단어</span>
+        <span style="font-size:9px;color:#9CA3AF;margin-left:auto">100단위</span>
       </div>
     </div>
   </div>`)
@@ -9801,6 +9820,7 @@ window._doMark = function(v) {
   if(v === 1 && prevMark !== 1) {
     addXP(xp('word_flip'), true);   // word_flip = 외웠음 표시 보너스
     logStudy('words', w.en);        // 단어 학습 XP는 logStudy가 처리(하루 1회)
+    _markTodayMemorized();
   }
   S.flip = false;
   S.idx = Math.min((S.idx||0)+1, Math.max(0, words.length-1));
@@ -10008,7 +10028,7 @@ function initFlashSwipe() {
         setMark(w.en, 1);
         if(S.learned && !S.learned.has(w.en)) { S.learned.add(w.en); }
         // 외웠음으로 새로 표시할 때만 XP
-        if(_prevSM !== 1) { addXP(xp('word_flip'), true); logStudy('words', w.en); }
+        if(_prevSM !== 1) { addXP(xp('word_flip'), true); logStudy('words', w.en); _markTodayMemorized(); }
         SFX.play && SFX.play('swipe_ok');
         showSwipeHint('✅ 외웠음!', '#16A34A');
         checkAchievements && checkAchievements();
@@ -11941,6 +11961,20 @@ function rProfile(){
 ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S.xp||0)?1:.3}"><div style="display:flex;justify-content:center;align-items:center;height:${lx.id===S.lid?'32px':'22px'}">${typeof charSVGAnimated==='function'?charSVGAnimated(lx.id,lx.id===S.lid?28:18,'normal'):lx.emoji}</div><div style="font-size:8px;color:${lx.id===S.lid?petCol.main:'#D1D5DB'};font-weight:${lx.id===S.lid?'800':'400'};margin-top:2px">${lx.name.split(' ')[0]}</div></div>`).join('')}
     </div>
   </div>`);
+
+  // ── 내 벌거지 색상 선택 (프로필로 이동) ──
+  {
+    const _colKey = getPetColor();
+    parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:18px;border:1.5px solid var(--border,#F0E6C8);padding:14px;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:10px">🎨 내 벌거지 색상</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px">
+        ${Object.entries(PET_COLORS).map(([k,v])=>`<div onclick="setPetColor('${k}');go('profile')" style="text-align:center;padding:7px;border-radius:10px;background:${v.light};border:2px solid ${k===_colKey?v.main:'transparent'};cursor:pointer">
+          <div style="width:20px;height:20px;border-radius:50%;background:${v.main};margin:0 auto 3px"></div>
+          <div style="font-size:9px;font-weight:700;color:${v.main}">${v.name}</div>
+        </div>`).join('')}
+      </div>
+    </div>`);
+  }
 
   // ── 설정 ──
   parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:18px;border:1.5px solid var(--border,#F0E6C8);padding:14px">

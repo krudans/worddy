@@ -2998,10 +2998,11 @@ async function rPK(){
   const selCat = window._adminSelCat||'전체';
   const filtered = selCat==='전체' ? packs : packs.filter(p=>p.cat===selCat);
 
-  const catTabs = ['전체',...cats].map(c=>{
+  const catTabs = ['전체',...cats].map((c,i)=>{
     const cnt = c==='전체' ? packs.length : packs.filter(p=>p.cat===c).length;
     const active = selCat===c;
-    return '<button onclick="window._adminSelCat=\''+c+'\';rPK()" style="padding:5px 14px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#1E5FA5':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap">'+c+' <span style="opacity:.65;font-size:11px">'+cnt+'</span></button>';
+    const setSel = (i===0) ? "'전체'" : "(window._adminCats["+(i-1)+"])";
+    return '<button onclick="window._adminSelCat='+setSel+';rPK()" style="padding:5px 14px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#1E5FA5':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap">'+esc(c)+' <span style="opacity:.65;font-size:11px">'+cnt+'</span></button>';
   }).join('');
 
   const packRows = filtered.map(function(p){
@@ -3126,15 +3127,21 @@ function pkImgClear(prevId, hiddenId, emoji) {
 }
 
 // 카테고리 관리 모달
+// 카테고리 이름에 작은따옴표(') 등 특수문자가 들어가도 onclick/HTML이 깨지지 않도록:
+//  - onclick에는 카테고리 문자열을 인라인하지 말고 _adminCats 인덱스를 넘긴다
+//  - 화면 표시 텍스트는 esc()로 이스케이프
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function renameCatByIndex(i){ const c=(window._adminCats||[])[i]; if(c!=null) renameCat(c); }
+function deleteCatByIndex(i){ const c=(window._adminCats||[])[i]; if(c!=null) deleteCat(c); }
 function showManageCats() {
   const cats = window._adminCats||[];
-  const rows = cats.map(function(c){
+  const rows = cats.map(function(c,i){
     const cnt = (window._adminPacks||[]).filter(p=>p.cat===c).length;
     return '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#F9FAFB;border-radius:10px;border:1.5px solid #E5E7EB;margin-bottom:6px">'
-      +'<span style="flex:1;font-weight:600">'+c+'</span>'
+      +'<span style="flex:1;font-weight:600">'+esc(c)+'</span>'
       +'<span style="font-size:11px;color:#9CA3AF">'+cnt+'개 팩</span>'
-      +'<button onclick="renameCat(\''+c+'\')" style="background:#EFF6FF;color:#1E5FA5;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">이름변경</button>'
-      +'<button onclick="deleteCat(\''+c+'\')" style="background:#FEF2F2;color:#DC2626;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">삭제</button>'
+      +'<button onclick="renameCatByIndex('+i+')" style="background:#EFF6FF;color:#1E5FA5;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">이름변경</button>'
+      +'<button onclick="deleteCatByIndex('+i+')" style="background:#FEF2F2;color:#DC2626;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">삭제</button>'
       +'</div>';
   }).join('');
   document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">'

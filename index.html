@@ -3425,6 +3425,15 @@ function toggleFav(en) {
   sv();
 }
 
+// S.markDates가 (책 전환·클라우드 복원 등으로) 사라져 있으면 localStorage에서 되살린다.
+// 새 {} 로 만들면 기존 기록을 날리므로, 반드시 wd-mkd 에서 재수화한다.
+function ensureMarkDates(){
+  if(!S.markDates || typeof S.markDates!=='object'){
+    try{ S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}'); }
+    catch(e){ S.markDates = {}; }
+  }
+  return S.markDates;
+}
 function setMark(en, val) {
   // 현재 단어장 markMap에 저장
   if(S.currentBook && S.currentBook !== '내 단어장') {
@@ -3443,7 +3452,7 @@ function setMark(en, val) {
   else if(val===2) S.learned.delete(en);
   // 외운 날짜 기록 (오늘/이번주/이번달 외운 단어 집계용, 단어장 무관 전역).
   // 외움(1)으로 새로 표시될 때만 날짜 기록, 그 외(미암기/헷갈림)는 날짜 삭제.
-  if(!S.markDates) S.markDates = {};
+  ensureMarkDates();
   if(val===1){
     if(!S.markDates[en]) S.markDates[en] = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
   } else {
@@ -3473,7 +3482,7 @@ function countMemorized(period){
   if(period==='all' || !period){
     return agg.sum; // 전체 단어장 합산 (단어장 헤더와 동일)
   }
-  const md = S.markDates||{};
+  const md = ensureMarkDates();
   const _t = (typeof today==='function') ? today() : new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   let from;
   if(period==='today') from=_t;
@@ -3651,8 +3660,9 @@ function sv() {
     localStorage.setItem('wd-srs',JSON.stringify(S.srsMap));
     localStorage.setItem('wd-mk',JSON.stringify(S.markMap));
   }
-  // markDates는 전역(전체 단어장 합산)이라 현재 책과 무관하게 항상 저장
-  try{ localStorage.setItem('wd-mkd',JSON.stringify(S.markDates||{})); }catch(e){}
+  // markDates는 전역(전체 단어장 합산)이라 현재 책과 무관하게 항상 저장.
+  // 단, 사라져 있으면 LS에서 복원 후 저장(빈 {}로 기존 기록 덮어쓰기 방지).
+  try{ if(typeof ensureMarkDates==='function') ensureMarkDates(); localStorage.setItem('wd-mkd',JSON.stringify(S.markDates||{})); }catch(e){}
   localStorage.setItem('wd-dl',JSON.stringify(S.dList));
   localStorage.setItem('wd-fav',JSON.stringify(Array.isArray(S.favorites)?S.favorites:[...(S.favorites||[])]));
   if(S._dcClaimed) localStorage.setItem('wd-dcc', S._dcClaimed);
@@ -8000,7 +8010,7 @@ function rHome() {
   const todayWords = todayLog.words||0;
   const todayQuiz = todayLog.quiz||0;
   const srsReady = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
-  const markDone = (typeof countMemorized==='function') ? countMemorized('all') : Object.values(S.markMap||{}).filter(v=>v===1).length;
+  const markDone = (typeof countMemorized==='function') ? countMemorized('today') : 0;
   const markWeak = Object.values(S.markMap||{}).filter(v=>v===2).length;
   const totalWordsCount = (S.words||[]).length;
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">

@@ -860,7 +860,7 @@ function checkAttend() {
   showAttendPopup();
 }
 
-function logStudy(type) {
+function logStudy(type, wordEn) {
   // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
   const todayKey = new Date().toISOString().slice(0,10);
   if(S._dailyDate !== todayKey) { S._dailyStudiedMin=0; S._dailyDate=todayKey; }
@@ -897,7 +897,19 @@ function logStudy(type) {
   S.studyLog[t][type]++;
   // XP 지급 (카운트 증가 후 판단)
   if(type==='words') {
-    // XP는 외웠음 버튼을 눌렀을 때만 지급 (아래 _doMark, _markBtn 참조)
+    // ── 단어 학습 XP: 단어가 학습될 때(넘어갈 때) 지급. 같은 단어는 하루 1회만(자동학습 무한반복 폭증 방지) ──
+    if(!S.studyLog[t].xpWords) S.studyLog[t].xpWords = {};
+    const _wkey = (wordEn||'').toLowerCase().trim();
+    const _alreadyXp = _wkey && S.studyLog[t].xpWords[_wkey];
+    if(_wkey && !_alreadyXp){
+      S.studyLog[t].xpWords[_wkey] = 1;
+      // 그날 첫 학습이면 daily_first 보너스, 그 외엔 word_learn
+      if(_prevCount === 0) addXP(xp('daily_first'), true);
+      else addXP(xp('word_learn'), true);
+    } else if(!_wkey) {
+      // 단어 식별자가 없는 호출(레거시): 안전하게 word_learn만
+      addXP(xp('word_learn'), true);
+    }
     checkXpUsable();
   }
   else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
@@ -3251,13 +3263,10 @@ function _studyHeader(title, subtitle, onExit, extraBtns='') {
 window._markBtnXP = function(wordEn, val) {
   const prevMark = getMark(wordEn);
   setMark(wordEn, val);
-  // 외웠음(1)으로 새로 표시할 때만 XP 지급
+  // 외웠음(1)으로 새로 표시할 때만 '외웠음 보너스' XP 지급 (단어 학습 XP와 별개)
   if(val === 1 && prevMark !== 1) {
-    const _t = typeof today==='function'?today():new Date().toISOString().slice(0,10);
-    const _pc = S.studyLog?.[_t]?.words || 0;
-    if(_pc === 0) addXP(xp('daily_first'));
-    else addXP(xp('word_learn'));
-    logStudy('words');
+    addXP(xp('word_flip'), true);   // word_flip = 외웠음 표시 보너스
+    logStudy('words', wordEn);      // 단어 학습 XP(word_learn/daily_first)는 logStudy가 처리(하루 1회)
   }
 };
 
@@ -4115,7 +4124,7 @@ window._autoToggle = async () => {
         }
       }
       window._autoRender();
-      logStudy('words'); // 카운트/시간 기록만 (XP는 외웠음 버튼에서)
+      logStudy('words', _curEn); // 단어 학습 기록 + 학습 XP(같은 단어 하루 1회)
     }
     window._autoRender();
   };
@@ -8477,7 +8486,7 @@ ${[['느리게',5000],['보통',3000],['빠르게',1500],['매우빠름',800]].m
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);
     }
-    logStudy('words'); // word_learn XP는 logStudy 내부에서 처리
+    logStudy('words', w.en); // 단어 학습 기록 + 학습 XP(같은 단어 하루 1회)
   };
 
   window._stNext=()=>{
@@ -8563,7 +8572,7 @@ function showAudioMode() {
       await window._audSpeak2(item.text, item.lang);
       await new Promise(res=>setTimeout(res,400));
     }
-    logStudy('words'); // word_learn XP는 logStudy 내부에서 처리
+    logStudy('words', w.en); // 단어 학습 기록 + 학습 XP(같은 단어 하루 1회)
     window._audIdx++;
     if(window._audPlaying) window._audPlay();
   };
@@ -8849,7 +8858,7 @@ function showSleepMode() {
     </div></div>`;
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.8;speechSynthesis.speak(u);
-    logStudy('words'); // word_learn XP는 logStudy 내부에서 처리
+    logStudy('words', w.en); // 단어 학습 기록 + 학습 XP(같은 단어 하루 1회)
     window._slpIdx++;
     window._slpTimer=setTimeout(window._slpPlay,5000);
   };
@@ -8945,7 +8954,7 @@ function showSRSMode() {
         <div style="display:flex;gap:8px"><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="flex:1;background:rgba(96,165,250,.2);border:1px solid rgba(96,165,250,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🔊 영어</button><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.kr||'').replace(/'/g,"\'")}');u.lang='ko-KR';u.rate=0.95;speechSynthesis.speak(u)" style="flex:1;background:rgba(248,113,113,.2);border:1px solid rgba(248,113,113,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🇰🇷 뜻</button></div><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.ex||w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
         <div style="display:flex;gap:8px">
           <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',2);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_hard'))" style="flex:1;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:14px;padding:14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">🔄 헷갈려요</button>
-          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_good'));logStudy('words')" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
+          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_good'));logStudy('words', (w.en||''))" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
         </div>
         <button onclick="speechSynthesis.cancel();window._curRender=null;document.getElementById('mr').innerHTML=''" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:9px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
       </div>
@@ -9740,12 +9749,10 @@ window._doMark = function(v) {
   if(!w) return;
   const prevMark = getMark(w.en);
   setMark(w.en, v);
-  // 외웠음(1)으로 새로 표시할 때만 XP 지급
+  // 외웠음(1)으로 새로 표시할 때만 '외웠음 보너스' XP 지급 (단어 학습 XP와 별개)
   if(v === 1 && prevMark !== 1) {
-    const _pc = S.studyLog?.[typeof today==='function'?today():new Date().toISOString().slice(0,10)]?.words || 0;
-    if(_pc === 0) addXP(xp('daily_first'));
-    else addXP(xp('word_learn'));
-    logStudy('words');
+    addXP(xp('word_flip'), true);   // word_flip = 외웠음 표시 보너스
+    logStudy('words', w.en);        // 단어 학습 XP는 logStudy가 처리(하루 1회)
   }
   S.flip = false;
   S.idx = Math.min((S.idx||0)+1, Math.max(0, words.length-1));
@@ -9953,7 +9960,7 @@ function initFlashSwipe() {
         setMark(w.en, 1);
         if(S.learned && !S.learned.has(w.en)) { S.learned.add(w.en); }
         // 외웠음으로 새로 표시할 때만 XP
-        if(_prevSM !== 1) { const _t3=typeof today==='function'?today():new Date().toISOString().slice(0,10); const _pc3=S.studyLog?.[_t3]?.words||0; if(_pc3===0) addXP(xp('daily_first')); else addXP(xp('word_learn')); logStudy('words'); }
+        if(_prevSM !== 1) { addXP(xp('word_flip'), true); logStudy('words', w.en); }
         SFX.play && SFX.play('swipe_ok');
         showSwipeHint('✅ 외웠음!', '#16A34A');
         checkAchievements && checkAchievements();
@@ -10006,7 +10013,7 @@ function nxtL(ok){
   if(!w) return;
   if(ok&&!S.learned.has(w.en)){
     S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);
-    logStudy('words');checkAchievements();checkLearnMilestone();sv();
+    logStudy('words', w.en);checkAchievements();checkLearnMilestone();sv();
     SFX.play('correct');vib(50);
     const clrs=['#FDE68A','#6EE7B7','#93C5FD'];
     for(let ci=0;ci<6;ci++){const p=document.createElement('div');const ang=(ci/6)*360;p.style.cssText='position:fixed;left:50%;top:60%;width:8px;height:8px;border-radius:50%;background:'+clrs[ci%3]+';z-index:9999;pointer-events:none;transform:translate(-50%,-50%);transition:all .4s ease-out;opacity:1';document.body.appendChild(p);setTimeout(()=>{p.style.transform='translate(calc(-50% + '+Math.round(Math.cos(ang*Math.PI/180)*50)+'px),calc(-50% + '+Math.round(Math.sin(ang*Math.PI/180)*50)+'px))';p.style.opacity='0';},30);setTimeout(()=>p.remove(),500);}
@@ -10541,7 +10548,7 @@ function addW(){
   // SRS 자동 등록
   if(!S.srsMap[en]) srsRate(en, 1);
   S.nEn=''; S.nKr=''; S.nPh=''; S.nEx1=''; S.nEx2=''; S.nEx3=''; S.nAiData=null; S.nImg='📝';
-  sv(); SFX.play('correct'); logStudy('words');
+  sv(); SFX.play('correct'); logStudy('words', en);
   const _bk2 = S.currentBook&&S.currentBook!=='내 단어장' ? (S.books||[]).find(b=>b.name===S.currentBook) : null;
   const _cnt2 = _bk2 ? (_bk2.words||[]).length : S.words.length;
   toast(`✅ "${en}" → [${S.currentBook||'내 단어장'}] 저장! (${_cnt2}개)`);

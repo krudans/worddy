@@ -3707,8 +3707,7 @@ async function _autoReadWord(w) {
   const m = window._auto.read || 'en+kr';
   const exCount = parseInt(window._auto?.exCount||0);
   const ws = window._autoWords || [];
-  const single = function(x){ var e=((x&&x.en)||'').trim(); return e.length>0 && !/\s/.test(e); };
-  const sentenceBook = ws.length>=5 && (ws.filter(single).length/ws.length) < 0.5;
+  const sentenceBook = _isSentenceBook(ws);
   const isPhrase = /\s/.test((w.en||'').trim());
   const exList = w.exList && w.exList.length ? w.exList : (w.ex ? [w.ex] : []);
   const exToRead = sentenceBook ? [] : exList.slice(0, exCount);
@@ -3988,7 +3987,7 @@ window._autoRender = function() {
       .map(function(it){return btn(it[0],'_arSetRange('+it[1]+')',(A.range??-1)===it[1]);}).join('');
 
     // 발음 버튼
-    var _ws=window._autoWords||[];var _sb=_ws.length>=5&&(_ws.filter(function(x){var e=((x&&x.en)||'').trim();return e.length>0&&!/\s/.test(e);}).length/_ws.length)<0.5;var readBtns = (_sb?[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr']]:[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']])
+    var _ws=window._autoWords||[];var _sb=_isSentenceBook(_ws);var readBtns = (_sb?[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr']]:[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']])
       .map(function(it){return btn(it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]);}).join('');
     var krDelayBtns = [['3초',3],['5초',5],['7초',7]]
       .map(function(it){return btn(it[0],'window._auto.krFirstDelay='+it[1]+';window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]);}).join('');
@@ -5119,6 +5118,18 @@ function go(tab,sub) {
     }
   });
   if((S.tab==='mybooks'||S.tab==='study')&&S.stab==='learn') requestAnimationFrame(initFlashSwipe);
+}
+
+// ── 단어장이 '문장 위주'인지 판정 (자동학습 예문 읽기 여부에 사용) ──
+// 기존엔 '단일어 비율<50%'였는데 'conference room' 같은 2단어 표현까지 문장으로 오판정돼
+// 단어 학습 팩에서 예문이 안 나오던 문제가 있었음 → 진짜 긴 문장(4단어 이상) 비율로 판정.
+function _isSentenceBook(ws){
+  if(!ws || ws.length < 5) return false;
+  var longSent = ws.filter(function(x){
+    var e = ((x&&x.en)||'').trim();
+    return e && e.split(/\s+/).length >= 4;
+  }).length;
+  return (longSent / ws.length) >= 0.5;
 }
 
 // ── 학습량(단어+퀴즈) → 색상 티어 (레벨당 100개 단위, 캘린더/주간차트 공통) ──

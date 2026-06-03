@@ -531,17 +531,26 @@ async function rDB(){
     <div class="card">
       <div class="ct">🛒 마켓팩 카테고리별 현황</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(cat=>{
-          const fbCnt=(window._adminPacks||[]).filter(p=>p.cat===cat).length;
-          const fbWc=(window._adminPacks||[]).filter(p=>p.cat===cat).reduce((a,p)=>a+(p.words?.length||0),0);
-          const lcCnt=localOnly.filter(p=>p.cat===cat).length;
-          const total=fbCnt+lcCnt;
-          return `<div style="background:#F9FAFB;border-radius:10px;padding:10px;cursor:pointer;border:1.5px solid #E5E7EB" onclick="T('pk')">
-            <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:2px">${cat}</div>
-            <div style="font-size:16px;font-weight:900;color:#1E5FA5">${total}팩</div>
-            <div style="font-size:10px;color:#9CA3AF">${fbWc.toLocaleString()}단어</div>
-          </div>`;
-        }).join('')}
+        ${(function(){
+          // 실제 팩 데이터에 존재하는 cat 값을 자동 수집 (하드코딩 목록이 실제 분류와 달라 0으로 뜨던 문제 해결)
+          const _fb = window._adminPacks||[];
+          const _all = _fb.concat(localOnly||[]);
+          const _cats = [...new Set(_all.map(p=>p.cat).filter(Boolean))];
+          if(!_cats.length) return '<div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:12px;padding:12px">분류된 팩이 없습니다</div>';
+          // 팩 수 많은 순 정렬
+          _cats.sort((a,b)=>_all.filter(p=>p.cat===b).length - _all.filter(p=>p.cat===a).length);
+          return _cats.map(cat=>{
+            const fbCnt=_fb.filter(p=>p.cat===cat).length;
+            const fbWc=_fb.filter(p=>p.cat===cat).reduce((a,p)=>a+(p.words?.length||0),0);
+            const lcCnt=(localOnly||[]).filter(p=>p.cat===cat).length;
+            const total=fbCnt+lcCnt;
+            return `<div style="background:#F9FAFB;border-radius:10px;padding:10px;cursor:pointer;border:1.5px solid #E5E7EB" onclick="T('pk')">
+              <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:2px">${cat}</div>
+              <div style="font-size:16px;font-weight:900;color:#1E5FA5">${total}팩</div>
+              <div style="font-size:10px;color:#9CA3AF">${fbWc.toLocaleString()}단어</div>
+            </div>`;
+          }).join('');
+        })()}
       </div>
     </div>
   </div>

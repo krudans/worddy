@@ -3451,12 +3451,27 @@ function setMark(en, val) {
   }
   sv();
 }
-// 외운 단어 집계(A안: 전체 단어장 합산). 전역 S.markMap/markDates 기준이라 단어장 무관.
-//  today/week/month = markDates(외운 날짜) 기반, all = markMap 전체(value===1) 기반.
+// 외운 단어 집계(A안: 전체 단어장 합산).
+//  '전체 단어장 합산' = 각 책의 markMap 외움(1)을 그 책의 실제 단어와 매칭해 합산(유령 제외).
+//   → 단어장 탭 헤더 '암기 N개'와 동일 기준. 전역 S.markMap은 저장 구조상 불완전해 사용하지 않음.
+//  today/week/month = markDates(외운 날짜) 기반 + 현재 외움 상태인 단어만.
+function _memorizedAcrossBooks(){
+  // 반환: {sum: 합산(중복허용, 헤더와 동일), set: 고유 en 집합}
+  let sum = 0; const set = Object.create(null);
+  const myWords = S.words||[]; const myMM = S.markMap||{};
+  for(const w of myWords){ if(myMM[w.en]===1){ sum++; set[w.en]=1; } }
+  const books = S.books||[];
+  for(const b of books){
+    const bw = (typeof getBookWords==='function') ? getBookWords(b) : (b.words||[]);
+    const mm = b.markMap||{};
+    for(const w of bw){ if(mm[w.en]===1){ sum++; set[w.en]=1; } }
+  }
+  return {sum, set};
+}
 function countMemorized(period){
-  const mm = S.markMap||{};
+  const agg = _memorizedAcrossBooks();
   if(period==='all' || !period){
-    return Object.values(mm).filter(v=>v===1).length;
+    return agg.sum; // 전체 단어장 합산 (단어장 헤더와 동일)
   }
   const md = S.markDates||{};
   const _t = (typeof today==='function') ? today() : new Date(Date.now()+9*3600000).toISOString().slice(0,10);
@@ -3467,7 +3482,7 @@ function countMemorized(period){
   else from='1900-01-01';
   let cnt=0;
   for(const en in md){
-    if(mm[en]===1 && md[en] && (period==='today' ? md[en]===from : md[en]>=from)) cnt++;
+    if(agg.set[en] && md[en] && (period==='today' ? md[en]===_t : md[en]>=from)) cnt++;
   }
   return cnt;
 }
@@ -12877,7 +12892,7 @@ function showDataBackup() {
     <div style="background:#F9FAFB;border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📊 현재 데이터</div>
       <div style="font-size:12px;color:#6B7280;line-height:1.8">
-        단어장: ${S.words.length}개 · 외웠음: ${Object.values(S.markMap).filter(v=>v===1).length}개<br>
+        단어장: ${S.words.length}개 · 외웠음: ${(typeof countMemorized==='function')?countMemorized('all'):Object.values(S.markMap).filter(v=>v===1).length}개<br>
         일기: ${S.dList.length}개 · 출석: ${S.attendCount}일
       </div>
     </div>

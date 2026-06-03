@@ -3205,7 +3205,22 @@ async function activateAllPacks() {
 // 새 팩 만들기
 function showAddPack() {
   console.log('[admin] showAddPack 호출, #ma:', document.getElementById("ma"));
-  const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
+  // 실제 팩이 쓰는 분류 체계 (cat=표시용 이모지+한글, category=영문 코드)
+  const CAT_DEFS = [
+    {cat:'📖 도서',     category:'books'},
+    {cat:'📺 드라마',   category:'series_en'},
+    {cat:'🎬 영화',     category:'movie'},
+    {cat:'💬 회화·표현', category:'conversation'},
+    {cat:'🎯 주제별',   category:'topic'},
+    {cat:'✏️ 영어시험', category:'exam'},
+    {cat:'📚 수준별',   category:'level'},
+    {cat:'🌟 명언·격언', category:'quotes'}
+  ];
+  // 화면에 이미 존재하는 다른 cat 값이 있으면 옵션에 합쳐 누락 방지
+  const _existing = [...new Set((window._adminPacks||[]).map(p=>p.cat).filter(Boolean))];
+  _existing.forEach(c=>{ if(!CAT_DEFS.some(d=>d.cat===c)) CAT_DEFS.push({cat:c, category:''}); });
+  const cats = CAT_DEFS.map(d=>d.cat);
+  window._catCategoryMap = {}; CAT_DEFS.forEach(d=>{ window._catCategoryMap[d.cat]=d.category; });
   document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div class="mt">➕ 새 팩 만들기</div>
     <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:12px">
@@ -3251,10 +3266,12 @@ async function saveNewPack() {
   const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   console.log('[admin] 기존 팩 수:', packs.length);
   if(packs.find(p=>p.id===packId)){toast('이미 있는 ID예요','err');return;}
+  const _catVal = document.getElementById('pk-cat')?.value||'🎯 주제별';
   const newPack = {
     id: packId, name,
     emoji: document.getElementById('pk-emoji')?.value||'📚',
-    cat: document.getElementById('pk-cat')?.value||'기타',
+    cat: _catVal,
+    category: (window._catCategoryMap && window._catCategoryMap[_catVal]) || 'topic',
     desc: document.getElementById('pk-desc')?.value||'',
     count: +(document.getElementById('pk-count')?.value||100),
     isPopular: document.getElementById('pk-popular')?.checked||false,

@@ -531,26 +531,17 @@ async function rDB(){
     <div class="card">
       <div class="ct">🛒 마켓팩 카테고리별 현황</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        ${(function(){
-          // 실제 팩 데이터에 존재하는 cat 값을 자동 수집 (하드코딩 목록이 실제 분류와 달라 0으로 뜨던 문제 해결)
-          const _fb = window._adminPacks||[];
-          const _all = _fb.concat(localOnly||[]);
-          const _cats = [...new Set(_all.map(p=>p.cat).filter(Boolean))];
-          if(!_cats.length) return '<div style="grid-column:1/-1;text-align:center;color:#9CA3AF;font-size:12px;padding:12px">분류된 팩이 없습니다</div>';
-          // 팩 수 많은 순 정렬
-          _cats.sort((a,b)=>_all.filter(p=>p.cat===b).length - _all.filter(p=>p.cat===a).length);
-          return _cats.map(cat=>{
-            const fbCnt=_fb.filter(p=>p.cat===cat).length;
-            const fbWc=_fb.filter(p=>p.cat===cat).reduce((a,p)=>a+(p.words?.length||0),0);
-            const lcCnt=(localOnly||[]).filter(p=>p.cat===cat).length;
-            const total=fbCnt+lcCnt;
-            return `<div style="background:#F9FAFB;border-radius:10px;padding:10px;cursor:pointer;border:1.5px solid #E5E7EB" onclick="T('pk')">
-              <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:2px">${cat}</div>
-              <div style="font-size:16px;font-weight:900;color:#1E5FA5">${total}팩</div>
-              <div style="font-size:10px;color:#9CA3AF">${fbWc.toLocaleString()}단어</div>
-            </div>`;
-          }).join('');
-        })()}
+        ${['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'].map(cat=>{
+          const fbCnt=(window._adminPacks||[]).filter(p=>p.cat===cat).length;
+          const fbWc=(window._adminPacks||[]).filter(p=>p.cat===cat).reduce((a,p)=>a+(p.words?.length||0),0);
+          const lcCnt=localOnly.filter(p=>p.cat===cat).length;
+          const total=fbCnt+lcCnt;
+          return `<div style="background:#F9FAFB;border-radius:10px;padding:10px;cursor:pointer;border:1.5px solid #E5E7EB" onclick="T('pk')">
+            <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:2px">${cat}</div>
+            <div style="font-size:16px;font-weight:900;color:#1E5FA5">${total}팩</div>
+            <div style="font-size:10px;color:#9CA3AF">${fbWc.toLocaleString()}단어</div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
   </div>
@@ -3205,22 +3196,7 @@ async function activateAllPacks() {
 // 새 팩 만들기
 function showAddPack() {
   console.log('[admin] showAddPack 호출, #ma:', document.getElementById("ma"));
-  // 실제 팩이 쓰는 분류 체계 (cat=표시용 이모지+한글, category=영문 코드)
-  const CAT_DEFS = [
-    {cat:'📖 도서',     category:'books'},
-    {cat:'📺 드라마',   category:'series_en'},
-    {cat:'🎬 영화',     category:'movie'},
-    {cat:'💬 회화·표현', category:'conversation'},
-    {cat:'🎯 주제별',   category:'topic'},
-    {cat:'✏️ 영어시험', category:'exam'},
-    {cat:'📚 수준별',   category:'level'},
-    {cat:'🌟 명언·격언', category:'quotes'}
-  ];
-  // 화면에 이미 존재하는 다른 cat 값이 있으면 옵션에 합쳐 누락 방지
-  const _existing = [...new Set((window._adminPacks||[]).map(p=>p.cat).filter(Boolean))];
-  _existing.forEach(c=>{ if(!CAT_DEFS.some(d=>d.cat===c)) CAT_DEFS.push({cat:c, category:''}); });
-  const cats = CAT_DEFS.map(d=>d.cat);
-  window._catCategoryMap = {}; CAT_DEFS.forEach(d=>{ window._catCategoryMap[d.cat]=d.category; });
+  const cats = ['여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
   document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div class="mt">➕ 새 팩 만들기</div>
     <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:12px">
@@ -3266,12 +3242,10 @@ async function saveNewPack() {
   const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   console.log('[admin] 기존 팩 수:', packs.length);
   if(packs.find(p=>p.id===packId)){toast('이미 있는 ID예요','err');return;}
-  const _catVal = document.getElementById('pk-cat')?.value||'🎯 주제별';
   const newPack = {
     id: packId, name,
     emoji: document.getElementById('pk-emoji')?.value||'📚',
-    cat: _catVal,
-    category: (window._catCategoryMap && window._catCategoryMap[_catVal]) || 'topic',
+    cat: document.getElementById('pk-cat')?.value||'기타',
     desc: document.getElementById('pk-desc')?.value||'',
     count: +(document.getElementById('pk-count')?.value||100),
     isPopular: document.getElementById('pk-popular')?.checked||false,
@@ -4793,10 +4767,10 @@ async function rXP(){
     <!-- 단어 학습 -->
       <div class="card">
         <div class="ct">📖 단어 학습</div>
-        ${row('word_learn',  '📚', '단어 1개 학습 완료', '플래시카드 넘기기·자동학습·SRS 완료 시')}
-        ${row('daily_first', '🌅', '하루 첫 학습 보너스', '오늘 첫 번째 단어 학습 시 추가 지급')}
-        ${row('word_flip',   '🔄', '플래시카드 앞뒤 뒤집기', '카드 뒤집을 때 (word_learn과 별개)')}
-        ${row('speak_word',  '🔊', '발음 듣기 완료', '스피크 모드에서 단어 듣기 완료')}
+        ${row('word_learn',  '📚', '단어 1개 학습', '자동학습·플래시카드 등에서 단어를 학습할 때마다 지급 (같은 단어는 하루 1회)')}
+        ${row('daily_first', '🌅', '하루 첫 학습 보너스', '그날 첫 단어 학습 시 word_learn 대신 지급')}
+        ${row('word_flip',   '✅', '외웠음 표시 보너스', '"외웠음" 버튼을 누를 때 단어 학습 XP와 별개로 추가 지급')}
+        ${row('speak_word',  '🔊', '발음 말하기 완료', '말하기 모드에서 단어 1개 완료 시')}
       </div>
 
       <!-- SRS -->

@@ -3441,7 +3441,35 @@ function setMark(en, val) {
   // 외운 단어 → learned에도 추가
   if(val===1) S.learned.add(en);
   else if(val===2) S.learned.delete(en);
+  // 외운 날짜 기록 (오늘/이번주/이번달 외운 단어 집계용, 단어장 무관 전역).
+  // 외움(1)으로 새로 표시될 때만 날짜 기록, 그 외(미암기/헷갈림)는 날짜 삭제.
+  if(!S.markDates) S.markDates = {};
+  if(val===1){
+    if(!S.markDates[en]) S.markDates[en] = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+  } else {
+    delete S.markDates[en];
+  }
   sv();
+}
+// 외운 단어 집계(A안: 전체 단어장 합산). 전역 S.markMap/markDates 기준이라 단어장 무관.
+//  today/week/month = markDates(외운 날짜) 기반, all = markMap 전체(value===1) 기반.
+function countMemorized(period){
+  const mm = S.markMap||{};
+  if(period==='all' || !period){
+    return Object.values(mm).filter(v=>v===1).length;
+  }
+  const md = S.markDates||{};
+  const _t = (typeof today==='function') ? today() : new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+  let from;
+  if(period==='today') from=_t;
+  else if(period==='week') from=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  else if(period==='month') from=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  else from='1900-01-01';
+  let cnt=0;
+  for(const en in md){
+    if(mm[en]===1 && md[en] && (period==='today' ? md[en]===from : md[en]>=from)) cnt++;
+  }
+  return cnt;
 }
 function cycleMark(en) {
   const cur = getMark(en);
@@ -3474,6 +3502,7 @@ function load() {
   S.learned = new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]'));
   S.srsMap = JSON.parse(localStorage.getItem('wd-srs')||'{}');
   S.markMap = JSON.parse(localStorage.getItem('wd-mk')||'{}');
+  S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}');
   S.favorites = JSON.parse(localStorage.getItem('wd-fav')||'[]');
   S._dcClaimed = localStorage.getItem('wd-dcc')||'';
   S._srsCount = parseInt(localStorage.getItem('wd-srsc')||'0');
@@ -3607,6 +3636,8 @@ function sv() {
     localStorage.setItem('wd-srs',JSON.stringify(S.srsMap));
     localStorage.setItem('wd-mk',JSON.stringify(S.markMap));
   }
+  // markDates는 전역(전체 단어장 합산)이라 현재 책과 무관하게 항상 저장
+  try{ localStorage.setItem('wd-mkd',JSON.stringify(S.markDates||{})); }catch(e){}
   localStorage.setItem('wd-dl',JSON.stringify(S.dList));
   localStorage.setItem('wd-fav',JSON.stringify(Array.isArray(S.favorites)?S.favorites:[...(S.favorites||[])]));
   if(S._dcClaimed) localStorage.setItem('wd-dcc', S._dcClaimed);
@@ -5221,7 +5252,6 @@ function rLearnTab() {
   const _weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
   const _last7 = Object.entries(_sl).filter(([k])=>k>=_weekAgo).map(([,v])=>v);
   const _week_words = _last7.reduce((s,v)=>s+(v.words||0),0);
-  const _week_marked = _last7.reduce((s,v)=>s+(v.marked||0),0);
   const _week_min = Math.round(_last7.reduce((s,v)=>s+(v.min||0),0));
   const _active7 = _last7.filter(v=>(v.words||0)>0).length;
   const _hist14 = Array.from({length:14},(_,i)=>{
@@ -5368,11 +5398,6 @@ function rLearnTab() {
       <span style="font-size:9px;color:#9CA3AF">1,000단어</span>
       <span style="font-size:9px;color:#9CA3AF;margin-left:auto">100단위</span>
     </div>
-    <!-- 이번주 외운 단어 -->
-    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#E5E7EB);display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:12px;font-weight:700;color:var(--text2,#374151)">📘 이번주 외운 단어</span>
-      <span style="font-size:15px;font-weight:900;color:#16A34A">${_week_marked.toLocaleString()}개</span>
-    </div>
   </div>
 
   <!-- 기간별 통계 -->
@@ -5390,12 +5415,15 @@ function rLearnTab() {
       const ta=logs.filter(([,v])=>(v.words||0)>0).length;
       const avgW=ta>0?Math.round(tw/ta):0;
       const avgM=ta>0?Math.round(tm/ta):0;
+      const _memo=(typeof countMemorized==='function')?countMemorized(p):0;
+      const _pLabel=p==='week'?'이번주':p==='month'?'이번달':'전체';
       return `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px">
         ${[
           {v:tw.toLocaleString()+'단어', lb:'총 학습', sub:ta>0?'일평균 '+avgW+'단어':'', color:'#6366F1'},
+          {v:_memo.toLocaleString()+'개', lb:'외운 단어', sub:'', color:'#16A34A'},
           {v:tm+'분', lb:'총 공부시간', sub:ta>0?'일평균 '+avgM+'분':'', color:'#F59E0B'},
           {v:ta+'일', lb:'활동일', sub:'', color:'#10B981'},
-          {v:'⚡'+tx.toLocaleString(), lb:'획득 XP', sub:'', color:'#8B5CF6'},
+          {v:'⚡'+tx.toLocaleString(), lb:_pLabel+' 획득 XP', sub:'', color:'#8B5CF6'},
         ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 3px rgba(0,0,0,.04)">
           <div style="font-size:20px;font-weight:900;color:${s.color};margin-bottom:2px">${s.v}</div>
           <div style="font-size:11px;font-weight:600;color:var(--text2,#374151)">${s.lb}</div>
@@ -7792,10 +7820,8 @@ function rHome() {
   const todayLog = (S.studyLog[t])||{words:0,quiz:0};
   const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const marked2 = Object.values(S.markMap||{}).filter(v=>v===2).length;
-  // 외운 고유 단어 수 (현재 단어장 기준, 실제 단어와 매칭되는 것만)
-  const _hmMap = (typeof getCurrentBookMarkMap==='function') ? (getCurrentBookMarkMap()||{}) : (S.markMap||{});
-  const _hmWords = (typeof getCurrentBookWords==='function') ? (getCurrentBookWords()||[]) : (S.words||[]);
-  const learnedCount = _hmWords.filter(w=>(_hmMap[w.en]||0)===1).length;
+  // 오늘의 미션 '단어 10개 외우기' = 오늘 외운 단어(전체 단어장 합산). 매일 리셋.
+  const learnedCount = (typeof countMemorized==='function') ? countMemorized('today') : 0;
 
   // 오늘의 미션 - 구체적인 행동 지침
   const todayStudied = Math.round(Number(S._dailyStudiedMin)||0);
@@ -7959,7 +7985,7 @@ function rHome() {
   const todayWords = todayLog.words||0;
   const todayQuiz = todayLog.quiz||0;
   const srsReady = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
-  const markDone = Object.values(S.markMap||{}).filter(v=>v===1).length;
+  const markDone = (typeof countMemorized==='function') ? countMemorized('all') : Object.values(S.markMap||{}).filter(v=>v===1).length;
   const markWeak = Object.values(S.markMap||{}).filter(v=>v===2).length;
   const totalWordsCount = (S.words||[]).length;
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">

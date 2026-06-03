@@ -3,6 +3,9 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -413,7 +416,34 @@ if(typeof firebase === 'undefined') {
     throw e;
   }
 }
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=6').catch(()=>{});
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js?v=7').catch(()=>{});
+  // 새 서비스워커가 활성화되면(=새 배포 감지) 페이지를 한 번 자동 새로고침해 최신 버전 반영.
+  // sessionStorage 가드로 무한 새로고침 방지.
+  navigator.serviceWorker.addEventListener('message', function(ev){
+    if(ev.data && ev.data.type === 'SW_UPDATED'){
+      try{
+        var k = '_swReloaded_'+ev.data.version;
+        if(!sessionStorage.getItem(k)){
+          sessionStorage.setItem(k, '1');
+          location.reload();
+        }
+      }catch(e){ /* sessionStorage 불가 시 무시 */ }
+    }
+  });
+  // 새 SW가 controller로 바뀌는 순간에도 1회 새로고침 (controllerchange)
+  var _swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if(_swRefreshing) return;
+    _swRefreshing = true;
+    try{
+      if(!sessionStorage.getItem('_swCtrlReloaded')){
+        sessionStorage.setItem('_swCtrlReloaded', '1');
+        location.reload();
+      }
+    }catch(e){ location.reload(); }
+  });
+}
 
 // ── 레벨 정의 ──
 const LEVELS = [

@@ -70,6 +70,12 @@ const BWDSuggest = (function () {
         const w = el.getAttribute('data-w');
         ne.value = w;
         if (window.S) S.nEn = w;
+        // 발음기호 로컬 자동 채움 (있을 때만)
+        if (typeof BWD_PRON !== 'undefined' && BWD_PRON[w]) {
+          const nph = document.getElementById('nph');
+          if (nph) { nph.value = BWD_PRON[w]; nph.dispatchEvent(new Event('input', {bubbles:true})); }
+          if (window.S) S.nPh = BWD_PRON[w];
+        }
         b.style.display = 'none';
       };
     });

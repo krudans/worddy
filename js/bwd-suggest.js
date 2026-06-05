@@ -1,4 +1,15 @@
 // ── ButterFly Word Dictionary : 추천(자동완성) 검색 + 자동 부착 ──
+// (index.html 수정 없이 동작: 뜻 사전이 없으면 스스로 로드)
+(function(){
+  // BWD_DICT 미로드 시 동적 로드
+  if (typeof BWD_DICT === 'undefined' && !document.getElementById('bwd-dict-loader')) {
+    var s = document.createElement('script');
+    s.id = 'bwd-dict-loader';
+    s.src = 'js/bwd-dict.js?v=1';
+    document.head.appendChild(s);
+  }
+})();
+
 // 사용법 (index.html의 </body> 직전, 기존 js/*.js 스크립트들 옆에):
 //   <script src="js/bwd-wordlist.js"></script>   // BWD_WORDLIST 전역
 //   <script src="js/bwd-suggest.js"></script>
@@ -75,6 +86,14 @@ const BWDSuggest = (function () {
           const nph = document.getElementById('nph');
           if (nph) { nph.value = BWD_PRON[w]; nph.dispatchEvent(new Event('input', {bubbles:true})); }
           if (window.S) S.nPh = BWD_PRON[w];
+        }
+        // 한국어 뜻·예문 로컬 자동 채움 (검수 코어에 있을 때만, 빈 칸만)
+        if (typeof BWD_DICT !== 'undefined' && BWD_DICT[w]) {
+          const d = BWD_DICT[w];
+          const nk = document.getElementById('nk2');
+          if (nk && !nk.value && d.kr) { nk.value = d.kr; nk.dispatchEvent(new Event('input', {bubbles:true})); if (window.S) S.nKr = d.kr; }
+          const ex1 = document.getElementById('nex1');
+          if (ex1 && !ex1.value && d.ex) { ex1.value = d.ex; ex1.dispatchEvent(new Event('input', {bubbles:true})); if (window.S) S.nEx1 = d.ex; }
         }
         b.style.display = 'none';
       };

@@ -10,6 +10,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 <script src="js/wordpacks.js?v=3fa06f2"></script>
 <script src="js/default-words.js?v=3fa06f2"></script>
+<script src="js/bwd-wordlist.js?v=1"></script>
+<script src="js/bwd-pron.js?v=1"></script>
+<script src="js/bwd-dict.js?v=1"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
 
@@ -321,6 +324,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>이용 분석</div>
       <div class="ss">콘텐츠</div>
       <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어 관리</div>
+      <div class="ni" onclick="T('dict')" id="ni-dict"><span class="ic">📖</span>단어사전 DIC</div>
       <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
       <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
       <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
@@ -2402,9 +2406,9 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'ButterFly Word DIC',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -5173,6 +5177,129 @@ function updateBFPreview() {
   } else {
     preview.innerHTML = '<span style="font-size:40px">🦋</span>';
   }
+}
+
+// ══════════════════════════════════
+// ButterFly Word Dictionary (DIC) 관리
+// ══════════════════════════════════
+function _bwdDict(){ if(!window._dictWork){ window._dictWork = (typeof BWD_DICT!=='undefined') ? JSON.parse(JSON.stringify(BWD_DICT)) : {}; } return window._dictWork; }
+function _bwdPron(w){ return (typeof BWD_PRON!=='undefined' && BWD_PRON[w]) ? BWD_PRON[w] : ''; }
+function _bwdEnsureSet(){ if(!window.__bwdSet && typeof BWD_WORDLIST!=='undefined'){ window.__bwdSet=new Set(BWD_WORDLIST); } }
+function _bwdSearch(p,limit){ p=(p||'').toLowerCase(); if(!p||typeof BWD_WORDLIST==='undefined')return[]; var out=[],L=limit||8; for(var i=0;i<BWD_WORDLIST.length&&out.length<L;i++){ if(BWD_WORDLIST[i].indexOf(p)===0)out.push(BWD_WORDLIST[i]); } return out; }
+function _bwdStatCard(t,ic,n,sub){ return '<div class="card" style="padding:16px 18px"><div style="font-size:12px;color:#6B7280;font-weight:700;margin-bottom:6px">'+ic+' '+t+'</div><div style="font-size:26px;font-weight:900;color:#1E5FA5">'+Number(n).toLocaleString()+'</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">'+sub+'</div></div>'; }
+
+function rDICT(){
+  var mi=document.getElementById('main-inner');
+  if(typeof BWD_WORDLIST==='undefined'||typeof BWD_DICT==='undefined'){
+    mi.innerHTML='<div class="es"><div class="ei">📖</div><p>사전 데이터를 불러오지 못했어요</p><small>js/bwd-wordlist.js · bwd-pron.js · bwd-dict.js 가 업로드됐는지 확인해주세요</small></div>';
+    return;
+  }
+  _bwdEnsureSet();
+  var dict=_bwdDict();
+  var wlN=BWD_WORDLIST.length;
+  var prN=(typeof BWD_PRON!=='undefined')?Object.keys(BWD_PRON).length:0;
+  var dcN=Object.keys(dict).length;
+  mi.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
+      '<h2 style="font-size:22px;font-weight:900">📖 ButterFly Word Dictionary</h2>'+
+      '<button class="btn bg" onclick="bwdExport()">📥 bwd-dict.js 내보내기</button>'+
+    '</div>'+
+    '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:12px;color:#1E40AF;margin-bottom:16px;line-height:1.7">자동완성용 통합 사전입니다. <b>추천 목록</b>(철자)과 <b>발음 사전</b>은 거의 전체 단어를 덮고, <b>뜻 검수 코어</b>는 직접 검수한 단어의 뜻·예문을 담습니다. 아래에서 코어 단어를 추가·삭제한 뒤 <b>내보내기</b>로 받은 파일을 <code>js/bwd-dict.js</code>에 다시 올리면 앱에 반영돼요.</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">'+
+      _bwdStatCard('추천 단어목록','🔤',wlN,'철자 (자동완성)')+
+      _bwdStatCard('발음 사전','🔊',prN,'IPA 발음기호')+
+      _bwdStatCard('뜻 검수 코어','✅',dcN,'뜻 + 예문')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:20px"><div style="padding:16px 20px">'+
+      '<div style="font-weight:800;margin-bottom:10px">🔍 단어 조회</div>'+
+      '<input id="dic-q" placeholder="영단어 입력 (예: company)" oninput="bwdLookup()" style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;font-family:monospace">'+
+      '<div id="dic-res" style="margin-top:12px"></div>'+
+    '</div></div>'+
+    '<div class="card" style="margin-bottom:20px"><div style="padding:16px 20px">'+
+      '<div style="font-weight:800;margin-bottom:10px">➕ 코어에 단어 추가</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+        '<input id="dic-en" placeholder="영단어" oninput="var p=_bwdPron((this.value||\'\').trim().toLowerCase());document.getElementById(\'dic-pron-prev\').textContent=p||\'(발음 없음)\'" style="flex:1;min-width:120px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:monospace;outline:none">'+
+        '<input id="dic-kr" placeholder="한국어 뜻" style="flex:1;min-width:120px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;outline:none">'+
+        '<input id="dic-ex" placeholder="예문 (선택)" style="flex:2;min-width:160px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;outline:none">'+
+        '<button class="btn bg" onclick="bwdAddEntry()">추가</button>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#9CA3AF;margin-top:6px">발음: <span id="dic-pron-prev" style="font-family:monospace;color:#374151"></span> <span style="color:#D1D5DB">· 발음기호는 자동으로 채워집니다</span></div>'+
+    '</div></div>'+
+    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #E5E7EB;flex-wrap:wrap;gap:8px">'+
+      '<div style="font-weight:800">검수 코어 단어 ('+dcN+'개)</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:8px 14px;width:240px"><span style="color:#9CA3AF">🔍</span><input placeholder="검색 (영어/한글)" oninput="bwdRenderTable(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;outline:none"></div>'+
+    '</div><div class="tw" id="dic-table"></div></div>';
+  bwdRenderTable('');
+}
+
+function bwdLookup(){
+  var el=document.getElementById('dic-res'); if(!el)return;
+  var q=(document.getElementById('dic-q').value||'').trim().toLowerCase();
+  if(!q){ el.innerHTML=''; return; }
+  _bwdEnsureSet();
+  var d=_bwdDict(), ph=_bwdPron(q), entry=d[q], status,color,bg;
+  if(entry){status='검수됨 (뜻+예문)';color='#065F46';bg='#D1FAE5';}
+  else if(ph){status='발음만 있음';color='#1E40AF';bg='#DBEAFE';}
+  else if(window.__bwdSet&&window.__bwdSet.has(q)){status='추천 목록에만';color='#6B7280';bg='#F3F4F6';}
+  else {status='미수록';color='#991B1B';bg='#FEE2E2';}
+  var html='<div style="border:1px solid #E5E7EB;border-radius:10px;padding:14px">';
+  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><strong style="font-family:monospace;font-size:18px">'+q+'</strong><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;color:'+color+';background:'+bg+'">'+status+'</span></div>';
+  html+='<div style="font-size:13px;line-height:1.9"><div>발음: <span style="font-family:monospace;color:#374151">'+(ph||'-')+'</span></div>';
+  html+='<div>뜻: '+((entry&&entry.kr)?entry.kr:'<span style="color:#D1D5DB">없음</span>')+'</div>';
+  html+='<div>예문: '+((entry&&entry.ex)?String(entry.ex).replace(/</g,'&lt;'):'<span style="color:#D1D5DB">없음</span>')+'</div></div>';
+  var sg=_bwdSearch(q,8).filter(function(x){return x!==q;});
+  if(sg.length){ html+='<div style="margin-top:10px;font-size:11px;color:#9CA3AF">관련 단어: '+sg.map(function(x){return '<a onclick="document.getElementById(\'dic-q\').value=\''+x+'\';bwdLookup()" style="cursor:pointer;color:#1E5FA5;text-decoration:underline;margin-right:8px">'+x+'</a>';}).join('')+'</div>'; }
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+function bwdRenderTable(filter){
+  var el=document.getElementById('dic-table'); if(!el)return;
+  var d=_bwdDict(), f=(filter||'').toLowerCase();
+  var keys=Object.keys(d).filter(function(k){ return !f || k.indexOf(f)>=0 || (d[k].kr&&d[k].kr.toLowerCase().indexOf(f)>=0); }).sort();
+  if(!keys.length){ el.innerHTML='<div class="es"><div class="ei">📖</div><p>해당 단어가 없어요</p></div>'; return; }
+  var rows=keys.map(function(k){ var e=d[k], ph=_bwdPron(k);
+    return '<tr><td><strong style="font-family:monospace">'+k+'</strong></td><td>'+(e.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(ph||'-')+'</td><td style="font-size:11px;max-width:320px">'+String(e.ex||'').replace(/</g,'&lt;')+'</td><td><button class="btn br" style="font-size:11px;padding:4px 8px" onclick="bwdDelEntry(\''+k.replace(/'/g,'&apos;')+'\')">🗑</button></td></tr>';
+  }).join('');
+  el.innerHTML='<table><tr><th>영단어</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:60px">작업</th></tr>'+rows+'</table>';
+}
+
+function bwdAddEntry(){
+  var en=(document.getElementById('dic-en').value||'').trim().toLowerCase();
+  var kr=(document.getElementById('dic-kr').value||'').trim();
+  var ex=(document.getElementById('dic-ex').value||'').trim();
+  if(!en||!kr){ toast('영단어와 뜻은 필수예요','err'); return; }
+  var d=_bwdDict();
+  var exists=!!d[en];
+  d[en]={kr:kr, ex:ex};
+  document.getElementById('dic-en').value='';
+  document.getElementById('dic-kr').value='';
+  document.getElementById('dic-ex').value='';
+  document.getElementById('dic-pron-prev').textContent='';
+  toast('"'+en+'" '+(exists?'수정됨':'추가됨')+' · 내보내기 후 업로드해야 앱에 반영돼요','ok');
+  rDICT();
+}
+
+function bwdDelEntry(en){
+  if(!confirm('"'+en+'" 을(를) 코어에서 삭제할까요? (내보내기 후 업로드해야 반영)')) return;
+  var d=_bwdDict(); delete d[en];
+  toast('"'+en+'" 삭제됨','ok');
+  rDICT();
+}
+
+function bwdExport(){
+  var d=_bwdDict();
+  var keys=Object.keys(d).sort();
+  var lines=keys.map(function(k){ return '  '+JSON.stringify(k)+': {kr:'+JSON.stringify(d[k].kr||'')+', ex:'+JSON.stringify(d[k].ex||'')+'},'; });
+  if(lines.length) lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
+  var content='// \u2500\u2500 ButterFly Word Dictionary : \ud55c\uad6d\uc5b4 \ub73b + \uc608\ubb38 (\uac80\uc218 \ucf54\uc5b4) \u2500\u2500\n'+
+    '// \uad00\ub9ac\uc790 \ucf58\uc194\uc5d0\uc11c \ub0b4\ubcf4\ub0c4. key=\uc601\ub2e8\uc5b4, value={kr,ex}. \ubc1c\uc74c\uc740 bwd-pron.js\uac00 \ucc44\uc6c0.\n'+
+    'const BWD_DICT = {\n'+lines.join('\n')+'\n};\n';
+  var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download='bwd-dict.js'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},2000);
+  toast('bwd-dict.js \ub0b4\ubcf4\ub0c4 \u2014 js/ \ud3f4\ub354\uc5d0 \ub2e4\uc2dc \uc62c\ub9ac\uc138\uc694 ('+keys.length+'\uac1c)','ok');
 }
 
 </script>

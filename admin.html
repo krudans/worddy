@@ -5306,8 +5306,9 @@ function bwdExport(){
 <div id="tw"></div>
 
 <script>
-/* === DIC 정렬(A-Z) + 수정 기능 (override) === */
+/* === DIC 정렬(A-Z) + 수정 + 품사 (override v2) === */
 (function(){
+  var POS=['명사','대명사','동사','조동사','형용사','부사','전치사','접속사','관계대명사','의문사','감탄사','한정사','명사·동사','동사·명사','형용사·명사','명사·형용사','형용사·부사'];
   function _lc(d){var c={};for(var i=0;i<26;i++)c[String.fromCharCode(97+i)]=0;var o=0;Object.keys(d).forEach(function(k){var ch=(k[0]||'').toLowerCase();if(c[ch]!==undefined)c[ch]++;else o++;});return{c:c,o:o};}
   function _ab(d){
     var lc=_lc(d),cur=window.__dicLetter||'',total=Object.keys(d).length;
@@ -5320,9 +5321,20 @@ function bwdExport(){
     if(lc.o)h+=b('#','#',lc.o);
     return h+'</div>';
   }
+  function _ensurePos(){
+    if(document.getElementById('dic-pos'))return;
+    var ex=document.getElementById('dic-ex');if(!ex)return;
+    var dl=document.createElement('datalist');dl.id='dic-pos-list';
+    POS.forEach(function(p){var o=document.createElement('option');o.value=p;dl.appendChild(o);});
+    var inp=document.createElement('input');inp.id='dic-pos';inp.setAttribute('list','dic-pos-list');inp.placeholder='품사';
+    inp.style.cssText='flex:1;min-width:90px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;outline:none';
+    ex.parentNode.insertBefore(dl,ex.nextSibling);
+    ex.parentNode.insertBefore(inp,ex.nextSibling);
+  }
   window.bwdSetLetter=function(L){window.__dicLetter=(window.__dicLetter===L?'':L);window.bwdRenderTable();};
   window.bwdRenderTable=function(filter){
     var el=document.getElementById('dic-table');if(!el)return;
+    _ensurePos();
     var d=_bwdDict();
     var ab=document.getElementById('dic-alpha');
     if(!ab){ab=document.createElement('div');ab.id='dic-alpha';el.parentNode.insertBefore(ab,el);}
@@ -5339,17 +5351,49 @@ function bwdExport(){
     if(!keys.length){el.innerHTML='<div class="es"><div class="ei">📖</div><p>해당 단어가 없어요</p></div>';return;}
     var rows=keys.map(function(k){
       var e=d[k],ph=_bwdPron(k);
-      return '<tr><td><strong style="font-family:monospace">'+k+'</strong></td><td>'+(e.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(ph||'-')+'</td><td style="font-size:11px;max-width:300px">'+String(e.ex||'').replace(/</g,'&lt;')+'</td><td style="white-space:nowrap"><button data-bwd="edit" data-k="'+k+'" class="btn" style="font-size:11px;padding:4px 8px;margin-right:4px;border:1.5px solid #1E5FA5;background:#fff;color:#1E5FA5;cursor:pointer">✏️</button><button data-bwd="del" data-k="'+k+'" class="btn br" style="font-size:11px;padding:4px 8px;cursor:pointer">🗑</button></td></tr>';
+      var pos=e.pos?('<span style="display:inline-block;background:#EFF6FF;color:#1E5FA5;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700">'+e.pos+'</span>'):'<span style="color:#D1D5DB">-</span>';
+      return '<tr><td><strong style="font-family:monospace">'+k+'</strong></td><td>'+pos+'</td><td>'+(e.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(ph||'-')+'</td><td style="font-size:11px;max-width:280px">'+String(e.ex||'').replace(/</g,'&lt;')+'</td><td style="white-space:nowrap"><button data-bwd="edit" data-k="'+k+'" class="btn" style="font-size:11px;padding:4px 8px;margin-right:4px;border:1.5px solid #1E5FA5;background:#fff;color:#1E5FA5;cursor:pointer">✏️</button><button data-bwd="del" data-k="'+k+'" class="btn br" style="font-size:11px;padding:4px 8px;cursor:pointer">🗑</button></td></tr>';
     }).join('');
-    el.innerHTML='<table><tr><th>영단어</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:96px">작업</th></tr>'+rows+'</table>';
+    el.innerHTML='<table><tr><th>영단어</th><th style="width:80px">품사</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:96px">작업</th></tr>'+rows+'</table>';
   };
   window.bwdEditEntry=function(en){
     var d=_bwdDict(),e=d[en];if(!e)return;
     var kr=prompt('"'+en+'" 한국어 뜻 (여러 뜻은 ; 또는 , 로 구분):',e.kr||'');if(kr===null)return;kr=kr.trim();if(!kr){toast('뜻은 비울 수 없어요','err');return;}
+    var pos=prompt('"'+en+'" 품사 (예: 명사 / 동사 / 명사·동사):',e.pos||'');if(pos===null)return;pos=pos.trim();
     var ex=prompt('"'+en+'" 예문:',e.ex||'');if(ex===null)return;
-    d[en]={kr:kr,ex:(ex||'').trim()};
+    var obj={kr:kr,ex:(ex||'').trim()};if(pos)obj.pos=pos;
+    d[en]=obj;
     toast('"'+en+'" 수정됨 · 내보내기 후 업로드해야 앱에 반영','ok');
     window.bwdRenderTable();
+  };
+  window.bwdAddEntry=function(){
+    var en=(document.getElementById('dic-en').value||'').trim().toLowerCase();
+    var kr=(document.getElementById('dic-kr').value||'').trim();
+    var ex=(document.getElementById('dic-ex').value||'').trim();
+    var posel=document.getElementById('dic-pos');var pos=posel?(posel.value||'').trim():'';
+    if(!en||!kr){toast('영단어와 뜻은 필수예요','err');return;}
+    var d=_bwdDict();var exists=!!d[en];
+    var obj={kr:kr,ex:ex};if(pos)obj.pos=pos;d[en]=obj;
+    document.getElementById('dic-en').value='';
+    document.getElementById('dic-kr').value='';
+    document.getElementById('dic-ex').value='';
+    if(posel)posel.value='';
+    var pv=document.getElementById('dic-pron-prev');if(pv)pv.textContent='';
+    toast('"'+en+'" '+(exists?'수정됨':'추가됨')+' · 내보내기 후 업로드해야 앱에 반영','ok');
+    rDICT();
+  };
+  window.bwdExport=function(){
+    var d=_bwdDict();var keys=Object.keys(d).sort();
+    var lines=keys.map(function(k){var e=d[k];var s='  '+JSON.stringify(k)+': {kr:'+JSON.stringify(e.kr||'')+', ex:'+JSON.stringify(e.ex||'');if(e.pos)s+=', pos:'+JSON.stringify(e.pos);return s+'},';});
+    if(lines.length)lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
+    var content='// \u2500\u2500 ButterFly Word Dictionary : \ud55c\uad6d\uc5b4 \ub73b + \uc608\ubb38 + \ud488\uc0ac (\uac80\uc218 \ucf54\uc5b4) \u2500\u2500\n'+
+      '// key=\uc601\ub2e8\uc5b4, value={kr,ex,pos}. \ubc1c\uc74c\uc740 bwd-pron.js\uac00 \ucc44\uc6c0.\n'+
+      'const BWD_DICT = {\n'+lines.join('\n')+'\n};\n';
+    var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download='bwd-dict.js';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+    toast('bwd-dict.js \ub0b4\ubcf4\ub0b4\uae30 \uc644\ub8cc ('+keys.length+'\uac1c)','ok');
   };
   if(!window.__bwdDicDelegated){
     window.__bwdDicDelegated=true;

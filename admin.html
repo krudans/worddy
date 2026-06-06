@@ -5304,5 +5304,64 @@ function bwdExport(){
 
 </script>
 <div id="tw"></div>
+
+<script>
+/* === DIC 정렬(A-Z) + 수정 기능 (override) === */
+(function(){
+  function _lc(d){var c={};for(var i=0;i<26;i++)c[String.fromCharCode(97+i)]=0;var o=0;Object.keys(d).forEach(function(k){var ch=(k[0]||'').toLowerCase();if(c[ch]!==undefined)c[ch]++;else o++;});return{c:c,o:o};}
+  function _ab(d){
+    var lc=_lc(d),cur=window.__dicLetter||'',total=Object.keys(d).length;
+    function b(label,val,n){
+      var a=(cur===val),dis=(!n&&val!=='');
+      return '<button data-bwd="letter" data-l="'+val+'" '+(dis?'disabled ':'')+'style="cursor:'+(dis?'default':'pointer')+';border:1.5px solid '+(a?'#1E5FA5':'#E5E7EB')+';background:'+(a?'#1E5FA5':'#fff')+';color:'+(a?'#fff':(n||val===''?'#374151':'#D1D5DB'))+';border-radius:8px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap;line-height:1">'+label+' <span style="opacity:.6;font-weight:600">'+n+'</span></button>';
+    }
+    var h='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:2px 20px 14px">'+b('전체','',total);
+    for(var i=0;i<26;i++){var L=String.fromCharCode(97+i);h+=b(L.toUpperCase(),L,lc.c[L]);}
+    if(lc.o)h+=b('#','#',lc.o);
+    return h+'</div>';
+  }
+  window.bwdSetLetter=function(L){window.__dicLetter=(window.__dicLetter===L?'':L);window.bwdRenderTable();};
+  window.bwdRenderTable=function(filter){
+    var el=document.getElementById('dic-table');if(!el)return;
+    var d=_bwdDict();
+    var ab=document.getElementById('dic-alpha');
+    if(!ab){ab=document.createElement('div');ab.id='dic-alpha';el.parentNode.insertBefore(ab,el);}
+    ab.innerHTML=_ab(d);
+    var srch=document.querySelector('input[placeholder^="검색"]');
+    var f=((filter!==undefined&&typeof filter==='string'?filter:(srch?srch.value:''))||'').toLowerCase();
+    var letter=window.__dicLetter||'';
+    var keys=Object.keys(d).filter(function(k){
+      if(letter==='#'){if(/^[a-z]/.test(k))return false;}
+      else if(letter){if((k[0]||'').toLowerCase()!==letter)return false;}
+      if(f)return k.indexOf(f)>=0||(d[k].kr&&d[k].kr.toLowerCase().indexOf(f)>=0);
+      return true;
+    }).sort();
+    if(!keys.length){el.innerHTML='<div class="es"><div class="ei">📖</div><p>해당 단어가 없어요</p></div>';return;}
+    var rows=keys.map(function(k){
+      var e=d[k],ph=_bwdPron(k);
+      return '<tr><td><strong style="font-family:monospace">'+k+'</strong></td><td>'+(e.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(ph||'-')+'</td><td style="font-size:11px;max-width:300px">'+String(e.ex||'').replace(/</g,'&lt;')+'</td><td style="white-space:nowrap"><button data-bwd="edit" data-k="'+k+'" class="btn" style="font-size:11px;padding:4px 8px;margin-right:4px;border:1.5px solid #1E5FA5;background:#fff;color:#1E5FA5;cursor:pointer">✏️</button><button data-bwd="del" data-k="'+k+'" class="btn br" style="font-size:11px;padding:4px 8px;cursor:pointer">🗑</button></td></tr>';
+    }).join('');
+    el.innerHTML='<table><tr><th>영단어</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:96px">작업</th></tr>'+rows+'</table>';
+  };
+  window.bwdEditEntry=function(en){
+    var d=_bwdDict(),e=d[en];if(!e)return;
+    var kr=prompt('"'+en+'" 한국어 뜻 (여러 뜻은 ; 또는 , 로 구분):',e.kr||'');if(kr===null)return;kr=kr.trim();if(!kr){toast('뜻은 비울 수 없어요','err');return;}
+    var ex=prompt('"'+en+'" 예문:',e.ex||'');if(ex===null)return;
+    d[en]={kr:kr,ex:(ex||'').trim()};
+    toast('"'+en+'" 수정됨 · 내보내기 후 업로드해야 앱에 반영','ok');
+    window.bwdRenderTable();
+  };
+  if(!window.__bwdDicDelegated){
+    window.__bwdDicDelegated=true;
+    document.addEventListener('click',function(ev){
+      var t=ev.target.closest&&ev.target.closest('[data-bwd]');if(!t)return;
+      var act=t.getAttribute('data-bwd');
+      if(act==='letter'){window.bwdSetLetter(t.getAttribute('data-l'));}
+      else if(act==='edit'){window.bwdEditEntry(t.getAttribute('data-k'));}
+      else if(act==='del'){window.bwdDelEntry(t.getAttribute('data-k'));}
+    });
+  }
+})();
+</script>
 </body>
 </html>

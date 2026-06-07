@@ -5,7 +5,7 @@
   if (typeof BWD_DICT === 'undefined' && !document.getElementById('bwd-dict-loader')) {
     var s = document.createElement('script');
     s.id = 'bwd-dict-loader';
-    s.src = 'js/bwd-dict.js?v=2';
+    s.src = 'js/bwd-dict.js?v=3';
     document.head.appendChild(s);
   }
 })();

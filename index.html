@@ -10220,6 +10220,7 @@ function rAdd() {
           <button onclick="aiMFull()" ${S.ai?'disabled':''} style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border:none;border-radius:10px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
             ${S.ai?'⏳':'✨'}
           </button>
+          <button onclick="bwdLocalSearch()" title="Butterfly Word 사전 검색 (오프라인)" style="background:#10B981;color:#fff;border:none;border-radius:10px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">📖 사전</button>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div style="font-size:11px;font-weight:700;color:#9CA3AF">한국어 뜻 *</div>
@@ -10554,6 +10555,31 @@ async function geminiPdf(prompt, b64, maxTokens=2000) {
 function parseGeminiJson(text) {
   const clean = text.replace(/```json|```/g,'').trim();
   return JSON.parse(clean);
+}
+
+// [Butterfly Word 사전 검색] 로컬 BWD_DICT/BWD_PRON 에서 즉시 채움 (AI 아님, 오프라인)
+function bwdLocalSearch() {
+  const en=(document.getElementById('ne')?.value||S.nEn||'').trim().toLowerCase();
+  if(!en){toast('영단어를 먼저 입력하세요');return;}
+  if(typeof BWD_DICT==='undefined'){toast('사전 데이터를 불러오는 중이에요. 잠시 후 다시 시도해주세요','err');return;}
+  const d=BWD_DICT[en];
+  const ph=(typeof BWD_PRON!=='undefined'&&BWD_PRON[en])?BWD_PRON[en]:'';
+  if(!d&&!ph){toast('"'+en+'" 단어가 사전에 없어요. ✨ AI로 시도해보세요','err');return;}
+  const fill=(id,val,setS)=>{
+    if(val==null||val==='')return;
+    const el=document.getElementById(id); if(!el)return;
+    const auto=el.dataset?el.dataset.bwdAuto:undefined;
+    if(el.value===''||el.value===auto){
+      el.value=val; if(el.dataset)el.dataset.bwdAuto=val;
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      if(setS)setS(val);
+    }
+  };
+  if(d&&d.kr) fill('nk2',d.kr,v=>{S.nKr=v;});
+  if(d&&d.ex) fill('nex1',d.ex,v=>{S.nEx1=v;});
+  if(ph) fill('nph',ph,v=>{S.nPh=v;});
+  S.nEn=en;
+  toast('📖 사전에서 채웠어요','ok');
 }
 
 async function aiMFull() {

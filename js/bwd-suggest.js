@@ -81,19 +81,27 @@ const BWDSuggest = (function () {
         const w = el.getAttribute('data-w');
         ne.value = w;
         if (window.S) S.nEn = w;
-        // 발음기호 로컬 자동 채움 (있을 때만)
-        if (typeof BWD_PRON !== 'undefined' && BWD_PRON[w]) {
-          const nph = document.getElementById('nph');
-          if (nph) { nph.value = BWD_PRON[w]; nph.dispatchEvent(new Event('input', {bubbles:true})); }
-          if (window.S) S.nPh = BWD_PRON[w];
+        // [자동완성 새로고침] 이전 단어의 자동입력값은 새 단어 값으로 교체하되, 사용자가 직접 친 값은 보존
+        function _bwdFill(el, val, setS){
+          if (!el || val == null || val === '') return;
+          const auto = el.dataset ? el.dataset.bwdAuto : undefined;
+          if (el.value === '' || el.value === auto) {
+            el.value = val;
+            if (el.dataset) el.dataset.bwdAuto = val;
+            el.dispatchEvent(new Event('input', {bubbles:true}));
+            if (setS) setS(val);
+          }
         }
-        // 한국어 뜻·예문 로컬 자동 채움 (검수 코어에 있을 때만, 빈 칸만)
+        // 발음기호 로컬 자동 채움 (있을 때만)
+        if (typeof BWD_PRON !== 'undefined') {
+          const nph = document.getElementById('nph');
+          _bwdFill(nph, BWD_PRON[w] || '', function(v){ if (window.S) S.nPh = v; });
+        }
+        // 한국어 뜻·예문 로컬 자동 채움 (이전 자동입력값은 교체, 사용자 입력은 보존)
         if (typeof BWD_DICT !== 'undefined' && BWD_DICT[w]) {
           const d = BWD_DICT[w];
-          const nk = document.getElementById('nk2');
-          if (nk && !nk.value && d.kr) { nk.value = d.kr; nk.dispatchEvent(new Event('input', {bubbles:true})); if (window.S) S.nKr = d.kr; }
-          const ex1 = document.getElementById('nex1');
-          if (ex1 && !ex1.value && d.ex) { ex1.value = d.ex; ex1.dispatchEvent(new Event('input', {bubbles:true})); if (window.S) S.nEx1 = d.ex; }
+          _bwdFill(document.getElementById('nk2'), d.kr || '', function(v){ if (window.S) S.nKr = v; });
+          _bwdFill(document.getElementById('nex1'), d.ex || '', function(v){ if (window.S) S.nEx1 = v; });
         }
         b.style.display = 'none';
       };

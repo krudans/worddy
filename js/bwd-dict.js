@@ -10231,7 +10231,6 @@ const BWD_DICT = {
   "taken": {kr:"가져가진", ex:"It was taken.", pos:"동사"},
   "red": {kr:"빨간색의", ex:"A red apple.", pos:"형용사"},
   "third": {kr:"세 번째의", ex:"The third day.", pos:"형용사"},
-
   "years": {kr:"수년, 여러 해; (~ old) ~살", ex:"I lived there for years.", pos:"명사"},
   "state": {kr:"상태; (미국·호주 등의) 주(州); 국가; 진술하다", ex:"The country is in a poor state.", pos:"명사·동사"},
   "mr": {kr:"(남성 경칭) ~씨, ~님", ex:"Mr. Kim is here.", pos:"명사"},
@@ -10305,7 +10304,7 @@ const BWD_DICT = {
   "killed": {kr:"죽였다 (kill의 과거·과거분사)", ex:"The frost killed the plants.", pos:"동사"},
   "land": {kr:"땅, 육지; 나라; 착륙하다, 내리다", ex:"The plane will land soon.", pos:"명사·동사"},
   "sex": {kr:"성, 성별; 성관계", ex:"Please state your sex.", pos:"명사"},
-  "shot": {kr:"발사, 총성; 슈팅; 사진 한 장; 주사; (shoot의 과거)", ex:"He took a shot at the goal.", pos:"명사·동사"},
+  "shot": {kr:"발사, 총성; 슛; 사진 한 장; 주사; (shoot의 과거)", ex:"He took a shot at the goal.", pos:"명사·동사"},
   "site": {kr:"장소, 부지; (웹) 사이트", ex:"This is the building site.", pos:"명사"},
   "co": {kr:"회사(company의 약자); (접두사 co-) 공동-, 함께", ex:"Smith & Co. opened today.", pos:"명사"},
   "eyes": {kr:"눈(들); 시선", ex:"Close your eyes.", pos:"명사"},
@@ -10507,5 +10506,5 @@ const BWD_DICT = {
   "hello": {kr:"안녕하세요; 여보세요 (전화)", ex:"Hello, nice to meet you.", pos:"감탄사·명사"},
   "bye": {kr:"안녕 (작별 인사)", ex:"Bye, see you later!", pos:"감탄사"},
   "yep": {kr:"(구어) 응, 그래", ex:"Yep, that's right.", pos:"감탄사"},
-  "nope": {kr:"(구어) 아니, 아니야", ex:"Nope, not today.", pos:"감탄사"}
+  "nope": {kr:"(구어) 아니, 아니야", ex:"Nope, not today.", pos:"감탄사"},
 };

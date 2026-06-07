@@ -13183,8 +13183,8 @@ auth.onAuthStateChanged(async user => {
           if(!_isFirebaseValid) {
             console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
           } else {
-            ['xp','lid','streak','nick','words','books',
-             'markMap','_achievements','_acc','_equipped','_ownedPacks',
+            ['xp','lid','streak','nick','books',
+             '_achievements','_acc','_equipped','_ownedPacks',
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
             ].forEach(k => {
@@ -13194,6 +13194,20 @@ auth.onAuthStateChanged(async user => {
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
+            // [데이터 손실 방지] markMap/words 는 덮어쓰지 않고 안전 병합 (스테일 기기가 최신 진도 덮어쓰는 버그 수정)
+            if(_data.markMap && typeof _data.markMap==='object'){
+              var _mm = Object.assign({}, _data.markMap);
+              Object.keys(S.markMap||{}).forEach(function(w){
+                var lv = S.markMap[w], cv = _mm[w];
+                _mm[w] = ((lv===1||lv===true)||(cv===1||cv===true)) ? 1 : (lv!==undefined?lv:cv);
+              });
+              S.markMap = _mm;
+            }
+            if(Array.isArray(_data.words) && _data.words.length){
+              if(!Array.isArray(S.words)) S.words=[];
+              var _have = new Set(S.words.map(function(w){return (w&&w.en?String(w.en).toLowerCase():'');}));
+              _data.words.forEach(function(w){ if(w&&w.en&&!_have.has(String(w.en).toLowerCase())){ S.words.push(w); _have.add(String(w.en).toLowerCase()); } });
+            }
           }
           if(_data.studyLog) {
             // 날짜별로 더 큰 값 유지 (로컬과 Firebase 중 최신 데이터 보존)
@@ -13248,7 +13262,7 @@ auth.onAuthStateChanged(async user => {
             S.bestScores = _mergedBs;
             localStorage.setItem('wd-bs', JSON.stringify(_mergedBs));
           }
-          if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
+          if(Array.isArray(_data.learned)) S.learned=new Set([].concat([...(S.learned||[])], _data.learned)); // [데이터 손실 방지] 합집합
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
           if(Array.isArray(_data.myButterflies)) {
             // 로컬과 Firebase 합집합 (더 많은 나비 유지)

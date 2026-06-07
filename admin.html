@@ -5358,12 +5358,46 @@ function bwdExport(){
   };
   window.bwdEditEntry=function(en){
     var d=_bwdDict(),e=d[en];if(!e)return;
-    var kr=prompt('"'+en+'" 한국어 뜻 (여러 뜻은 ; 또는 , 로 구분):',e.kr||'');if(kr===null)return;kr=kr.trim();if(!kr){toast('뜻은 비울 수 없어요','err');return;}
-    var pos=prompt('"'+en+'" 품사 (예: 명사 / 동사 / 명사·동사):',e.pos||'');if(pos===null)return;pos=pos.trim();
-    var ex=prompt('"'+en+'" 예문:',e.ex||'');if(ex===null)return;
-    var obj={kr:kr,ex:(ex||'').trim()};if(pos)obj.pos=pos;
-    d[en]=obj;
-    toast('"'+en+'" 수정됨 · 내보내기 후 업로드해야 앱에 반영','ok');
+    window.__dicEditKey=en;
+    var POS2=['','명사','대명사','동사','조동사','형용사','부사','전치사','접속사','관계대명사','의문사','감탄사','한정사','명사·동사','동사·명사','형용사·명사','명사·형용사','형용사·부사'];
+    var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+    var ph=(typeof _bwdPron==='function')?_bwdPron(en):'';
+    var opts=POS2.map(function(p){return '<option value="'+esc(p)+'"'+(p===(e.pos||'')?' selected':'')+'>'+(p||'(품사 없음)')+'</option>';}).join('');
+    var host=document.getElementById('tw')||document.body;
+    host.innerHTML='<div class="mbg" onclick="if(event.target===this)document.getElementById(\'tw\').innerHTML=\'\'" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999">'+
+      '<div class="modal" onclick="event.stopPropagation()" style="background:#fff;border-radius:16px;padding:20px;width:min(440px,92vw);max-height:90vh;overflow:auto">'+
+      '<div style="font-size:17px;font-weight:800;margin-bottom:12px">✏️ 사전 단어 수정</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:8px 0 4px">영단어</div>'+
+      '<input id="de-en" value="'+esc(en)+'" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:monospace">'+
+      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">품사</div>'+
+      '<select id="de-pos" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+opts+'</select>'+
+      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">한국어 뜻 *</div>'+
+      '<input id="de-kr" value="'+esc(e.kr)+'" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+
+      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">예문</div>'+
+      '<input id="de-ex" value="'+esc(e.ex)+'" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+
+      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">발음기호 <span style="font-weight:400;color:#9CA3AF">(bwd-pron.js에서 관리 · 참고용)</span></div>'+
+      '<input value="'+esc(ph)+'" disabled style="width:100%;padding:10px 12px;border:1.5px solid #F3F4F6;border-radius:8px;background:#F9FAFB;color:#9CA3AF">'+
+      '<div style="display:flex;gap:8px;margin-top:16px">'+
+      '<button onclick="window.bwdSaveEdit()" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;cursor:pointer">저장</button>'+
+      '<button onclick="document.getElementById(\'tw\').innerHTML=\'\'" style="flex:1;background:#E5E7EB;color:#374151;border:none;border-radius:10px;padding:12px;font-weight:700;cursor:pointer">취소</button>'+
+      '</div></div></div>';
+  };
+  window.bwdSaveEdit=function(){
+    var d=_bwdDict();
+    var oldEn=window.__dicEditKey;
+    var newEn=(document.getElementById('de-en').value||'').trim().toLowerCase();
+    var kr=(document.getElementById('de-kr').value||'').trim();
+    var pos=(document.getElementById('de-pos').value||'').trim();
+    var ex=(document.getElementById('de-ex').value||'').trim();
+    if(!newEn){toast('영단어는 비울 수 없어요','err');return;}
+    if(!kr){toast('뜻은 비울 수 없어요','err');return;}
+    if(!/^[a-z][a-z\-]*$/.test(newEn)){toast('영단어는 영문 소문자만 가능해요','err');return;}
+    if(newEn!==oldEn && d[newEn]){toast('"'+newEn+'"는 이미 있는 단어예요','err');return;}
+    var obj={kr:kr,ex:ex};if(pos)obj.pos=pos;
+    if(newEn!==oldEn){ delete d[oldEn]; }
+    d[newEn]=obj;
+    var h=document.getElementById('tw');if(h)h.innerHTML='';
+    toast('"'+newEn+'" 수정됨 · 내보내기 후 업로드해야 앱에 반영','ok');
     window.bwdRenderTable();
   };
   window.bwdAddEntry=function(){

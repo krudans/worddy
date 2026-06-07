@@ -10507,7 +10507,6 @@ const BWD_DICT = {
   "bye": {kr:"안녕 (작별 인사)", ex:"Bye, see you later!", pos:"감탄사"},
   "yep": {kr:"(구어) 응, 그래", ex:"Yep, that's right.", pos:"감탄사"},
   "nope": {kr:"(구어) 아니, 아니야", ex:"Nope, not today.", pos:"감탄사"},
-,
 
   "radio": {
     "kr": "라디오; 라디오 방송",

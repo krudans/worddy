@@ -14,10 +14,10 @@
     };
     nR.__fix = true; window._renderBookWordList = nR;
   }
-  // 2) 외웠음(mark=1)으로 새로 외운 경우 XP 지급
+  // 2) 외웠음(mark=1)으로 새로 외운 경우 XP 지급 (markMap 외움수 기준)
   if (typeof window._bwlSetMark === 'function' && !window._bwlSetMark.__fix) {
     var oM = window._bwlSetMark;
-    var cnt = function(){ try { return (typeof countMemorized==='function') ? countMemorized() : null; } catch(e){ return null; } };
+    var cnt = function(){ try { var mm = S.markMap||{}; return Object.values(mm).filter(function(v){ return Number(v)===1; }).length; } catch(e){ return null; } };
     var nM = function(en, mark){
       var before = cnt();
       var r = oM.apply(this, arguments);
@@ -37,11 +37,9 @@
     document.querySelectorAll('button,[onclick]').forEach(function(el){
       if (el.childElementCount > 0) return;
       var t = el.textContent || '';
-      // 학습시작 → 학습시작_플래시카드
       if (/학습시작/.test(t) && !/플래시카드/.test(t) && t.trim().length <= 12){
         el.textContent = t.replace('학습시작', '학습시작_플래시카드'); return;
       }
-      // 전체보기 → 학습페이지 이동 (+ 학습화면으로)
       if (/전체보기/.test(t) && !/학습페이지/.test(t)){
         el.textContent = t.replace('📋','📖').replace('전체보기','학습페이지 이동');
         if (!el.__navfix){
@@ -49,10 +47,7 @@
           el.removeAttribute('onclick');
           el.addEventListener('click', function(ev){
             try { ev.stopPropagation(); } catch(e){}
-            try {
-              var b = window.__bwlBook;
-              if (typeof selectBookAndLearn==='function' && b) selectBookAndLearn(b);
-            } catch(e){}
+            try { var b = window.__bwlBook; if (typeof selectBookAndLearn==='function' && b) selectBookAndLearn(b); } catch(e){}
           });
         }
       }

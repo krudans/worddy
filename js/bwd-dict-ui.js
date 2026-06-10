@@ -56,6 +56,36 @@
     return out;
   }
 
+  // ── 사전 본체(BWD_DICT) 지연 로딩 ──
+  // index.html이 bwd-dict.js를 로드하지 않아도, 처음 검색할 때 알아서 불러온다.
+  // (3.7MB이므로 앱 시작 때가 아니라 사전을 처음 열 때 1회만 로드 → 이후 서비스워커 캐시)
+  var _dictLoading = false, _dictWaiters = [];
+  function ensureDict(cb) {
+    if (D()) { if (cb) cb(); return; }
+    if (cb) _dictWaiters.push(cb);
+    if (_dictLoading) return;
+    _dictLoading = true;
+    var s = document.createElement('script');
+    s.src = 'js/bwd-dict.js?v=1';
+    s.async = true;
+    s.onload = function () {
+      _dictLoading = false;
+      var ws = _dictWaiters.slice(); _dictWaiters = [];
+      for (var i = 0; i < ws.length; i++) { try { ws[i](); } catch (e) {} }
+      onDictReady();
+    };
+    s.onerror = function () { _dictLoading = false; toastMsg('사전 데이터를 불러오지 못했어요'); };
+    document.head.appendChild(s);
+  }
+  function onDictReady() {
+    try {
+      if (wrap && wrap.classList.contains('open')) {
+        var v = input.value.trim();
+        if (v) renderSuggestions(doSearch(v));
+      }
+    } catch (e) {}
+  }
+
   // ── 스타일 ──
   function injectCSS() {
     if (document.getElementById('bwdui-css')) return;
@@ -190,6 +220,7 @@
   function openSheet() {
     if (!wrap) return;
     wrap.classList.add('open');
+    ensureDict();
     input.value = '';
     renderSuggestions([]);
     setTimeout(function () { try { input.focus(); } catch (e) {} }, 120);
@@ -256,6 +287,11 @@
 
   function showWord(word) {
     if (!results || !word) return;
+    if (!D()) {
+      results.innerHTML = '<div class="bwdui-empty">사전 데이터를 불러오는 중…</div>';
+      ensureDict(function () { showWord(word); });
+      return;
+    }
     var d = D(); var e = (d && d[word]) || null;
     var ipa = pronOf(word);
     var rel = relatedOf(word);

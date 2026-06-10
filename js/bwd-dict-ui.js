@@ -79,11 +79,19 @@
   }
   function onDictReady() {
     try {
+      setBrand();
       if (wrap && wrap.classList.contains('open')) {
         var v = input.value.trim();
         if (v) renderSuggestions(doSearch(v));
       }
     } catch (e) {}
+  }
+  function setBrand() {
+    var el = document.getElementById('bwdui-brand-ct');
+    if (!el) return;
+    var d = D();
+    if (d) { try { el.textContent = '· ' + Object.keys(d).length.toLocaleString() + '개 수록'; } catch (e) { el.textContent = ''; } }
+    else { el.textContent = ''; }
   }
 
   // ── 스타일 ──
@@ -118,6 +126,9 @@
       'font-family:monospace;outline:none;color:#111;}',
       '.bwdui-input:focus{border-color:' + BLUE2 + ';}',
       '.bwdui-x{background:#F3F4F6;border:none;border-radius:10px;width:38px;height:38px;font-size:15px;color:#6B7280;cursor:pointer;flex:none;}',
+      '.bwdui-brand{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;padding:2px 14px 11px;margin:0 0 4px;border-bottom:0.5px solid #F0F2F5;flex:none;}',
+      '.bwdui-brand .nm{font-size:12px;font-weight:800;color:' + BLUE + ';letter-spacing:.2px;}',
+      '.bwdui-brand .ct{font-size:12px;font-weight:600;color:#9CA3AF;}',
       '.bwdui-res{overflow-y:auto;padding:0 14px 16px;-webkit-overflow-scrolling:touch;}',
       '.bwdui-sug{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;}',
       '.bwdui-sug:active{background:#F3F8FF;}',
@@ -169,6 +180,7 @@
           '<input class="bwdui-input" type="text" inputmode="latin" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="영어 단어 검색…">' +
           '<button class="bwdui-x" aria-label="닫기">✕</button>' +
         '</div>' +
+        '<div class="bwdui-brand"><span class="nm">🦋 Butterfly Word Dictionary</span><span class="ct" id="bwdui-brand-ct"></span></div>' +
         '<div class="bwdui-res"></div>' +
       '</div>';
     document.body.appendChild(wrap);
@@ -221,6 +233,7 @@
     if (!wrap) return;
     wrap.classList.add('open');
     ensureDict();
+    setBrand();
     input.value = '';
     renderSuggestions([]);
     setTimeout(function () { try { input.focus(); } catch (e) {} }, 120);

@@ -3503,6 +3503,11 @@ function countMemorized(period){
   }
   return cnt;
 }
+// ── 단일 출처: 평생 획득 XP ── '누적 XP'와 '전체 획득 XP'는 반드시 이 함수 하나만 사용 (누적 카운터와 일별 로그 합 중 큰 값)
+function totalEarnedXP(){
+  let s=0; try{ s=Object.values(S.studyLog||{}).reduce((a,v)=>a+((v&&v.xp)||0),0); }catch(e){}
+  return Math.max(S._totalXp||0, s);
+}
 function cycleMark(en) {
   const cur = getMark(en);
   const next = (cur+1)%3;
@@ -5444,11 +5449,11 @@ function rLearnTab() {
       const logs=Object.entries(_sl).filter(([k])=>k>=ago);
       const tw=logs.reduce((s,[,v])=>s+(v.words||0),0);
       const tm=Math.round(logs.reduce((s,[,v])=>s+(v.min||0),0));
-      const tx=logs.reduce((s,[,v])=>s+(v.xp||0),0);
+      const tx=(p==='all'&&typeof totalEarnedXP==='function')?totalEarnedXP():logs.reduce((s,[,v])=>s+(v.xp||0),0);
       const ta=logs.filter(([,v])=>(v.words||0)>0).length;
       const avgW=ta>0?Math.round(tw/ta):0;
       const avgM=ta>0?Math.round(tm/ta):0;
-      const _memo=(typeof countMemorized==='function')?countMemorized(p):0;
+      const _memo=(typeof countMemorized==='function')?countMemorized('all'):0;
       const _pLabel=p==='week'?'이번주':p==='month'?'이번달':'전체';
       return `<div style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:14px;padding:13px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
         <div>
@@ -5459,7 +5464,7 @@ function rLearnTab() {
       </div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px">
         ${[
-          {v:_memo.toLocaleString()+'개', lb:'외운 단어', color:'#16A34A'},
+          {v:_memo.toLocaleString()+'개', lb:'외운 단어(누적)', color:'#16A34A'},
           {v:tm.toLocaleString()+'분', lb:'총 공부시간', color:'#F59E0B'},
           {v:ta+'일', lb:'활동일', color:'#10B981'},
           {v:'⚡'+tx.toLocaleString(), lb:_pLabel+' 획득 XP', color:'#8B5CF6'},
@@ -5485,7 +5490,7 @@ function rLearnTab() {
       ${[
         {v:S.streak||0, lb:'🔥 연속학습', color:'#EF4444'},
         {v:S.attendCount||0, lb:'📅 총 출석', color:'#3B82F6'},
-        {v:(S._totalXp||0).toLocaleString(), lb:'⚡ 누적XP', color:'#8B5CF6'},
+        {v:((typeof totalEarnedXP==='function')?totalEarnedXP():(S._totalXp||0)).toLocaleString(), lb:'⚡ 누적XP', color:'#8B5CF6'},
       ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:12px;border:1px solid var(--border,#E2E8F0);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)">
         <div style="font-size:20px;font-weight:900;color:${s.color}">${s.v}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">${s.lb}</div>

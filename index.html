@@ -780,7 +780,7 @@ const cbrow = (msg,id,mood='normal') => `<div class="cbrow"><div style="flex-shr
 const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   user:null, nick:'', lid:'egg', xp:0,
   tab:'home', stab:'books',
-  words:[], learned:new Set(), srsMap:{}, markMap:{},
+  words:[], learned:new Set(), markMap:{},
   idx:0, flip:false, streak:1, lastDate:'',
   // 단어장 여러 개
   books:[], currentBook:'내 단어장',
@@ -788,8 +788,6 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   gameSettings:{count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false},
   nAiData:null,
   gSavedGame:null,
-  // SRS SM-2
-  srsData:{}, srsReps:{},
   // 친구
   friends:[],
   // 테스트
@@ -816,7 +814,6 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   _ownedPacks:[], // 마켓 구매이력
   _matchPlayed:0, // 매칭게임 진행 세트 수
   _hadPerfect:false, // 테스트 100% 달성
-  _srsCount:0, // SRS 복습 누적 횟수
   favorites:[], // 즐겨찾기 단어
   _wrongWords:[], // 오답 노트
   _achievements:[], // 달성한 도전 과제 // 벌거지 상태 (0~10)
@@ -1193,7 +1190,7 @@ function importSharedBook(btn) {
   if(!S.books)S.books=[];
   let name=data.name,cnt=1;
   while(S.books.find(b=>b.name===name)||name==='내 단어장')name=data.name+'('+( ++cnt)+')';
-  S.books.push({name,words:data.words,markMap:{},srsMap:{},learned:[]});
+  S.books.push({name,words:data.words,markMap:{},learned:[]});
   sv();cm();toast('✅ "'+name+'" 추가 완료! ('+data.words.length+'개)');go('mybooks');
 }
 
@@ -1231,8 +1228,6 @@ const XP_DEFAULT = {
   word_learn:    1,   // 단어 1개 학습
   word_flip:     2,   // 플래시카드 넘기기
   quiz_correct:  5,   // 퀴즈 정답
-  srs_hard:      5,   // SRS 헷갈림
-  srs_good:     10,   // SRS 완료
   speak_word:    5,   // 발음 듣기
   daily_first:  10,   // 하루 첫 학습 (logStudy words)
   chain_step:   10,   // 체인스토리 1단계
@@ -2037,7 +2032,7 @@ function _doBuyPack(packId) {
     const newW = words.filter(w=>!existing.words.find(x=>x.en===w.en));
     existing.words = [...existing.words, ...newW];
   } else {
-    S.books.push({ name:pk.name, packId:packId, fromMarket:true, markMap:{}, srsMap:{}, learned:[] }); // emoji/imageUrl/words는 항상 Firebase에서 조회
+    S.books.push({ name:pk.name, packId:packId, fromMarket:true, markMap:{}, learned:[] }); // emoji/imageUrl/words는 항상 Firebase에서 조회
   }
   S._ownedPacks.push(packId);
   if(typeof db !== 'undefined' && S.user?.uid) {
@@ -2131,7 +2126,7 @@ function showXpGuide() {
     <div style="padding:16px">
       <div style="font-size:13px;font-weight:800;color:#7C3AED;margin-bottom:10px">📥 XP 획득 방법</div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-${[['📖','단어 1개 학습','+5 XP'],['🎯','테스트 100% 정답','+120 XP'],['🎯','테스트 90% 정답','+80 XP'],['🎯','테스트 80% 정답','+50 XP'],['🎮','게임 완료','+20~50 XP'],['📚','SRS 복습','정답수×8 XP'],].map(([ic,lb,xp])=>` <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F9FAFB;border-radius:10px"> <span style="font-size:18px">${ic}</span> <span style="flex:1;font-size:13px;color:#374151">${lb}</span> <span style="font-size:12px;font-weight:700;color:#7C3AED">${xp}</span> </div>`).join('')}
+${[['📖','단어 1개 학습','+5 XP'],['🎯','테스트 100% 정답','+120 XP'],['🎯','테스트 90% 정답','+80 XP'],['🎯','테스트 80% 정답','+50 XP'],['🎮','게임 완료','+20~50 XP'],].map(([ic,lb,xp])=>` <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F9FAFB;border-radius:10px"> <span style="font-size:18px">${ic}</span> <span style="flex:1;font-size:13px;color:#374151">${lb}</span> <span style="font-size:12px;font-weight:700;color:#7C3AED">${xp}</span> </div>`).join('')}
       </div>
       <div style="background:#FFF8E1;border-radius:12px;padding:10px;margin-bottom:16px">
         <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:4px">🔥 스트릭 보너스</div>
@@ -2167,7 +2162,7 @@ function showAppGuide() {
         ${[
           ['🏠','홈','오늘의 단어 · 미션 · 캐릭터 상태'],
           ['📚','단어장','내 단어장 관리 · 마켓'],
-          ['🎓','학습','단어 학습 · 테스트 · SRS 복습'],
+          ['🎓','학습','단어 학습 · 테스트 · 자동학습'],
           ['🦋','나비','캐릭터 돌보기 · 게임 · 도감'],
           ['👤','프로필','통계 · 설정 · 나비 도감'],
         ].map(([ic,lb,dc])=>`
@@ -2262,7 +2257,6 @@ const ACHIEVEMENTS = [
   {id:'bf_10',        emoji:'🌈',name:'나비 10종',    desc:'나비 10종 수집',          check:()=>getMyButterflies().length>=10},
   {id:'bf_all',       emoji:'👑',name:'나비 도감 완성',desc:'나비 30종 전부 수집',    check:()=>getMyButterflies().length>=30},
   {id:'levelup_god',  emoji:'🌟',name:'나비의 신',    desc:'최고 레벨 달성',          check:()=>S.lid==='god'},
-  {id:'srs_master',   emoji:'🧠',name:'SRS 마스터',   desc:'SRS 복습 100회',          check:()=>(S._srsCount||0)>=100},
 ];
 
 function checkAchievements() {
@@ -2339,7 +2333,6 @@ function getDailyChallenge() {
     {id:'words20',  emoji:'📚', title:'단어 20개 학습',   desc:'오늘 단어 20개를 외워요',    check:()=>(S.studyLog[today()]?.words||0)>=20,  reward:50},
     {id:'quiz10',   emoji:'🎯', title:'퀴즈 10문제',      desc:'오늘 퀴즈 10문제를 풀어요',   check:()=>(S.studyLog[today()]?.quiz||0)>=10,   reward:30},
     {id:'combo5',   emoji:'⚡', title:'5연속 정답',        desc:'게임에서 5연속 정답!',         check:()=>(S._maxCombo||0)>=5,                  reward:40},
-    {id:'srs',      emoji:'🧠', title:'복습 단어 완료',   desc:'모든 복습 단어를 완료해요',    check:()=>Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length===0&&Object.keys(S.srsMap||{}).length>0, reward:60},
     {id:'perfect',  emoji:'💯', title:'테스트 100%',      desc:'테스트를 완벽하게 통과해요',   check:()=>(S._hadPerfect||false),               reward:80},
     {id:'words30',  emoji:'🌟', title:'단어 30개 학습',   desc:'오늘 단어 30개를 외워요',    check:()=>(S.studyLog[today()]?.words||0)>=30,  reward:70},
     {id:'streak',   emoji:'🔥', title:'오늘 학습 완료',   desc:'오늘 미션 3개를 모두 완료해요',check:()=>{const l=S.studyLog[today()]||{};return l.words>=10&&l.quiz>=5&&Object.keys(S.bestScores||{}).length>0;},reward:100},
@@ -3544,12 +3537,10 @@ function load() {
   S.nick = localStorage.getItem('wd-nk')||'';
   S.words = JSON.parse(localStorage.getItem('wd-w')||'null')||[...DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg];
   S.learned = new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]'));
-  S.srsMap = JSON.parse(localStorage.getItem('wd-srs')||'{}');
   S.markMap = JSON.parse(localStorage.getItem('wd-mk')||'{}');
   S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}');
   S.favorites = JSON.parse(localStorage.getItem('wd-fav')||'[]');
   S._dcClaimed = localStorage.getItem('wd-dcc')||'';
-  S._srsCount = parseInt(localStorage.getItem('wd-srsc')||'0');
   S._totalStudyMins = parseInt(localStorage.getItem('wd-tsm')||'0');
   S._totalXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || 0;
   // 누적 XP 보정: 일별 획득 XP 합(studyLog)이 누적보다 크면 누적을 그 값으로 맞춤.
@@ -3587,8 +3578,6 @@ function load() {
   S.markOrder = JSON.parse(localStorage.getItem('wd-mo')||'[0,1,2]');
   S.bookcase = JSON.parse(localStorage.getItem('wd-bc')||'[]');
   applyTheme();
-  S.srsData = JSON.parse(localStorage.getItem('wd-sd')||'{}');
-  S.srsReps = JSON.parse(localStorage.getItem('wd-sr')||'{}');
   S.friends = JSON.parse(localStorage.getItem('wd-fr')||'[]');
   S.bestScores = JSON.parse(localStorage.getItem('wd-bs')||'{}');
   S.gamePlayCount = JSON.parse(localStorage.getItem('wd-gpc')||'{}');
@@ -3678,7 +3667,6 @@ function sv() {
   if(!S.currentBook || S.currentBook==='내 단어장'){
     localStorage.setItem('wd-w',JSON.stringify(S.words));
     localStorage.setItem('wd-lrn',JSON.stringify([...S.learned]));
-    localStorage.setItem('wd-srs',JSON.stringify(S.srsMap));
     localStorage.setItem('wd-mk',JSON.stringify(S.markMap));
   }
   // markDates는 전역(전체 단어장 합산)이라 현재 책과 무관하게 항상 저장.
@@ -3687,7 +3675,6 @@ function sv() {
   localStorage.setItem('wd-dl',JSON.stringify(S.dList));
   localStorage.setItem('wd-fav',JSON.stringify(Array.isArray(S.favorites)?S.favorites:[...(S.favorites||[])]));
   if(S._dcClaimed) localStorage.setItem('wd-dcc', S._dcClaimed);
-  if(S._srsCount) localStorage.setItem('wd-srsc', String(S._srsCount));
   if(S._totalStudyMins) localStorage.setItem('wd-tsm', String(S._totalStudyMins));
   if(S.goal) localStorage.setItem('wd-gl',S.goal);
   localStorage.setItem('wd-glt',S.goalTotal);
@@ -3709,8 +3696,6 @@ function sv() {
   localStorage.setItem('wd-sl2',S.speechLang||'en-US');
   localStorage.setItem('wd-mo',JSON.stringify(S.markOrder||[0,1,2]));
   localStorage.setItem('wd-bc',JSON.stringify(S.bookcase||[]));
-  localStorage.setItem('wd-sd',JSON.stringify(S.srsData||{}));
-  localStorage.setItem('wd-sr',JSON.stringify(S.srsReps||{}));
   localStorage.setItem('wd-fr',JSON.stringify(S.friends||[]));
   localStorage.setItem('wd-bs',JSON.stringify(S.bestScores||{}));
   localStorage.setItem('wd-gdc',JSON.stringify(S.gameDailyCount||{}));
@@ -4692,7 +4677,7 @@ async function finishSurvey() {
   else if(m===1||m===0){style='비주얼 학습형';tip='이미지와 연결해서 기억해요!';plan='이미지 플래시카드 15분 → 뜻맞추기 게임 15분';}
   else if(m===2){style='반복 학습형';tip='손으로 쓰면서 반복이 최고!';plan='플래시카드 20분 → 스크램블 게임 10분';}
   else if(p===1||p===4){style='시험 대비형';tip='수능/토익 빈출 패턴을 집중 공략!';plan='빈칸채우기 15분 → 문장구성 15분 → 테스트';}
-  else if(t===3){style='집중 돌파형';tip='1시간 집중으로 많은 단어를!';plan='SRS 암기 30분 → 게임 20분 → 일기 10분';}
+  else if(t===3){style='집중 돌파형';tip='1시간 집중으로 많은 단어를!';plan='자동학습 30분 → 게임 20분 → 일기 10분';}
   else if(t===0){style='꾸준함 학습형';tip:'매일 10분이면 충분해요!';plan='플래시카드 5분 → 뜻맞추기 5분';}
   else {style='혼합형';tip='다양한 방법으로 골고루!';plan='플래시카드 10분 → 게임 10분 → 듣기 5분';}
   S.studyStyle=style; S.surveyDone=true; sv();
@@ -5282,15 +5267,14 @@ function _wordTierColor(n){
 const LEARN_GAMES=['flip','quiz','fill','typing','wc','match','sentence','chain','listen','wordfind','wordle','ssort'];
 
 function rLearnTab() {
-  const allBooks = [{name:'내 단어장', words:S.words||[], markMap:S.markMap||{}, srsMap:S.srsMap||{}},
-    ...(S.books||[]).map(b=>({name:b.name, words:getBookWords(b), markMap:b.markMap||{}, srsMap:b.srsMap||{}}))];
+  const allBooks = [{name:'내 단어장', words:S.words||[], markMap:S.markMap||{}},
+    ...(S.books||[]).map(b=>({name:b.name, words:getBookWords(b), markMap:b.markMap||{}}))];
   const bookName = S.currentBook||'내 단어장';
   const curBook = allBooks.find(b=>b.name===bookName)||allBooks[0];
   const words = curBook?.words||[];
   const mm = curBook?.markMap||{};
   const marked = words.filter(w=>(mm[w.en]||0)===1).length;
   const pct = words.length ? Math.round(marked/words.length*100) : 0;
-  const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
   const t = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   const todayLog = (S.studyLog||{})[t]||{words:0,min:0};
   const fmtMin = m => m>=1 ? Math.round(m)+'분' : m>0 ? Math.round(m*60)+'초' : '0';
@@ -5308,7 +5292,7 @@ function rLearnTab() {
   });
   const _maxH = Math.max(..._hist14.map(d=>d.words),1);
 
-  // ── 학습 모드 (순서: 자동학습, 플래시카드, 말하기, SRS복습, 쉐도잉) ──
+  // ── 학습 모드 (순서: 자동학습, 플래시카드, 말하기, 쉐도잉) ──
   const modes = [
     {id:'auto', ic:'🎧', nm:'자동학습', dc:'자동 재생 + 발음 듣기',
      badge: todayLog.words>0 ? `오늘 ${todayLog.words}단어` : '오늘 학습량 : 0 단어',
@@ -5319,25 +5303,19 @@ function rLearnTab() {
      badge: words.length>0 ? `${pct}% 암기` : '단어 없음',
      badgeColor: pct>=80?'#16A34A':pct>=40?'#D97706':'#6366F1',
      sub: words.length>0 ? `${marked}/${words.length}개 외웠음` : '단어장에 단어를 추가하세요',
-     fn:"S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:srsToday===0&&todayLog.words===0},
+     fn:"S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:todayLog.words===0},
     {id:'speak', ic:'🗣️', nm:'말하기', dc:'뜻 보고 영어로 말하기',
      badge: '',
      badgeColor:'#10B981',
      sub: '뜻을 보고 영어 단어를 직접 말하는 연습',
      fn:"startMode('speak')", hot:false},
-    {id:'srs', ic:'📖', nm:'SRS 복습', dc:'망각곡선 기반 스마트 복습',
-     badge: srsToday>0 ? `${srsToday}개 대기` : '대기 없음',
-     badgeColor: srsToday>0?'#DC2626':'#9CA3AF',
-     sub: srsToday>0 ? `복습 대기 ${srsToday}개 있음` : '복습할 단어가 없어요',
-     fn:"startMode('srs')", hot:srsToday>0},
     {id:'shadow', ic:'🎤', nm:'쉐도잉', dc:'발음 듣고 따라 말하기',
      badge: '',
      badgeColor:'#8B5CF6',
      sub: '원어민 발음을 듣고 따라 말하는 연습',
      fn:"startMode('shadow')", hot:false},
   ];
-  // 추천: SRS 대기 있으면 SRS, 아니면 자동학습
-  const recommend = srsToday>0?'srs':'auto';
+  const recommend = 'auto';
 
   let html = `<div style="display:flex;flex-direction:column;background:var(--panel-bg,#F4F6F8);min-height:100%">
 
@@ -5642,7 +5620,7 @@ function finishLearnSession(resultMap) {
   // 세션 완료 캐릭터 반응
   setTimeout(()=>{
     const pet=getPetState();
-    const nextActions=['🎯 퀴즈로 확인해봐요!','🎮 게임으로 복습해봐요!','🔥 SRS 복습도 해봐요!'];
+    const nextActions=['🎯 퀴즈로 확인해봐요!','🎮 게임으로 복습해봐요!','⚡ 플래시카드로 복습해봐요!'];
     const nextAct = nextActions[Math.floor(Math.random()*nextActions.length)];
     toast('🐛 오늘도 수고했어! +'+xpAmt+'XP ・ '+nextAct);
     vib([100,50,100]);
@@ -7894,7 +7872,6 @@ function rHome() {
   const t = today();
   if(!S.studyLog) S.studyLog={};
   const todayLog = (S.studyLog[t])||{words:0,quiz:0};
-  const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const marked2 = Object.values(S.markMap||{}).filter(v=>v===2).length;
   // 오늘의 미션 '단어 10개 외우기' = 오늘 외운 단어(전체 단어장 합산). 매일 리셋.
   const learnedCount = (typeof countMemorized==='function') ? countMemorized('today') : 0;
@@ -7989,7 +7966,6 @@ function rHome() {
         <div style="height:100%;background:${m.done?'#34D399':petCol.main};width:${m.progress||0}%;transition:width .6s;border-radius:4px"></div>
       </div>
     </div>`).join('')}
-    ${srsToday>0?`<div onclick="startMode('srs')" style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:12px;color:#E65100;font-weight:700;cursor:pointer;margin-top:4px">📖 복습 단어 ${srsToday}개 대기 중 → 지금 복습 (+${srsToday*8}XP)</div>`:''}
     ${marked2>0?`<div onclick="showWrongNote()" style="background:#FEF2F2;border-radius:10px;padding:8px 12px;font-size:12px;color:#DC2626;font-weight:700;cursor:pointer;margin-top:4px;display:flex;align-items:center;gap:6px">
       <span>🦋</span><span style="flex:1">오답 노트 ${(S._wrongWords||[]).length}개 · 헷갈리는 단어 ${marked2}개</span><span style="opacity:.5">→</span>
     </div>`:''}
@@ -8025,7 +8001,6 @@ function rHome() {
   // ── 오늘 현황 (풍성한 버전) ──
   const todayWords = todayLog.words||0;
   const todayQuiz = todayLog.quiz||0;
-  const srsReady = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
   const markDone = (typeof countMemorized==='function') ? countMemorized('today') : 0;
   const markWeak = Object.values(S.markMap||{}).filter(v=>v===2).length;
   const totalWordsCount = (S.words||[]).length;
@@ -8039,7 +8014,7 @@ function rHome() {
       <div style="flex:1"><span style="font-size:17px;font-weight:900;color:#E65100">${S.streak||0}일</span> <span style="font-size:12px;color:#9CA3AF;font-weight:700">연속 학습</span></div>
       <span style="font-size:11px;color:#E65100;font-weight:700">${(S.streak||0)>=7?'🏆 주간 달성!':((S.streak||0)>=3?'잘 하고 있어요!':'계속 해봐요')}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:10px">
       <div style="text-align:center;padding:7px 4px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px">
         <div style="font-size:10px;color:#9CA3AF">외웠음</div>
         <div style="font-size:13px;font-weight:900;color:#16A34A">✅${markDone}</div>
@@ -8047,10 +8022,6 @@ function rHome() {
       <div onclick="S.listMarkFilter=2;go('mybooks','list')" style="text-align:center;padding:7px 4px;background:${markWeak>0?'#FFF7ED':'var(--bg-sub,var(--bg-sub,#F3F4F6))'};border-radius:10px;cursor:pointer">
         <div style="font-size:10px;color:#9CA3AF">헷갈림</div>
         <div style="font-size:13px;font-weight:900;color:${markWeak>0?'#E65100':'#9CA3AF'}">🦋${markWeak}</div>
-      </div>
-      <div onclick="startMode('srs')" style="text-align:center;padding:7px 4px;background:${srsReady>0?'#F5F3FF':'var(--bg-sub,var(--bg-sub,#F3F4F6))'};border-radius:10px;cursor:pointer">
-        <div style="font-size:10px;color:#9CA3AF">SRS대기</div>
-        <div style="font-size:13px;font-weight:900;color:${srsReady>0?'#7C3AED':'#9CA3AF'}">📖${srsReady}</div>
       </div>
     </div>
     <div style="background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px;padding:10px">
@@ -8321,7 +8292,7 @@ async function renderHomeRank() {
 }
 
 function showBooksModal() {
-  // books 구조: [{name, words:[], markMap:{}, srsMap:{}, learned:[]}]
+  // books 구조: [{name, words:[], markMap:{}, learned:[]}]
   // 현재 words를 기본 단어장으로 취급
   const allBooks = [{name:'내 단어장', cnt:S.words.length, isDefault:true}, ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length, isDefault:false}))];
 
@@ -8368,7 +8339,6 @@ function _selectBook(name) {
   if(!book) { S.currentBook = name; if(typeof sv === 'function') sv(); return; }
   S.words = [...(book.words||[])];
   S.markMap = {...(book.markMap||{})};
-  S.srsMap = {...(book.srsMap||{})};
   S.learned = new Set(book.learned||[]);
   S.currentBook = name;
   S.idx = 0; S.flip = false;
@@ -8396,7 +8366,6 @@ function switchBook(name) {
   }
   S.words=[..._bw];
   S.markMap={...book.markMap};
-  S.srsMap={...book.srsMap};
   S.learned=new Set(book.learned||[]);
   S.currentBook=name;
   S.idx=0; S.flip=false;
@@ -8417,7 +8386,6 @@ function saveCurrentBook() {
     }
     S.books[idx].words=[...S.words];
     S.books[idx].markMap={...S.markMap};
-    S.books[idx].srsMap={...S.srsMap};
     S.books[idx].learned=[...S.learned];
   }
 }
@@ -8427,7 +8395,7 @@ function createBook() {
   if(!name){toast('단어장 이름을 입력하세요');return;}
   if((S.books||[]).length>=10){toast('단어장은 최대 10개까지 만들 수 있어요 📚');return;}
   if(name==='내 단어장'||S.books.find(b=>b.name===name)){toast('이미 있는 이름');return;}
-  S.books.push({name,words:[],markMap:{},srsMap:{},learned:[]});
+  S.books.push({name,words:[],markMap:{},learned:[]});
   sv();
   toast(`✅ "${name}" 단어장 생성!`);
   showBooksModal();
@@ -8507,7 +8475,6 @@ function startMode(type) {
   if(modeWords !== S.words) S.words = modeWords;
   if(type==='auto' || type==='stream' || type==='audio') showAutoMode();
   else if(type==='shadow') showShadowMode();
-  else if(type==='srs') showSRSMode();
   else if(type==='speak') showSpeakMode();
   else toast('준비 중이에요');
 }
@@ -8981,137 +8948,6 @@ function showSleepMode() {
   window._curRender=window._slpPlay;
   window._slpPlay();
 }
-function showSRSMode() {
-  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
-  if(!words.length){toast('단어가 없어요!');return;}
-  const mr=document.getElementById('mr');if(!mr)return;
-
-  // SRS: srsMap에서 오늘 복습할 단어 필터링, 없으면 markMap=2(복습) 단어, 없으면 전체
-  const markMap = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
-  const now = new Date();
-  const srsWords = words.filter(w => {
-    const d = S.srsMap?.[w.en];
-    return d && new Date(d) <= now;
-  });
-  const reviewWords = words.filter(w=>(markMap[w.en]||0)===2);
-  const queue = srsWords.length ? srsWords : (reviewWords.length ? reviewWords : words);
-
-  if(srsWords.length > 0) {
-    toast(`📖 오늘 복습할 단어 ${srsWords.length}개`);
-  } else if(reviewWords.length > 0) {
-    toast(`📖 복습 표시 단어 ${reviewWords.length}개`);
-  }
-
-  window._srsQueue = [...queue].sort(()=>Math.random()-.5);
-  window._srsIdx = 0;
-  window._srsMr = mr;
-
-  // 파형 CSS
-  if(!document.getElementById('srs-wave-css')){
-    const st=document.createElement('style');st.id='srs-wave-css';
-    st.textContent='@keyframes srsWave{0%{transform:scaleY(1)}100%{transform:scaleY(3)}}';
-    document.head.appendChild(st);
-  }
-
-  window._srsRender = ()=>{
-    const queue=window._srsQueue, idx=window._srsIdx, mr=window._srsMr;
-    if(idx>=queue.length){
-      mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F2027,#203A43,#2C5364);display:flex;align-items:center;justify-content:center;flex-direction:column">
-        <div style="font-size:56px;margin-bottom:16px">🧠</div>
-        <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">SRS 복습 완료!</div>
-        <div style="font-size:14px;color:var(--panel-text3,#9CA3AF);margin-bottom:8px">${queue.length}개 단어 복습 완료</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.3);margin-bottom:24px;line-height:1.6;text-align:center;max-width:280px">잘 외운 단어는 ✅, 헷갈리는 단어는 🦋로 표시됩니다<br>다음 복습 때 헷갈리는 단어가 먼저 나와요</div>
-        <button onclick="speechSynthesis.cancel();window._curRender=null;document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.15);border:none;border-radius:20px;padding:12px 28px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">✓ 닫기</button>
-      </div></div>`;
-      return;
-    }
-    const w=queue[idx];
-    const markMap=getCurrentBookMarkMap?getCurrentBookMarkMap():(S.markMap||{});
-    const curMark=markMap[w.en]||0;
-    mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F2027,#203A43,#2C5364);display:flex;flex-direction:column;overflow:hidden">
-      <!-- 헤더 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;flex-shrink:0">
-        <div>
-          <div style="font-size:16px;font-weight:900;color:#fff">🧠 SRS 복습</div>
-          <div style="font-size:11px;color:var(--panel-text3,#9CA3AF);margin-top:2px">망각 곡선 기반 · 헷갈리는 단어 우선</div>
-        </div>
-        ${_LT.barHTML()}<button onclick="speechSynthesis.cancel();window._curRender=null;document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕</button>
-      </div>
-      <!-- 파형 -->
-      <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:32px;flex-shrink:0">
-        ${[1,2,3,4,5].map(i=>`<div style="width:3px;background:rgba(52,211,153,.6);border-radius:4px;animation:srsWave ${0.7+i*.1}s ease-in-out infinite alternate;height:${6+i*3}px"></div>`).join('')}
-      </div>
-      <!-- 단어 카드 -->
-      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px">
-        <div onclick="window._srsFlipped=!window._srsFlipped;window._srsRender()" style="width:100%;max-width:360px;background:var(--panel-muted,rgba(0,0,0,.06));border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px 24px;text-align:center;cursor:pointer;min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
-          <div style="font-size:38px;font-weight:900;color:#fff;font-family:monospace;letter-spacing:-1px;text-shadow:0 2px 20px rgba(52,211,153,.4)">${w.en}</div>
-          ${w.ph?`<div style="font-size:14px;color:rgba(167,139,250,.9)">${w.ph}</div>`:''}
-          ${window._srsFlipped?`
-            <div style="width:100%;height:1px;background:rgba(255,255,255,.1)"></div>
-            <div style="font-size:20px;font-weight:700;color:rgba(255,255,255,.85)">${w.kr}</div>
-            ${w.ex?`<div style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.6">"${w.ex}"</div>`:''}
-          `:`<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:4px">탭해서 뜻 보기 👆</div>`}
-        </div>
-      </div>
-      <!-- 진행바 -->
-      <div style="padding:0 20px;flex-shrink:0">
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--panel-text3,#9CA3AF);margin-bottom:5px">
-          <span>${idx+1}/${queue.length}</span>
-          <span>${curMark===2?'🦋 헷갈리는 단어':curMark===1?'✅ 외웠음':'○ 미암기'}</span>
-        </div>
-        <div style="background:rgba(255,255,255,.15);border-radius:4px;height:3px;overflow:hidden;margin-bottom:12px">
-          <div style="height:100%;background:linear-gradient(90deg,#34D399,#6EE7B7);width:${Math.round((idx+1)/queue.length*100)}%;transition:width .4s"></div>
-        </div>
-      </div>
-      <!-- 버튼 -->
-      <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0">
-        <div style="text-align:center;margin-bottom:8px">${_markBtn(w.en||'')}</div>
-        <div style="display:flex;gap:8px"><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="flex:1;background:rgba(96,165,250,.2);border:1px solid rgba(96,165,250,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🔊 영어</button><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.kr||'').replace(/'/g,"\'")}');u.lang='ko-KR';u.rate=0.95;speechSynthesis.speak(u)" style="flex:1;background:rgba(248,113,113,.2);border:1px solid rgba(248,113,113,.3);border-radius:14px;padding:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🇰🇷 뜻</button></div><button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${(w.ex||w.en||'').replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
-        <div style="display:flex;gap:8px">
-          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',2);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_hard'))" style="flex:1;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:14px;padding:14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">🔄 헷갈려요</button>
-          <button onclick="setMark('${(w.en||'').replace(/'/g,"\'")}',1);window._srsIdx++;window._srsFlipped=false;window._srsRender();addXP(xp('srs_good'));logStudy('words', (w.en||''))" style="flex:1;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:14px;padding:14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ 외웠어요!</button>
-        </div>
-        <button onclick="speechSynthesis.cancel();window._curRender=null;document.getElementById('mr').innerHTML=''" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:9px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
-      </div>
-    </div></div>`;
-    window._srsFlipped=false;
-    setTimeout(()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(w.en);u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);},300);
-  };
-
-  window._srsFlipped=false;
-  window._curRender=window._srsRender;
-  window._srsRender();
-}
-function srsFeedback(en, quality) {
-  // SM-2 알고리즘 기반
-  if(!S.srsData) S.srsData={};
-  if(!S.srsData[en]) S.srsData[en]={reps:0,ef:2.5,interval:1};
-  const d=S.srsData[en];
-
-  if(quality<3) {
-    // 틀린 경우: 내일 다시
-    d.reps=0; d.interval=1;
-    setMark(en,2); // 헷갈리는으로 마크
-  } else {
-    // 맞은 경우: SM-2 공식
-    d.reps++;
-    if(d.reps===1) d.interval=1;
-    else if(d.reps===2) d.interval=6;
-    else d.interval=Math.round(d.interval*d.ef);
-    // EF 업데이트
-    d.ef=Math.max(1.3, d.ef+(0.1-(5-quality)*(0.08+(5-quality)*0.02)));
-    if(getMark(en)===2) setMark(en,0); // 헷갈리는 → 미분류
-  }
-
-  if(!S.srsReps) S.srsReps={};
-  S.srsReps[en]=(S.srsReps[en]||0)+1;
-  srsRate(en, d.interval);
-}
-
-function srsRate(en, days) {
-  const next=new Date(Date.now()+days*86400000).toISOString().slice(0,10);
-  S.srsMap[en]=next; sv();
-}
 
 // ── 학습 탭 ──
 function rStudy() {
@@ -9284,7 +9120,6 @@ function _bwlSetMark(en, val) {
 }
 function rStudyBooks() {
   const books = S.books||[];
-  const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>{try{return new Date(d)<=new Date();}catch{return false;}}).length;
   // 내 단어장(커스텀)은 '현재 펼친 책'과 무관하게 항상 실제 데이터로 계산.
   // (S.words 는 현재 펼친 책의 작업본이라, 마켓팩을 보는 중이면 그 팩 단어가 들어있음)
   let _myWords, _myMM;
@@ -9318,7 +9153,7 @@ function rStudyBooks() {
         <div style="width:46px;height:46px;background:linear-gradient(135deg,#667EEA,#764BA2);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📚</div>
         <div style="flex:1">
           <div style="font-size:15px;font-weight:800;color:var(--text1,#1A1A2E)">내 단어장</div>
-          <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${myCount}개 단어${srsToday>0?' · 🔔 오늘 복습 '+srsToday+'개':''}</div>
+          <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${myCount}개 단어</div>
         </div>
         <div style="text-align:right">
           <div style="font-size:20px;font-weight:900;color:#667EEA">${pct1}%</div>
@@ -9417,7 +9252,6 @@ function rStudyMode() {
   const mm = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
   const marked1 = cnt ? curWords.filter(w=>(mm[w.en]||0)===1).length : 0;
   const pct = cnt ? Math.round(marked1/cnt*100) : 0;
-  const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
   const t = today();
   const todayLog = S.studyLog[t]||{words:0,quiz:0,min:0};
 
@@ -9426,7 +9260,6 @@ function rStudyMode() {
     {id:'learn',   ic:'⚡', nm:'플래시카드',  dc:'카드 넘기며 빠르게 암기',   fn:"S.stab='learn';go('mybooks','learn')"},
     {id:'auto',    ic:'🎧', nm:'자동학습',    dc:'자동 재생 + 발음',           fn:"startMode('auto')"},
     {id:'speak',   ic:'🗣️', nm:'말하기',      dc:'뜻 보고 영어로 말하기',      fn:"startMode('speak')"},
-    {id:'srs',     ic:'📖', nm:'SRS 복습',    dc:'망각곡선 기반 복습 '+(srsToday>0?'('+srsToday+'개)':''), fn:"startMode('srs')"},
     {id:'shadow',  ic:'🎤', nm:'쉐도잉',      dc:'발음 듣고 따라 말하기',      fn:"startMode('shadow')"},
   ];
 
@@ -9454,7 +9287,6 @@ ${allBooks.map(b=>{ const active=b.name===bookName; const bWords=b.words||[]; co
       <span>전체 ${cnt}개</span>
       <span style="color:#16A34A;font-weight:700">✅ 외움 ${marked1}개</span>
       <span>오늘 학습 ${todayLog.words||0}회</span>
-      ${srsToday>0?`<span style="color:#E65100">복습 ${srsToday}개</span>`:''}
     </div>
   </div>`;
 
@@ -10139,7 +9971,7 @@ function nxtL(ok){
   const w=words[Math.min(S.idx, words.length-1)];
   if(!w) return;
   if(ok&&!S.learned.has(w.en)){
-    S.learned.add(w.en);setMark(w.en,1);srsRate(w.en,1);
+    S.learned.add(w.en);setMark(w.en,1);
     logStudy('words', w.en);checkAchievements();checkLearnMilestone();sv();
     SFX.play('correct');vib(50);
     const clrs=['#FDE68A','#6EE7B7','#93C5FD'];
@@ -10154,15 +9986,9 @@ function rModes() {
   const modes=[
     {ic:'⚡',nm:'자동 학습 (통합)',dc:'스트리밍·오디오·쉐도잉 · 무한반복 · 한글읽기',fn:"startMode('auto')",c:'#1E5FA5',bg:'linear-gradient(135deg,#EFF6FF,#DBEAFE)'},
     {ic:'🗣️',nm:'말하기 퀴즈',dc:'뜻 보고 영어로 말하기',fn:"startMode('speak')",c:'#7C3AED',bg:'linear-gradient(135deg,#FDF4FF,#F3E8FF)'},
-    {ic:'📖',nm:'SRS 암기',dc:'집중 공부 · SM-2 망각곡선',fn:"startMode('srs')",c:'#E65100',bg:'linear-gradient(135deg,#FFF8E1,#FEF3C7)'},
   ];
-  const srsToday=Object.entries(S.srsMap).filter(([,d])=>new Date(d)<=new Date()).length;
   return `<div class="pad">
     ${cbrow('상황에 맞는 암기 모드를 골라봐! 🎧',S.lid,'happy')}
-    ${srsToday>0?`<div style="background:#FFF8E1;border-radius:14px;padding:12px 16px;border:1.5px solid #FFE082;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:13px;color:#E65100;font-weight:700">📖 오늘 복습할 단어 ${srsToday}개</div>
-      <button onclick="startMode('srs')" style="background:#E65100;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">지금 복습</button>
-    </div>`:''}
     <div style="display:flex;flex-direction:column;gap:10px">
       ${modes.map(m=>`<div onclick="${m.fn}" style="background:${m.bg};border-radius:18px;padding:18px;cursor:pointer;border:1.5px solid transparent" ontouchstart="this.style.opacity='.8'" ontouchend="this.style.opacity='1'">
         <div style="display:flex;align-items:center;gap:14px">
@@ -10698,8 +10524,6 @@ function addW(){
     S.words.push(newWord);
   }
 
-  // SRS 자동 등록
-  if(!S.srsMap[en]) srsRate(en, 1);
   S.nEn=''; S.nKr=''; S.nPh=''; S.nEx1=''; S.nEx2=''; S.nEx3=''; S.nAiData=null; S.nImg='📝';
   sv(); SFX.play('correct'); logStudy('words', en);
   const _bk2 = S.currentBook&&S.currentBook!=='내 단어장' ? (S.books||[]).find(b=>b.name===S.currentBook) : null;
@@ -10974,10 +10798,9 @@ function saveWordEdit(oldEn) {
   if(!newEn||!newKr) { toast('영단어와 뜻은 필수예요'); return; }
   const wi = S.words.find(x=>x.en===oldEn);
   if(!wi) return;
-  // 영단어 바뀌면 markMap, srsMap 키도 업데이트
+  // 영단어 바뀌면 markMap 키도 업데이트
   if(newEn !== oldEn) {
     if(S.markMap[oldEn]!==undefined) { S.markMap[newEn]=S.markMap[oldEn]; delete S.markMap[oldEn]; }
-    if(S.srsMap[oldEn]!==undefined) { S.srsMap[newEn]=S.srsMap[oldEn]; delete S.srsMap[oldEn]; }
     S.learned.delete(oldEn); if(S.learned.has(oldEn)) S.learned.add(newEn);
   }
   wi.en  = newEn;
@@ -11036,7 +10859,6 @@ function rGameCenter(){
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const curBookName = S.currentBook || '내 단어장';
   const hw = curWords.length >= 2;
-  const srsToday = Object.entries(S.srsMap||{}).filter(([,d])=>new Date(d)<=new Date()).length;
 
   // 주요 3종 퀴즈
   const mainGames=[
@@ -11075,13 +10897,6 @@ function rGameCenter(){
     </div>`);
   }
 
-  // SRS 복습 알림
-  if(srsToday>0) {
-    parts.push(`<div style="background:#FFF8E1;border-radius:14px;padding:12px 16px;border:1.5px solid #FFE082;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <div style="font-size:13px;color:#E65100;font-weight:700">📖 오늘 복습할 단어 ${srsToday}개</div>
-      <button onclick="startMode('srs')" style="background:#E65100;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">지금 복습</button>
-    </div>`);
-  }
 
   // 메인 3종
   parts.push('<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">');
@@ -11112,7 +10927,7 @@ ${moreGames.map(g=>`<button onclick="${hw?`showGameSettings('${g.id}')`:''}" sty
   parts.push(`<div style="border-top:1.5px solid #E5E7EB;padding-top:14px">
     <div style="font-size:13px;font-weight:700;color:#9CA3AF;margin-bottom:10px">🎧 암기 모드</div>
     <div style="display:flex;gap:8px">
-${[['🎤','쉐도잉',"startMode('auto')",['#FDF2F8','#EC4899']],['🗣️','말하기',"startMode('speak')",['#FDF4FF','#7C3AED']],['📖','SRS',"startMode('srs')",['#FFF8E1','#E65100']]].map(([ic,lb,fn,[bg,c]])=>` <button onclick="${fn}" style="flex:1;background:${bg};border:1.5px solid ${c}33;border-radius:12px;padding:10px 6px;cursor:pointer;text-align:center"> <div style="font-size:22px;margin-bottom:3px">${ic}</div> <div style="font-size:11px;font-weight:700;color:${c}">${lb}</div> </button>`).join('')}
+${[['🎤','쉐도잉',"startMode('auto')",['#FDF2F8','#EC4899']],['🗣️','말하기',"startMode('speak')",['#FDF4FF','#7C3AED']]].map(([ic,lb,fn,[bg,c]])=>` <button onclick="${fn}" style="flex:1;background:${bg};border:1.5px solid ${c}33;border-radius:12px;padding:10px 6px;cursor:pointer;text-align:center"> <div style="font-size:22px;margin-bottom:3px">${ic}</div> <div style="font-size:11px;font-weight:700;color:${c}">${lb}</div> </button>`).join('')}
     </div>
   </div>`);
 
@@ -12552,7 +12367,6 @@ async function syncGoogleDrive() {
       exportedAt: new Date().toISOString(),
       words: S.words,
       markMap: S.markMap,
-      srsMap: S.srsMap,
       dList: S.dList,
       books: S.books,
       streak: S.streak,
@@ -12624,7 +12438,6 @@ function doRestore() {
       const data = JSON.parse(e.target.result);
       if(data.words) S.words = data.words;
       if(data.markMap) S.markMap = data.markMap;
-      if(data.srsMap) S.srsMap = data.srsMap;
       if(data.dList) S.dList = data.dList;
       if(data.books) {
         // 안전망: 로컬에 단어 있는 책이 있는데 클라우드가 비었으면 덮어쓰지 않음
@@ -12695,7 +12508,7 @@ function showLogoutMenu() {
       </button>
       <button onclick="showResetStudy()" style="background:#FFF8E1;border:1.5px solid #FFE082;border-radius:14px;padding:16px;text-align:left;cursor:pointer;width:100%">
         <div style="font-size:14px;font-weight:700;color:#E65100">🗑️ 학습 데이터만 초기화</div>
-        <div style="font-size:12px;color:#9CA3AF;margin-top:2px">단어장·마크·SRS·출석 기록 삭제. 계정은 유지돼요.</div>
+        <div style="font-size:12px;color:#9CA3AF;margin-top:2px">단어장·마크·출석 기록 삭제. 계정은 유지돼요.</div>
       </button>
       <button onclick="showResetAll()" style="background:#FEF2F2;border:1.5px solid #FECDD3;border-radius:14px;padding:16px;text-align:left;cursor:pointer;width:100%">
         <div style="font-size:14px;font-weight:700;color:#DC2626">💣 완전 초기화 후 로그아웃</div>
@@ -12714,7 +12527,6 @@ function showResetStudy() {
       <div style="font-size:12px;color:#6B7280;line-height:1.9">
         📚 단어장 (${S.words.length}개)<br>
         📊 마크 데이터<br>
-        📖 SRS 복습 기록<br>
         📅 출석 기록 (${S.attendCount}일)<br>
         📊 학습 로그
       </div>
@@ -12732,7 +12544,7 @@ function showResetStudy() {
 
 function doResetStudy() {
   // 학습 데이터만 초기화
-  S.words=[]; S.learned=new Set(); S.markMap={}; S.srsMap={}; S.srsData={}; S.srsReps={};
+  S.words=[]; S.learned=new Set(); S.markMap={};
   S.studyLog={}; S.attendCount=0; S.attendDates=[]; S.attendPopupShown='';
   S.bestScores={}; S.gSavedGame=null; S.idx=0;
   S._ownedPacks=[]; S._acc=[]; S._equipped=''; // 마켓 구매이력 + 장식품 초기화
@@ -12752,7 +12564,7 @@ function showResetAll() {
     <div style="background:#FEF2F2;border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:13px;font-weight:700;color:#DC2626;margin-bottom:4px">⚠️ 모든 데이터가 삭제됩니다</div>
       <div style="font-size:12px;color:#6B7280;line-height:1.9">
-        단어장 · 마크 · SRS · 출석<br>
+        단어장 · 마크 · 출석<br>
         일기 · 친구 · 게임 기록<br>
         닉네임 · 레벨 · XP · 설정<br>
         <strong style="color:#DC2626">되돌릴 수 없어요!</strong>
@@ -12773,9 +12585,9 @@ function doResetAll() {
   const val = document.getElementById('reset-confirm-inp')?.value?.trim();
   if(val !== '초기화') { toast('⚠️ "초기화"를 정확히 입력해주세요'); return; }
   // localStorage 전체 삭제
-  const keys = ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-srs','wd-mk',
+  const keys = ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk',
     'wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl',
-    'wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-sd','wd-sr','wd-fr','wd-bs','wd-onboard','wd-tested'];
+    'wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-onboard','wd-tested'];
   keys.forEach(k => localStorage.removeItem(k));
   cm();
   toast('완전 초기화 완료. 로그아웃합니다.');
@@ -13000,8 +12812,6 @@ function exportJSON() {
     exportDate: today(),
     words: S.words,
     markMap: S.markMap,
-    srsMap: S.srsMap,
-    srsData: S.srsData||{},
     studyLog: S.studyLog,
     attendDates: S.attendDates,
     attendCount: S.attendCount,
@@ -13058,9 +12868,8 @@ function importJSON(input) {
           S.words.push(w); cnt++;
         }
       });
-      // 마크/SRS 병합
+      // 마크 병합
       Object.assign(S.markMap, data.markMap||{});
-      Object.assign(S.srsMap, data.srsMap||{});
       Object.assign(S.studyLog, data.studyLog||{});
       sv(); cm(); toast(`✅ ${cnt}개 단어 복원 완료!`); go('mybooks','list');
     } catch(err) { toast('파일을 읽을 수 없어요'); }
@@ -13150,7 +12959,7 @@ auth.onAuthStateChanged(async user => {
       // 현재 책이 내 단어장이 아니면 해당 책 단어를 활성화 (활성 단어/책 일치)
       if(S.currentBook && S.currentBook!=='내 단어장' && Array.isArray(S.books)){
         const _cb=S.books.find(b=>b.name===S.currentBook);
-        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.srsMap)S.srsMap={..._cb.srsMap}; if(_cb.learned)S.learned=new Set(_cb.learned); }
+        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.learned)S.learned=new Set(_cb.learned); }
       }
       const mk=ls.getItem('wd-mk'); if(mk) S.markMap=JSON.parse(mk);
       const lrn=ls.getItem('wd-lrn'); if(lrn) S.learned=new Set(JSON.parse(lrn));
@@ -13546,7 +13355,7 @@ auth.onAuthStateChanged(async user => {
       // 현재 책이 내 단어장이 아니면 해당 책 단어를 활성화 (활성 단어/책 일치)
       if(S.currentBook && S.currentBook!=='내 단어장' && Array.isArray(S.books)){
         const _cb=S.books.find(b=>b.name===S.currentBook);
-        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.srsMap)S.srsMap={..._cb.srsMap}; if(_cb.learned)S.learned=new Set(_cb.learned); }
+        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.learned)S.learned=new Set(_cb.learned); }
       }
       // 필드 순서 오류 자동 수정
       const _fixW2 = (arr) => (arr||[]).map(w => {

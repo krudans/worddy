@@ -5227,7 +5227,7 @@ function rDICT(){
     '</div></div>'+
     '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #E5E7EB;flex-wrap:wrap;gap:8px">'+
       '<div style="font-weight:800">검수 코어 단어 ('+dcN+'개)</div>'+
-      '<div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:8px 14px;width:240px"><span style="color:#9CA3AF">🔍</span><input placeholder="검색 (영어/한글)" oninput="bwdRenderTable(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;outline:none"></div>'+
+      '<div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:8px 14px;width:240px"><span style="color:#9CA3AF">🔍</span><input placeholder="검색 (영어/한글)" oninput="bwdRenderTableD(this.value)" style="border:none;background:transparent;padding:0;font-size:13px;flex:1;outline:none"></div>'+
     '</div><div class="tw" id="dic-table"></div></div>';
   bwdRenderTable('');
 }
@@ -5309,7 +5309,7 @@ function bwdExport(){
 /* === DIC 정렬(A-Z) + 수정 + 품사 (override v2) === */
 (function(){
   var POS=['명사','대명사','동사','조동사','형용사','부사','전치사','접속사','관계대명사','의문사','감탄사','한정사','명사·동사','동사·명사','형용사·명사','명사·형용사','형용사·부사'];
-  function _lc(d){var c={};for(var i=0;i<26;i++)c[String.fromCharCode(97+i)]=0;var o=0;Object.keys(d).forEach(function(k){var ch=(k[0]||'').toLowerCase();if(c[ch]!==undefined)c[ch]++;else o++;});return{c:c,o:o};}
+  function _lc(d){var n=Object.keys(d).length;if(window.__dicLC&&window.__dicLC.n===n)return window.__dicLC.v;var c={};for(var i=0;i<26;i++)c[String.fromCharCode(97+i)]=0;var o=0;Object.keys(d).forEach(function(k){var ch=(k[0]||'').toLowerCase();if(c[ch]!==undefined)c[ch]++;else o++;});var v={c:c,o:o};window.__dicLC={n:n,v:v};return v;}
   function _ab(d){
     var lc=_lc(d),cur=window.__dicLetter||'',total=Object.keys(d).length;
     function b(label,val,n){
@@ -5331,7 +5331,29 @@ function bwdExport(){
     ex.parentNode.insertBefore(dl,ex.nextSibling);
     ex.parentNode.insertBefore(inp,ex.nextSibling);
   }
-  window.bwdSetLetter=function(L){window.__dicLetter=(window.__dicLetter===L?'':L);window.bwdRenderTable();};
+  /* 한 페이지에 그릴 행 수 — 4만 개를 한 번에 DOM에 넣지 않도록 제한 */
+  var DIC_PAGE=100;
+  /* 전체 키를 단어 수 기준으로 캐시(정렬 1회). 추가/삭제는 수가 바뀌므로 자동 무효화, 이름 변경(수정)은 bwdSaveEdit에서 수동 무효화 */
+  window.dicBust=function(){window.__dicAllKeys=null;window.__dicLC=null;};
+  function _allKeys(d){
+    var n=Object.keys(d).length;
+    if(window.__dicAllKeys&&window.__dicAllKeys.n===n)return window.__dicAllKeys.k;
+    var k=Object.keys(d).sort();
+    window.__dicAllKeys={n:n,k:k};
+    return k;
+  }
+  function _pager(page,pages,total){
+    if(pages<=1)return '<div style="padding:10px 4px;font-size:12px;color:#9CA3AF">총 '+total.toLocaleString()+'개</div>';
+    function pb(label,act,dis){return '<button data-bwd="'+act+'" '+(dis?'disabled ':'')+'style="cursor:'+(dis?'default':'pointer')+';border:1.5px solid #E5E7EB;background:'+(dis?'#F9FAFB':'#fff')+';color:'+(dis?'#D1D5DB':'#374151')+';border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700">'+label+'</button>';}
+    return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:12px 4px">'+
+      pb('« 처음','pagefirst',page<=0)+pb('‹ 이전','pageprev',page<=0)+
+      '<span style="font-size:12px;color:#6B7280;font-weight:700;padding:0 6px">'+(page+1)+' / '+pages+' 페이지 <span style="color:#9CA3AF;font-weight:600">· 총 '+total.toLocaleString()+'개</span></span>'+
+      pb('다음 ›','pagenext',page>=pages-1)+pb('마지막 »','pagelast',page>=pages-1)+
+      '</div>';
+  }
+  window.bwdSetLetter=function(L){window.__dicLetter=(window.__dicLetter===L?'':L);window.__dicPage=0;window.bwdRenderTable();};
+  var _dicTimer;
+  window.bwdRenderTableD=function(v){clearTimeout(_dicTimer);_dicTimer=setTimeout(function(){window.__dicPage=0;window.bwdRenderTable(v);},180);};
   window.bwdRenderTable=function(filter){
     var el=document.getElementById('dic-table');if(!el)return;
     _ensurePos();
@@ -5342,19 +5364,29 @@ function bwdExport(){
     var srch=document.querySelector('input[placeholder^="검색"]');
     var f=((filter!==undefined&&typeof filter==='string'?filter:(srch?srch.value:''))||'').toLowerCase();
     var letter=window.__dicLetter||'';
-    var keys=Object.keys(d).filter(function(k){
+    /* 필터/글자 조건이 바뀌면 1페이지로 */
+    var sig=letter+'\u0000'+f;
+    if(window.__dicSig!==sig){window.__dicSig=sig;window.__dicPage=0;}
+    /* 정렬된 전체 키를 캐시에서 가져와 필터만 적용(매 입력마다 재정렬 안 함) */
+    var keys=_allKeys(d).filter(function(k){
       if(letter==='#'){if(/^[a-z]/.test(k))return false;}
       else if(letter){if((k[0]||'').toLowerCase()!==letter)return false;}
       if(f)return k.indexOf(f)>=0||(d[k].kr&&d[k].kr.toLowerCase().indexOf(f)>=0);
       return true;
-    }).sort();
+    });
     if(!keys.length){el.innerHTML='<div class="es"><div class="ei">📖</div><p>해당 단어가 없어요</p></div>';return;}
-    var rows=keys.map(function(k){
+    /* 페이지네이션 — 현재 페이지 분량만 DOM에 생성 */
+    var total=keys.length,pages=Math.ceil(total/DIC_PAGE);
+    var page=window.__dicPage||0;
+    if(page>=pages)page=pages-1;if(page<0)page=0;window.__dicPage=page;
+    var start=page*DIC_PAGE,pageKeys=keys.slice(start,start+DIC_PAGE);
+    var rows=pageKeys.map(function(k){
       var e=d[k],ph=_bwdPron(k);
       var pos=e.pos?('<span style="display:inline-block;background:#EFF6FF;color:#1E5FA5;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700">'+e.pos+'</span>'):'<span style="color:#D1D5DB">-</span>';
       return '<tr><td><strong style="font-family:monospace">'+k+'</strong></td><td>'+pos+'</td><td>'+(e.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(ph||'-')+'</td><td style="font-size:11px;max-width:280px">'+String(e.ex||'').replace(/</g,'&lt;')+'</td><td style="white-space:nowrap"><button data-bwd="edit" data-k="'+k+'" class="btn" style="font-size:11px;padding:4px 8px;margin-right:4px;border:1.5px solid #1E5FA5;background:#fff;color:#1E5FA5;cursor:pointer">✏️</button><button data-bwd="del" data-k="'+k+'" class="btn br" style="font-size:11px;padding:4px 8px;cursor:pointer">🗑</button></td></tr>';
     }).join('');
-    el.innerHTML='<table><tr><th>영단어</th><th style="width:80px">품사</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:96px">작업</th></tr>'+rows+'</table>';
+    var pager=_pager(page,pages,total);
+    el.innerHTML=pager+'<table><tr><th>영단어</th><th style="width:80px">품사</th><th>한국어 뜻</th><th>발음기호</th><th>예문</th><th style="width:96px">작업</th></tr>'+rows+'</table>'+pager;
   };
   window.bwdEditEntry=function(en){
     var d=_bwdDict(),e=d[en];if(!e)return;
@@ -5396,6 +5428,7 @@ function bwdExport(){
     var obj={kr:kr,ex:ex};if(pos)obj.pos=pos;
     if(newEn!==oldEn){ delete d[oldEn]; }
     d[newEn]=obj;
+    if(typeof window.dicBust==='function')window.dicBust();
     var h=document.getElementById('tw');if(h)h.innerHTML='';
     toast('"'+newEn+'" 수정됨 · 내보내기 후 업로드해야 앱에 반영','ok');
     window.bwdRenderTable();
@@ -5437,6 +5470,10 @@ function bwdExport(){
       if(act==='letter'){window.bwdSetLetter(t.getAttribute('data-l'));}
       else if(act==='edit'){window.bwdEditEntry(t.getAttribute('data-k'));}
       else if(act==='del'){window.bwdDelEntry(t.getAttribute('data-k'));}
+      else if(act==='pagefirst'){window.__dicPage=0;window.bwdRenderTable();}
+      else if(act==='pageprev'){window.__dicPage=(window.__dicPage||0)-1;window.bwdRenderTable();}
+      else if(act==='pagenext'){window.__dicPage=(window.__dicPage||0)+1;window.bwdRenderTable();}
+      else if(act==='pagelast'){window.__dicPage=1e9;window.bwdRenderTable();}
     });
   }
 })();

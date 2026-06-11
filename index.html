@@ -966,7 +966,7 @@ function logStudy(type, wordEn) {
 
 function showAttendPopup() {
   if(!window._popupOn || !window._popupOn('attend')) return;
-  const cnt = S.attendCount;
+  const cnt = (typeof attendDays==='function')?attendDays():S.attendCount;
   const lvInfo = lv(S.lid);
   // 마일스톤 체크
   const milestone = cnt===7?'🎉 7일 개근!':cnt===30?'🏆 30일 달성!':cnt===100?'⚡ 전설! 100일!':'';
@@ -3508,6 +3508,13 @@ function totalEarnedXP(){
   let s=0; try{ s=Object.values(S.studyLog||{}).reduce((a,v)=>a+((v&&v.xp)||0),0); }catch(e){}
   return Math.max(S._totalXp||0, s);
 }
+// ── 단일 출처: 총 출석일 ── 출석 기록 ∪ 학습한 날(studyLog). 표시 시점 계산이라 동기화에 덮이지 않음. '연속 학습일' ≤ '총 출석' 보장.
+function attendDays(){
+  try{
+    const _active = Object.keys(S.studyLog||{}).filter(k=>{const v=(S.studyLog||{})[k]||{}; return (v.words||0)>0||(v.quiz||0)>0||(v.min||0)>0;});
+    return new Set([...(Array.isArray(S.attendDates)?S.attendDates:[]), ..._active]).size;
+  }catch(e){ return S.attendCount||0; }
+}
 function cycleMark(en) {
   const cur = getMark(en);
   const next = (cur+1)%3;
@@ -3567,17 +3574,7 @@ function load() {
   const _npt = localStorage.getItem('wd-npt')||'';
   S._noPopupToday = (_npt === today()) ? _npt : '';
   S.studyLog = JSON.parse(localStorage.getItem('wd-sl')||'{}');
-  // 총 출석 = 출석 기록 ∪ 학습한 날(studyLog). '연속 학습일'이 '총 출석'보다 클 수 없도록 단일 기준화.
-  try {
-    const _active = Object.keys(S.studyLog||{}).filter(k=>{const v=(S.studyLog||{})[k]||{}; return (v.words||0)>0||(v.quiz||0)>0||(v.min||0)>0;});
-    if(_active.length){
-      const _arr=[...new Set([...(Array.isArray(S.attendDates)?S.attendDates:[]), ..._active])].sort();
-      if(_arr.length !== (Array.isArray(S.attendDates)?S.attendDates.length:0)){
-        S.attendDates=_arr; S.attendCount=_arr.length;
-        try{ localStorage.setItem('wd-ad',JSON.stringify(_arr)); localStorage.setItem('wd-ac',String(_arr.length)); }catch(e2){}
-      }
-    }
-  } catch(e){}
+  // (총 출석은 표시 시점 attendDays()로 계산 — 출석기록 ∪ 학습일. 로드시점 병합은 클라우드 동기화에 덮여 비효과적이라 제거)
   S.charPersonality = localStorage.getItem('wd-cp')||'다정한';
   S.charColor = localStorage.getItem('wd-cc')||'default';
   S._petColor = localStorage.getItem('wd-pet-color')||'green';
@@ -5500,7 +5497,7 @@ function rLearnTab() {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       ${[
         {v:S.streak||0, lb:'🔥 연속학습', color:'#EF4444'},
-        {v:S.attendCount||0, lb:'📅 총 출석', color:'#3B82F6'},
+        {v:(typeof attendDays==='function')?attendDays():(S.attendCount||0), lb:'📅 총 출석', color:'#3B82F6'},
         {v:((typeof totalEarnedXP==='function')?totalEarnedXP():(S._totalXp||0)).toLocaleString(), lb:'⚡ 누적XP', color:'#8B5CF6'},
       ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:12px;border:1px solid var(--border,#E2E8F0);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)">
         <div style="font-size:20px;font-weight:900;color:${s.color}">${s.v}</div>
@@ -12943,7 +12940,7 @@ function showDataBackup() {
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📊 현재 데이터</div>
       <div style="font-size:12px;color:#6B7280;line-height:1.8">
         단어장: ${S.words.length}개 · 외웠음: ${(typeof countMemorized==='function')?countMemorized('all'):Object.values(S.markMap).filter(v=>v===1).length}개<br>
-        일기: ${S.dList.length}개 · 출석: ${S.attendCount}일
+        일기: ${S.dList.length}개 · 출석: ${(typeof attendDays==='function')?attendDays():S.attendCount}일
       </div>
     </div>
     <button onclick="cm()" class="btn bgr">닫기</button>

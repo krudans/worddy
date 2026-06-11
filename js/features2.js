@@ -151,7 +151,7 @@ function confirmDownloadPack(packId) {
     let bookName=pack.name, cnt=1;
     while(S.books.find(b=>b.name===bookName)||bookName==='내 단어장') bookName=`${pack.name} (${++cnt})`;
     const cleanWords = (pack.words||[]).filter(w => w.en && w.kr && w.en.length < 50 && !['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'].includes(w.en));
-    S.books.push({name:bookName,words:cleanWords,markMap:{},srsMap:{},learned:[]});
+    S.books.push({name:bookName,words:cleanWords,markMap:{},learned:[]});
     if(!S._ownedPacks) S._ownedPacks=[];
     if(!S._ownedPacks.includes(packId)) {
       S._ownedPacks.push(packId);

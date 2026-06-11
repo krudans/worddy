@@ -3606,6 +3606,13 @@ function load() {
   setTimeout(()=>{
   }, 150);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
+  // 마크 정리: 단어가 아닌 잡 키(순수 숫자/빈 문자열) 1회 제거 — 헷갈림/외움 허수 방지
+  if(!localStorage.getItem('wd-mkclean')){
+    const _cleanMarks=m=>{ if(m) Object.keys(m).forEach(k=>{ if(!k||/^\d+$/.test(k)) delete m[k]; }); };
+    _cleanMarks(S.markMap); (S.books||[]).forEach(b=>_cleanMarks(b.markMap));
+    localStorage.setItem('wd-mkclean','1');
+    try{ localStorage.setItem('wd-mk',JSON.stringify(S.markMap)); }catch(e){}
+  }
   S.books.forEach(b => { if(b.packId && b.words !== undefined) delete b.words; }); // 마켓팩 구 단어 즉시 제거
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
@@ -7872,7 +7879,7 @@ function rHome() {
   const t = today();
   if(!S.studyLog) S.studyLog={};
   const todayLog = (S.studyLog[t])||{words:0,quiz:0};
-  const marked2 = Object.values(S.markMap||{}).filter(v=>v===2).length;
+  const marked2 = (S.words||[]).filter(w=>(S.markMap||{})[w.en]===2).length;
   // 오늘의 미션 '단어 10개 외우기' = 오늘 외운 단어(전체 단어장 합산). 매일 리셋.
   const learnedCount = (typeof countMemorized==='function') ? countMemorized('today') : 0;
 
@@ -8002,35 +8009,36 @@ function rHome() {
   const todayWords = todayLog.words||0;
   const todayQuiz = todayLog.quiz||0;
   const markDone = (typeof countMemorized==='function') ? countMemorized('today') : 0;
-  const markWeak = Object.values(S.markMap||{}).filter(v=>v===2).length;
   const totalWordsCount = (S.words||[]).length;
+  const bookMemo = (S.words||[]).filter(w=>(S.markMap||{})[w.en]===1).length;
+  const bookPct = totalWordsCount ? Math.round(bookMemo/totalWordsCount*100) : 0;
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-size:13px;font-weight:800;color:var(--text1,var(--text1,#111111))">📊 오늘의 현황</div>
       <div style="font-size:11px;color:var(--text3,#9CA3AF)">${new Date().toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'short'})}</div>
     </div>
-    <div onclick="go('butterfly')" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:12px;margin-bottom:10px;cursor:pointer">
+    <div onclick="showStudyCalendar()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:12px;margin-bottom:10px;cursor:pointer">
       <span style="font-size:22px">🔥</span>
       <div style="flex:1"><span style="font-size:17px;font-weight:900;color:#E65100">${S.streak||0}일</span> <span style="font-size:12px;color:#9CA3AF;font-weight:700">연속 학습</span></div>
       <span style="font-size:11px;color:#E65100;font-weight:700">${(S.streak||0)>=7?'🏆 주간 달성!':((S.streak||0)>=3?'잘 하고 있어요!':'계속 해봐요')}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:10px">
       <div style="text-align:center;padding:7px 4px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px">
-        <div style="font-size:10px;color:#9CA3AF">외웠음</div>
-        <div style="font-size:13px;font-weight:900;color:#16A34A">✅${markDone}</div>
+        <div style="font-size:10px;color:#9CA3AF">단어수 <span style="opacity:.6">(오늘)</span></div>
+        <div style="font-size:13px;font-weight:900;color:#1E5FA5">📚${todayWords}</div>
       </div>
-      <div onclick="S.listMarkFilter=2;go('mybooks','list')" style="text-align:center;padding:7px 4px;background:${markWeak>0?'#FFF7ED':'var(--bg-sub,var(--bg-sub,#F3F4F6))'};border-radius:10px;cursor:pointer">
-        <div style="font-size:10px;color:#9CA3AF">헷갈림</div>
-        <div style="font-size:13px;font-weight:900;color:${markWeak>0?'#E65100':'#9CA3AF'}">🦋${markWeak}</div>
+      <div onclick="S.listMarkFilter=1;go('mybooks','list')" style="text-align:center;padding:7px 4px;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px;cursor:pointer">
+        <div style="font-size:10px;color:#9CA3AF">외웠음 <span style="opacity:.6">(오늘)</span></div>
+        <div style="font-size:13px;font-weight:900;color:#16A34A">✅${markDone}</div>
       </div>
     </div>
     <div style="background:var(--bg-sub,var(--bg-sub,#F3F4F6));border-radius:10px;padding:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-size:11px;font-weight:700;color:var(--text2,#7A5C00)">전체 단어 진행도</div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF)">${sysLearned}/${sysTotal||totalWordsCount}개</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2,#7A5C00)">${_bookNameHome} 진행도 <span style="font-weight:500;color:var(--text3,#9CA3AF)">· 외운 단어 비율</span></div>
+        <div style="font-size:11px;color:var(--text3,#9CA3AF)">${bookMemo}/${totalWordsCount}개 · ${bookPct}%</div>
       </div>
       <div style="background:rgba(0,0,0,.08);border-radius:4px;height:6px;overflow:hidden">
-        <div style="height:100%;background:linear-gradient(90deg,#16A34A,#22C55E);border-radius:4px;width:${sysTotal?Math.min(100,Math.round(sysLearned/sysTotal*100)):0}%;transition:width .6s"></div>
+        <div style="height:100%;background:linear-gradient(90deg,#16A34A,#22C55E);border-radius:4px;width:${bookPct}%;transition:width .6s"></div>
       </div>
     </div>
   </div>`);
@@ -9238,10 +9246,10 @@ function selectBookAndLearn(bookName) {
   } else {
     switchBook(bookName);
   }
-  // 바로 플래시카드로 이동 (단순화)
-  S.stab = 'learn';
+  // 내 단어장과 동일하게 학습 모드 선택 화면으로 통일
+  S.stab = 'mode';
   S.idx = 0; S.flip = false;
-  go('mybooks','learn');
+  go('mybooks','mode');
 }
 
 function rStudyMode() {
@@ -11893,7 +11901,7 @@ ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S
         <button onclick="showTimerSettings()" style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#16A34A;cursor:pointer;text-align:left">
           ⏱ 학습 타이머<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">세션 타이머</div>
         </button>
-        <button onclick="showGameSettings('quiz')" style="background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#D97706;cursor:pointer;text-align:left;grid-column:1/-1">
+        <button onclick="showTestIntro()" style="background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#D97706;cursor:pointer;text-align:left;grid-column:1/-1">
           🎯 단어 레벨 테스트<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">단어 테스트</div>
         </button>
       </div>

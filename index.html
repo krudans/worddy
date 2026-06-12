@@ -7858,6 +7858,22 @@ function _planEtaDate(remaining,daily,todayStr){ var days=daily>0?Math.ceil(rema
 function _planDaysBetween(aStr,bStr){ return Math.round((_planParse(bStr)-_planParse(aStr))/86400000); }
 function _planDailyForDate(remaining,dateStr,todayStr){ var days=Math.max(1,_planDaysBetween(todayStr,dateStr)); return Math.max(1,Math.ceil(remaining/days)); }
 
+// 외운 날짜 기록(markDates) 기반 — 오늘/최근 외운 수
+function _planTodayMemo(ens, todayStr){
+  var md=S.markDates||{}, c=0;
+  if(!ens){ for(var k in md){ if(String(md[k]).slice(0,10)===todayStr) c++; } return c; }
+  for(var i=0;i<ens.length;i++){ var d=md[ens[i]]; if(d&&String(d).slice(0,10)===todayStr) c++; }
+  return c;
+}
+function _planRecentMemo(ens, days, todayStr){
+  var md=S.markDates||{}; var end=_planParse(todayStr).getTime(); var start=end-(days-1)*86400000;
+  function inR(d){ if(!d) return false; var t=_planParse(String(d).slice(0,10)).getTime(); return t>=start && t<=end; }
+  var c=0;
+  if(!ens){ for(var k in md){ if(inR(md[k])) c++; } return c; }
+  for(var i=0;i<ens.length;i++){ if(inR(md[ens[i]])) c++; }
+  return c;
+}
+
 // 계획 저장(범위별): wd-plan = { "__all__":{daily}, "단어장이름":{daily} }
 function _planAllLoad(){
   try{ var a=JSON.parse(localStorage.getItem('wd-plan')||'{}')||{};
@@ -7873,12 +7889,12 @@ function _planScopeData(){
   var myWords, myMM;
   if(S.currentBook==='내 단어장' || !S.currentBook){ myWords=S.words||[]; myMM=S.markMap||{}; }
   else { try{myWords=JSON.parse(localStorage.getItem('wd-w')||'[]');}catch(e){myWords=[];} try{myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}');}catch(e){myMM={};} }
-  var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===2;}).length}];
-  (S.books||[]).forEach(function(b){ var w=(typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]; var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length, weak:w.filter(function(x){return mm[x.en]===2;}).length}); });
+  var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===2;}).length, ens:(myWords||[]).map(function(w){return w.en;})}];
+  (S.books||[]).forEach(function(b){ var w=(typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]; var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length, weak:w.filter(function(x){return mm[x.en]===2;}).length, ens:w.map(function(x){return x.en;})}); });
   var memoAll=0, totalAll=0, weak=0;
   books.forEach(function(b){ memoAll+=b.memo; totalAll+=b.total; weak+=b.weak; });
-  var scopes={ '__all__':{label:'전체', memo:memoAll, total:totalAll} };
-  books.forEach(function(b){ if(b.total>0) scopes[b.name]={label:b.name, memo:b.memo, total:b.total}; });
+  var scopes={ '__all__':{label:'전체', memo:memoAll, total:totalAll, ens:null} };
+  books.forEach(function(b){ if(b.total>0) scopes[b.name]={label:b.name, memo:b.memo, total:b.total, ens:b.ens}; });
   var act=[]; var now=new Date(); for(var i=29;i>=0;i--){var k=_planKstKey(new Date(now.getTime()-i*86400000)); act.push(((S.studyLog||{})[k]||{}).words||0);}
   return {scopes:scopes, books:books, weak:weak, act:act, streak:S.streak||0, today:_planTodayStr()};
 }
@@ -7887,6 +7903,21 @@ function _planStat(label,val){
   return '<div style="background:var(--bg-sub,#F3F4F6);border-radius:10px;padding:8px 4px;text-align:center">'+
     '<div style="font-size:9px;color:#9CA3AF">'+label+'</div>'+
     '<div style="font-size:15px;font-weight:900;color:#111;margin-top:1px">'+val+'</div></div>';
+}
+
+// 페이스 판정 (오늘/최근7일 외운 vs 하루목표)
+function _planPace(ens, daily, todayStr){
+  var todayMemo=_planTodayMemo(ens,todayStr);
+  var r7=_planRecentMemo(ens,7,todayStr);
+  var avg7=r7/7;
+  var lvl,txt,col;
+  if(r7<=0){ lvl='new'; txt='외운 단어가 쌓이면 페이스가 표시돼요'; col='#9CA3AF'; }
+  else { var ratio=daily>0?avg7/daily:1;
+    if(ratio>=1){ lvl='fast'; txt='계획보다 빠름 🚀'; col='#16A34A'; }
+    else if(ratio>=0.7){ lvl='ok'; txt='거의 계획대로 👍'; col='#1E5FA5'; }
+    else { lvl='slow'; txt='계획보다 느려요 — 조금만 더 💪'; col='#D97706'; }
+  }
+  return {todayMemo:todayMemo, r7:r7, avg7:avg7, lvl:lvl, txt:txt, col:col};
 }
 
 function _planBodyHTML(key){
@@ -7898,17 +7929,18 @@ function _planBodyHTML(key){
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
   var eta=_planEtaDate(remaining,daily,ctx.today); var etaKey=_planKeyOf(eta); var etaFmt=_planFmt(eta);
-  window._planData={memo:memo, total:total, remaining:remaining, today:ctx.today, key:key, maxDaily:maxDaily};
+  var pace=_planPace(sc.ens,daily,ctx.today);
+  window._planData={memo:memo, total:total, remaining:remaining, today:ctx.today, key:key, maxDaily:maxDaily, ens:sc.ens, todayMemo:pace.todayMemo, r7:pace.r7};
+  window._planPendingDaily=daily;
 
   var BLUE='#1E5FA5';
-  // 진행 안내
   var head='<div style="font-size:12px;color:#374151;margin-bottom:9px;line-height:1.5">'+
       '목표 — <b style="color:'+BLUE+'">「'+_esc(sc.label)+'」 단어 다 외우기</b> · 총 <b>'+_nf(total)+'개</b></div>'+
     '<div style="height:9px;border-radius:99px;background:#EEF2F7;overflow:hidden;margin-bottom:5px"><div style="width:'+Math.max(pct,pct>0?2:0)+'%;height:100%;background:'+BLUE+'"></div></div>'+
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#6B7280;margin-bottom:12px"><span>외운 <b style="color:#16A34A">'+_nf(memo)+'</b></span><span>미암기(남은) <b style="color:'+BLUE+'">'+_nf(remaining)+'</b></span></div>';
 
   if(remaining<=0){
-    return head+'<div style="background:#ECFDF5;border-radius:12px;padding:14px;text-align:center;color:#16A34A;font-weight:800;font-size:14px">🎉 이 단어장을 다 외웠어요!</div>';
+    return head+'<div style="background:#ECFDF5;border-radius:12px;padding:14px;text-align:center;color:#16A34A;font-weight:800;font-size:14px">🎉 이 단어장을 다 외웠어요!</div>'+_planPaceCard(daily);
   }
 
   var ctrl='<div style="background:#F6F9FC;border:1px dashed #B9C9DA;border-radius:12px;padding:11px;margin-bottom:11px">'+
@@ -7920,23 +7952,43 @@ function _planBodyHTML(key){
         '<span style="font-size:11px;color:#9CA3AF">▶</span>'+
         '<span id="pl-od" style="flex:0 0 42px;text-align:right;font-weight:800;color:'+BLUE+';background:#EAF3FC;padding:1px 6px;border-radius:6px;font-size:12px">'+daily+'개</span>'+
       '</div>'+
-      '<div style="display:flex;align-items:center;gap:8px">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">'+
         '<span style="font-size:11px;color:#374151;flex:0 0 62px">완료 목표일</span>'+
         '<input id="pl-date" type="date" value="'+etaKey+'" min="'+ctx.today+'" onchange="_planRecalcDate()" style="flex:1;padding:6px 9px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:12px;color:#111;outline:none;background:#fff;cursor:pointer">'+
       '</div>'+
+      '<button id="pl-savebtn" onclick="_planSave()" style="width:100%;padding:9px;border:none;border-radius:9px;background:'+BLUE+';color:#fff;font-size:13px;font-weight:800;cursor:pointer">저장</button>'+
+      '<div id="pl-savehint" style="font-size:10px;color:#9CA3AF;text-align:center;margin-top:5px;min-height:12px"></div>'+
     '</div>';
 
-  var proj='<div id="pl-proj" style="border-radius:12px;padding:11px 12px;margin-bottom:12px;background:#ECFDF5;color:#15803D;font-size:13px;font-weight:800;display:flex;align-items:center;gap:7px">'+
+  var proj='<div id="pl-proj" style="border-radius:12px;padding:11px 12px;margin-bottom:10px;background:#ECFDF5;color:#15803D;font-size:13px;font-weight:800;display:flex;align-items:center;gap:7px">'+
       '<span>📅</span><span id="pl-proj-t">하루 '+daily+'개씩 외우면 '+etaFmt+'에 모두 끝나요</span></div>';
 
-  var stats='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+
-      _planStat('총 단어', '<span id="pl-total">'+_nf(total)+'</span>')+
-      _planStat('외운', '<span id="pl-memo">'+_nf(memo)+'</span>')+
-      _planStat('미암기', '<span id="pl-remain">'+_nf(remaining)+'</span>')+
+  var stats='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">'+
+      _planStat('총 단어', '<span>'+_nf(total)+'</span>')+
+      _planStat('외운', '<span>'+_nf(memo)+'</span>')+
+      _planStat('미암기', '<span>'+_nf(remaining)+'</span>')+
       _planStat('완료 예정', '<span id="pl-eta" style="font-size:13px">'+etaFmt+'</span>')+
     '</div>';
 
-  return head+ctrl+proj+stats;
+  return head+ctrl+proj+_planPaceCard(daily)+stats;
+}
+
+// 오늘/페이스 카드
+function _planPaceCard(daily){
+  var d=window._planData||{}; var ens=d.ens, today=d.today||_planTodayStr();
+  var pace=_planPace(ens,daily,today);
+  var tpct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
+  var tDone=daily>0&&pace.todayMemo>=daily;
+  return '<div style="background:#FAFBFC;border:1px solid #ECEFF3;border-radius:12px;padding:11px;margin-bottom:12px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">'+
+      '<span style="font-size:11px;color:#374151">오늘 외운 <b style="color:#16A34A;font-size:14px" id="pl-td-memo">'+pace.todayMemo+'</b> <span style="color:#9CA3AF">/ 목표 <span id="pl-td-goal">'+daily+'</span>개</span></span>'+
+      '<span id="pl-td-badge" style="font-size:11px;font-weight:800;color:'+(tDone?'#16A34A':'#9CA3AF')+'">'+(tDone?'🔥 오늘 목표 달성!':(pace.todayMemo>0?'조금만 더!':'시작해볼까요'))+'</span>'+
+    '</div>'+
+    '<div style="height:6px;border-radius:99px;background:#EEF2F7;overflow:hidden;margin-bottom:8px"><div id="pl-td-bar" style="width:'+tpct+'%;height:100%;background:'+(tDone?'#16A34A':'#1E5FA5')+'"></div></div>'+
+    '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#6B7280">'+
+      '<span>최근 7일 하루 평균 <b>'+(pace.r7>0?pace.avg7.toFixed(1):'0')+'개</b></span><span>·</span>'+
+      '<span id="pl-pace-txt" style="font-weight:800;color:'+pace.col+'">'+pace.txt+'</span>'+
+    '</div></div>';
 }
 
 function renderGoalDashboard(){
@@ -7986,15 +8038,24 @@ function renderGoalSummary(){
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
   var BLUE='#1E5FA5';
+  var pace=_planPace(sc.ens,daily,ctx.today);
+  var tDone=daily>0&&pace.todayMemo>=daily;
   var line;
   if(remaining<=0){ line='<span style="font-size:12px;font-weight:800;color:#16A34A">🎉 「'+_esc(sc.label)+'」 다 외웠어요!</span>'; }
   else { var eta=_planEtaDate(remaining,daily,ctx.today);
     line='<span style="font-size:12px;font-weight:800;color:'+BLUE+'">📅 '+_planFmt(eta)+' 완료 예정</span>'+
       '<span style="margin-left:auto;font-size:11px;color:#9CA3AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">'+_esc(sc.label)+'</span>'; }
 
+  var todayLine = remaining<=0 ? '' :
+    '<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#374151;margin-top:7px">'+
+      '<span>오늘 외운 <b style="color:#16A34A">'+pace.todayMemo+'</b> / 목표 '+daily+'개 '+(tDone?'🔥':'')+'</span>'+
+      '<span style="font-weight:800;color:'+pace.col+'">'+(pace.lvl==='new'?'':pace.txt)+'</span>'+
+    '</div>';
+
   var inner='<div style="display:flex;align-items:center;gap:7px">'+line+'</div>'+
     '<div style="margin-top:7px;height:6px;border-radius:99px;background:#EEF2F7;overflow:hidden"><div style="width:'+Math.max(pct,pct>0?2:0)+'%;height:100%;background:'+BLUE+'"></div></div>'+
-    '<div style="display:flex;justify-content:space-between;font-size:10px;color:#9CA3AF;margin-top:3px"><span>외운 '+_nf(memo)+' · 미암기 '+_nf(remaining)+'</span><span>하루 '+daily+'개</span></div>';
+    '<div style="display:flex;justify-content:space-between;font-size:10px;color:#9CA3AF;margin-top:3px"><span>외운 '+_nf(memo)+' · 미암기 '+_nf(remaining)+'</span><span>하루 '+daily+'개</span></div>'+
+    todayLine;
 
   return '<div onclick="_planOpenSetup()" style="background:linear-gradient(135deg,#2E86DE,#1E5FA5);border-radius:16px;padding:14px 15px;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(30,95,165,.26)">'+
       '<div style="display:flex;align-items:center;gap:10px">'+
@@ -8012,30 +8073,48 @@ function _planSelect(key){
   var el=document.getElementById('pl-body'); if(el) el.innerHTML=_planBodyHTML(key);
 }
 
-var _planSaveT=null;
-function _planUpdateProjMetrics(daily){
-  var d=window._planData||{}; var remaining=d.remaining||0, today=d.today||_planTodayStr();
-  var eta=_planEtaDate(remaining,daily,today); var etaFmt=_planFmt(eta);
-  var od=document.getElementById('pl-od'); if(od) od.textContent=daily+'개';
-  var pt=document.getElementById('pl-proj-t'); if(pt) pt.textContent='하루 '+daily+'개씩 외우면 '+etaFmt+'에 모두 끝나요';
-  var pe=document.getElementById('pl-eta'); if(pe) pe.textContent=etaFmt;
-  var dt=document.getElementById('pl-date'); if(dt) dt.value=_planKeyOf(eta);
-  clearTimeout(_planSaveT); _planSaveT=setTimeout(function(){ _planSaveFor(d.key||_planScopeSel(),{daily:daily}); },350);
+function _planMarkDirty(){ var h=document.getElementById('pl-savehint'); if(h) h.textContent='변경됨 — 저장을 눌러 적용하세요'; var b=document.getElementById('pl-savebtn'); if(b) b.textContent='저장하기'; }
+function _planUpdatePace(daily){
+  var d=window._planData||{};
+  var pace=_planPace(d.ens,daily,d.today||_planTodayStr());
+  var tpct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
+  var tDone=daily>0&&pace.todayMemo>=daily;
+  var g=document.getElementById('pl-td-goal'); if(g) g.textContent=daily;
+  var bar=document.getElementById('pl-td-bar'); if(bar){ bar.style.width=tpct+'%'; bar.style.background=tDone?'#16A34A':'#1E5FA5'; }
+  var bd=document.getElementById('pl-td-badge'); if(bd){ bd.textContent=tDone?'🔥 오늘 목표 달성!':(pace.todayMemo>0?'조금만 더!':'시작해볼까요'); bd.style.color=tDone?'#16A34A':'#9CA3AF'; }
+  var pt=document.getElementById('pl-pace-txt'); if(pt){ pt.textContent=pace.txt; pt.style.color=pace.col; }
 }
 function _planRecalc(){
-  try{ var daily=+document.getElementById('pl-daily').value; _planUpdateProjMetrics(daily); }catch(e){}
+  try{ var d=window._planData||{}; var daily=+document.getElementById('pl-daily').value; window._planPendingDaily=daily;
+    var eta=_planEtaDate(d.remaining||0,daily,d.today||_planTodayStr()); var etaFmt=_planFmt(eta);
+    var od=document.getElementById('pl-od'); if(od) od.textContent=daily+'개';
+    var pj=document.getElementById('pl-proj-t'); if(pj) pj.textContent='하루 '+daily+'개씩 외우면 '+etaFmt+'에 모두 끝나요';
+    var pe=document.getElementById('pl-eta'); if(pe) pe.textContent=etaFmt;
+    var dt=document.getElementById('pl-date'); if(dt) dt.value=_planKeyOf(eta);
+    _planUpdatePace(daily); _planMarkDirty();
+  }catch(e){}
 }
 function _planRecalcDate(){
-  try{
-    var d=window._planData||{}; var remaining=d.remaining||0, today=d.today||_planTodayStr(), maxDaily=d.maxDaily||100;
+  try{ var d=window._planData||{}; var remaining=d.remaining||0, today=d.today||_planTodayStr(), maxDaily=d.maxDaily||100;
     var date=document.getElementById('pl-date').value;
-    var daily=_planDailyForDate(remaining,date,today);
+    var daily=_planDailyForDate(remaining,date,today); window._planPendingDaily=daily;
     var sl=document.getElementById('pl-daily'); if(sl) sl.value=Math.min(maxDaily,daily);
-    var od=document.getElementById('pl-od'); if(od) od.textContent=daily+'개'+(daily>maxDaily?' (많아요!)':'');
-    var eta=_planParse(date); var etaFmt=_planFmt(eta);
-    var pt=document.getElementById('pl-proj-t'); if(pt) pt.textContent=etaFmt+'까지 끝내려면 하루 '+daily+'개씩 외우면 돼요';
+    var od=document.getElementById('pl-od'); if(od) od.textContent=daily+'개'+(daily>maxDaily?'(많아요)':'');
+    var etaFmt=_planFmt(_planParse(date));
+    var pj=document.getElementById('pl-proj-t'); if(pj) pj.textContent=etaFmt+'까지 끝내려면 하루 '+daily+'개씩 외우면 돼요';
     var pe=document.getElementById('pl-eta'); if(pe) pe.textContent=etaFmt;
-    clearTimeout(_planSaveT); _planSaveT=setTimeout(function(){ _planSaveFor(d.key||_planScopeSel(),{daily:daily}); },350);
+    _planUpdatePace(daily); _planMarkDirty();
+  }catch(e){}
+}
+function _planSave(){
+  try{
+    var d=window._planData||{}; var key=d.key||_planScopeSel();
+    var daily=window._planPendingDaily!=null?window._planPendingDaily:(+document.getElementById('pl-daily').value);
+    _planSaveFor(key,{daily:daily});
+    var b=document.getElementById('pl-savebtn'); var h=document.getElementById('pl-savehint');
+    if(b){ b.textContent='✓ 저장됐어요'; b.style.background='#16A34A'; }
+    if(h) h.textContent='';
+    setTimeout(function(){ _planRefreshLearn(true); },850);
   }catch(e){}
 }
 
@@ -8051,18 +8130,26 @@ function renderGoalStrip(open){
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
   var BLUE='#1E5FA5';
+  var pace=_planPace(sc.ens,daily,ctx.today);
   var right=remaining<=0?'🎉 다 외웠어요!':('📅 '+_planFmt(_planEtaDate(remaining,daily,ctx.today))+' 완료 예정');
+  var todayBadge = remaining<=0?'':('<span style="font-size:11px;color:'+(pace.todayMemo>=daily?'#16A34A':'#6B7280')+';font-weight:800">오늘 '+pace.todayMemo+'/'+daily+'</span>');
   return '<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E2E8F0);padding:11px 13px;margin-bottom:8px">'+
     '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
       '<span style="font-size:14px">🎯</span>'+
       '<span style="font-size:12px;color:#374151"><b style="color:'+BLUE+'">'+_esc(sc.label)+'</b> · '+pct+'%</span>'+
       '<span style="font-size:12px;color:'+BLUE+';font-weight:800">'+right+'</span>'+
+      todayBadge+
       '<button onclick="_planToggleFull()" style="margin-left:auto;font-size:11px;font-weight:800;color:'+BLUE+';background:#EAF3FC;border:1.5px solid '+BLUE+';border-radius:8px;padding:5px 11px;cursor:pointer;white-space:nowrap">목표 설정 <span id="pl-caret">'+(open?'▴':'▾')+'</span></button>'+
     '</div></div>';
 }
+function _planRefreshLearn(open){
+  var c=document.getElementById('pl-learnblock'); if(!c) return;
+  window._planCtx=_planScopeData();
+  c.innerHTML=renderGoalStrip(open)+'<div id="pl-full" style="display:'+(open?'block':'none')+'">'+renderGoalDashboard()+'</div>';
+}
 function renderGoalLearnBlock(){
   var open=!!window._planAutoOpen; try{ window._planAutoOpen=false; }catch(e){}
-  return renderGoalStrip(open)+'<div id="pl-full" style="display:'+(open?'block':'none')+'">'+renderGoalDashboard()+'</div>';
+  return '<div id="pl-learnblock">'+renderGoalStrip(open)+'<div id="pl-full" style="display:'+(open?'block':'none')+'">'+renderGoalDashboard()+'</div></div>';
 }
 
 function rHome() {

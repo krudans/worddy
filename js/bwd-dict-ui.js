@@ -79,6 +79,38 @@
     } catch (e) {}
   }
 
+  // ── 음성 검색 (영어 단어 / 스펠링) ──
+  function startVoice(mode) {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { toastMsg('이 브라우저는 음성 검색을 지원하지 않아요'); return; }
+    var btn = document.getElementById(mode === 'spell' ? 'bwdui-mic-spell' : 'bwdui-mic-word');
+    try {
+      var rec = new SR();
+      rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 6;
+      if (btn) btn.classList.add('rec');
+      rec.onresult = function (e) {
+        var alts = e.results[0], best = '';
+        if (mode === 'spell') {
+          var cand = '';
+          for (var i = 0; i < alts.length; i++) { var tr = (alts[i].transcript || '').replace(/[^a-zA-Z]/g, ''); if (tr.length > cand.length) cand = tr; }
+          best = cand.toLowerCase();
+        } else {
+          best = (alts[0].transcript || '').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g, '');
+        }
+        if (best && input) {
+          input.value = best;
+          if (clrBtn) clrBtn.style.display = 'block';
+          var ex = exactWord(best);
+          if (ex) { showWord(ex); }
+          else { var list = doSearch(best); if (list.length) { showWord(list[0]); } else { renderSuggestions(doSearch(best)); } }
+        } else { toastMsg('잘 못 들었어요. 다시 시도해 주세요'); }
+      };
+      rec.onerror = function (ev) { toastMsg('음성 인식 오류: ' + ((ev && ev.error) || '')); };
+      rec.onend = function () { if (btn) btn.classList.remove('rec'); };
+      rec.start();
+    } catch (e) { if (btn) btn.classList.remove('rec'); toastMsg('음성 검색을 시작할 수 없어요'); }
+  }
+
   // ── 검색: 접두어(자동완성) + 부분일치 폴백 ──
   function doSearch(q) {
     q = (q || '').trim().toLowerCase();
@@ -173,6 +205,13 @@
       '.bwdui-logo{font-size:15px;font-weight:900;color:' + BLUE + ';letter-spacing:.2px;}',
       '.bwdui-ct{font-size:11px;font-weight:700;color:#94A3B8;background:#EEF3F9;padding:3px 9px;border-radius:99px;}',
       '.bwdui-x{margin-left:auto;background:#EDF1F6;border:none;border-radius:11px;width:36px;height:36px;font-size:15px;color:#64748B;cursor:pointer;flex:none;}',
+      '.bwdui-brand{font-size:13px;font-weight:900;color:#fff;background:var(--theme,#2E86DE);padding:6px 13px;border-radius:99px;letter-spacing:.2px;box-shadow:0 2px 8px rgba(0,0,0,.12);}',
+      '.bwdui-mic{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:52px;height:52px;border:1.5px solid var(--theme,#2E86DE);background:var(--theme-tint,#EAF3FC);color:var(--theme,#2E86DE);border-radius:14px;cursor:pointer;transition:transform .1s;}',
+      '.bwdui-mic:active{transform:scale(.94);}',
+      '.bwdui-mic.rec{background:var(--theme,#2E86DE);color:#fff;animation:bwduiPulse 1s infinite;}',
+      '.bwdui-mic .mi{font-size:18px;line-height:1;}',
+      '.bwdui-mic .ml{font-size:9px;font-weight:800;line-height:1;}',
+      '@keyframes bwduiPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,0,0,.18);}50%{box-shadow:0 0 0 6px rgba(0,0,0,0);}}',
       // 검색창
       '.bwdui-srow{display:flex;align-items:center;gap:9px;padding:10px 16px 6px;flex:none;}',
       '.bwdui-sbox{flex:1;display:flex;align-items:center;gap:9px;background:#fff;border:1.5px solid #E2E8F0;border-radius:14px;padding:0 13px;transition:border-color .15s,box-shadow .15s;}',
@@ -250,7 +289,7 @@
       '<div class="bwdui-sheet">' +
         '<div class="bwdui-handle"></div>' +
         '<div class="bwdui-top">' +
-          '<span class="bwdui-logo">🦋 단어 사전</span>' +
+          '<span class="bwdui-brand">📖 Butterfly Word Dictionary</span>' +
           '<span class="bwdui-ct" id="bwdui-brand-ct"></span>' +
           '<button class="bwdui-x" aria-label="닫기">✕</button>' +
         '</div>' +
@@ -260,8 +299,10 @@
             '<input class="bwdui-input" type="text" inputmode="latin" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="영어 단어를 입력하세요">' +
             '<button class="bwdui-clr" aria-label="지우기" style="display:none">✕</button>' +
           '</div>' +
+          '<button class="bwdui-mic" id="bwdui-mic-word" title="영어 음성 검색" aria-label="영어 음성 검색"><span class="mi">🎤</span><span class="ml">영어</span></button>' +
+          '<button class="bwdui-mic" id="bwdui-mic-spell" title="스펠링 음성 검색" aria-label="스펠링 음성 검색"><span class="mi">🔤</span><span class="ml">스펠</span></button>' +
         '</div>' +
-        '<div class="bwdui-hint">한 글자씩 입력하면 추천이 떠요 · 전체 단어 입력 후 Enter로 바로 찾기</div>' +
+        '<div class="bwdui-hint">🎤 영어 음성 · 🔤 스펠링(한 글자씩 말하기)으로도 검색 · Enter로 바로 찾기</div>' +
         '<div class="bwdui-res"></div>' +
       '</div>';
     document.body.appendChild(wrap);
@@ -278,6 +319,8 @@
     input.addEventListener('focus', function () { sbox.classList.add('foc'); });
     input.addEventListener('blur', function () { sbox.classList.remove('foc'); });
     clrBtn.addEventListener('click', function () { input.value = ''; clrBtn.style.display = 'none'; renderSuggestions([]); input.focus(); });
+    var micW = wrap.querySelector('#bwdui-mic-word'); if (micW) micW.addEventListener('click', function () { startVoice('word'); });
+    var micS = wrap.querySelector('#bwdui-mic-spell'); if (micS) micS.addEventListener('click', function () { startVoice('spell'); });
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();

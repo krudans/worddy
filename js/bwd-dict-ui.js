@@ -221,7 +221,7 @@
       'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;outline:none;color:' + INK + ';min-width:0;}',
       '.bwdui-clr{background:none;border:none;font-size:15px;color:#CBD5E1;cursor:pointer;flex:none;padding:4px;}',
       '.bwdui-hint{font-size:11px;color:#94A3B8;padding:0 18px 8px;flex:none;}',
-      '.bwdui-res{overflow-y:auto;padding:4px 12px 18px;-webkit-overflow-scrolling:touch;}',
+      '.bwdui-res{flex:1;min-height:0;overflow-y:auto;padding:4px 12px 18px;-webkit-overflow-scrolling:touch;}',
       // 추천 목록
       '.bwdui-sug{display:flex;align-items:center;gap:11px;padding:12px 12px;border-radius:13px;cursor:pointer;background:#fff;border:1px solid #EEF2F7;margin-bottom:7px;}',
       '.bwdui-sug:active{background:#F0F7FF;border-color:#CFE3FB;}',
@@ -335,6 +335,10 @@
     });
 
     window.addEventListener('resize', positionFab);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', fitViewport);
+      window.visualViewport.addEventListener('scroll', fitViewport);
+    }
     positionFab();
     updateVis();
   }
@@ -365,6 +369,19 @@
     }
   }
 
+  function fitViewport() {
+    if (!wrap || !wrap.classList.contains('open')) return;
+    var sheet = wrap.querySelector('.bwdui-sheet');
+    if (!sheet) return;
+    var vv = window.visualViewport;
+    if (vv) {
+      // 키보드가 차지하는 높이만큼 시트를 위로 올리고, 보이는 영역에 높이를 맞춤
+      var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      sheet.style.bottom = kb + 'px';
+      sheet.style.maxHeight = Math.round(vv.height * 0.94) + 'px';
+    }
+  }
+
   function openSheet() {
     if (!wrap) return;
     wrap.classList.add('open');
@@ -373,7 +390,8 @@
     input.value = '';
     clrBtn.style.display = 'none';
     renderSuggestions([]);
-    setTimeout(function () { try { input.focus(); } catch (e) {} }, 140);
+    setTimeout(function () { try { input.focus(); } catch (e) {} fitViewport(); }, 140);
+    setTimeout(fitViewport, 360);
   }
 
   function closeSheet() {
@@ -382,6 +400,8 @@
     fab.classList.remove('expanded');
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
     try { input.blur(); } catch (e) {}
+    var sheet = wrap.querySelector('.bwdui-sheet');
+    if (sheet) { sheet.style.bottom = ''; sheet.style.maxHeight = ''; }
   }
 
   // ── 검색 입력 → 자동완성 ──

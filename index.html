@@ -342,7 +342,7 @@ body.fs-lg{font-size:17px!important}
   <div class="hd" id="hd" style="display:none">
     <div class="hd-row" style="display:flex;align-items:center;justify-content:center;gap:2px;padding:2px 28px 2px 8px;position:relative;min-height:56px;overflow:visible">
       <div id="hd-char-icon" onclick="showLevelModal()" style="width:112px;height:112px;border-radius:18px;overflow:hidden;cursor:pointer;flex:none;margin:-20px 0"></div>
-      <div style="font-size:29px;font-weight:900;color:var(--hd-titlecomp,#FFFFFF);letter-spacing:-.3px;line-height:1.2;white-space:nowrap;flex:none;transform:translateX(-22px);text-shadow:0 1px 2px rgba(0,0,0,.22)">Butterfly Word</div>
+      <div style="font-size:29px;font-weight:900;color:#FFFFFF;letter-spacing:-.3px;line-height:1.2;white-space:nowrap;flex:none;transform:translateX(-22px);text-shadow:0 1px 2px rgba(0,0,0,.22)">Butterfly Word</div>
       <div style="width:28px;height:28px;border-radius:8px;overflow:hidden;flex:none;transform:translateX(-22px)"><img src="chars/baby.png" alt="애벌레" style="width:100%;height:100%;object-fit:cover;display:block;animation:hd-cat 2s ease-in-out infinite" /></div>
       <button id="poke-btn" onclick="showFriends()" style="display:none">👉 <span id="poke-cnt">0</span></button>
       <div class="lbadge" id="lbadge" style="display:none"></div>
@@ -1104,24 +1104,6 @@ const PET_COLORS = {
   yellow: {main:'#EAB308', dark:'#A16207', soft:'#FDE68A', tint:'#FEFCE8', light:'#FEFCE8', name:'노랑'},
 };
 function _hexToRgb(h){ h=String(h||'').replace('#',''); if(h.length===3) h=h.split('').map(function(c){return c+c;}).join(''); var n=parseInt(h,16)||0; return (n>>16&255)+', '+(n>>8&255)+', '+(n&255); }
-// 배경색의 보색(밝고 선명하게) 계산 — 헤더 타이틀용
-function _complementColor(hex){
-  hex=String(hex||'').trim();
-  var m=/^#?([0-9a-fA-F]{6})$/.exec(hex);
-  if(!m) return '#FFD700';
-  var n=parseInt(m[1],16), r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
-  var mx=Math.max(r,g,b), mn=Math.min(r,g,b), h2, s, l=(mx+mn)/2;
-  if(mx===mn){ h2=0; s=0; }
-  else { var d=mx-mn; s=l>0.5?d/(2-mx-mn):d/(mx+mn);
-    if(mx===r) h2=(g-b)/d+(g<b?6:0); else if(mx===g) h2=(b-r)/d+2; else h2=(r-g)/d+4; h2/=6; }
-  h2=(h2+0.5)%1;                 // 보색(hue +180°)
-  s=Math.min(1, Math.max(s,0.85));// 채도 부스트
-  l=0.58;                         // 밝게(가독성)
-  function h2r(p,q,t){ if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3-t)*6; return p; }
-  var q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q;
-  var rr=Math.round(h2r(p,q,h2+1/3)*255), gg=Math.round(h2r(p,q,h2)*255), bb=Math.round(h2r(p,q,h2-1/3)*255);
-  return '#'+[rr,gg,bb].map(function(x){return ('0'+x.toString(16)).slice(-2);}).join('');
-}
 function applyThemeVars(pc){
   pc = pc || (typeof PET_COLORS!=='undefined' ? (PET_COLORS[getPetColor()]||PET_COLORS.green) : null);
   if(!pc) return;
@@ -1131,7 +1113,6 @@ function applyThemeVars(pc){
   r.setProperty('--theme-soft', pc.soft||pc.main);
   r.setProperty('--theme-tint', pc.tint||pc.light||(pc.main+'1A'));
   r.setProperty('--theme-rgb', _hexToRgb(pc.main));
-  r.setProperty('--hd-titlecomp', _complementColor(pc.main));
 }
 
 function showPersonalityQ() {
@@ -12277,21 +12258,8 @@ function rProfile(){
   const parts=[];
   parts.push('<div class="pad" style="padding-bottom:24px">');
 
-  // ── 상단 성장단계 배너 제거됨 (요청에 따라) ──
-
-  // ── 진화 게이지 ──
-  parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:18px;border:1.5px solid var(--border,#F0E6C8);padding:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🐛 성장 단계</div>
-      <div style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:3px">다음: ${nextLv&&nextLv.id!==S.lid?(typeof charSVGAnimated==='function'?'<span style="display:inline-block">'+ charSVGAnimated(nextLv.id,16,'normal')+'</span>':nextLv.emoji)+' '+nextLv.name:'✨ 최고 레벨'}</div>
-    </div>
-    <div style="background:var(--bg-sub,#F3F4F6);border-radius:8px;height:10px;overflow:hidden;margin-bottom:6px">
-      <div style="height:100%;background:${petCol.main};border-radius:8px;width:${xpPct}%;transition:width .8s"></div>
-    </div>
-    <div style="display:flex;justify-content:space-around;margin-top:10px">
-${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S.xp||0)?1:.3}"><div style="display:flex;justify-content:center;align-items:center;height:${lx.id===S.lid?'32px':'22px'}">${typeof charSVGAnimated==='function'?charSVGAnimated(lx.id,lx.id===S.lid?28:18,'normal'):lx.emoji}</div><div style="font-size:8px;color:${lx.id===S.lid?petCol.main:'var(--border)'};font-weight:${lx.id===S.lid?'800':'400'};margin-top:2px">${lx.name.split(' ')[0]}</div></div>`).join('')}
-    </div>
-  </div>`);
+  // ── 상단: 캐릭터 배너 (성장단계 포함) ──
+  parts.push(renderCharBanner({nick:true,stats:true}));
 
   // ── 내 벌거지 색상 선택 (프로필로 이동) ──
   {
@@ -12338,20 +12306,7 @@ ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S
     </div>
   </div>`);
 
-  // Gemini API 키 설정
-  const _gkSet = !!localStorage.getItem('_geminiKey');
-  parts.push(`<div onclick="showGeminiKeyModal()" style="background:${_gkSet?'#F0FDF4':'#FFF8F0'};border:1.5px solid ${_gkSet?'#BBF7D0':'#FED7AA'};border-radius:14px;padding:12px 14px;cursor:pointer;margin-bottom:4px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${_gkSet?'4px':'0'}">
-      <div style="font-size:13px;font-weight:800;color:${_gkSet?'#16A34A':'#E65100'}">
-        ${_gkSet?'🤖 Gemini AI 연결됨':'🔑 Gemini API 키 미설정'}
-      </div>
-      <span style="font-size:11px;color:${_gkSet?'#16A34A':'#E65100'};font-weight:600">${_gkSet?'키 변경 →':'설정 →'}</span>
-    </div>
-    ${_gkSet
-      ? '<div style="font-size:11px;color:var(--text3)">AI 자동완성 · 이미지/PDF 단어 추출 활성화됨<br><span style="color:var(--text3)">무료 플랜: 분당 15회 · 일 1,500회</span></div>'
-      : '<div style="font-size:11px;color:var(--text3,#9CA3AF)">AI 자동완성·이미지·PDF 기능을 쓰려면 필요해요<br>Google AI Studio에서 무료 발급 가능</div>'
-    }
-  </div>`);
+  // Gemini API 키 카드 제거됨 (요청에 따라)
   // (제거됨) '⏰ 목표 & 알람' 별도 버튼 — 위 설정 카드의 '목표·알람 설정'(showAlarmSettings)과 중복
   parts.push('<button class="btn" onclick="showAchievementsModal()" style="background:var(--bg-card);color:var(--text2);border:1.5px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04)">🏆 도전 과제</button>');
   parts.push('<button class="btn" onclick="showAppGuide()" style="background:var(--bg-card);color:var(--text2);border:1.5px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04)">📖 앱 사용법</button>');

@@ -1,32 +1,19 @@
-// ── ButterFly Word DIC — 사전 검색 UI (확장형 FAB + 바텀시트) ──
-// index.html 본문을 건드리지 않는 추가 스크립트.
-// 로드 위치: bwd-dict.js / bwd-suggest.js / bwd-wordlist.js 뒤, </body> 앞.
-//   <script src="js/bwd-dict-ui.js?v=1"></script>
-// 동작:
-//   - 평소엔 돋보기 아이콘(원형)만. 탭하면 "Butterfly Word DIC" 알약이 펼쳐지며 잠깐 보이고 → 검색 시트 오픈.
-//   - 모든 화면에 표시, 단 게임 플레이 중에는 자동 숨김.
-//   - 검색: BWDSuggest(자동완성) + BWD_DICT(뜻/예문/품사). 발음: speak(). 추가: saveWordToCurrentBook().
+// ── ButterFly Word DIC — 사전 검색 UI v3 (확장형 FAB + 바텀시트) ──
+// index.html 본문을 건드리지 않는 추가 스크립트. (bwd-dict.js / bwd-suggest.js 뒤 로드)
+// v3 개선: 가독성 전면 개선 · 음성(전체발음 + 스펠링) · 스펠링/전체단어 검색.
+//   - 검색: BWDSuggest(접두어/자동완성) + 부분일치 폴백 + Enter 정확검색.
+//   - 음성: 🔊 전체 단어 발음 / 🔤 한 글자씩 스펠링 (speechSynthesis).
 (function () {
   'use strict';
   if (window.__bwdDictUI) return;
   window.__bwdDictUI = true;
 
-  var BLUE = '#1E5FA5', BLUE2 = '#1E88E5';
+  var BLUE = '#1E5FA5', BLUE2 = '#2E86DE', INK = '#0F172A';
 
   // ── 안전 헬퍼 (앱 함수는 모두 feature-detect) ──
   function D() { try { return (typeof BWD_DICT !== 'undefined') ? BWD_DICT : (window.BWD_DICT || null); } catch (e) { return null; } }
   function SUG() { try { return (typeof BWDSuggest !== 'undefined') ? BWDSuggest : (window.BWDSuggest || null); } catch (e) { return null; } }
   function ST() { try { return window.S || null; } catch (e) { return null; } }
-  function say(t) {
-    try {
-      if (typeof speak === 'function') { speak(t, 'en'); return; }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        var u = new SpeechSynthesisUtterance(String(t || ''));
-        u.lang = 'en-US'; u.rate = 0.85; window.speechSynthesis.speak(u);
-      }
-    } catch (e) {}
-  }
   function toastMsg(m, t) { try { if (typeof toast === 'function') { toast(m, t); return; } } catch (e) {} }
   function pronOf(w) {
     try {
@@ -43,22 +30,82 @@
     var S = ST();
     try { return !!(S && S._gameRunning && S.gameId && !S.gDone); } catch (e) { return false; }
   }
-  function doSearch(prefix) {
-    prefix = (prefix || '').trim().toLowerCase();
-    if (!prefix) return [];
-    var s = SUG();
-    if (s && typeof s.search === 'function') {
-      try { return s.search(prefix, 12) || []; } catch (e) {}
-    }
-    var d = D(); if (!d) return [];
+
+  // ── 음성 (Web Speech API) ──
+  var _enVoice = null, _voiceTried = false;
+  function pickVoice() {
+    if (_voiceTried) return _enVoice;
+    _voiceTried = true;
+    try {
+      var vs = window.speechSynthesis.getVoices() || [];
+      // 선호: en-US 자연스러운 음성 → en-GB → 아무 en
+      var pref = ['Google US English', 'Samantha', 'Microsoft Aria', 'Microsoft Zira', 'Karen', 'Daniel'];
+      for (var p = 0; p < pref.length; p++) {
+        for (var i = 0; i < vs.length; i++) { if (vs[i].name === pref[p]) { _enVoice = vs[i]; return _enVoice; } }
+      }
+      for (var j = 0; j < vs.length; j++) { if (/^en[-_]US/i.test(vs[j].lang)) { _enVoice = vs[j]; return _enVoice; } }
+      for (var k = 0; k < vs.length; k++) { if (/^en/i.test(vs[k].lang)) { _enVoice = vs[k]; return _enVoice; } }
+    } catch (e) {}
+    return _enVoice;
+  }
+  try { if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = function(){ _voiceTried = false; pickVoice(); }; } catch (e) {}
+
+  function _utter(text, rate) {
+    var u = new SpeechSynthesisUtterance(String(text || ''));
+    u.lang = 'en-US'; u.rate = rate || 0.92; u.pitch = 1;
+    var v = pickVoice(); if (v) u.voice = v;
+    return u;
+  }
+  // 전체 단어 발음
+  function say(word, rate) {
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(_utter(word, rate));
+        return;
+      }
+      if (typeof speak === 'function') speak(word, 'en');
+    } catch (e) {}
+  }
+  // 한 글자씩 스펠링 → 끝에 전체 단어 1회
+  function spellOut(word) {
+    try {
+      if (!('speechSynthesis' in window)) { say(word); return; }
+      window.speechSynthesis.cancel();
+      var chars = String(word || '').replace(/[^a-zA-Z]/g, '').toUpperCase().split('');
+      for (var i = 0; i < chars.length; i++) window.speechSynthesis.speak(_utter(chars[i], 0.7));
+      var w = _utter(word, 0.85); w.pitch = 1.05;
+      window.speechSynthesis.speak(w);
+    } catch (e) {}
+  }
+
+  // ── 검색: 접두어(자동완성) + 부분일치 폴백 ──
+  function doSearch(q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return [];
     var out = [];
-    for (var k in d) { if (k.indexOf(prefix) === 0) { out.push(k); if (out.length >= 12) break; } }
-    return out;
+    var s = SUG();
+    if (s && typeof s.search === 'function') { try { out = s.search(q, 16) || []; } catch (e) {} }
+    if (out.length) return out;
+    // 폴백: 사전 키에서 접두어 우선 → 부분일치
+    var d = D(); if (!d) return out;
+    var pre = [], sub = [];
+    for (var k in d) {
+      var idx = k.indexOf(q);
+      if (idx === 0) { if (pre.length < 16) pre.push(k); }
+      else if (idx > 0) { if (sub.length < 16) sub.push(k); }
+      if (pre.length >= 16) break;
+    }
+    return pre.concat(sub).slice(0, 16);
+  }
+  function exactWord(q) {
+    q = (q || '').trim().toLowerCase();
+    var d = D();
+    if (d && d[q]) return q;
+    return null;
   }
 
   // ── 사전 본체(BWD_DICT) 지연 로딩 ──
-  // index.html이 bwd-dict.js를 로드하지 않아도, 처음 검색할 때 알아서 불러온다.
-  // (3.7MB이므로 앱 시작 때가 아니라 사전을 처음 열 때 1회만 로드 → 이후 서비스워커 캐시)
   var _dictLoading = false, _dictWaiters = [];
   function ensureDict(cb) {
     if (D()) { if (cb) cb(); return; }
@@ -66,7 +113,7 @@
     if (_dictLoading) return;
     _dictLoading = true;
     var s = document.createElement('script');
-    s.src = 'js/bwd-dict.js?v=1';
+    s.src = 'js/bwd-dict.js?v=6';
     s.async = true;
     s.onload = function () {
       _dictLoading = false;
@@ -90,8 +137,8 @@
     var el = document.getElementById('bwdui-brand-ct');
     if (!el) return;
     var d = D();
-    if (d) { try { el.textContent = '· ' + Object.keys(d).length.toLocaleString() + '개 수록'; } catch (e) { el.textContent = ''; } }
-    else { el.textContent = ''; }
+    if (d) { try { el.textContent = Object.keys(d).length.toLocaleString() + '개 수록'; } catch (e) { el.textContent = ''; } }
+    else { el.textContent = '불러오는 중…'; }
   }
 
   // ── 스타일 ──
@@ -100,65 +147,92 @@
     var st = document.createElement('style');
     st.id = 'bwdui-css';
     st.textContent = [
-      '.bwdui-fab{position:fixed;right:16px;bottom:72px;z-index:4000;height:48px;min-width:48px;padding:0;border:none;border-radius:24px;',
-      'background:linear-gradient(135deg,' + BLUE2 + ',' + BLUE + ');color:#fff;box-shadow:0 4px 14px rgba(30,95,165,.40);',
+      // FAB
+      '.bwdui-fab{position:fixed;right:16px;bottom:72px;z-index:4000;height:50px;min-width:50px;padding:0;border:none;border-radius:25px;',
+      'background:linear-gradient(135deg,' + BLUE2 + ',' + BLUE + ');color:#fff;box-shadow:0 6px 18px rgba(30,95,165,.42);',
       'display:flex;align-items:center;cursor:pointer;overflow:hidden;-webkit-tap-highlight-color:transparent;',
       'transition:min-width .34s cubic-bezier(.2,.8,.2,1),padding .34s,box-shadow .2s;}',
-      '.bwdui-fab:active{box-shadow:0 2px 8px rgba(30,95,165,.45);}',
-      '.bwdui-fab-ic{font-size:22px;flex:0 0 48px;text-align:center;line-height:48px;}',
+      '.bwdui-fab:active{transform:scale(.96);}',
+      '.bwdui-fab-ic{font-size:23px;flex:0 0 50px;text-align:center;line-height:50px;}',
       '.bwdui-fab-label{font-size:14px;font-weight:800;white-space:nowrap;opacity:0;max-width:0;letter-spacing:.2px;',
       'transition:opacity .22s ease,max-width .34s cubic-bezier(.2,.8,.2,1);}',
-      '.bwdui-fab.expanded{min-width:210px;padding-right:20px;}',
-      '.bwdui-fab.expanded .bwdui-fab-label{opacity:1;max-width:210px;}',
+      '.bwdui-fab.expanded{min-width:208px;padding-right:20px;}',
+      '.bwdui-fab.expanded .bwdui-fab-label{opacity:1;max-width:208px;}',
       // 시트
       '.bwdui-wrap{position:fixed;inset:0;z-index:9998;display:none;}',
       '.bwdui-wrap.open{display:block;}',
-      '.bwdui-bd{position:absolute;inset:0;background:rgba(15,23,42,.42);opacity:0;transition:opacity .25s;}',
+      '.bwdui-bd{position:absolute;inset:0;background:rgba(15,23,42,.46);opacity:0;transition:opacity .25s;}',
       '.bwdui-wrap.open .bwdui-bd{opacity:1;}',
-      '.bwdui-sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:20px 20px 0 0;',
-      'box-shadow:0 -8px 30px rgba(0,0,0,.18);max-height:84vh;display:flex;flex-direction:column;',
+      '.bwdui-sheet{position:absolute;left:0;right:0;bottom:0;background:#F8FAFC;border-radius:22px 22px 0 0;',
+      'box-shadow:0 -10px 34px rgba(0,0,0,.20);max-height:88vh;display:flex;flex-direction:column;',
       'transform:translateY(100%);transition:transform .30s cubic-bezier(.2,.8,.2,1);padding-bottom:env(safe-area-inset-bottom,0px);}',
       '.bwdui-wrap.open .bwdui-sheet{transform:translateY(0);}',
-      '.bwdui-handle{width:40px;height:4px;border-radius:99px;background:#E5E7EB;margin:8px auto 4px;flex:none;}',
-      '.bwdui-srow{display:flex;align-items:center;gap:8px;padding:8px 14px 12px;flex:none;}',
-      '.bwdui-srow .ic{font-size:18px;color:' + BLUE + ';}',
-      '.bwdui-input{flex:1;border:1.5px solid #E5E7EB;border-radius:12px;padding:11px 14px;font-size:16px;font-weight:700;',
-      'font-family:monospace;outline:none;color:#111;}',
-      '.bwdui-input:focus{border-color:' + BLUE2 + ';}',
-      '.bwdui-x{background:#F3F4F6;border:none;border-radius:10px;width:38px;height:38px;font-size:15px;color:#6B7280;cursor:pointer;flex:none;}',
-      '.bwdui-brand{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;padding:2px 14px 11px;margin:0 0 4px;border-bottom:0.5px solid #F0F2F5;flex:none;}',
-      '.bwdui-brand .nm{font-size:12px;font-weight:800;color:' + BLUE + ';letter-spacing:.2px;}',
-      '.bwdui-brand .ct{font-size:12px;font-weight:600;color:#9CA3AF;}',
-      '.bwdui-res{overflow-y:auto;padding:0 14px 16px;-webkit-overflow-scrolling:touch;}',
-      '.bwdui-sug{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;}',
-      '.bwdui-sug:active{background:#F3F8FF;}',
-      '.bwdui-sug .w{font-size:15px;font-weight:700;color:#111;font-family:monospace;}',
-      '.bwdui-sug .m{font-size:12px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      '.bwdui-sug .chev{margin-left:auto;color:#C7CDD6;font-size:14px;}',
+      '.bwdui-handle{width:42px;height:5px;border-radius:99px;background:#D1D9E2;margin:9px auto 2px;flex:none;}',
+      // 헤더
+      '.bwdui-top{display:flex;align-items:center;gap:8px;padding:6px 16px 2px;flex:none;}',
+      '.bwdui-logo{font-size:15px;font-weight:900;color:' + BLUE + ';letter-spacing:.2px;}',
+      '.bwdui-ct{font-size:11px;font-weight:700;color:#94A3B8;background:#EEF3F9;padding:3px 9px;border-radius:99px;}',
+      '.bwdui-x{margin-left:auto;background:#EDF1F6;border:none;border-radius:11px;width:36px;height:36px;font-size:15px;color:#64748B;cursor:pointer;flex:none;}',
+      // 검색창
+      '.bwdui-srow{display:flex;align-items:center;gap:9px;padding:10px 16px 6px;flex:none;}',
+      '.bwdui-sbox{flex:1;display:flex;align-items:center;gap:9px;background:#fff;border:1.5px solid #E2E8F0;border-radius:14px;padding:0 13px;transition:border-color .15s,box-shadow .15s;}',
+      '.bwdui-sbox.foc{border-color:' + BLUE2 + ';box-shadow:0 0 0 3px rgba(46,134,222,.12);}',
+      '.bwdui-sbox .ic{font-size:17px;color:' + BLUE2 + ';flex:none;}',
+      '.bwdui-input{flex:1;border:none;background:transparent;padding:13px 0;font-size:17px;font-weight:700;',
+      'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;outline:none;color:' + INK + ';min-width:0;}',
+      '.bwdui-clr{background:none;border:none;font-size:15px;color:#CBD5E1;cursor:pointer;flex:none;padding:4px;}',
+      '.bwdui-hint{font-size:11px;color:#94A3B8;padding:0 18px 8px;flex:none;}',
+      '.bwdui-res{overflow-y:auto;padding:4px 12px 18px;-webkit-overflow-scrolling:touch;}',
+      // 추천 목록
+      '.bwdui-sug{display:flex;align-items:center;gap:11px;padding:12px 12px;border-radius:13px;cursor:pointer;background:#fff;border:1px solid #EEF2F7;margin-bottom:7px;}',
+      '.bwdui-sug:active{background:#F0F7FF;border-color:#CFE3FB;}',
+      '.bwdui-sug .spk{flex:none;width:34px;height:34px;border-radius:10px;border:none;background:#EAF3FC;color:' + BLUE + ';font-size:15px;cursor:pointer;}',
+      '.bwdui-sug .tx{flex:1;min-width:0;}',
+      '.bwdui-sug .w{font-size:16px;font-weight:800;color:' + INK + ';font-family:ui-monospace,Menlo,monospace;}',
+      '.bwdui-sug .m{font-size:13px;color:#64748B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;}',
+      '.bwdui-sug .chev{margin-left:auto;color:#CBD5E1;font-size:17px;flex:none;}',
       // 결과 카드
-      '.bwdui-card{background:#fff;border:1px solid #EEF1F5;border-radius:16px;padding:16px 16px 14px;}',
-      '.bwdui-hd{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;}',
-      '.bwdui-word{font-size:26px;font-weight:900;color:#111;letter-spacing:.3px;}',
-      '.bwdui-ipa{font-size:14px;color:' + BLUE2 + ';font-family:monospace;}',
-      '.bwdui-pos{margin-left:auto;font-size:12px;font-weight:700;color:' + BLUE + ';background:#E8F1FB;padding:4px 11px;border-radius:99px;}',
-      '.bwdui-kr{font-size:18px;font-weight:800;color:#111;margin-top:12px;}',
-      '.bwdui-ex{font-size:14px;color:#4B5563;line-height:1.6;background:#F7F9FC;border-radius:10px;padding:9px 12px;margin-top:9px;}',
-      '.bwdui-acts{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap;}',
-      '.bwdui-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid #E5E7EB;background:#fff;border-radius:11px;',
-      'padding:9px 13px;font-size:13px;font-weight:700;color:#374151;cursor:pointer;}',
-      '.bwdui-btn:active{background:#F3F4F6;}',
-      '.bwdui-btn.pri{background:linear-gradient(135deg,' + BLUE2 + ',' + BLUE + ');color:#fff;border-color:transparent;}',
-      '.bwdui-rel{margin-top:13px;padding-top:11px;border-top:1px solid #EEF1F5;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}',
-      '.bwdui-rel .lb{font-size:12px;color:#9CA3AF;}',
-      '.bwdui-chip{font-size:13px;color:' + BLUE + ';border:1px solid #E5E7EB;border-radius:99px;padding:4px 11px;cursor:pointer;font-family:monospace;}',
-      '.bwdui-chip:active{background:#F3F8FF;}',
-      '.bwdui-empty{text-align:center;color:#9CA3AF;font-size:13px;padding:26px 10px;}'
+      '.bwdui-card{background:#fff;border:1px solid #EAEFF5;border-radius:18px;padding:18px 17px 16px;box-shadow:0 2px 10px rgba(15,23,42,.05);}',
+      '.bwdui-hd{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;}',
+      '.bwdui-word{font-size:30px;font-weight:900;color:' + INK + ';letter-spacing:.3px;line-height:1.1;}',
+      '.bwdui-ipa{font-size:15px;color:#64748B;font-family:ui-monospace,Menlo,monospace;}',
+      '.bwdui-pos{margin-left:auto;align-self:flex-start;font-size:12px;font-weight:800;color:' + BLUE + ';background:#E8F1FB;padding:5px 12px;border-radius:99px;}',
+      // 음성 버튼
+      '.bwdui-audio{display:flex;gap:9px;margin-top:15px;}',
+      '.bwdui-au{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:13px;',
+      'padding:13px 10px;font-size:14px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}',
+      '.bwdui-au:active{transform:scale(.97);}',
+      '.bwdui-au.say{background:linear-gradient(135deg,' + BLUE2 + ',' + BLUE + ');color:#fff;box-shadow:0 4px 12px rgba(30,95,165,.30);}',
+      '.bwdui-au.spell{background:#EFF6FF;color:' + BLUE + ';border:1.5px solid #CFE3FB;}',
+      // 뜻
+      '.bwdui-mlb{font-size:11px;font-weight:800;color:#94A3B8;margin-top:18px;letter-spacing:.3px;}',
+      '.bwdui-kr{font-size:20px;font-weight:800;color:' + INK + ';margin-top:5px;line-height:1.45;}',
+      '.bwdui-krline{display:flex;align-items:flex-start;gap:8px;font-size:18px;font-weight:700;color:' + INK + ';margin-top:6px;line-height:1.5;}',
+      '.bwdui-krline .n{flex:none;font-size:12px;font-weight:800;color:#fff;background:' + BLUE2 + ';min-width:19px;height:19px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;margin-top:3px;}',
+      // 예문
+      '.bwdui-exwrap{margin-top:14px;background:#F6F9FC;border:1px solid #EBF1F7;border-radius:13px;padding:12px 13px;display:flex;gap:10px;align-items:flex-start;}',
+      '.bwdui-ex{flex:1;font-size:15px;color:#334155;line-height:1.65;}',
+      '.bwdui-explay{flex:none;width:32px;height:32px;border-radius:9px;border:none;background:#fff;border:1px solid #E2E8F0;color:' + BLUE + ';font-size:14px;cursor:pointer;}',
+      // 보조 액션
+      '.bwdui-acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}',
+      '.bwdui-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1.5px solid #E2E8F0;background:#fff;border-radius:12px;',
+      'padding:11px 12px;font-size:13px;font-weight:800;color:#475569;cursor:pointer;}',
+      '.bwdui-btn:active{background:#F1F5F9;}',
+      '.bwdui-btn.add{background:#FFF7E6;border-color:#FCE2A8;color:#B45309;}',
+      // 관련 단어
+      '.bwdui-rel{margin-top:16px;padding-top:13px;border-top:1px solid #EEF2F7;}',
+      '.bwdui-rel .lb{font-size:11px;font-weight:800;color:#94A3B8;letter-spacing:.3px;}',
+      '.bwdui-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;}',
+      '.bwdui-chip{font-size:13px;font-weight:700;color:' + BLUE + ';background:#F1F7FD;border:1px solid #DCEAF8;border-radius:99px;padding:6px 13px;cursor:pointer;font-family:ui-monospace,Menlo,monospace;}',
+      '.bwdui-chip:active{background:#E1EFFB;}',
+      '.bwdui-empty{text-align:center;color:#94A3B8;font-size:14px;padding:34px 16px;line-height:1.6;}',
+      '.bwdui-empty .big{font-size:34px;display:block;margin-bottom:8px;}'
     ].join('');
     document.head.appendChild(st);
   }
 
   // ── DOM 생성 ──
-  var fab, wrap, input, results;
+  var fab, wrap, input, results, sbox, clrBtn;
 
   function build() {
     injectCSS();
@@ -166,7 +240,7 @@
     fab = document.createElement('button');
     fab.className = 'bwdui-fab';
     fab.setAttribute('aria-label', 'Butterfly Word 사전 검색');
-    fab.innerHTML = '<span class="bwdui-fab-ic">🔍</span><span class="bwdui-fab-label">Butterfly Word DIC</span>';
+    fab.innerHTML = '<span class="bwdui-fab-ic">🔍</span><span class="bwdui-fab-label">단어 사전 검색</span>';
     document.body.appendChild(fab);
 
     wrap = document.createElement('div');
@@ -175,26 +249,46 @@
       '<div class="bwdui-bd"></div>' +
       '<div class="bwdui-sheet">' +
         '<div class="bwdui-handle"></div>' +
-        '<div class="bwdui-srow">' +
-          '<span class="ic">🔍</span>' +
-          '<input class="bwdui-input" type="text" inputmode="latin" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="영어 단어 검색…">' +
+        '<div class="bwdui-top">' +
+          '<span class="bwdui-logo">🦋 단어 사전</span>' +
+          '<span class="bwdui-ct" id="bwdui-brand-ct"></span>' +
           '<button class="bwdui-x" aria-label="닫기">✕</button>' +
         '</div>' +
-        '<div class="bwdui-brand"><span class="nm">🦋 Butterfly Word Dictionary</span><span class="ct" id="bwdui-brand-ct"></span></div>' +
+        '<div class="bwdui-srow">' +
+          '<div class="bwdui-sbox">' +
+            '<span class="ic">🔍</span>' +
+            '<input class="bwdui-input" type="text" inputmode="latin" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="영어 단어를 입력하세요">' +
+            '<button class="bwdui-clr" aria-label="지우기" style="display:none">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="bwdui-hint">한 글자씩 입력하면 추천이 떠요 · 전체 단어 입력 후 Enter로 바로 찾기</div>' +
         '<div class="bwdui-res"></div>' +
       '</div>';
     document.body.appendChild(wrap);
 
     input = wrap.querySelector('.bwdui-input');
     results = wrap.querySelector('.bwdui-res');
+    sbox = wrap.querySelector('.bwdui-sbox');
+    clrBtn = wrap.querySelector('.bwdui-clr');
 
     fab.addEventListener('click', onFabClick);
     wrap.querySelector('.bwdui-bd').addEventListener('click', closeSheet);
     wrap.querySelector('.bwdui-x').addEventListener('click', closeSheet);
     input.addEventListener('input', onInput);
+    input.addEventListener('focus', function () { sbox.classList.add('foc'); });
+    input.addEventListener('blur', function () { sbox.classList.remove('foc'); });
+    clrBtn.addEventListener('click', function () { input.value = ''; clrBtn.style.display = 'none'; renderSuggestions([]); input.focus(); });
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); var list = doSearch(input.value); if (list.length) showWord(list[0]); }
-      else if (e.key === 'Escape') { closeSheet(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var v = input.value.trim();
+        if (!v) return;
+        var ex = exactWord(v);
+        if (ex) { showWord(ex); return; }
+        var list = doSearch(v);
+        if (list.length) showWord(list[0]);
+        else renderSuggestions([]);
+      } else if (e.key === 'Escape') { closeSheet(); }
     });
 
     window.addEventListener('resize', positionFab);
@@ -219,11 +313,10 @@
     if (fab.style.display !== 'none') positionFab();
   }
 
-  // ── FAB 인터랙션: 돋보기 → 알약 펼침(짧게) → 시트 ──
   function onFabClick() {
     if (!fab.classList.contains('expanded')) {
       fab.classList.add('expanded');
-      setTimeout(openSheet, 400); // 알약이 펼쳐지며 풀네임이 잠깐 보인 뒤 검색 시작
+      setTimeout(openSheet, 380);
     } else {
       openSheet();
     }
@@ -235,20 +328,23 @@
     ensureDict();
     setBrand();
     input.value = '';
+    clrBtn.style.display = 'none';
     renderSuggestions([]);
-    setTimeout(function () { try { input.focus(); } catch (e) {} }, 120);
+    setTimeout(function () { try { input.focus(); } catch (e) {} }, 140);
   }
 
   function closeSheet() {
     if (!wrap) return;
     wrap.classList.remove('open');
     fab.classList.remove('expanded');
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
     try { input.blur(); } catch (e) {}
   }
 
   // ── 검색 입력 → 자동완성 ──
   function onInput() {
     var v = input.value.trim();
+    clrBtn.style.display = v ? 'block' : 'none';
     if (!v) { renderSuggestions([]); return; }
     renderSuggestions(doSearch(v));
   }
@@ -262,21 +358,28 @@
     if (!results) return;
     if (!list || !list.length) {
       var typed = input.value.trim();
-      results.innerHTML = '<div class="bwdui-empty">' + (typed ? '검색 결과가 없어요' : '영어 단어를 입력하면 추천이 떠요') + '</div>';
+      results.innerHTML = '<div class="bwdui-empty"><span class="big">' + (typed ? '🔎' : '📖') + '</span>' +
+        (typed ? '“' + esc(typed) + '” 검색 결과가 없어요.<br>철자를 확인하거나 다른 단어를 입력해 보세요.'
+               : '찾고 싶은 영어 단어를 입력해 보세요.<br>뜻 · 발음 · 예문을 한 번에 보여드려요.') + '</div>';
       return;
     }
     var html = '';
     for (var i = 0; i < list.length; i++) {
       var w = list[i], m = krShort(w);
       html += '<div class="bwdui-sug" data-w="' + esc(w) + '">' +
-        '<span class="w">' + esc(w) + '</span>' +
-        (m ? '<span class="m">' + esc(m) + '</span>' : '') +
+        '<button class="spk" data-spk="' + esc(w) + '" aria-label="발음">🔊</button>' +
+        '<div class="tx"><div class="w">' + esc(w) + '</div>' +
+        (m ? '<div class="m">' + esc(m) + '</div>' : '') + '</div>' +
         '<span class="chev">›</span></div>';
     }
     results.innerHTML = html;
     var nodes = results.querySelectorAll('.bwdui-sug');
     for (var j = 0; j < nodes.length; j++) {
-      (function (node) { node.addEventListener('click', function () { showWord(node.getAttribute('data-w')); }); })(nodes[j]);
+      (function (node) {
+        node.addEventListener('click', function () { showWord(node.getAttribute('data-w')); });
+        var spk = node.querySelector('.spk');
+        if (spk) spk.addEventListener('click', function (ev) { ev.stopPropagation(); say(spk.getAttribute('data-spk')); });
+      })(nodes[j]);
     }
   }
 
@@ -286,7 +389,7 @@
     var safe = esc(ex);
     try {
       var re = new RegExp('(' + String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
-      return safe.replace(re, '<b style="color:' + BLUE + '">$1</b>');
+      return safe.replace(re, '<b style="color:' + BLUE + ';font-weight:800">$1</b>');
     } catch (e) { return safe; }
   }
 
@@ -294,17 +397,28 @@
     var base = String(word).slice(0, Math.min(4, word.length));
     var list = doSearch(base) || [];
     var out = [];
-    for (var i = 0; i < list.length && out.length < 6; i++) { if (list[i] !== word) out.push(list[i]); }
+    for (var i = 0; i < list.length && out.length < 8; i++) { if (list[i] !== word) out.push(list[i]); }
     return out;
+  }
+
+  function krLines(kr) {
+    var parts = String(kr || '').split(/[,;·∙、/]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (parts.length <= 1) return '<div class="bwdui-kr">' + esc(kr || '') + '</div>';
+    var h = '';
+    for (var i = 0; i < parts.length; i++) {
+      h += '<div class="bwdui-krline"><span class="n">' + (i + 1) + '</span><span>' + esc(parts[i]) + '</span></div>';
+    }
+    return h;
   }
 
   function showWord(word) {
     if (!results || !word) return;
     if (!D()) {
-      results.innerHTML = '<div class="bwdui-empty">사전 데이터를 불러오는 중…</div>';
+      results.innerHTML = '<div class="bwdui-empty"><span class="big">⏳</span>사전 데이터를 불러오는 중…</div>';
       ensureDict(function () { showWord(word); });
       return;
     }
+    input.value = word; clrBtn.style.display = 'block';
     var d = D(); var e = (d && d[word]) || null;
     var ipa = pronOf(word);
     var rel = relatedOf(word);
@@ -314,32 +428,46 @@
         '<span class="bwdui-word">' + esc(word) + '</span>' +
         (ipa ? '<span class="bwdui-ipa">' + esc(ipa) + '</span>' : '') +
         (e && e.pos ? '<span class="bwdui-pos">' + esc(e.pos) + '</span>' : '') +
+      '</div>' +
+      '<div class="bwdui-audio">' +
+        '<button class="bwdui-au say" data-act="say">🔊 발음 듣기</button>' +
+        '<button class="bwdui-au spell" data-act="spell">🔤 스펠링</button>' +
       '</div>';
 
-    if (e) {
-      html += '<div class="bwdui-kr">' + esc(e.kr || '') + '</div>';
-      if (e.ex) html += '<div class="bwdui-ex">' + hl(e.ex, word) + '</div>';
+    if (e && e.kr) {
+      html += '<div class="bwdui-mlb">뜻</div>' + krLines(e.kr);
     } else {
-      html += '<div class="bwdui-ex">이 단어는 사전에 뜻이 아직 없어요. 발음과 단어장 추가는 가능해요.</div>';
+      html += '<div class="bwdui-exwrap"><div class="bwdui-ex">이 단어는 사전에 뜻이 아직 없어요. 발음과 단어장 추가는 가능해요.</div></div>';
+    }
+
+    if (e && e.ex) {
+      html += '<div class="bwdui-mlb">예문</div>' +
+        '<div class="bwdui-exwrap">' +
+          '<div class="bwdui-ex">' + hl(e.ex, word) + '</div>' +
+          '<button class="bwdui-explay" data-act="exsay" aria-label="예문 듣기">🔊</button>' +
+        '</div>';
     }
 
     html += '<div class="bwdui-acts">' +
-      '<button class="bwdui-btn" data-act="speak">🔊 발음</button>' +
-      '<button class="bwdui-btn pri" data-act="add">⭐ 내 단어장에 추가</button>' +
+      '<button class="bwdui-btn add" data-act="add">⭐ 내 단어장에 추가</button>' +
       '<button class="bwdui-btn" data-act="copy">📋 복사</button>' +
       '</div>';
 
     if (rel.length) {
-      html += '<div class="bwdui-rel"><span class="lb">관련 단어</span>';
+      html += '<div class="bwdui-rel"><span class="lb">관련 단어</span><div class="bwdui-chips">';
       for (var i = 0; i < rel.length; i++) html += '<span class="bwdui-chip" data-rel="' + esc(rel[i]) + '">' + esc(rel[i]) + '</span>';
-      html += '</div>';
+      html += '</div></div>';
     }
     html += '</div>';
 
     results.innerHTML = html;
+    results.scrollTop = 0;
 
     var card = results.querySelector('.bwdui-card');
-    card.querySelector('[data-act="speak"]').addEventListener('click', function () { say(word); });
+    card.querySelector('[data-act="say"]').addEventListener('click', function () { say(word); });
+    card.querySelector('[data-act="spell"]').addEventListener('click', function () { spellOut(word); });
+    var exb = card.querySelector('[data-act="exsay"]');
+    if (exb) exb.addEventListener('click', function () { say(e.ex, 0.9); });
     card.querySelector('[data-act="add"]').addEventListener('click', function () { addToBook(word); });
     card.querySelector('[data-act="copy"]').addEventListener('click', function () {
       var txt = word + (e && e.kr ? ' — ' + e.kr : '');
@@ -347,7 +475,7 @@
     });
     var chips = card.querySelectorAll('[data-rel]');
     for (var c = 0; c < chips.length; c++) {
-      (function (chip) { chip.addEventListener('click', function () { input.value = chip.getAttribute('data-rel'); showWord(chip.getAttribute('data-rel')); }); })(chips[c]);
+      (function (chip) { chip.addEventListener('click', function () { showWord(chip.getAttribute('data-rel')); }); })(chips[c]);
     }
   }
 
@@ -368,8 +496,6 @@
       if (typeof wordExistsInCurrentBook === 'function' && wordExistsInCurrentBook(word)) { toastMsg('이미 있는 단어예요 (현재 단어장)'); return; }
       if (typeof saveWordToCurrentBook === 'function') saveWordToCurrentBook(w);
       else { var S = ST(); if (S) { S.words = S.words || []; S.words.push(w); } }
-      var S2 = ST();
-      if (typeof srsRate === 'function' && S2 && S2.srsMap && !S2.srsMap[word]) { try { srsRate(word, 1); } catch (e2) {} }
       if (typeof logStudy === 'function') { try { logStudy('words', word); } catch (e3) {} }
       if (typeof sv === 'function') sv();
       toastMsg('⭐ 내 단어장에 추가했어요');
@@ -395,12 +521,11 @@
   function boot() {
     if (!document.body) { setTimeout(boot, 60); return; }
     build();
-    // go()가 아직 준비 안 됐을 수 있으니 잠깐 재시도
+    try { if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); } catch (e) {}
     var tries = 0;
     var iv = setInterval(function () {
       if (hookGo() || ++tries > 40) clearInterval(iv);
     }, 150);
-    // 게임 시작/종료 등 상태 변화 대비 가벼운 주기 점검
     setInterval(updateVis, 1200);
   }
 

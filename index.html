@@ -3660,6 +3660,8 @@ function _migratePackWords() {
 }
 
 function sv() {
+  // 잡 키(순수 숫자/빈 문자열) 마크 제거 — 단어가 아닌 마크가 저장·Firebase 동기화되지 않도록
+  try{ if(S.markMap) Object.keys(S.markMap).forEach(function(k){ if(!k||/^[0-9]+$/.test(k)) delete S.markMap[k]; }); }catch(e){}
   localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-xp',S.xp);
   localStorage.setItem('wd-st',S.streak); localStorage.setItem('wd-dt',S.lastDate);
   localStorage.setItem('wd-nk',S.nick);
@@ -8002,8 +8004,10 @@ function rHome() {
   const todayWords = todayLog.words||0;
   const todayQuiz = todayLog.quiz||0;
   const markDone = (typeof countMemorized==='function') ? countMemorized('today') : 0;
-  const totalWordsCount = (S.words||[]).length;
-  const bookMemo = (S.words||[]).filter(w=>(S.markMap||{})[w.en]===1).length;
+  const _hbWords = (typeof getCurrentBookWords==='function') ? (getCurrentBookWords()||[]) : (S.words||[]);
+  const _hbMark = (typeof getCurrentBookMarkMap==='function') ? (getCurrentBookMarkMap()||{}) : (S.markMap||{});
+  const totalWordsCount = _hbWords.length;
+  const bookMemo = _hbWords.filter(w=>_hbMark[w.en]===1).length;
   const bookPct = totalWordsCount ? Math.round(bookMemo/totalWordsCount*100) : 0;
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -8052,7 +8056,7 @@ function rHome() {
   const totalWeekMin=last7.reduce((s,d)=>s+d.min,0);
   const fmtM=m=>m<1?Math.round(m*60)+'초':m<60?Math.round(m)+'분':Math.floor(m/60)+'h'+(m%60>0?' '+Math.round(m%60)+'m':'');
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div style="font-size:12px;font-weight:800;color:#111">📅 이번 주 학습 현황</div>
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:10px;color:#9CA3AF">최근 7일</span>
@@ -8063,7 +8067,7 @@ function rHome() {
       </div>
     </div>
     <!-- 막대 그래프 + 세부 정보 -->
-    <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:8px">
+    <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-top:10px;margin-bottom:8px">
       ${last7.map(d=>{
         const val=isTimeView?d.min:d.total;
         const maxV=isTimeView?maxMin:maxDay;

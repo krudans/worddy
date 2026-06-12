@@ -25,6 +25,7 @@
 :root {
   /* ── 라이트 테마 (기본) ── */
   --theme: #3B82F6;
+  --theme-rgb: 59, 130, 246;
   --theme-d: #1D4ED8;
   --theme-soft: #BFDBFE;
   --theme-tint: #EFF6FF;
@@ -1103,6 +1104,7 @@ const PET_COLORS = {
   green:  {main:'#22C55E', dark:'#15803D', soft:'#BBF7D0', tint:'#F0FDF4', light:'#F0FDF4', name:'초록'},
   yellow: {main:'#EAB308', dark:'#A16207', soft:'#FDE68A', tint:'#FEFCE8', light:'#FEFCE8', name:'노랑'},
 };
+function _hexToRgb(h){ h=String(h||'').replace('#',''); if(h.length===3) h=h.split('').map(function(c){return c+c;}).join(''); var n=parseInt(h,16)||0; return (n>>16&255)+', '+(n>>8&255)+', '+(n&255); }
 function applyThemeVars(pc){
   pc = pc || (typeof PET_COLORS!=='undefined' ? (PET_COLORS[getPetColor()]||PET_COLORS.green) : null);
   if(!pc) return;
@@ -1111,6 +1113,7 @@ function applyThemeVars(pc){
   r.setProperty('--theme-d', pc.dark||pc.main);
   r.setProperty('--theme-soft', pc.soft||pc.main);
   r.setProperty('--theme-tint', pc.tint||pc.light||(pc.main+'1A'));
+  r.setProperty('--theme-rgb', _hexToRgb(pc.main));
 }
 
 function showPersonalityQ() {
@@ -2940,7 +2943,7 @@ function showSpeakMode() {
       </div>
       <!-- 안내 -->
       <div style="text-align:center;padding:6px;flex-shrink:0">
-        <div style="font-size:12px;color:#A78BFA;font-weight:700;background:rgba(124,58,237,.2);border-radius:20px;padding:5px 16px;display:inline-block">🗣️ 뜻을 보고 영어로 말하세요</div>
+        <div style="font-size:12px;color:var(--theme);font-weight:700;background:var(--theme-tint);border-radius:20px;padding:5px 16px;display:inline-block">🗣️ 뜻을 보고 영어로 말하세요</div>
       </div>
       <!-- 카드 -->
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;height:300px;overflow:hidden">
@@ -2951,7 +2954,7 @@ function showSpeakMode() {
           <!-- 영어 (탭해서 확인) -->
           ${show
             ? `<div style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;margin-top:4px">
-                <div style="font-size:${w.en.length>12?'24px':w.en.length>8?'30px':'36px'};font-weight:900;font-family:monospace;color:#A78BFA">${w.en}</div>
+                <div style="font-size:${w.en.length>12?'24px':w.en.length>8?'30px':'36px'};font-weight:900;font-family:monospace;color:var(--theme)">${w.en}</div>
                 <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${w.en.replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="margin-top:10px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);border-radius:10px;padding:6px 16px;color:#A78BFA;font-size:12px;font-weight:700;cursor:pointer">🔊 발음 확인</button>
                </div>`
             : `<button onclick="window._spkShow=true;_spkRender()" style="margin-top:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:10px 20px;color:rgba(255,255,255,.7);font-size:13px;font-weight:700;cursor:pointer">탭해서 확인</button>`}
@@ -5293,17 +5296,9 @@ function _isSentenceBook(ws){
 
 // ── 학습량(단어+퀴즈) → 색상 티어 (10단계 100개 단위, 캘린더/주간차트 공통) ──
 function _wordTierColor(n){
-  if(n===0) return '#F3F4F6';
-  if(n<=100) return '#E0EFFF';
-  if(n<=200) return 'var(--theme-soft)';
-  if(n<=300) return '#93C5FD';
-  if(n<=400) return '#60A5FA';
-  if(n<=500) return '#3B82F6';
-  if(n<=600) return '#2563EB';
-  if(n<=700) return '#1D4ED8';
-  if(n<=800) return '#1E40AF';
-  if(n<=900) return '#1E3A8A';
-  return '#172554';
+  if(n===0) return 'var(--bg-sub,#F3F4F6)';
+  var op = n<=100?0.16 : n<=200?0.28 : n<=300?0.40 : n<=400?0.52 : n<=500?0.63 : n<=600?0.73 : n<=700?0.82 : n<=800?0.90 : n<=900?0.96 : 1;
+  return 'rgba(var(--theme-rgb), '+op+')';
 }
 
 // ── 학습 탭 ──
@@ -5344,7 +5339,7 @@ function rLearnTab() {
      fn:"startMode('auto')", hot:false},
     {id:'flash', ic:'⚡', nm:'플래시카드', dc:'카드 넘기며 빠르게 암기',
      badge: words.length>0 ? `${pct}% 암기` : '단어 없음',
-     badgeColor: pct>=80?'#16A34A':pct>=40?'#D97706':'#6366F1',
+     badgeColor: pct>=80?'#16A34A':pct>=40?'#D97706':'var(--theme)',
      sub: words.length>0 ? `${marked}/${words.length}개 외웠음` : '단어장에 단어를 추가하세요',
      fn:"S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:todayLog.words===0},
     {id:'speak', ic:'🗣️', nm:'말하기', dc:'뜻 보고 영어로 말하기',
@@ -5373,16 +5368,16 @@ function rLearnTab() {
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;font-weight:600;color:var(--text2,#374151)">암기 진행률</span>
-        <span style="font-size:13px;font-weight:800;color:#6366F1">${marked}/${words.length} · ${pct}%</span>
+        <span style="font-size:13px;font-weight:800;color:var(--theme)">${marked}/${words.length} · ${pct}%</span>
       </div>
       <div style="background:var(--border,#E2E8F0);border-radius:99px;height:8px;overflow:hidden">
-        <div style="height:100%;background:#6366F1;border-radius:99px;width:${pct}%;transition:width .5s"></div>
+        <div style="height:100%;background:var(--theme);border-radius:99px;width:${pct}%;transition:width .5s"></div>
       </div>
     </div>
     <!-- 오늘 3칸: 학습 단어 + 외운 단어 + 공부시간 -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-        <div style="font-size:22px;font-weight:900;color:#6366F1">${todayLog.words||0}</div>
+        <div style="font-size:22px;font-weight:900;color:var(--theme)">${todayLog.words||0}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
@@ -5405,7 +5400,7 @@ function rLearnTab() {
 
     <!-- 추천 카드 -->
     ${modes.filter(m=>m.id===recommend).map(m=>`
-    <div onclick="${m.fn}" style="position:relative;border-radius:16px;overflow:hidden;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,.25);background:#6366F1">
+    <div onclick="${m.fn}" style="position:relative;border-radius:16px;overflow:hidden;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,.25);background:var(--theme)">
       <div style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,.22);border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;color:#fff">✨ 추천</div>
       <div style="padding:18px 18px 14px">
         <div style="font-size:30px;margin-bottom:8px">${m.ic}</div>
@@ -5439,15 +5434,15 @@ function rLearnTab() {
         <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">이번 주 학습</div>
         <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">${_active7}일 활동 · ${_week_words.toLocaleString()}단어</div>
       </div>
-      <div style="font-size:16px;font-weight:900;color:#6366F1">${_week_min}분</div>
+      <div style="font-size:16px;font-weight:900;color:var(--theme)">${_week_min}분</div>
     </div>
     <div style="display:flex;align-items:flex-end;gap:3px;height:64px">
       ${_hist14.map(d=>{
         const h = Math.max(Math.round((d.words/_maxH)*44), d.words>0?5:0);
         const color = d.words>0 ? _wordTierColor(d.words) : '#E5E7EB';
         return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:64px">
-          <div style="width:100%;border-radius:4px 4px 0 0;background:${color};height:${h}px;min-height:${d.words>0?4:2}px${d.isToday?';outline:2px solid #6366F1;outline-offset:1px':''}"></div>
-          <div style="font-size:8px;color:${d.isToday?'#6366F1':'var(--text3,#9CA3AF)'};font-weight:${d.isToday?'700':'400'}">${d.dow}</div>
+          <div style="width:100%;border-radius:4px 4px 0 0;background:${color};height:${h}px;min-height:${d.words>0?4:2}px${d.isToday?';outline:2px solid var(--theme);outline-offset:1px':''}"></div>
+          <div style="font-size:8px;color:${d.isToday?'var(--theme)':'var(--text3,#9CA3AF)'};font-weight:${d.isToday?'700':'400'}">${d.dow}</div>
         </div>`;
       }).join('')}
     </div>
@@ -5455,16 +5450,16 @@ function rLearnTab() {
     <div style="display:flex;align-items:center;gap:4px;margin-top:10px;flex-wrap:wrap">
       <span style="font-size:9px;color:#9CA3AF">0</span>
       <div style="width:11px;height:11px;border-radius:3px;background:#F3F4F6;border:1px solid #E5E7EB"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#E0EFFF"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:var(--theme-soft)"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#93C5FD"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#60A5FA"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#3B82F6"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#2563EB"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#1D4ED8"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#1E40AF"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#1E3A8A"></div>
-      <div style="width:11px;height:11px;border-radius:3px;background:#172554"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.16)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.28)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.4)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.52)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.63)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.73)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.82)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.9)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 0.96)"></div>
+      <div style="width:11px;height:11px;border-radius:3px;background:rgba(var(--theme-rgb), 1)"></div>
       <span style="font-size:9px;color:#9CA3AF">1,000단어</span>
       <span style="font-size:9px;color:#9CA3AF;margin-left:auto">100단위</span>
     </div>
@@ -5473,7 +5468,7 @@ function rLearnTab() {
   <!-- 기간별 통계 -->
   <div style="margin:0 14px 24px">
     <div style="display:flex;gap:6px;margin-bottom:12px">
-      ${['week','month','all'].map((p,i)=>`<button onclick="window._statPeriod='${p}';go('learn')" style="flex:1;padding:8px 4px;border-radius:10px;border:1.5px solid ${(window._statPeriod||'week')===p?'#6366F1':'var(--border,#E2E8F0)'};font-size:11px;font-weight:700;cursor:pointer;background:${(window._statPeriod||'week')===p?'#EEF2FF':'var(--bg-card,#fff)'};color:${(window._statPeriod||'week')===p?'#6366F1':'var(--text3,#9CA3AF)'}">${['최근 1주','최근 1달','전체'][i]}</button>`).join('')}
+      ${['week','month','all'].map((p,i)=>`<button onclick="window._statPeriod='${p}';go('learn')" style="flex:1;padding:8px 4px;border-radius:10px;border:1.5px solid ${(window._statPeriod||'week')===p?'var(--theme)':'var(--border,#E2E8F0)'};font-size:11px;font-weight:700;cursor:pointer;background:${(window._statPeriod||'week')===p?'#EEF2FF':'var(--bg-card,#fff)'};color:${(window._statPeriod||'week')===p?'var(--theme)':'var(--text3,#9CA3AF)'}">${['최근 1주','최근 1달','전체'][i]}</button>`).join('')}
     </div>
     ${(()=>{
       const p=window._statPeriod||'week';
@@ -5489,10 +5484,10 @@ function rLearnTab() {
       const _pLabel=p==='week'?'최근 1주':p==='month'?'최근 1달':'전체';
       return `<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:14px;padding:13px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:11px;font-weight:700;color:#4F46E5">총 학습 단어</div>
-          ${ta>0?`<div style="font-size:10px;color:#818CF8;margin-top:2px">일평균 ${avgW}단어 · ${avgM}분</div>`:''}
+          <div style="font-size:11px;font-weight:700;color:var(--theme-d)">총 학습 단어</div>
+          ${ta>0?`<div style="font-size:10px;color:var(--theme);margin-top:2px">일평균 ${avgW}단어 · ${avgM}분</div>`:''}
         </div>
-        <div style="font-size:24px;font-weight:900;color:#4F46E5">${tw.toLocaleString()}<span style="font-size:13px;font-weight:700">단어</span></div>
+        <div style="font-size:24px;font-weight:900;color:var(--theme-d)">${tw.toLocaleString()}<span style="font-size:13px;font-weight:700">단어</span></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px">
         ${[
@@ -5514,14 +5509,14 @@ function rLearnTab() {
       return `<div style="background:var(--bg-card,#fff);border-radius:14px;padding:14px;border:1px solid var(--border,#E2E8F0);box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div><div style="font-size:11px;font-weight:700;color:var(--text3,#9CA3AF)">🏆 최다 학습일</div><div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">${bestDay.k}</div></div>
-          <div style="font-size:20px;font-weight:900;color:#6366F1">${(bestDay.words||0).toLocaleString()}단어</div>
+          <div style="font-size:20px;font-weight:900;color:var(--theme)">${(bestDay.words||0).toLocaleString()}단어</div>
         </div>
       </div>`;
     })()}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       ${[
         {v:S.streak||0, lb:'🔥 연속학습', color:'#EF4444'},
-        {v:(typeof attendDays==='function')?attendDays():(S.attendCount||0), lb:'📅 총 출석', color:'#3B82F6'},
+        {v:(typeof attendDays==='function')?attendDays():(S.attendCount||0), lb:'📅 총 출석', color:'var(--theme)'},
         {v:((typeof totalEarnedXP==='function')?totalEarnedXP():(S._totalXp||0)).toLocaleString(), lb:'⚡ 누적XP', color:'var(--theme)'},
       ].map(s=>`<div style="background:var(--bg-card,#fff);border-radius:14px;padding:12px;border:1px solid var(--border,#E2E8F0);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)">
         <div style="font-size:20px;font-weight:900;color:${s.color}">${s.v}</div>
@@ -5530,7 +5525,7 @@ function rLearnTab() {
     </div>
   </div>
   </div>`;
-  return html;
+  return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }
 
 
@@ -5896,7 +5891,7 @@ function rGameOnlyTab() {
 
   const categories = [
     {
-      nm:'기억', ic:'🧠', color:'#6366F1', desc:'단어 뜻을 맞히는 게임',
+      nm:'기억', ic:'🧠', color:'var(--theme)', desc:'단어 뜻을 맞히는 게임',
       games:[
         {id:'quiz',   ic:'🎯', nm:'뜻 맞추기',   dc:'4지선다',     diff:1},
         {id:'fill',   ic:'📝', nm:'빈칸 채우기',  dc:'문장 완성',   diff:2},
@@ -5964,7 +5959,7 @@ function rGameOnlyTab() {
       return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
         ${[
           {v:_todayTotal>0?_todayTotal+'단어':'없음', lb:'오늘 게임', color:_todayTotal>0?'#F59E0B':'#9CA3AF'},
-          {v:_cleared+'/12', lb:'클리어', color:'#6366F1'},
+          {v:_cleared+'/12', lb:'클리어', color:'var(--theme)'},
           {v:_allTotal>0?_allTotal+'단어':'없음', lb:'누적 게임', color:_allTotal>0?'var(--theme)':'#9CA3AF'},
         ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:10px;padding:8px 4px;text-align:center;border:1px solid var(--border,#E2E8F0)">
           <div style="font-size:15px;font-weight:900;color:${s.color};line-height:1.2">${s.v}</div>
@@ -6017,7 +6012,7 @@ function rGameOnlyTab() {
   </div>
 
   </div>`;
-  return html;
+  return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }
 
 function rButterflyTab() {
@@ -6085,21 +6080,21 @@ function rButterflyTab() {
 
   // ── 나비를 얻는 방법 인포그래픽 (도감 앞) ──
   html += `<div style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:18px;padding:14px;margin-bottom:12px;overflow:hidden">
-    <div style="font-size:14px;font-weight:900;color:#5B21B6">🦋 나비를 얻는 방법</div>
-    <div style="font-size:11px;color:#8B7CC8;margin-bottom:12px">학습할수록 애벌레가 자라 나비가 돼요</div>
+    <div style="font-size:14px;font-weight:900;color:var(--theme-d)">🦋 나비를 얻는 방법</div>
+    <div style="font-size:11px;color:var(--theme);margin-bottom:12px">학습할수록 애벌레가 자라 나비가 돼요</div>
     <div style="display:flex;align-items:stretch;gap:3px;margin-bottom:12px">
       <div style="flex:1;text-align:center;background:rgba(255,255,255,.75);border-radius:14px;padding:10px 2px">
         <div style="font-size:26px;animation:bwj-bob 2s ease-in-out infinite">📚</div>
         <div style="font-size:11px;font-weight:800;color:#111;margin-top:3px">학습</div>
         <div style="font-size:9px;color:#9CA3AF">단어·게임 → ⚡XP</div>
       </div>
-      <div style="display:flex;align-items:center;color:#A78BFA;font-size:18px;font-weight:900;animation:bwj-arrow 1.4s ease-in-out infinite">›</div>
+      <div style="display:flex;align-items:center;color:var(--theme);font-size:18px;font-weight:900;animation:bwj-arrow 1.4s ease-in-out infinite">›</div>
       <div style="flex:1;text-align:center;background:rgba(255,255,255,.75);border-radius:14px;padding:10px 2px">
         <div style="font-size:26px;animation:bwj-bob 2s ease-in-out infinite .3s">🐛</div>
         <div style="font-size:11px;font-weight:800;color:#111;margin-top:3px">성장</div>
         <div style="font-size:9px;color:#9CA3AF">XP로 8단계 진화</div>
       </div>
-      <div style="display:flex;align-items:center;color:#A78BFA;font-size:18px;font-weight:900;animation:bwj-arrow 1.4s ease-in-out infinite .2s">›</div>
+      <div style="display:flex;align-items:center;color:var(--theme);font-size:18px;font-weight:900;animation:bwj-arrow 1.4s ease-in-out infinite .2s">›</div>
       <div style="flex:1;text-align:center;background:rgba(255,255,255,.75);border-radius:14px;padding:10px 2px">
         <div style="font-size:26px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">🦋</div>
         <div style="font-size:11px;font-weight:800;color:#111;margin-top:3px">나비 뽑기</div>
@@ -8176,7 +8171,7 @@ function renderCharBanner(opts){
   opts=opts||{};
   var lid=(typeof S!=='undefined'&&S.lid)||'egg';
   var l=(typeof lv==='function')?lv(lid):{name:''};
-  var pet=(typeof getPetState==='function')?getPetState():{bg1:'#F87171',bg2:'#EF4444',emoji:'😊'};
+  var pet=(typeof getPetState==='function')?getPetState():{emoji:'😊'};
   var curLvData=(typeof LEVELS!=='undefined')?LEVELS.find(function(x){return x.id===lid;}):null;
   var xpTarget=curLvData?(curLvData.xp||100):100;
   var xp=(typeof S!=='undefined'&&S.xp)||0;
@@ -8184,46 +8179,39 @@ function renderCharBanner(opts){
   var canLvUp=xp>=xpTarget;
   var isFinal=!!(curLvData&&curLvData.isFinal);
   var mood=(pet.emoji==='😄'||pet.emoji==='😊')?'happy':(pet.emoji==='😤'||pet.emoji==='😠')?'angry':(pet.emoji==='💀'||pet.emoji==='😢')?'danger':'normal';
-  var grad='var(--theme)';
   var nf=function(n){ try{return Number(n).toLocaleString();}catch(e){return n;} };
-  var statusTxt=isFinal?'👑 최고 레벨!':(canLvUp?'레벨업 가능! ✨':(nf(xpTarget-xp)+' XP 남음'));
-  var svg=(typeof charSVGAnimated==='function')?charSVGAnimated(lid,72,mood):'';
+  var nick=(typeof S!=='undefined'&&S.nick)||'';
   var acc=opts.accessory||'';
-  var nick=opts.nick?((typeof S!=='undefined'&&S.nick)||''):'';
-  var stats='';
-  if(opts.stats){
-    var memAll=(typeof countMemorized==='function')?countMemorized('all'):0;
-    stats='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:9px">'+
-      '<div style="background:rgba(255,255,255,.16);border-radius:9px;padding:5px 2px;text-align:center"><div style="font-size:13px;font-weight:900;color:#fff">🔥 '+((typeof S!=='undefined'&&S.streak)||0)+'</div><div style="font-size:9px;color:rgba(255,255,255,.85)">연속</div></div>'+
-      '<div style="background:rgba(255,255,255,.16);border-radius:9px;padding:5px 2px;text-align:center"><div style="font-size:13px;font-weight:900;color:#fff">📚 '+memAll+'</div><div style="font-size:9px;color:rgba(255,255,255,.85)">외운단어</div></div>'+
-      '<div id="my-rank-card" onclick="loadMyRank()" style="background:rgba(255,255,255,.16);border-radius:9px;padding:5px 2px;text-align:center;cursor:pointer"><div id="my-rank-num" style="font-size:13px;font-weight:900;color:#fff">🏆</div><div id="my-rank-sub" style="font-size:9px;color:rgba(255,255,255,.85)">내순위</div></div>'+
+  var svg=(typeof charSVGAnimated==='function')?charSVGAnimated(lid,44,mood):'';
+  var stages=(typeof LEVELS!=='undefined')?LEVELS:[];
+  var curIdx=stages.findIndex(function(x){return x.id===lid;});
+  var strip='';
+  for(var i=0;i<stages.length;i++){
+    var ic=''; try{ ic=charSVG(stages[i].id,20); }catch(e){ ic='•'; }
+    var isCur=i===curIdx, passed=i<curIdx;
+    strip+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0">'+
+      '<div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:'+(isCur?'#fff':'rgba(255,255,255,.16)')+';'+(isCur?'box-shadow:0 0 0 2px #FFC107;':'')+'opacity:'+((passed||isCur)?1:0.45)+'">'+ic+'</div>'+
+      '<span style="font-size:7px;font-weight:'+(isCur?800:600)+';color:#fff;opacity:'+(isCur?1:0.7)+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:36px">'+(stages[i].name||'')+'</span>'+
     '</div>';
+    if(i<stages.length-1) strip+='<div style="width:6px;height:2px;background:rgba(255,255,255,.3);flex:none;margin-bottom:13px"></div>';
   }
-  return '<div style="background:'+grad+';border-radius:20px;padding:16px;position:relative;overflow:hidden">'+
-    '<div style="position:absolute;top:-28px;right:-22px;width:108px;height:108px;background:rgba(255,255,255,.10);border-radius:50%;pointer-events:none"></div>'+
-    '<div style="display:flex;align-items:center;gap:14px">'+
-      '<div onclick="S.stab=\'petcare\';go(\'butterfly\')" style="cursor:pointer;flex-shrink:0;width:80px;text-align:center;position:relative">'+
-        svg+
-        (acc?'<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:26px;line-height:1">'+acc+'</div>':'')+
-        '<div style="margin-top:6px;background:rgba(0,0,0,.20);border-radius:8px;padding:2px 6px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(l.name||'')+'</div>'+
-      '</div>'+
+  var lvBtn='<div onclick="event.stopPropagation();doLevelUpBtn('+xpTarget+','+(isFinal?1:0)+')" style="flex:none;'+(canLvUp?'background:#FFD700;color:#1A1A1A':'background:rgba(255,255,255,.16);color:#fff')+';border-radius:11px;padding:7px 9px;text-align:center;font-size:11px;font-weight:800;cursor:pointer;line-height:1.25;white-space:nowrap">'+(isFinal?'🥚<br>다시':canLvUp?'⬆️<br>레벨업':'🔒<br>'+nf(xpTarget))+'</div>';
+  return '<div style="background:var(--theme);border-radius:16px;padding:11px 13px;color:#fff;position:relative;overflow:hidden">'+
+    '<div style="display:flex;align-items:center;gap:11px">'+
+      '<div onclick="S.stab=\'petcare\';go(\'butterfly\')" style="width:46px;height:46px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);border-radius:12px;cursor:pointer;position:relative">'+svg+(acc?'<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-size:18px">'+acc+'</div>':'')+'</div>'+
       '<div style="flex:1;min-width:0">'+
-        (nick?'<div style="font-size:16px;font-weight:900;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nick+'</div>':'')+
-        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px">'+
-          '<span style="font-size:14px;font-weight:800;color:#fff;white-space:nowrap">⚡ '+nf(xp)+' XP</span>'+
-          '<span style="font-size:11px;font-weight:700;color:'+(canLvUp?'#FFE9A8':'rgba(255,255,255,.85)')+';white-space:nowrap">'+statusTxt+'</span>'+
+        '<div style="display:flex;align-items:center;gap:7px">'+
+          (nick?'<span style="font-weight:900;font-size:15px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nick+'</span>':'')+
+          '<span style="font-size:10px;background:rgba(255,255,255,.22);padding:2px 7px;border-radius:99px;font-weight:700;white-space:nowrap">'+(l.name||'')+'</span>'+
+          '<span style="margin-left:auto;font-size:11px;font-weight:800;color:#fff;white-space:nowrap">⚡'+nf(xp)+' XP</span>'+
         '</div>'+
-        '<div style="background:rgba(0,0,0,.22);border-radius:99px;height:9px;overflow:hidden">'+
-          '<div style="height:100%;width:'+xpPct+'%;background:#FFC107;border-radius:99px;transition:width .6s;box-shadow:0 0 8px rgba(255,200,60,.55)"></div>'+
+        '<div style="height:5px;background:rgba(0,0,0,.22);border-radius:99px;margin-top:6px;overflow:hidden">'+
+          '<div style="height:100%;width:'+xpPct+'%;background:#FFC107;border-radius:99px;transition:width .6s"></div>'+
         '</div>'+
-        stats+
       '</div>'+
+      lvBtn+
     '</div>'+
-    '<div onclick="event.stopPropagation()" style="display:flex;gap:7px;margin-top:13px">'+
-      '<div onclick="addToCollectionConfirm({id:\'col_\'+Date.now(),lid:S.lid,level:lv(S.lid).name,emoji:lv(S.lid).emoji,addedAt:new Date().toISOString().slice(0,10)})" style="flex:1;background:rgba(255,255,255,.16);border-radius:11px;padding:9px 4px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff;white-space:nowrap">📥 도감</div>'+
-      '<div onclick="saveMyCharacter()" style="flex:1;background:rgba(255,255,255,.16);border-radius:11px;padding:9px 4px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#fff;white-space:nowrap">📸 저장</div>'+
-      '<div onclick="doLevelUpBtn('+xpTarget+','+(isFinal?1:0)+')" style="flex:1;'+(canLvUp?'background:#FFD700;color:#1A1A1A':'background:rgba(255,255,255,.16);color:#fff')+';border-radius:11px;padding:9px 4px;text-align:center;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">'+(isFinal?'🥚 다시':canLvUp?'⬆️ 레벨업':'🔒 '+nf(xpTarget))+'</div>'+
-    '</div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.12);border-radius:10px;padding:6px 7px;margin-top:9px">'+strip+'</div>'+
   '</div>';
 }
 
@@ -8904,7 +8892,7 @@ function showStreamMode() {
           <button onclick="window._stIdx=Math.max(0,window._stIdx-1);clearInterval(window._streamTimer);window._streamTimer=null;window._stRender();if(window._stPlaying){window._streamTimer=setInterval(window._stNext,window._stSpeed);}" 
             style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
           <button id="st-play-btn" onclick="window._stToggle()"
-            style="flex:2;background:#3B82F6;border:none;border-radius:18px;padding:16px;color:#fff;font-size:22px;cursor:pointer;font-weight:700;box-shadow:0 4px 20px rgba(59,130,246,.4)">⏸</button>
+            style="flex:2;background:var(--theme);border:none;border-radius:18px;padding:16px;color:#fff;font-size:22px;cursor:pointer;font-weight:700;box-shadow:0 4px 20px rgba(59,130,246,.4)">⏸</button>
           <button onclick="window._stNext()"
             style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#fff;font-size:20px;cursor:pointer">⏭</button>
         </div>
@@ -9503,25 +9491,25 @@ function rStudyBooks() {
   html += `<div style="background:var(--bg-card,#fff);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
     <div style="padding:16px;cursor:pointer" onclick="showBookWordList('내 단어장')">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div style="width:46px;height:46px;background:#667EEA;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📚</div>
+        <div style="width:46px;height:46px;background:var(--theme);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📚</div>
         <div style="flex:1">
           <div style="font-size:15px;font-weight:800;color:var(--text1,#1A1A2E)">내 단어장</div>
           <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${myCount}개 단어</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:20px;font-weight:900;color:#667EEA">${pct1}%</div>
+          <div style="font-size:20px;font-weight:900;color:var(--theme)">${pct1}%</div>
           <div style="font-size:9px;color:#9CA3AF">암기율</div>
         </div>
       </div>
       <div style="background:#EEF0FF;border-radius:8px;height:10px;overflow:hidden">
-        <div style="height:100%;background:#667EEA;border-radius:8px;width:${Math.max(pct1,pct1>0?2:0)}%;transition:width .4s;min-width:${pct1>0?'8px':'0'}"></div>
+        <div style="height:100%;background:var(--theme);border-radius:8px;width:${Math.max(pct1,pct1>0?2:0)}%;transition:width .4s;min-width:${pct1>0?'8px':'0'}"></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text3,#9CA3AF)">
         <span>✅ 외웠음 ${m1}개</span><span>📚 미암기 ${myCount-m1}개</span>
       </div>
     </div>
     <div style="display:flex;border-top:1.5px solid #E5E7EB">
-      <button onclick="S.currentBook='내 단어장';S.stab='mode';go('mybooks','mode')" style="flex:3;padding:13px 8px;background:#667EEA;color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 0 0 18px;white-space:nowrap">▶ 학습시작</button>
+      <button onclick="S.currentBook='내 단어장';S.stab='mode';go('mybooks','mode')" style="flex:3;padding:13px 8px;background:var(--theme);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 0 0 18px;white-space:nowrap">▶ 학습시작</button>
       <button onclick="S.currentBook='내 단어장';S.stab='add';go('mybooks','add')" style="flex:2;padding:13px 8px;background:var(--bg-sub,#F8F9FA);border:none;border-left:1.5px solid var(--border,#E5E7EB);font-size:12px;color:#374151;font-weight:700;cursor:pointer;white-space:nowrap">＋ 추가</button>
       <button onclick="showBookMenu&&showBookMenu('내 단어장','default')" style="flex:1;padding:13px 8px;background:var(--bg-sub,#F8F9FA);border:none;border-left:1.5px solid var(--border,#E5E7EB);font-size:20px;cursor:pointer;color:#6B7280;border-radius:0 0 18px 0">···</button>
     </div>
@@ -9537,7 +9525,7 @@ function rStudyBooks() {
     const bm=bw.filter(w=>(bk.markMap||{})[w.en]===1).length;
     const bp=bw.length?Math.min(100,Math.round(bm/bw.length*100)):0;
     const sn=bk.name.replace(/'/g,"\'");
-    const [c1,c2]=bookColors[bi%bookColors.length];
+    const c1='var(--theme)', c2='var(--theme-d)';
     const bkLivePack = bk.packId ? (S._marketPacks||[]).find(p=>p.id===bk.packId) : null;
     // 마켓팩은 오직 Firebase 최신값만 사용. 로컬 구 데이터(bk.imageUrl/emoji) 절대 사용 안 함
     const bkImageUrl = bkLivePack ? (bkLivePack.imageUrl || '') : (bk.packId ? '' : '');
@@ -9582,7 +9570,7 @@ function rStudyBooks() {
   }
 
   html += '</div></div>';
-  return html;
+  return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }
 
 function selectBookAndLearn(bookName) {
@@ -12203,7 +12191,7 @@ ${LEVELS.map(lx=>`<div style="text-align:center;opacity:${lx.min<=(S._totalXp||S
       <!-- 주요 기능 버튼 -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
         <button onclick="showAlarmSettings()" style="background:var(--theme-tint);border:1.5px solid var(--theme-soft);border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:var(--theme);cursor:pointer;text-align:left">
-          ⏰ 목표·알람 설정<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">하루 공부 목표</div>
+          🔔 알람 설정<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">공부 알림 받기</div>
         </button>
         <button onclick="showTimerSettings()" style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;padding:12px;font-size:12px;font-weight:700;color:#16A34A;cursor:pointer;text-align:left">
           ⏱ 학습 타이머<div style="font-size:10px;color:#6B7280;font-weight:500;margin-top:2px">세션 타이머</div>
@@ -13705,6 +13693,6 @@ auth.onAuthStateChanged(async user => {
 <script src="js/bwd-pron.js"></script>
 <script src="js/bwd-suggest.js"></script>
   <script src="js/bwd-fix.js?v=2"></script>
-  <script src="js/bwd-dict-ui.js?v=3"></script>
+  <script src="js/bwd-dict-ui.js?v=5"></script>
 </body>
 </html>

@@ -3606,13 +3606,6 @@ function load() {
   setTimeout(()=>{
   }, 150);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
-  // 마크 정리: 단어가 아닌 잡 키(순수 숫자/빈 문자열) 1회 제거 — 헷갈림/외움 허수 방지
-  if(!localStorage.getItem('wd-mkclean')){
-    const _cleanMarks=m=>{ if(m) Object.keys(m).forEach(k=>{ if(!k||/^\d+$/.test(k)) delete m[k]; }); };
-    _cleanMarks(S.markMap); (S.books||[]).forEach(b=>_cleanMarks(b.markMap));
-    localStorage.setItem('wd-mkclean','1');
-    try{ localStorage.setItem('wd-mk',JSON.stringify(S.markMap)); }catch(e){}
-  }
   S.books.forEach(b => { if(b.packId && b.words !== undefined) delete b.words; }); // 마켓팩 구 단어 즉시 제거
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
@@ -12478,6 +12471,12 @@ function doRestore() {
           try { localStorage.setItem("wd-mk", JSON.stringify(S.markMap)); } catch(e){}
         }
       } catch(e){ console.warn("markMap migration skip", e); }
+      // 잡 키(순수 숫자/빈 문자열) 제거 — 단어가 아닌 마크 정리 (활성 경로)
+      try {
+        var _stripJunk = function(m){ if(m) Object.keys(m).forEach(function(k){ if(!k || /^[0-9]+$/.test(k)) delete m[k]; }); };
+        _stripJunk(S.markMap); (S.books||[]).forEach(function(b){ _stripJunk(b.markMap); });
+        try { localStorage.setItem("wd-mk", JSON.stringify(S.markMap)); } catch(e){}
+      } catch(e){}
         // 전역 markMap을 현재 책과 동기화 (내 단어장 vs 책 카운트 일치)
         try {
           var _syncBk = (S.books||[]).find(function(b){return b.name===S.currentBook;});

@@ -7842,6 +7842,171 @@ function showButterflyRoll(butterfly, onClose) {
 }
 
 // ── 홈 ──
+// ══════════ 학습 목표 대시보드 (홈) ══════════
+function _planParse(s){ var p=String(s).split('-').map(Number); return new Date(p[0],(p[1]||1)-1,(p[2]||1)); }
+function _planKeyOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _planFmt(d){ return (d.getMonth()+1)+'월 '+d.getDate()+'일'; }
+function _planKstKey(d){ return new Date(d.getTime()+9*3600000).toISOString().slice(0,10); }
+function _planLoad(){ try{ return JSON.parse(localStorage.getItem('wd-plan')||'{}')||{}; }catch(e){ return {}; } }
+function _planTodayStr(){ try{ if(typeof today==='function') return today(); }catch(e){} return _planKstKey(new Date()); }
+function _planCompute(memo,target,daily,dateStr,todayStr){
+  var DAY=86400000;
+  var remain=Math.max(0,target-memo);
+  var tD=_planParse(dateStr).getTime(), nD=_planParse(todayStr).getTime();
+  var daysToTarget=Math.max(1,Math.round((tD-nD)/DAY));
+  var req=Math.ceil(remain/daysToTarget);
+  var daysAtPlan=daily>0?Math.ceil(remain/daily):999999;
+  var etaDate=new Date(nD+daysAtPlan*DAY);
+  var diffDays=Math.round((tD-etaDate.getTime())/DAY);
+  var onTrack=(daily>=req);
+  var pct=Math.min(100,Math.round(daysAtPlan/daysToTarget*100));
+  return {remain:remain, req:req, daysAtPlan:daysAtPlan, etaDate:etaDate, diffDays:diffDays, onTrack:onTrack, pct:pct, done:remain<=0};
+}
+function _nf(x){ return Math.round(x).toLocaleString(); }
+
+function renderGoalDashboard(){
+  // ── 데이터(부작용 없음) ──
+  var memo = (typeof countMemorized==='function') ? countMemorized('all') : 0;
+  var myWords, myMM;
+  if(S.currentBook==='내 단어장' || !S.currentBook){ myWords=S.words||[]; myMM=S.markMap||{}; }
+  else { try{myWords=JSON.parse(localStorage.getItem('wd-w')||'[]');}catch(e){myWords=[];} try{myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}');}catch(e){myMM={};} }
+  var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===1;}).length}];
+  (S.books||[]).forEach(function(b){ var w=(typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]; var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length}); });
+  var totalWords=books.reduce(function(s,b){return s+b.total;},0);
+  var weak=(myWords||[]).filter(function(w){return (myMM||{})[w.en]===2;}).length + (S.books||[]).reduce(function(s,b){var w=(typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[];var mm=b.markMap||{};return s+w.filter(function(x){return mm[x.en]===2;}).length;},0);
+  var act=[]; var now=new Date(); for(var i=29;i>=0;i--){var k=_planKstKey(new Date(now.getTime()-i*86400000)); act.push(((S.studyLog||{})[k]||{}).words||0);}
+
+  // ── 계획(localStorage) ──
+  var plan=_planLoad();
+  var maxTarget=Math.max(totalWords, memo+100);
+  var target=plan.target!=null?plan.target:Math.min(maxTarget, Math.max(memo+500, Math.ceil((memo+1)/500)*500));
+  var daily=plan.daily!=null?plan.daily:20;
+  var todayStr=_planTodayStr();
+  var date=plan.date||_planKeyOf(new Date(Date.now()+60*86400000));
+  window._planData={memo:memo, today:todayStr, maxTarget:maxTarget};
+
+  var c=_planCompute(memo,target,daily,date,todayStr);
+  var streak=S.streak||0;
+
+  // 색상
+  var GREEN='#16A34A', AMBER='#D97706', BLUE='#1E5FA5';
+  var vBg=c.done?'#ECFDF5':(c.onTrack?'#ECFDF5':'#FFF7ED');
+  var vCol=c.done?GREEN:(c.onTrack?GREEN:AMBER);
+  var vIcon=c.done?'🎉':(c.onTrack?'✅':'⚠️');
+  var vTitle, vSub;
+  if(c.done){ vTitle='목표 달성! 외운 단어 '+_nf(memo)+'개'; vSub='목표를 더 높여 다음 단계로 가보세요.'; }
+  else if(c.onTrack){ vTitle='계획대로예요 · 예상 완료 '+_planFmt(c.etaDate); vSub=(c.diffDays>=0?('목표일보다 '+c.diffDays+'일 빠릅니다. '):'')+'하루 '+daily+'개 페이스면 목표를 맞춰요.'; }
+  else { vTitle='지금 페이스면 목표일보다 '+Math.abs(c.diffDays)+'일 늦어요'; vSub='하루 '+c.req+'개로 올리면 '+_planFmt(_planParse(date))+'까지 맞출 수 있어요. (현재 '+daily+'개)'; }
+
+  // 책별 진척 바
+  var bp=books.filter(function(b){return b.total>0;}).sort(function(a,b){return (b.memo/b.total)-(a.memo/a.total);}).map(function(b){
+    var pc=Math.round(b.memo/b.total*100);
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">'+
+      '<div style="flex:0 0 96px;font-size:11px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(b.name)+'</div>'+
+      '<div style="flex:1;height:7px;border-radius:99px;background:#EEF2F7;overflow:hidden"><div style="width:'+Math.max(pc,pc>0?2:0)+'%;height:100%;background:'+BLUE+'"></div></div>'+
+      '<div style="flex:0 0 74px;text-align:right;font-size:10px;color:#9CA3AF">'+_nf(b.memo)+'/'+_nf(b.total)+'·'+pc+'%</div></div>';
+  }).join('');
+
+  // 활동 스파크라인
+  var mx=Math.max.apply(null,act.concat([1]));
+  var sp=act.map(function(v,idx){var h=Math.max(2,Math.round(v/mx*38));var last=idx===act.length-1;return '<div style="flex:1;height:'+h+'px;border-radius:1.5px;background:'+(last?BLUE:'#D6DEE8')+'"></div>';}).join('');
+
+  // ── HTML ──
+  return '<div style="background:var(--bg-card,#FFFFFF);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:10px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+      '<div style="font-size:13px;font-weight:800;color:#111">🎯 학습 목표</div>'+
+      '<div style="font-size:10px;color:#9CA3AF">목표를 조절하면 예상 완료일이 바뀌어요</div>'+
+    '</div>'+
+    // 컨트롤
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px">'+
+      '<div style="background:var(--bg-sub,#F3F4F6);border-radius:10px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:#9CA3AF;display:flex;justify-content:space-between"><span>목표 외운 단어</span><span id="pl-ot" style="font-weight:800;color:#111">'+_nf(target)+'</span></div>'+
+        '<input id="pl-target" type="range" min="'+Math.max(100,memo+100)+'" max="'+maxTarget+'" step="25" value="'+target+'" oninput="_planRecalc()" style="width:100%;margin-top:4px;accent-color:'+BLUE+'">'+
+      '</div>'+
+      '<div style="background:var(--bg-sub,#F3F4F6);border-radius:10px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:#9CA3AF;display:flex;justify-content:space-between"><span>하루 목표</span><span id="pl-od" style="font-weight:800;color:#111">'+daily+'개</span></div>'+
+        '<input id="pl-daily" type="range" min="5" max="60" step="1" value="'+daily+'" oninput="_planRecalc()" style="width:100%;margin-top:4px;accent-color:'+BLUE+'">'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">'+
+      '<span style="font-size:11px;color:#6B7280">목표 날짜</span>'+
+      '<input id="pl-date" type="date" value="'+date+'" onchange="_planRecalc()" style="flex:1;padding:7px 10px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:13px;color:#111;outline:none">'+
+    '</div>'+
+    // 판정 배너
+    '<div id="pl-verdict" style="border-radius:12px;padding:11px 12px;margin-bottom:12px;background:'+vBg+'">'+
+      '<div style="display:flex;gap:8px;align-items:flex-start">'+
+        '<span id="pl-vi" style="font-size:17px;line-height:1.2">'+vIcon+'</span>'+
+        '<div><div id="pl-vt" style="font-size:13px;font-weight:800;color:'+vCol+'">'+_esc(vTitle)+'</div>'+
+        '<div id="pl-vs" style="font-size:11px;color:#6B7280;margin-top:2px;line-height:1.45">'+_esc(vSub)+'</div></div>'+
+      '</div>'+
+    '</div>'+
+    // 타임라인
+    '<div style="margin-bottom:12px">'+
+      '<div style="position:relative;height:26px">'+
+        '<div style="position:absolute;top:11px;left:0;right:0;height:5px;border-radius:99px;background:#EEF2F7"></div>'+
+        '<div id="pl-fill" style="position:absolute;top:11px;left:0;height:5px;border-radius:99px;background:'+vCol+';width:'+c.pct+'%"></div>'+
+        '<div id="pl-mk" style="position:absolute;top:5px;width:2px;height:16px;background:'+vCol+';left:calc('+c.pct+'% - 1px)"></div>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:#9CA3AF;margin-top:2px"><span>오늘</span><span id="pl-tlbl">'+_planFmt(_planParse(date))+' 목표</span></div>'+
+    '</div>'+
+    // 지표
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:13px">'+
+      _planStat('외운', '<span id="pl-memo">'+_nf(memo)+'</span>')+
+      _planStat('남은', '<span id="pl-remain">'+_nf(c.remain)+'</span>')+
+      _planStat('예상 완료', '<span id="pl-eta" style="font-size:13px">'+(c.done?'완료':_planFmt(c.etaDate))+'</span>')+
+      _planStat('권장/일', '<span id="pl-req">'+(c.done?'0':c.req)+'</span>')+
+    '</div>'+
+    // 책별 진척
+    '<div style="font-size:10px;color:#9CA3AF;margin-bottom:8px">책별 진척</div>'+bp+
+    // 활동 + 연속
+    '<div style="display:flex;align-items:center;gap:10px;margin-top:11px">'+
+      '<div style="flex:1"><div style="font-size:10px;color:#9CA3AF;margin-bottom:5px">최근 30일 학습 활동</div>'+
+        '<div style="display:flex;align-items:flex-end;gap:1.5px;height:38px">'+sp+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:5px;background:#FFF7ED;color:#D97706;padding:6px 10px;border-radius:9px;font-size:12px;font-weight:800">🔥 '+streak+'일</div>'+
+    '</div>'+
+    (weak>0?('<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6B7280;margin-top:9px">⚠️ 헷갈림에 머문 단어 <b style="color:#111">'+weak+'개</b> — 복습 권장</div>'):'')+
+  '</div>';
+}
+function _planStat(label,val){
+  return '<div style="background:var(--bg-sub,#F3F4F6);border-radius:10px;padding:8px 4px;text-align:center">'+
+    '<div style="font-size:9px;color:#9CA3AF">'+label+'</div>'+
+    '<div style="font-size:15px;font-weight:900;color:#111;margin-top:1px">'+val+'</div></div>';
+}
+function _esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+var _planSaveT=null;
+function _planRecalc(){
+  try{
+    var d=window._planData||{memo:0,today:_planTodayStr(),maxTarget:9999};
+    var target=+document.getElementById('pl-target').value;
+    var daily=+document.getElementById('pl-daily').value;
+    var date=document.getElementById('pl-date').value;
+    document.getElementById('pl-ot').textContent=_nf(target);
+    document.getElementById('pl-od').textContent=daily+'개';
+    var c=_planCompute(d.memo,target,daily,date,d.today);
+    var GREEN='#16A34A',AMBER='#D97706';
+    var col=c.done?GREEN:(c.onTrack?GREEN:AMBER);
+    var bg=c.done?'#ECFDF5':(c.onTrack?'#ECFDF5':'#FFF7ED');
+    var icon=c.done?'🎉':(c.onTrack?'✅':'⚠️');
+    var vt,vs;
+    if(c.done){ vt='목표 달성! 외운 단어 '+_nf(d.memo)+'개'; vs='목표를 더 높여 다음 단계로 가보세요.'; }
+    else if(c.onTrack){ vt='계획대로예요 · 예상 완료 '+_planFmt(c.etaDate); vs=(c.diffDays>=0?('목표일보다 '+c.diffDays+'일 빠릅니다. '):'')+'하루 '+daily+'개 페이스면 목표를 맞춰요.'; }
+    else { vt='지금 페이스면 목표일보다 '+Math.abs(c.diffDays)+'일 늦어요'; vs='하루 '+c.req+'개로 올리면 '+_planFmt(_planParse(date))+'까지 맞출 수 있어요. (현재 '+daily+'개)'; }
+    document.getElementById('pl-verdict').style.background=bg;
+    document.getElementById('pl-vi').textContent=icon;
+    var vtEl=document.getElementById('pl-vt'); vtEl.textContent=vt; vtEl.style.color=col;
+    document.getElementById('pl-vs').textContent=vs;
+    document.getElementById('pl-remain').textContent=_nf(c.remain);
+    document.getElementById('pl-eta').textContent=c.done?'완료':_planFmt(c.etaDate);
+    document.getElementById('pl-req').textContent=c.done?'0':c.req;
+    document.getElementById('pl-tlbl').textContent=_planFmt(_planParse(date))+' 목표';
+    document.getElementById('pl-fill').style.width=c.pct+'%'; document.getElementById('pl-fill').style.background=col;
+    var mk=document.getElementById('pl-mk'); mk.style.left='calc('+c.pct+'% - 1px)'; mk.style.background=col;
+    clearTimeout(_planSaveT);
+    _planSaveT=setTimeout(function(){ try{ localStorage.setItem('wd-plan',JSON.stringify({target:target,daily:daily,date:date})); }catch(e){} },400);
+  }catch(e){}
+}
+
 function rHome() {
   // 스트릭 위기 체크 (오늘 아직 학습 안 함 + 스트릭>=3)
   const _todayLog = S.studyLog[today()]||{};
@@ -8055,6 +8220,7 @@ function rHome() {
   const isTimeView=S._statView==='time';
   const totalWeekMin=last7.reduce((s,d)=>s+d.min,0);
   const fmtM=m=>m<1?Math.round(m*60)+'초':m<60?Math.round(m)+'분':Math.floor(m/60)+'h'+(m%60>0?' '+Math.round(m%60)+'m':'');
+  parts.push(renderGoalDashboard());
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div style="font-size:12px;font-weight:800;color:#111">📅 이번 주 학습 현황</div>

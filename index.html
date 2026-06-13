@@ -5305,7 +5305,6 @@ function go(tab,sub) {
   }
   const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:rGameOnlyTab,butterfly:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rButterflyTab,profile:rProfile};
   const body=document.getElementById('body');
-  const _prevScroll = body ? body.scrollTop : 0;
   let newHTML; try { newHTML=(map[S.tab]||rHome)(); } catch(e) { console.error("[go() 렌더링 에러] tab="+S.tab+" stab="+S.stab, e); newHTML='<div style="padding:20px;color:red">에러: '+e.message+'</div>'; }
   // 게임 화면 자체에 ← 나가기 버튼이 있으므로 오버레이 제거
   body.innerHTML=newHTML;
@@ -5313,8 +5312,7 @@ function go(tab,sub) {
   // 광고 배너 고정 div에 렌더링
   const adEl=document.getElementById('ad-banner-fixed');
   if(adEl) adEl.innerHTML=renderAdBanner()||'';
-  // 탭 이동(네비게이션)이면 맨 위로, 같은 화면 재렌더(게임 중 버튼 등)면 현 스크롤 위치 유지
-  body.scrollTop = tab ? 0 : _prevScroll;
+  body.scrollTop=0;
   // 30일 캘린더 동적 렌더링
   requestAnimationFrame(()=>{
     const calEl = document.querySelector('[id^="cal30-"]');
@@ -11605,6 +11603,7 @@ function pickQ4(ci){
   var okk=ch.en===w.en;
   S.gRes=okk?'ok':'no';
   if(!S.gResultMap)S.gResultMap={};
+  if(typeof logStudy==='function') logStudy('quiz'); // 홈 '퀴즈 N문제' 미션 카운트 (문제당 1회)
   var qi=S.gIdx;
   if(okk){
     if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true;
@@ -11638,7 +11637,7 @@ function rQ4(){
 
   // 단어 카드
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
-  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow-y:auto;overflow-x:hidden;height:260px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
+  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
   if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   if(w.img) html+='<div style="font-size:36px;margin-bottom:8px">'+w.img+'</div>';
@@ -11739,7 +11738,7 @@ function rListenQ(){
   html+='<div style="background:#E5E7EB;border-radius:4px;height:5px;overflow:hidden"><div style="height:100%;background:var(--theme);border-radius:4px;width:'+progress+'%;transition:width .4s"></div></div>';
 
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
-  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow-y:auto;overflow-x:hidden;height:260px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;transition:background .3s">';
+  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:center;align-items:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
   if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   if(!answered){
@@ -11910,6 +11909,7 @@ function chkAnsInput(v){
   if(!S.gResultMap)S.gResultMap={};
   if(r){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; }
   else{ if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; }
+  if(typeof logStudy==='function') logStudy('quiz');
   go();
 }
 function chkT2(inputVal, ok2){
@@ -11974,7 +11974,7 @@ function hintWC(){
 function guessWC(letter){
   SFX.play('tap');vib(20);
   const hits=S.wcLetters.reduce((acc,l,i)=>{if(l.letter===letter&&l.hidden&&!S.wcGuessed.has(i)){acc.push(i);}return acc;},[]);
-  if(hits.length>0){hits.forEach(i=>S.wcGuessed.add(i));ok();}
+  if(hits.length>0){hits.forEach(i=>S.wcGuessed.add(i));ok(); var _hid=S.wcLetters.map((l,i)=>l.hidden?i:-1).filter(i=>i>=0); if(_hid.length && _hid.every(i=>S.wcGuessed.has(i))){ if(!S.gResultMap)S.gResultMap={}; S.gResultMap[S.gIdx]=true; if(typeof logStudy==='function')logStudy('quiz'); } }
   else{S.wcWrong++;ng();if(S.wcWrong>=6){setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length)S.gDone=true;const pool=(S.words.length>=2?S.words:DEFAULT_WORDS[S.lid]).filter(ww=>ww.en.length>=3);S.wcWord=rnd(pool);S.wcLetters=S.wcWord.en.split('').map((l,i2)=>{const hide=Math.random()<.5&&i2>0&&i2<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;go();},1000);}  }
   go();
 }
@@ -12207,7 +12207,7 @@ function rWordle(){
     <button class="btn" onclick="subW('${W}')" style="background:#D97706;color:#fff;width:100%">제출</button>`}
   </div>`;
 }
-function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;}go();}
+function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;if(typeof logStudy==='function')logStudy('quiz');}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;if(typeof logStudy==='function')logStudy('quiz');}go();}
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
 function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[?？]$/.test(t))return true;return /(까요|ㄹ까요|을까요|나요|은가요|는가요|습니까|ㅂ니까|읍니까)[.\u2026]?$/.test(t);}

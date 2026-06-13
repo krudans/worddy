@@ -11412,7 +11412,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -11443,7 +11443,7 @@ function startGameW(id, ws) {
   showCountdown(()=>go());
 }
 
-function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,listenq:rListenQ,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rTyping,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
+function rGame(){if(S.gDone)return rGameDone();const map={quiz:rQ4,listenq:rListenQ,fill:rFill,wordfind:rWF,chain:rChain,match:rMatch,sentence:rSentence,scramble:rScramble,typing:rTyping,wordle:rWordle,wc:rWC,ssort:rSSorting,listen:rListen};return(map[S.gameId]||rGameDone)();}
 
 function rGameDone(){
   SFX.stopBG();
@@ -11852,38 +11852,103 @@ function rFill(){
   const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
   const ex=exList[0]||'';
   const blanked=ex?ex.replace(new RegExp('\\b'+reEsc(w.en)+'\\b','gi'),'_____'):('_____ : '+w.kr);
+  const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  const otherPool=src.filter(x=>x.en!==w.en);
+  const needCount=Math.min(3,otherPool.length);
+  const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(function(){S._gCs=shuf([w,...pick(otherPool,needCount)]);return S._gCs;})();
   const answered=!!S.gAns;
   const isCorrect=S.gRes==='ok';
 
-  var html=ghdr('📝 빈칸 채우기',''+( S.gIdx+1)+'/'+S.gWords.length);
-  html+='<div style="padding:12px;display:flex;flex-direction:column;gap:10px;flex:1">';
-
-  // 예문 카드
+  var html=ghdr('📝 빈칸 채우기',''+(S.gIdx+1)+'/'+S.gWords.length);
+  html+='<div style="padding:16px 14px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:0 auto;width:100%;box-sizing:border-box">';
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
-  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;color:#fff;position:relative;overflow:hidden;min-height:230px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center">';
+  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;color:#fff;position:relative;overflow:hidden;min-height:200px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:22px;opacity:.15">🦋</div>';
+  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   html+='<div style="font-size:11px;opacity:.7;margin-bottom:10px">빈칸에 들어갈 단어는?</div>';
   html+='<div style="font-size:18px;line-height:1.6;font-style:italic;color:#fff">'+blanked+'</div>';
   if(w.kr) html+='<div style="font-size:13px;opacity:.7;margin-top:8px">뜻: '+w.kr+'</div>';
-  html+='<div style="margin-top:12px;font-size:16px;font-weight:800;visibility:'+(answered?'visible':'hidden')+'">'+(answered?(isCorrect?'✅ 정답!':'❌ 정답: <span style="color:#FDE68A">'+w.en+'</span>'):'✅ 정답!')+'</div>';
+  html+='<div style="margin-top:12px;font-size:16px;font-weight:800;visibility:'+(answered?'visible':'hidden')+'">'+(answered?(isCorrect?'✅ 정답!':'❌ 정답: '+w.en):'✅ 정답!')+'</div>';
   html+='</div>';
-
-  // 입력 영역
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  cs.forEach(function(ch,_ci){
+    var isAns=ch.en===w.en; var picked=answered&&S.gAns===ch.en;
+    var bg,border,col;
+    if(!answered){bg='#fff';border='#E5E7EB';col='#111';}
+    else if(isAns){bg='#F0FDF4';border='#22C55E';col='#166534';}
+    else if(picked){bg='#FEF2F2';border='#EF4444';col='#991B1B';}
+    else{bg='#F9FAFB';border='#E5E7EB';col='#9CA3AF';}
+    var oc=answered?'':('pickQ4('+_ci+')');
+    html+='<button onclick="'+oc+'" style="background:'+bg+';border:2px solid '+border+';border-radius:16px;padding:16px 10px;font-size:15px;font-weight:700;color:'+col+';cursor:'+(answered?'default':'pointer')+';text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);min-height:54px;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif">'+(isAns&&answered?'✅ ':'')+(picked&&!isAns?'❌ ':'')+ch.en+'</button>';
+  });
+  html+='</div>';
+  if(answered && !isCorrect){
+    html+='<button onclick="S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go()" style="width:100%;padding:14px;border:none;border-radius:16px;background:#111;color:#fff;font-size:16px;font-weight:800;cursor:pointer">'+(S.gIdx+1>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
+  }
+  html+='</div>';
+  if(answered){ _clearQTimer(); } else { _armQTimer(); }
+  return html;
+}
+function _scInit(){
+  var w=S.gWords[S.gIdx]; if(!w)return;
+  var ltrs=w.en.split('');
+  S.scLetters=shuf(ltrs.map(function(c,i){return {ch:c,id:i,used:false};}));
+  // 섞었는데 원래 순서면 한 번 더 섞기
+  if(S.scLetters.map(function(t){return t.ch;}).join('')===w.en && w.en.length>1){ S.scLetters=shuf(S.scLetters); }
+  S.scBuilt=[]; S._scIdx=S.gIdx;
+}
+function scTap(slotId){
+  if(S.gAns)return;
+  var t=(S.scLetters||[]).find(function(x){return x.id===slotId;});
+  if(!t||t.used)return;
+  t.used=true; S.scBuilt.push(t); go();
+  var w=S.gWords[S.gIdx];
+  var built=S.scBuilt.map(function(x){return x.ch;}).join('');
+  if(built.length>=w.en.length){
+    var r=built.toLowerCase()===w.en.toLowerCase();
+    S.gAns=built; S.gRes=r?'ok':'no';
+    if(!S.gResultMap)S.gResultMap={};
+    if(r){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; if(typeof window._markBtnXP==='function')window._markBtnXP(w.en,1); }
+    else{ if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; }
+    if(typeof logStudy==='function')logStudy('quiz');
+    go();
+    var qi=S.gIdx;
+    var d=r?((S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):800):3000;
+    setTimeout(function(){ if(S.gAns&&S.gIdx===qi){S.gAns=null;S.gRes=null;S.scLetters=null;S.scBuilt=null;S.gIdx++;go();} },d);
+  }
+}
+function scBack(){ if(S.gAns||!S.scBuilt||!S.scBuilt.length)return; var t=S.scBuilt.pop(); if(t)t.used=false; go(); }
+function rScramble(){
+  const w=S.gWords[S.gIdx];
+  if(!w){S.gDone=true;return rGame();}
+  if(!S.scLetters||S._scIdx!==S.gIdx) _scInit();
+  const answered=!!S.gAns;
+  const isCorrect=S.gRes==='ok';
+  var html=ghdr('🔀 스크램블',''+(S.gIdx+1)+'/'+S.gWords.length);
+  html+='<div style="padding:16px 14px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:0 auto;width:100%;box-sizing:border-box">';
+  var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
+  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden;min-height:180px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
+  if(w.img) html+='<div style="font-size:34px;margin-bottom:6px">'+w.img+'</div>';
+  html+='<div style="font-size:13px;opacity:.8;margin-bottom:6px">철자를 순서대로 탭하세요</div>';
+  html+='<div style="font-size:22px;font-weight:900;margin-bottom:8px">'+w.kr+'</div>';
+  var builtStr=(S.scBuilt||[]).map(function(x){return x.ch;}).join('');
+  html+='<div style="font-size:26px;font-weight:900;font-family:Georgia,serif;letter-spacing:3px;min-height:34px">'+(builtStr||'&nbsp;')+'</div>';
+  html+='<div style="margin-top:8px;font-size:16px;font-weight:800;visibility:'+(answered?'visible':'hidden')+'">'+(answered?(isCorrect?'✅ 정답!':'❌ 정답: '+w.en):'✅ 정답!')+'</div>';
+  html+='</div>';
   if(!answered){
-    html+='<input id="fill-inp" type="text" placeholder="영단어를 입력하세요..." autocomplete="off" '
-      +'style="width:100%;padding:14px;border:2px solid #E5E7EB;border-radius:14px;font-size:16px;outline:none;box-sizing:border-box;text-align:center;font-family:monospace" '
-      +'onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(!v)return;chkAnsInput(v);}">';
-    html+='<button onclick="var v=document.getElementById(\'fill-inp\').value.trim();if(!v)return;chkAnsInput(v)" '
-      +'style="width:100%;padding:14px;border:none;border-radius:14px;background:var(--theme);color:#fff;font-size:16px;font-weight:800;cursor:pointer">확인</button>';
-  } else {
-    html+='<button onclick="S.gAns=null;S.gRes=null;S.gIdx++;go()" '
-      +'style="width:100%;padding:14px;border:none;border-radius:16px;background:#111;color:#fff;font-size:16px;font-weight:800;cursor:pointer">'
-      +(S.gIdx+1>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
+    html+='<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">';
+    S.scLetters.forEach(function(t){
+      var u=t.used;
+      html+='<button onclick="scTap('+t.id+')" '+(u?'disabled':'')+' style="min-width:46px;height:50px;padding:0 6px;border-radius:12px;border:2px solid '+(u?'#E5E7EB':'var(--theme)')+';background:'+(u?'#F3F4F6':'#fff')+';color:'+(u?'#CBD5E1':'var(--theme)')+';font-size:22px;font-weight:900;font-family:Georgia,serif;cursor:'+(u?'default':'pointer')+'">'+t.ch.toUpperCase()+'</button>';
+    });
+    html+='</div>';
+    html+='<button onclick="scBack()" style="width:100%;padding:12px;border:none;border-radius:14px;background:#F3F4F6;color:#374151;font-size:14px;font-weight:800;cursor:pointer">⌫ 지우기</button>';
+  } else if(!isCorrect){
+    html+='<button onclick="S.gAns=null;S.gRes=null;S.scLetters=null;S.scBuilt=null;S.gIdx++;go()" style="width:100%;padding:14px;border:none;border-radius:16px;background:#111;color:#fff;font-size:16px;font-weight:800;cursor:pointer">'+(S.gIdx+1>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
   }
   html+='</div>';
   return html;
 }
-
 function rTyping(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
@@ -11953,12 +12018,13 @@ function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toL
 function rWC(){
   if(!S.wcWord){S.gDone=true;return rGame();}
   const w=S.wcWord;
+  const _wcUp=(S.wcCase||'upper')!=='lower';
   const visibleWord=S.wcLetters.map((l,i)=>{
-    if(!l.hidden||S.wcGuessed.has(i)) return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:var(--theme);margin:0 2px;border-bottom:3px solid var(--theme);padding:0 4px">${l.letter.toUpperCase()}</span>`;
+    if(!l.hidden||S.wcGuessed.has(i)) return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:var(--theme);margin:0 2px;border-bottom:3px solid var(--theme);padding:0 4px">${_wcUp?l.letter.toUpperCase():l.letter.toLowerCase()}</span>`;
     return `<span style="font-size:24px;font-weight:900;font-family:monospace;color:transparent;margin:0 2px;border-bottom:3px solid ${S.wcWrong>=6?'#DC2626':'var(--theme-soft)'};padding:0 4px">_</span>`;
   }).join('');
   const allDone=S.wcLetters.every((l,i)=>!l.hidden||S.wcGuessed.has(i));
-  if(allDone){S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
+  if(allDone && !S._wcAdv){S._wcAdv=true;S.gScore+=Math.max(0,(6-S.wcWrong)*20);ok();setTimeout(()=>{S._wcAdv=false;S.gIdx++;if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
       // 다음 단어는 S.gWords에서
       const nw=S.gWords[S.gIdx];
       if(!nw){S.gDone=true;go();return;}
@@ -11975,12 +12041,13 @@ function rWC(){
     <div style="background:var(--theme-tint);border-radius:20px;padding:20px;text-align:center;border:3px solid var(--theme-soft)">
       <div style="font-size:64px;margin-bottom:8px">${w.img||'📝'}</div>
       <div style="font-size:14px;color:#6B7280;margin-bottom:8px">뜻: <strong style="color:var(--theme)">${w.kr}</strong></div>
+      <div style="display:flex;gap:6px;justify-content:center;margin-bottom:6px"><button onclick="S.wcCase='upper';go()" style="padding:5px 14px;border-radius:8px;border:1.5px solid ${_wcUp?'var(--theme)':'#E5E7EB'};background:${_wcUp?'var(--theme)':'#fff'};color:${_wcUp?'#fff':'#6B7280'};font-size:12px;font-weight:800;cursor:pointer;font-family:monospace">ABC</button><button onclick="S.wcCase='lower';go()" style="padding:5px 14px;border-radius:8px;border:1.5px solid ${!_wcUp?'var(--theme)':'#E5E7EB'};background:${!_wcUp?'var(--theme)':'#fff'};color:${!_wcUp?'#fff':'#6B7280'};font-size:12px;font-weight:800;cursor:pointer;font-family:monospace">abc</button></div>
       <div style="display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:4px;margin:8px 0">${visibleWord}</div>
       <div style="font-size:12px;color:#9CA3AF;margin-top:8px">오답: ${S.wcWrong}/6</div>
       <button onclick="hintWC()" style="margin-top:8px;background:#FEF3C7;border:1.5px solid #FCD34D;border-radius:10px;padding:6px 14px;font-size:11px;font-weight:700;color:#B45309;cursor:pointer">💡 힌트 (-10점)</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center">
-${allKeys.map(letter=>{const guessedIdx=S.wcLetters.findIndex((l,i)=>l.letter===letter&&l.hidden&&S.wcGuessed.has(i));const isCorrect=guessedIdx>=0;const isWrong=[...S.wcGuessed].some(i=>S.wcLetters[i]?.letter===letter&&!S.wcLetters[i]?.hidden)||(!isCorrect&&[...Array(26)].some((_,i)=>S.wcGuessed.has&&false)); return `<button onclick="guessWC('${letter}')" style="width:32px;height:36px;background:${isCorrect?'#DCFCE7':isWrong?'#FEE2E2':'#fff'};border:1.5px solid ${isCorrect?'#86EFAC':isWrong?'#FECDD3':'#E5E7EB'};border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace;color:${isCorrect?'#16A34A':isWrong?'#DC2626':'#111'}">${letter.toUpperCase()}</button>`;}).join('')}
+${allKeys.map(letter=>{const guessedIdx=S.wcLetters.findIndex((l,i)=>l.letter===letter&&l.hidden&&S.wcGuessed.has(i));const isCorrect=guessedIdx>=0;const isWrong=[...S.wcGuessed].some(i=>S.wcLetters[i]?.letter===letter&&!S.wcLetters[i]?.hidden)||(!isCorrect&&[...Array(26)].some((_,i)=>S.wcGuessed.has&&false)); return `<button onclick="guessWC('${letter}')" style="width:32px;height:36px;background:${isCorrect?'#DCFCE7':isWrong?'#FEE2E2':'#fff'};border:1.5px solid ${isCorrect?'#86EFAC':isWrong?'#FECDD3':'#E5E7EB'};border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace;color:${isCorrect?'#16A34A':isWrong?'#DC2626':'#111'}">${_wcUp?letter.toUpperCase():letter.toLowerCase()}</button>`;}).join('')}
     </div>
   </div>`;
 }

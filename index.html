@@ -8756,7 +8756,7 @@ async function renderHomeRank() {
 function showBooksModal() {
   // books 구조: [{name, words:[], markMap:{}, learned:[]}]
   // 현재 words를 기본 단어장으로 취급
-  const allBooks = [{name:'내 단어장', cnt:S.words.length, isDefault:true}, ...(S.books||[]).map(b=>({name:b.name, cnt:(b.words||[]).length, isDefault:false}))];
+  const allBooks = [{name:'내 단어장', cnt:S.words.length, isDefault:true}, ...(S.books||[]).map(b=>({name:b.name, cnt:((typeof getBookWords==='function'?getBookWords(b):null)||b.words||[]).length, isDefault:false}))];
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:17px;font-weight:800;margin-bottom:14px">📚 내 단어장</div>
@@ -8769,7 +8769,7 @@ function showBooksModal() {
             <div style="font-size:11px;color:var(--text3,#9CA3AF)">${b.cnt}개 단어</div>
           </div>
           ${b.name===S.currentBook?'<span style="font-size:12px;background:var(--theme);color:#fff;padding:3px 10px;border-radius:20px;font-weight:700">현재</span>':''}
-          ${!b.isDefault?`<button onclick="event.stopPropagation();deleteBook('${b.name.replace(/'/g,"\\'")}');showBooksModal()" style="background:none;border:none;color:#FCA5A5;font-size:18px;cursor:pointer">×</button>`:''}
+          ${!b.isDefault?`<button onclick="event.stopPropagation();_confirmDeleteBook('${b.name.replace(/'/g,"\\'")}',true)" style="background:none;border:none;color:#FCA5A5;font-size:18px;cursor:pointer">×</button>`:''}
         </div>`).join('')}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -9807,14 +9807,17 @@ function showBookMenu(name, type) {
   </div></div>`;
 }
 
-function _confirmDeleteBook(name) {
-  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
+function _confirmDeleteBook(name, fromModal) {
+  const esc = String(name).replace(/'/g,"\\'");
+  const back = fromModal ? `showBooksModal()` : `cm()`;
+  const after = fromModal ? `showBooksModal()` : `cm();go()`;
+  document.getElementById('mr').innerHTML=`<div class="mbg" onclick="${back}"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
     <div style="font-size:36px;margin-bottom:12px">🗑️</div>
     <div style="font-size:16px;font-weight:800;margin-bottom:8px">"${name}" 삭제</div>
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px">단어장을 삭제할까요?<br>단어 데이터도 함께 삭제됩니다.</div>
     <div style="display:flex;gap:8px">
-      <button onclick="cm()" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button onclick="cm();const _db=S.books?.find(x=>x.name==='${name.replace(/'/g,"\\'")}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});}S.books=S.books?.filter(x=>x.name!=='${name.replace(/'/g,"\\'")}');if(S.currentBook==='${name.replace(/'/g,"\\'")}')S.currentBook='내 단어장';sv();go();toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+      <button onclick="${back}" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
+      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});}S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')S.currentBook='내 단어장';sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
     </div>
   </div></div>`;
 }

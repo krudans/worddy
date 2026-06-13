@@ -255,8 +255,8 @@ body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:var(-
 .word-card{border-radius:24px;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;border:3px solid}
 .wave{display:flex;align-items:center;gap:3px;height:24px}
 .wave-bar{width:4px;border-radius:2px;animation:wave-anim 0.8s ease-in-out infinite}
-.wf-grid{display:inline-grid;gap:3px;background:#F3F4F6;padding:8px;border-radius:12px}
-.wf-cell{width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;background:#fff;border-radius:7px;cursor:pointer;font-family:monospace;border:1.5px solid #E5E7EB;transition:all .15s;user-select:none}
+.wf-grid{display:grid;gap:3px;background:#F3F4F6;padding:8px;border-radius:12px;width:100%;max-width:360px;box-sizing:border-box}
+.wf-cell{aspect-ratio:1;width:auto;height:auto;min-width:0;display:flex;align-items:center;justify-content:center;font-size:clamp(10px,3.3vw,15px);font-weight:800;background:#fff;border-radius:6px;cursor:pointer;font-family:monospace;border:1.5px solid #E5E7EB;transition:background .12s,border-color .12s;user-select:none}
 .wf-cell.sel{background:var(--theme-tint);border-color:var(--theme);color:var(--theme)}
 .wf-cell.fnd{background:#DCFCE7;border-color:#86EFAC;color:#15803D}
 .letter-key{display:inline-flex;align-items:center;justify-content:center;width:32px;height:36px;background:#fff;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:monospace;transition:all .15s}
@@ -11414,8 +11414,8 @@ function startGameW(id, ws) {
     S.gSavedGame={id,words:S.gWords,score:0,idx:0};
   }
   if(id==='match'){S.mPairs=pick(src,Math.min(5,src.length));S.mEn=shuf(S.mPairs.map(p=>p.en));S.mKr=shuf(S.mPairs.map(p=>p.kr));S.mMatched=new Set();S.mEn0=null;S.mKr0=null;S.mScore=0;S.mWrongEn=null;S.mWrongKr=null;}
-  if(id==='wordle'){const pool=src.filter(w=>w.en.length>=4&&w.en.length<=7);const wSrc=pool.length?pool:src;if(!wSrc||!wSrc.length){toast('4~7글자 단어가 필요해요!');S.gDone=true;return;}S.wWord=rnd(wSrc);S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
-  if(id==='wordfind'){buildWF(src);}
+  if(id==='wordle'){var _p1=src.filter(w=>w.en.length>=4&&w.en.length<=5);var _p2=src.filter(w=>w.en.length>=4&&w.en.length<=7);var wSrc=_p1.length?_p1:(_p2.length?_p2:src.filter(w=>w.en.length>=3));if(!wSrc||!wSrc.length){toast('워들에 쓸 단어가 부족해요!');S.gDone=true;return;}S.wWord=rnd(wSrc);S.wGuess=[];S.wIn='';S.wOver=false;S.wWon=false;}
+  if(id==='wordfind'){S._wfRound=0;S._wfAdv=false;S._wfCleared=0;buildWF(src);}
   if(id==='wc'){const pool=src.filter(w=>w.en.length>=3);S.wcWord=pool.length?rnd(pool):src[0];S.wcLetters=S.wcWord.en.split('').map((l,i)=>{const hide=Math.random()<.5&&i>0&&i<S.wcWord.en.length-1;return{letter:l,hidden:hide};});S.wcGuessed=new Set();S.wcWrong=0;}
   if(id==='sentence'||id==='ssort'){buildSentenceFromWords(ws||S.gWords);}
   if(id==='chain'){S.chStory=rnd(['Yesterday I went to the park.','One morning a bird sang outside.','My best friend called me last night.']);S.chIdx=0; S._chainSaved=false;S.chIn='';S.chDone=false;}
@@ -12226,7 +12226,21 @@ function rWF(){
   const sz=(S.wfGrid||[]).length;
   const foundCells=new Set((S.wfWords||[]).filter(w=>S.wfFound.has(w.word)).flatMap(w=>w.cells));
   const all=(S.wfWords||[]).length>0&&S.wfFound.size>=(S.wfWords||[]).length;
-  if(all&&!S.gDone){S.gDone=true;S.gScore=S.wfFound.size*100;setTimeout(()=>go(),300);}
+  if(all&&!S.gDone&&!S._wfAdv){
+    S._wfAdv=true;
+    S._wfCleared=(S._wfCleared||0)+S.wfWords.length;
+    var _cleaned=(S.gWords||[]).map(function(x){return x.en.toUpperCase().replace(/[^A-Z]/g,'');}).filter(function(x){return x.length>=3&&x.length<=10;}).length;
+    var _maxR=Math.max(1,Math.min(5,Math.ceil(_cleaned/8)));
+    S._wfRound=(S._wfRound||0)+1;
+    if(S._wfRound<_maxR){
+      if(typeof SFX!=='undefined')SFX.play('levelup');
+      toast('🎉 세트 완료! 다음 세트!');
+      setTimeout(function(){ S._wfAdv=false; S.wfGrid=null; buildWF(S.gWords); go(); },900);
+    } else {
+      S.gScore=(S._wfCleared||S.wfFound.size)*100;
+      setTimeout(function(){ S._wfAdv=false; S.gDone=true; go(); },500);
+    }
+  }
   const selCount=S.wfSel.length;
   const hint=selCount>0
     ?`<div style="text-align:center;font-size:12px;font-weight:700;color:var(--theme);margin-bottom:6px">📌 ${selCount}글자 선택 중 · 마지막 글자까지 탭하세요</div>`
@@ -12235,9 +12249,9 @@ function rWF(){
     ${cbrow(all?'모두 찾았어! 🎉':'격자에서 단어를 찾아봐! 🔍',S.lid,all?'happy':'normal')}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">${(S.wfWords||[]).map(w=>{const ww=S.gWords.find(x=>x.en.toUpperCase().replace(/[^A-Z]/g,'')===w.word);const found=S.wfFound.has(w.word);return `<span style="padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:monospace;background:${found?'#DCFCE7':'#F3F4F6'};color:${found?'#16A34A':'#374151'};text-decoration:${found?'line-through':'none'};border:1.5px solid ${found?'#86EFAC':'#E5E7EB'}">${ww?.img||'📝'} ${w.word}${found?' ✅':''}</span>`;}).join('')}</div>
     ${hint}
-    <div style="display:flex;justify-content:center;overflow-x:auto">
+    <div style="display:flex;justify-content:center">
       <div class="wf-grid" style="grid-template-columns:repeat(${sz},1fr)">
-        ${(function(){return S.wfGrid.map(function(row,r){return row.map(function(cell,cc){var k=r+','+cc;var isSel=S.wfSel.includes(k);var isFnd=foundCells&&foundCells.has(k);return '<div class="wf-cell '+(isFnd?'fnd':isSel?'sel':'')+' " onclick="selWF('+r+','+cc+')" style="'+(isSel?'background:var(--theme)!important;color:#fff!important;transform:scale(1.1);':'')+(isFnd?'background:#10B981!important;color:#fff!important;':'')+'">'+cell+'</div>';}).join('');}).join('');})()}
+        ${(function(){return S.wfGrid.map(function(row,r){return row.map(function(cell,cc){var k=r+','+cc;var isSel=S.wfSel.includes(k);var isFnd=foundCells&&foundCells.has(k);return '<div class="wf-cell '+(isFnd?'fnd':isSel?'sel':'')+' " onclick="selWF('+r+','+cc+')" style="'+(isSel?'background:var(--theme)!important;color:#fff!important;':'')+(isFnd?'background:#10B981!important;color:#fff!important;':'')+'">'+cell+'</div>';}).join('');}).join('');})()}
       </div>
     </div>
     ${selCount>0?`<div style="display:flex;gap:8px;margin-top:6px">
@@ -12281,14 +12295,22 @@ function scoreW(g,t){const r=Array(t.length).fill('absent'),tA=[...t],gA=[...g];
 function rWordle(){
   if(!S.wWord){S.gDone=true;return rGame();}
   if(!S.wGuess)S.wGuess=[];
-  const W=S.wWord.en.toLowerCase(),LEN=W.length,cw=Math.min(46,250/LEN);
+  const W=S.wWord.en.toLowerCase(),LEN=W.length,cw=Math.min(46,Math.floor(300/LEN)),first=W[0].toUpperCase();
+  const headMsg=S.wOver?(S.wWon?'정답이에요! 🎉':'아쉬워요!'):(S.wGuess.length===0?'첫 글자와 뜻을 보고 맞춰봐!':'좋아, 계속 도전!');
   return ghdr('🟩 워들','')+`<div class="pad" style="align-items:center;gap:10px">
-    ${cbrow(S.wOver?(S.wWon?'맞췄어! 🎉':'아쉬워!'):S.wGuess.length===0?`힌트: "${S.wWord.kr}" · 6번 안에!`:`힌트: "${S.wWord.kr}"`,S.lid,S.wOver?(S.wWon?'happy':'sad'):'normal')}
-    <div style="font-size:42px;margin:4px 0">${S.wWord.img||'📝'}</div>
-    ${Array.from({length:6}).map((_,ri)=>{const g=S.wGuess[ri]||'',sc=g?scoreW(g,W):[],isCur=ri===S.wGuess.length&&!S.wOver,dp=isCur?S.wIn.padEnd(LEN):g.padEnd(LEN);return `<div style="display:flex;gap:5px">${Array.from({length:LEN}).map((_,ci)=>{const ch=dp[ci]||'',st=sc[ci]||'',bg=st==='correct'?'#16A34A':st==='present'?'#D97706':st==='absent'?'#6B7280':'transparent',bd=st?bg:(ch?'var(--theme)':'#E5E7EB');return `<div class="wc" style="width:${cw}px;height:${cw}px;border-color:${bd};background:${bg};color:${st?'#fff':'#111'}">${ch.toUpperCase()}</div>`;}).join('')}</div>`;}).join('')}
-    ${S.wOver?`<div style="text-align:center;background:${S.wWon?'#F0FDF4':'#FFF1F2'};border-radius:14px;padding:14px;width:100%"><div style="font-size:15px;font-weight:800;color:${S.wWon?'#16A34A':'#DC2626'}">${S.wWon?'🎉 정답!':'정답: '+S.wWord.en}</div><button class="btn bb" onclick="S.gDone=true;S.gScore=S.wWon?(7-S.wGuess.length)*100:0;if(S.wWon)ok();else ng(); S.gResultMap={0:!!S.wWon};if(typeof savePartialGameScore==='function')savePartialGameScore();go()" style="margin-top:10px">완료</button></div>`:
-    `<input id="wi" value="${S.wIn}" oninput="S.wIn=this.value.slice(0,${LEN})" onkeydown="if(event.key==='Enter')subW('${W}')" placeholder="${LEN}글자 입력..." style="font-size:18px;font-family:monospace;font-weight:700;text-transform:lowercase;width:100%" maxlength="${LEN}">
-    <button class="btn" onclick="subW('${W}')" style="background:#D97706;color:#fff;width:100%">제출</button>`}
+    ${cbrow(headMsg,S.lid,S.wOver?(S.wWon?'happy':'sad'):'normal')}
+    <div style="width:100%;background:var(--theme-tint,#EFF6FF);border:2px solid var(--theme-soft,#BFDBFE);border-radius:16px;padding:14px;text-align:center;box-sizing:border-box">
+      <div style="font-size:30px;line-height:1;margin-bottom:6px">${S.wWord.img||'📖'}</div>
+      <div style="font-size:18px;font-weight:900;color:var(--text1,#111111)">${S.wWord.kr}</div>
+      <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:800;color:var(--theme);background:#fff;border:1.5px solid var(--theme-soft,#BFDBFE);border-radius:20px;padding:3px 11px">첫 글자 ${first}</span>
+        <span style="font-size:12px;font-weight:800;color:var(--theme);background:#fff;border:1.5px solid var(--theme-soft,#BFDBFE);border-radius:20px;padding:3px 11px">${LEN}글자</span>
+      </div>
+    </div>
+    ${Array.from({length:6}).map((_,ri)=>{const g=S.wGuess[ri]||'',sc=g?scoreW(g,W):[],isCur=ri===S.wGuess.length&&!S.wOver,dp=isCur?S.wIn.padEnd(LEN):g.padEnd(LEN);return `<div style="display:flex;gap:5px;justify-content:center">${Array.from({length:LEN}).map((_,ci)=>{const ch=dp[ci]||'',st=sc[ci]||'',bg=st==='correct'?'#16A34A':st==='present'?'#D97706':st==='absent'?'#9CA3AF':'#fff',bd=st?bg:(ch?'var(--theme)':'#E5E7EB');return `<div style="width:${cw}px;height:${cw}px;display:flex;align-items:center;justify-content:center;border:2px solid ${bd};background:${bg};color:${st?'#fff':'#111'};border-radius:8px;font-size:${Math.floor(cw*0.46)}px;font-weight:800;font-family:monospace">${ch.toUpperCase()}</div>`;}).join('')}</div>`;}).join('')}
+    ${S.wOver?`<div style="text-align:center;background:${S.wWon?'#F0FDF4':'#FFF1F2'};border-radius:14px;padding:14px;width:100%;box-sizing:border-box"><div style="font-size:15px;font-weight:800;color:${S.wWon?'#16A34A':'#DC2626'}">${S.wWon?'🎉 정답!':'정답: '+S.wWord.en}</div><button class="btn bb" onclick="S.gDone=true;S.gScore=S.wWon?(7-S.wGuess.length)*100:0;if(S.wWon)ok();else ng(); S.gResultMap={0:!!S.wWon};if(typeof savePartialGameScore==='function')savePartialGameScore();go()" style="margin-top:10px">완료</button></div>`:
+    `<input id="wi" value="${S.wIn}" oninput="S.wIn=this.value.slice(0,${LEN})" onkeydown="if(event.key==='Enter')subW('${W}')" placeholder="${LEN}글자 입력 후 Enter" autocomplete="off" autocapitalize="none" maxlength="${LEN}" style="font-size:18px;font-family:monospace;font-weight:700;text-transform:lowercase;width:100%;box-sizing:border-box;text-align:center;border:2px solid var(--theme-soft,#BFDBFE);border-radius:12px;padding:12px">
+    <button class="btn" onclick="subW('${W}')" style="background:var(--theme);color:#fff;width:100%">제출 ✓</button>`}
   </div>`;
 }
 function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;if(typeof logStudy==='function')logStudy('quiz');}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;if(typeof logStudy==='function')logStudy('quiz');}go();}

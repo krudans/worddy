@@ -1105,16 +1105,48 @@ const PET_COLORS = {
   clear:  {main:'#6B7280', dark:'#374151', soft:'#D1D5DB', tint:'#F3F4F6', light:'#F3F4F6', name:'회색'},
 };
 function _hexToRgb(h){ h=String(h||'').replace('#',''); if(h.length===3) h=h.split('').map(function(c){return c+c;}).join(''); var n=parseInt(h,16)||0; return (n>>16&255)+', '+(n>>8&255)+', '+(n&255); }
+// 테마 글자색 가독성 보정용 헬퍼
+function _rgbOf(hex){ var n=parseInt(String(hex).replace('#',''),16)||0; return [n>>16&255, n>>8&255, n&255]; }
+function _luma(hex){ var c=_rgbOf(hex); return (0.299*c[0]+0.587*c[1]+0.114*c[2])/255; }
+function _sat(hex){ var c=_rgbOf(hex), mx=Math.max(c[0],c[1],c[2]), mn=Math.min(c[0],c[1],c[2]); return mx===0?0:(mx-mn)/mx; }
+function _mix(hex,to,amt){ var a=_rgbOf(hex), b=_rgbOf(to); return '#'+[0,1,2].map(function(i){return ('0'+Math.round(a[i]+(b[i]-a[i])*amt).toString(16)).slice(-2);}).join(''); }
+function _isDarkMode(){
+  try{
+    var bg=(getComputedStyle(document.body).getPropertyValue('--bg-card')||'').trim() || getComputedStyle(document.body).backgroundColor || '#FFFFFF';
+    var c;
+    if(bg.charAt(0)==='#'){ c=_rgbOf(bg); }
+    else { var m=bg.match(/\d+/g); c=m?[+m[0],+m[1],+m[2]]:[255,255,255]; }
+    var lum=(0.299*c[0]+0.587*c[1]+0.114*c[2])/255;
+    return lum < 0.5;
+  }catch(e){ return false; }
+}
+// 테마 메인색을 현재 모드에서 글자로 읽기 쉬운 색으로 보정
+function _readableTheme(main){
+  var dark=_isDarkMode();
+  if(dark && _sat(main) < 0.25) return _mix(main,'#FFFFFF',0.45);      // 다크모드: 무채색(회색)은 밝게
+  if(!dark && _luma(main) > 0.52) return _mix(main,'#000000',0.30);    // 라이트모드: 너무 밝은색(노랑·초록)은 어둡게
+  return main;
+}
 function applyThemeVars(pc){
   pc = pc || (typeof PET_COLORS!=='undefined' ? (PET_COLORS[getPetColor()]||PET_COLORS.green) : null);
   if(!pc) return;
   var r=document.documentElement.style;
-  r.setProperty('--theme', pc.main);
+  var dark=_isDarkMode();
+  var main=_readableTheme(pc.main);
+  r.setProperty('--theme', main);
   r.setProperty('--theme-d', pc.dark||pc.main);
-  r.setProperty('--theme-soft', pc.soft||pc.main);
-  r.setProperty('--theme-tint', pc.tint||pc.light||(pc.main+'1A'));
-  r.setProperty('--theme-rgb', _hexToRgb(pc.main));
+  if(dark){
+    // 다크모드: 칩/연한배경(tint·soft)도 어둡게 → 밝아진 테마 글자와 대비 확보
+    r.setProperty('--theme-tint', _mix(pc.main,'#000000',0.72));
+    r.setProperty('--theme-soft', _mix(pc.main,'#000000',0.55));
+  } else {
+    r.setProperty('--theme-soft', pc.soft||pc.main);
+    r.setProperty('--theme-tint', pc.tint||pc.light||(pc.main+'1A'));
+  }
+  r.setProperty('--theme-rgb', _hexToRgb(main));
 }
+// OS 다크/라이트 전환 시 테마색 재보정
+try{ if(window.matchMedia){ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){ try{ applyThemeVars(); }catch(e){} }); } }catch(e){}
 
 function showPersonalityQ() {
   const mr = document.getElementById('mr');
@@ -4317,6 +4349,8 @@ function applyTheme() {
   // 네비게이션 배경도 테마에 맞게
   const nav = document.getElementById('nav');
   if(nav) nav.style.background = 'var(--bg-nav,#fff)';
+  // 라이트/다크 모드에 맞춰 테마 글자색 재보정
+  try{ applyThemeVars(); }catch(e){}
 }
 
 function updHD() {
@@ -12292,7 +12326,7 @@ function rProfile(){
       <button onclick="if(confirm('정말 알로 돌아갈까요?\nXP가 초기화되고 새 여정이 시작돼요')){resetToEgg();toast('🥚 새로운 여정 시작!');go();}" class="btn bb" style="font-size:13px">🥚 알로 돌아가기</button>
     </div>`);
   }
-  parts.push('<button class="btn bgr" onclick="showLogoutMenu()">로그아웃 / 초기화</button>');
+  // (아래쪽 중복 로그아웃 배너 제거됨 — 설정 카드 안 로그아웃 사용)
   parts.push('</div>');
   return parts.join('');
 }

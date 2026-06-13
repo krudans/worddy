@@ -5954,7 +5954,7 @@ function rGameOnlyTab() {
 
   const categories = [
     {
-      nm:'기억', ic:'🧠', color:'var(--theme)', desc:'단어 뜻을 맞히는 게임',
+      nm:'기억', ic:'🧠', color:'#6366F1', desc:'단어 뜻을 맞히는 게임',
       games:[
         {id:'quiz',   ic:'🎯', nm:'뜻 맞추기',   dc:'4지선다',     diff:1},
         {id:'fill',   ic:'📝', nm:'빈칸 채우기',  dc:'문장 완성',   diff:2},
@@ -5987,7 +5987,10 @@ function rGameOnlyTab() {
     },
   ];
 
-  const diffBar = n => Array.from({length:5},(_,i)=>`<div style="width:6px;height:6px;border-radius:2px;background:${i<n?'currentColor':'rgba(255,255,255,.15)'}"></div>`).join('');
+  const diffBar = n => Array.from({length:5},(_,i)=>`<div style="width:6px;height:6px;border-radius:2px;background:${i<n?'currentColor':'var(--border,#D9DEE5)'}"></div>`).join('');
+  const _totalGames = categories.reduce((s,c)=>s+c.games.length,0);
+  const _clearedGames = categories.reduce((s,c)=>s+c.games.filter(g=>bestScores[g.id]!==undefined).length,0);
+  const _conquerPct = _totalGames ? Math.round(_clearedGames/_totalGames*100) : 0;
 
   let html = `<div style="display:flex;flex-direction:column;background:var(--panel-bg,#F4F6F8);min-height:100%">
 
@@ -6003,7 +6006,20 @@ function rGameOnlyTab() {
     </div>
     ${_bookSummaryLine(bookName)}
 
-    <!-- 통계 4칸 한 줄 -->
+    <!-- 게임 정복도 -->
+    <div style="margin-top:14px;background:linear-gradient(135deg,var(--theme),rgba(var(--theme-rgb,59,130,246),.78));border-radius:16px;padding:13px 16px;color:#fff;position:relative;overflow:hidden">
+      <div style="position:absolute;right:-6px;top:-8px;font-size:58px;opacity:.18;transform:rotate(-10deg)">🎮</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;position:relative">
+        <span style="font-size:13px;font-weight:800">🎮 게임 정복도</span>
+        <span style="font-size:13px;font-weight:900">${_clearedGames}<span style="font-size:11px;opacity:.8">/${_totalGames}</span></span>
+      </div>
+      <div style="background:rgba(255,255,255,.28);border-radius:99px;height:8px;overflow:hidden;position:relative">
+        <div style="height:100%;background:#fff;border-radius:99px;width:${Math.max(_conquerPct,_clearedGames>0?6:0)}%;transition:width .6s"></div>
+      </div>
+      <div style="font-size:10px;opacity:.9;margin-top:6px;position:relative">${_clearedGames>=_totalGames?'🏆 모든 게임 클리어! 대단해요':_clearedGames===0?'게임을 클리어하고 정복도를 채워봐요!':'잘하고 있어요 · 남은 게임도 도전!'}</div>
+    </div>
+
+    <!-- 통계 3칸 -->
     ${(()=>{
       const _t=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
       const _wAgo=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
@@ -6020,13 +6036,14 @@ function rGameOnlyTab() {
       // 전체 플레이 횟수
       const _allTotal=Object.values(_gpc).reduce((s,v)=>s+v,0);
       const _cleared=Object.keys(bestScores).length;
-      return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+      return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px">
         ${[
-          {v:_todayTotal>0?_todayTotal+'단어':'없음', lb:'오늘 게임', color:_todayTotal>0?'#F59E0B':'#9CA3AF'},
-          {v:_cleared+'/12', lb:'클리어', color:'var(--theme)'},
-          {v:_allTotal>0?_allTotal+'단어':'없음', lb:'누적 게임', color:_allTotal>0?'var(--theme)':'#9CA3AF'},
-        ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:10px;padding:8px 4px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-          <div style="font-size:15px;font-weight:900;color:${s.color};line-height:1.2">${s.v}</div>
+          {v:_todayTotal>0?_todayTotal+'단어':'없음', lb:'오늘 게임', ic:'🔥', color:_todayTotal>0?'#F59E0B':'var(--text3,#9CA3AF)'},
+          {v:_cleared+'/'+_totalGames, lb:'클리어', ic:'🏆', color:'var(--theme)'},
+          {v:_allTotal>0?_allTotal+'단어':'없음', lb:'누적 게임', ic:'📊', color:_allTotal>0?'var(--theme)':'var(--text3,#9CA3AF)'},
+        ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px 4px;text-align:center;border:1px solid var(--border,#E2E8F0)">
+          <div style="font-size:14px;line-height:1">${s.ic}</div>
+          <div style="font-size:14px;font-weight:900;color:${s.color};line-height:1.25;margin-top:3px">${s.v}</div>
           <div style="font-size:9px;color:var(--text3,#9CA3AF);margin-top:2px">${s.lb}</div>
         </div>`).join('')}
       </div>`;
@@ -6034,40 +6051,37 @@ function rGameOnlyTab() {
   </div>
 
     <!-- 카테고리별 게임 -->
-  <div style="padding:0 16px;display:flex;flex-direction:column;gap:14px;padding-bottom:24px">
+  <div style="padding:14px 16px 26px;display:flex;flex-direction:column;gap:18px">
     ${categories.map(cat=>`
     <div>
       <!-- 카테고리 헤더 -->
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <div style="width:28px;height:28px;border-radius:8px;background:${cat.color}22;display:flex;align-items:center;justify-content:center;font-size:14px">${cat.ic}</div>
-        <div>
-          <div style="font-size:13px;font-weight:800;color:var(--panel-text1,#0F172A)">${cat.nm}</div>
-          <div style="font-size:10px;color:var(--panel-text3,#9CA3AF)">${cat.desc}</div>
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px">
+        <div style="display:inline-flex;align-items:center;gap:8px;background:${cat.color}1A;border:1px solid ${cat.color}33;padding:5px 13px 5px 6px;border-radius:99px">
+          <span style="width:24px;height:24px;border-radius:50%;background:${cat.color};display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 5px ${cat.color}66">${cat.ic}</span>
+          <span style="font-size:13px;font-weight:800;color:${cat.color}">${cat.nm}</span>
         </div>
+        <span style="font-size:10px;color:var(--panel-text3,#9CA3AF)">${cat.desc}</span>
       </div>
       <!-- 게임 카드들 -->
-      <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;flex-direction:column;gap:9px">
         ${cat.games.map(g=>{
           const best = bestScores[g.id];
           const cleared = best !== undefined;
-          const _td = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
-          const _todayCnt = ((S.gameDailyCount||{})[_td]||{})[g.id]||0;
-          const _totalCnt = (S.gamePlayCount||{})[g.id]||0;
-          return `<div onclick="showGameSettings('${g.id}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel-muted,#fff);border-radius:14px;cursor:pointer;border:1px solid ${cleared?cat.color+'33':'var(--border,#E2E8F0)'};box-shadow:0 1px 3px rgba(0,0,0,.05);transition:all .15s;position:relative;overflow:hidden">
-            ${cleared?`<div style="position:absolute;top:0;left:0;right:0;height:2px;background:${cat.color}"></div>`:''}
-            <div style="width:42px;height:42px;border-radius:12px;background:${cleared?cat.color+'18':'var(--bg,#F4F6F8)'};display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${g.ic}</div>
+          return `<div onclick="showGameSettings('${g.id}')" style="display:flex;align-items:center;gap:13px;padding:13px 15px 13px 16px;background:var(--panel-muted,#fff);border-radius:16px;cursor:pointer;border:1px solid ${cleared?cat.color+'40':'var(--border,#E2E8F0)'};box-shadow:0 2px 8px rgba(0,0,0,.05);position:relative;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:${cat.color}"></div>
+            <div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,${cat.color},${cat.color}B0);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0;box-shadow:0 4px 10px ${cat.color}55">${g.ic}</div>
             <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
-                <span style="font-size:14px;font-weight:700;color:var(--text1,#111)">${g.nm}</span>
-                ${''/* NEW 뱃지 제거됨: 미플레이 게임에 거의 다 붙어 의미가 없었음 */}
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:800;color:var(--text1,#111)">${g.nm}</span>
+                ${cleared?`<span style="font-size:9px;font-weight:800;color:${cat.color};background:${cat.color}1A;padding:1px 7px;border-radius:7px">✓ 클리어</span>`:''}
               </div>
-              <div style="display:flex;align-items:center;gap:6px">
+              <div style="display:flex;align-items:center;gap:7px">
                 <span style="font-size:11px;color:var(--text3,#9CA3AF)">${g.dc}</span>
                 <div style="display:flex;gap:2px;color:${cat.color}">${diffBar(g.diff)}</div>
               </div>
             </div>
-            <div style="text-align:right;flex-shrink:0;min-width:60px">
-              ${(()=>{const _tdi2=((S.gameDailyCount||{})[new Date(Date.now()+9*3600000).toISOString().slice(0,10)]||{})[g.id];if(_tdi2&&(typeof _tdi2==='object'?_tdi2.words>0:_tdi2>0)){const _w2=typeof _tdi2==='object'?(_tdi2.words||0):_tdi2;const _r2=typeof _tdi2==='object'?(_tdi2.right||0):0;const _x2=typeof _tdi2==='object'?(_tdi2.wrong||0):(_w2-_r2);return `<div style="font-size:11px;font-weight:700;color:${cat.color};line-height:1.4">전체 ${_w2}개</div><div style="font-size:11px;font-weight:700;color:#16A34A;line-height:1.4">맞은수 ${_r2}개</div><div style="font-size:11px;font-weight:700;color:#DC2626;line-height:1.4">틀린수 ${_x2}개</div>`;}else{return `<span style="color:var(--text3,#D1D5DB);font-size:18px">›</span>`;}})()}
+            <div style="text-align:right;flex-shrink:0">
+              ${(()=>{const _tdi2=((S.gameDailyCount||{})[new Date(Date.now()+9*3600000).toISOString().slice(0,10)]||{})[g.id];if(_tdi2&&(typeof _tdi2==='object'?_tdi2.words>0:_tdi2>0)){const _r2=typeof _tdi2==='object'?(_tdi2.right||0):0;const _w2=typeof _tdi2==='object'?(_tdi2.words||0):_tdi2;const _x2=typeof _tdi2==='object'?(_tdi2.wrong||0):(_w2-_r2);return `<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end"><span style="font-size:10px;font-weight:800;color:#16A34A;background:#16A34A18;border-radius:7px;padding:2px 7px">맞음 ${_r2}</span><span style="font-size:10px;font-weight:800;color:#DC2626;background:#DC262618;border-radius:7px;padding:2px 7px">틀림 ${_x2}</span></div>`;}else{return `<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:${cat.color}1A;color:${cat.color};font-size:12px;font-weight:900;padding-left:2px">▶</span>`;}})()}
             </div>
           </div>`;
         }).join('')}

@@ -11634,15 +11634,48 @@ function ghdr(title,prog){
     +'</div>';
 }
 
+function _clearQTimer(){ if(window._qTO){clearTimeout(window._qTO);window._qTO=null;} if(window._qIV){clearInterval(window._qIV);window._qIV=null;} }
+function _armQTimer(){
+  _clearQTimer();
+  var gs=S.gameSettings||{};
+  if(!gs.timeLimit||S.gAns||S.gDone||!S.gWords||!S.gWords.length) return;
+  var total=gs.timeSec||10;
+  var qi=S.gIdx;
+  S._qDeadline=Date.now()+total*1000;
+  window._qIV=setInterval(function(){
+    var el=document.getElementById('qtimer');
+    var left=Math.max(0,Math.ceil((S._qDeadline-Date.now())/1000));
+    if(el){ el.textContent='⏱ '+left+'초'; el.style.color=left<=3?'#FCA5A5':'rgba(255,255,255,.9)'; }
+  },200);
+  window._qTO=setTimeout(function(){
+    _clearQTimer();
+    if(S.gAns||S.gIdx!==qi||!document.querySelector('button[onclick^="pickQ4"]')) return;
+    S.gAns='__timeout__'; S.gRes='no';
+    if(!S.gResultMap)S.gResultMap={};
+    S.gResultMap[S.gIdx]=false;
+    if(typeof ng==='function')ng();
+    if(typeof toast==='function')toast('⏰ 시간 초과!');
+    go();
+    setTimeout(function(){ if(S.gAns&&S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },3000);
+  }, total*1000);
+}
 function pickQ4(ci){
   var cs=S._gCs||[]; var w=S.gWords[S.gIdx]; var ch=cs[ci];
   if(!ch||!w||S.gAns)return;
+  _clearQTimer();
   S.gAns=ch.en;
   var okk=ch.en===w.en;
   S.gRes=okk?'ok':'no';
   if(!S.gResultMap)S.gResultMap={};
-  if(okk){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; go(); setTimeout(function(){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();},800); }
-  else{ if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; go(); }
+  var qi=S.gIdx;
+  if(okk){
+    if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; go();
+    var d=(S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):800;
+    setTimeout(function(){ if(S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },d);
+  } else {
+    if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; go();
+    setTimeout(function(){ if(S.gAns&&S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },3000);
+  }
 }
 function rQ4(){
   const w=S.gWords[S.gIdx];
@@ -11667,6 +11700,7 @@ function rQ4(){
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
   html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden;min-height:210px;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
+  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   if(w.img) html+='<div style="font-size:36px;margin-bottom:8px">'+w.img+'</div>';
   var enFz=w.en.length>30?'16px':w.en.length>20?'21px':w.en.length>12?'26px':w.en.length>8?'34px':'42px';
   html+='<div style="font-size:'+enFz+';font-weight:900;font-family:Georgia,serif;letter-spacing:-1px;margin-bottom:6px">'+w.en+'</div>';
@@ -11708,6 +11742,7 @@ function rQ4(){
   }
 
   html+='</div>';
+  if(answered){ _clearQTimer(); } else { _armQTimer(); }
   return html;
 }
 

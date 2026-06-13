@@ -1445,6 +1445,8 @@ function savePartialGameScore() {
   localStorage.setItem('wd-gdc', JSON.stringify(S.gameDailyCount));
   localStorage.setItem('wd-gpc', JSON.stringify(S.gamePlayCount));
   S._gameScoreSaved = true;
+  // 게임 기록을 클라우드에도 동기화 (sv는 3초 스로틀 + 손실방지 검증 포함)
+  if(typeof sv==='function') try{ sv(); }catch(e){}
 }
 
 /* saveGameScore: js/features.js 단일 정의로 통합 (중복 제거) */
@@ -5323,6 +5325,7 @@ function go(tab,sub) {
   }
   const map={home:rHome,mybooks:rStudy,learn:rLearnTab,study:rStudy,game:rGameOnlyTab,butterfly:(S._gameRunning&&S.gameId&&!S.gDone)?rGame:rButterflyTab,profile:rProfile};
   const body=document.getElementById('body');
+  const _prevScroll=body?body.scrollTop:0;
   let newHTML; try { newHTML=(map[S.tab]||rHome)(); } catch(e) { console.error("[go() 렌더링 에러] tab="+S.tab+" stab="+S.stab, e); newHTML='<div style="padding:20px;color:red">에러: '+e.message+'</div>'; }
   // 게임 화면 자체에 ← 나가기 버튼이 있으므로 오버레이 제거
   body.innerHTML=newHTML;
@@ -5330,7 +5333,7 @@ function go(tab,sub) {
   // 광고 배너 고정 div에 렌더링
   const adEl=document.getElementById('ad-banner-fixed');
   if(adEl) adEl.innerHTML=renderAdBanner()||'';
-  body.scrollTop=0;
+  body.scrollTop = tab ? 0 : _prevScroll;
   // 30일 캘린더 동적 렌더링
   requestAnimationFrame(()=>{
     const calEl = document.querySelector('[id^="cal30-"]');
@@ -11521,7 +11524,7 @@ function _armQTimer(){
   window._qIV=setInterval(function(){
     var el=document.getElementById('qtimer');
     var left=Math.max(0,Math.ceil((S._qDeadline-Date.now())/1000));
-    if(el){ el.textContent='⏱ '+left+'초'; el.style.color=left<=3?'#FCA5A5':'rgba(255,255,255,.9)'; }
+    if(el){ el.textContent='⏱ '+left+'초'; el.style.color='#fff'; el.style.background=left<=3?'rgba(220,38,38,.62)':'rgba(0,0,0,.34)'; }
   },200);
   window._qTO=setTimeout(function(){
     _clearQTimer();
@@ -11579,7 +11582,7 @@ function rQ4(){
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
   html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden;min-height:230px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
-  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
+  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.34);border-radius:20px;padding:5px 18px;font-size:20px;font-weight:900;color:#fff;letter-spacing:.5px;z-index:6;box-shadow:0 2px 10px rgba(0,0,0,.3)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   if(w.img) html+='<div style="font-size:36px;margin-bottom:8px">'+w.img+'</div>';
   var enFz=w.en.length>30?'16px':w.en.length>20?'21px':w.en.length>12?'26px':w.en.length>8?'34px':'42px';
   html+='<div style="font-size:'+enFz+';font-weight:900;font-family:Georgia,serif;letter-spacing:-1px;margin-bottom:6px">'+w.en+'</div>';
@@ -11681,7 +11684,7 @@ function rListenQ(){
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
   html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;text-align:center;color:#fff;position:relative;overflow:hidden;min-height:240px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
-  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
+  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.34);border-radius:20px;padding:5px 18px;font-size:20px;font-weight:900;color:#fff;letter-spacing:.5px;z-index:6;box-shadow:0 2px 10px rgba(0,0,0,.3)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   if(!answered){
     var _lt=(S.gameSettings&&S.gameSettings.listenTimes)||1;
     var _lex=!!(S.gameSettings&&S.gameSettings.listenEx);
@@ -11781,7 +11784,7 @@ function rFill(){
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
   html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;color:#fff;position:relative;overflow:hidden;min-height:200px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
   html+='<div style="position:absolute;top:10px;right:14px;font-size:22px;opacity:.15">🦋</div>';
-  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
+  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.34);border-radius:20px;padding:5px 18px;font-size:20px;font-weight:900;color:#fff;letter-spacing:.5px;z-index:6;box-shadow:0 2px 10px rgba(0,0,0,.3)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   html+='<div style="font-size:11px;opacity:.7;margin-bottom:10px">빈칸에 들어갈 단어는?</div>';
   html+='<div style="font-size:18px;line-height:1.6;font-style:italic;color:#fff">'+blanked+'</div>';
   if(w.kr) html+='<div style="font-size:13px;opacity:.7;margin-top:8px">뜻: '+w.kr+'</div>';

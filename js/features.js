@@ -1,5 +1,5 @@
 // ── 마켓 탭 ──
-function rMarket() {
+function rMarketLegacy() { // [DISABLED] 레거시 WORD_PACKS 마켓 - index.html의 S._marketPacks 기반 rMarket 사용
   const topicCats = ['전체','여행','비즈니스','학업','미디어','드라마/영화','취미문화','수능','토익'];
   const activeCat = window._mCat || '전체';
   const searchQ = (window._mSearch || '').toLowerCase();

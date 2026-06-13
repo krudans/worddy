@@ -1,5 +1,5 @@
-// sw.js v7 - 캐시 비활성화 + HTML 항상 최신 + 새 버전 자동 반영
-const CACHE = 'butterfly-word-v7';
+// sw.js v8 - 캐시 비활성화 + HTML 항상 최신(CDN 엣지 캐시까지 우회) + 새 버전 자동 반영
+const CACHE = 'butterfly-word-v8';
 
 self.addEventListener('install', e => {
   // 이전 캐시 전부 삭제
@@ -31,16 +31,28 @@ self.addEventListener('fetch', e => {
   // Firebase는 그냥 통과
   if (url.includes('googleapis.com') || url.includes('firebase') || url.includes('gstatic.com')) return;
 
-  // HTML 문서(내비게이션) 요청: 브라우저 HTTP 캐시를 무시하고 항상 서버 최신본을 받음.
-  // (GitHub Pages가 거는 max-age=600 때문에 옛 페이지가 뜨던 문제 해결)
+  // HTML 문서(내비게이션) 요청: 브라우저 HTTP 캐시는 물론, GitHub Pages(Fastly) 엣지 캐시까지 우회.
+  // ?nocache 같은 쿼리만으로는 Fastly가 같은 경로의 옛 HTML을 계속 주므로,
+  // 매 요청마다 고유 쿼리(_cb)를 붙여 항상 오리진의 최신본을 받도록 한다.
   const isNavigation = e.request.mode === 'navigate' ||
     (e.request.headers.get('accept') || '').includes('text/html');
 
   if (isNavigation) {
-    e.respondWith(
-      fetch(e.request, { cache: 'reload' })   // reload = HTTP 캐시 무시하고 네트워크에서 새로 받음
-        .catch(() => fetch(e.request).catch(() => new Response('오프라인 상태입니다.', { headers: { 'Content-Type': 'text/html; charset=utf-8' } })))
-    );
+    e.respondWith((async () => {
+      try {
+        const bust = new URL(e.request.url);
+        bust.searchParams.set('_cb', Date.now());
+        return await fetch(bust.toString(), { cache: 'reload' });
+      } catch (err) {
+        try { return await fetch(e.request, { cache: 'reload' }); }
+        catch (err2) {
+          try { return await fetch(e.request); }
+          catch (err3) {
+            return new Response('오프라인 상태입니다.', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          }
+        }
+      }
+    })());
     return;
   }
 

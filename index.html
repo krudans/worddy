@@ -11389,7 +11389,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -11692,18 +11692,32 @@ function hintQ4(){
   toast('💡 오답 1개 제거 (-10점)');
   go();
 }
-function _playPron(en, times){
+function _playPron(en, times){ _playPronSeq(en, times, ''); }
+// 단어를 times번 읽고, exText가 있으면 이어서 예문도 읽음
+function _playPronSeq(en, times, exText){
   try{
     times=Math.max(1,times||1);
     window.speechSynthesis.cancel();
-    var n=0;
-    (function speakOne(){
-      var u=new SpeechSynthesisUtterance(en); u.lang='en-US'; u.rate=0.85;
+    var seq=[]; for(var i=0;i<times;i++) seq.push({t:en,rate:0.85});
+    if(exText) seq.push({t:exText,rate:0.82});
+    var idx=0;
+    (function speakNext(){
+      if(idx>=seq.length) return;
+      var it=seq[idx];
+      var u=new SpeechSynthesisUtterance(it.t); u.lang='en-US'; u.rate=it.rate;
       try{ var v=(typeof _bestVoice==='function')?_bestVoice(false):null; if(v)u.voice=v; }catch(e){}
-      u.onend=function(){ n++; if(n<times) setTimeout(speakOne,300); };
+      u.onend=function(){ idx++; setTimeout(speakNext, 280); };
       window.speechSynthesis.speak(u);
     })();
   }catch(e){}
+}
+// 현재 듣기문제의 단어(+예문)를 설정대로 재생
+function _lqPlay(){
+  var w=S.gWords[S.gIdx]; if(!w)return;
+  var t=(S.gameSettings&&S.gameSettings.listenTimes)||1;
+  var exL=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
+  var ex=(S.gameSettings&&S.gameSettings.listenEx&&exL.length)?exL[0]:'';
+  _playPronSeq(w.en, t, ex);
 }
 function rListenQ(){
   const w=S.gWords[S.gIdx];
@@ -11727,13 +11741,22 @@ function rListenQ(){
   html+='<div style="position:absolute;top:10px;right:14px;font-size:24px;opacity:.15">🦋</div>';
   if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:10px;left:14px;font-size:13px;font-weight:800;color:rgba(255,255,255,.9)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
   if(!answered){
-    html+='<div style="font-size:54px;margin-bottom:6px">🎧</div>';
+    var _lt=(S.gameSettings&&S.gameSettings.listenTimes)||1;
+    var _lex=!!(S.gameSettings&&S.gameSettings.listenEx);
+    var _hasEx=exList.length>0;
+    html+='<div style="font-size:48px;margin-bottom:4px">🎧</div>';
     html+='<div style="font-size:13px;opacity:.85;margin-bottom:14px">발음을 듣고 뜻을 고르세요</div>';
-    html+='<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">';
+    html+='<button onclick="_lqPlay()" style="background:#fff;color:var(--theme);border:none;border-radius:14px;padding:12px 28px;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);margin-bottom:16px">🔊 다시 듣기</button>';
+    html+='<div style="font-size:11px;opacity:.75;margin-bottom:6px">듣기 횟수</div>';
+    html+='<div style="display:flex;gap:6px;margin-bottom:'+(_hasEx?'12px':'0')+'">';
     [1,2,3].forEach(function(t){
-      html+='<button onclick="_playPron(\''+safeEn+'\','+t+')" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.45);border-radius:12px;padding:10px 16px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">🔊 '+t+'번 듣기</button>';
+      var on=_lt===t;
+      html+='<button onclick="S.gameSettings.listenTimes='+t+';if(typeof sv===\'function\')sv();go();_lqPlay()" style="padding:8px 18px;border-radius:20px;border:1.5px solid '+(on?'#fff':'rgba(255,255,255,.4)')+';background:'+(on?'#fff':'transparent')+';color:'+(on?'var(--theme)':'#fff')+';font-size:13px;font-weight:800;cursor:pointer">'+t+'번</button>';
     });
     html+='</div>';
+    if(_hasEx){
+      html+='<button onclick="S.gameSettings.listenEx=!('+_lex+');if(typeof sv===\'function\')sv();go()" style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:7px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer"><span style="font-size:14px">'+(_lex?'☑':'☐')+'</span> 예문도 함께 듣기</button>';
+    }
   } else {
     var enFz=w.en.length>20?'24px':w.en.length>12?'30px':'38px';
     html+='<div style="font-size:'+enFz+';font-weight:900;font-family:Georgia,serif;letter-spacing:-1px">'+w.en+'</div>';
@@ -11763,7 +11786,10 @@ function rListenQ(){
   }
 
   html+='</div>';
-  if(answered){ _clearQTimer(); } else { _armQTimer(); }
+  if(answered){ _clearQTimer(); } else {
+    _armQTimer();
+    if(S._lqPlayedIdx!==S.gIdx){ S._lqPlayedIdx=S.gIdx; setTimeout(function(){ _lqPlay(); }, 380); }
+  }
   return html;
 }
 function ansQ(c,ok2){

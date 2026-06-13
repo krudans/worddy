@@ -9836,11 +9836,13 @@ function showBookMenu(name, type) {
   const isDefault = type === 'default';
   const items = isDefault ? [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
+    ['🔄', '외웠음 표시 초기화', `cm();if(confirm('내 단어장의 외웠음 표시를 모두 초기화할까요? (헷갈림 표시는 유지)')){_resetBookMarks('${safeN}');}`],
     ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){S.words=[];S.markMap={};S.learned=new Set();sv();go();toast('🗑️ 전체 삭제 완료');}`],
   ] : [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['✏️', '이름 수정', `cm();const n=prompt('새 이름');if(n&&n.trim()){const b=S.books?.find(x=>x.name==='${safeN}');if(b){b.name=n.trim();sv();go();toast('이름 변경 완료!');}}`],
     ['📋', '복사', `if(S.books){const b=S.books?.find(x=>x.name==='${safeN}');if(b){if(b.packId){toast('마켓팩은 복사할 수 없어요','err');cm();return;}const copy={...b,name:b.name+' 복사',words:[...(b.words||[])]};S.books.push(copy);sv();cm();go();toast('복사 완료!');}}` ],
+    ['🔄', '외웠음 표시 초기화', `cm();if(confirm('${safeN} 단어장의 외웠음 표시를 모두 초기화할까요? (헷갈림 표시는 유지)')){_resetBookMarks('${safeN}');}`],
     ['🗑️', '단어장 삭제', `cm();_confirmDeleteBook('${safeN}')`],
   ];
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;overflow:hidden">
@@ -9848,6 +9850,25 @@ function showBookMenu(name, type) {
     ${items.map(([ic,lb,fn])=>`<div onclick="${fn}" style="display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;border-bottom:1px solid #F3F4F6" ontouchstart="this.style.background='#F9FAFB'" ontouchend="this.style.background=''"> <span style="font-size:18px">${ic}</span> <span style="font-size:15px;font-weight:600;color:#374151">${lb}</span> </div>`).join('')}
     <div onclick="cm()" style="padding:16px 20px;text-align:center;cursor:pointer;font-size:14px;font-weight:700;color:#9CA3AF">취소</div>
   </div></div>`;
+}
+
+// 단어장별 '외웠음(1)' 표시만 초기화 (헷갈림 2는 유지). 내 단어장/일반/마켓팩 공통
+function _resetBookMarks(name){
+  function clr(mm){ var c=0; if(mm){ Object.keys(mm).forEach(function(k){ if(mm[k]===1){ delete mm[k]; c++; } }); } return c; }
+  var cnt=0;
+  if(name==='내 단어장'){
+    cnt=clr(S.markMap=S.markMap||{});
+  } else {
+    var bk=(S.books||[]).find(function(x){return x.name===name;});
+    if(!bk){ toast('단어장을 찾을 수 없어요','err'); return; }
+    bk.markMap=bk.markMap||{};
+    cnt=clr(bk.markMap);
+    // 현재 활성 단어장이면 S.markMap(사본)도 함께 초기화
+    if(S.currentBook===name) clr(S.markMap);
+  }
+  if(typeof sv==='function') sv();
+  go();
+  toast('✅ 외웠음 '+cnt+'개 초기화했어요');
 }
 
 function _confirmDeleteBook(name, fromModal) {

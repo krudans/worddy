@@ -10755,8 +10755,8 @@ function openNaverDict() {
 // Gemini API 공통 헬퍼
 // ══════════════════════════════════════════════
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const GEMINI_PRO   = 'gemini-2.0-flash';  // 이미지/PDF도 flash로 처리
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_PRO   = 'gemini-2.5-flash';  // 이미지/PDF도 flash로 처리
 
 function getGeminiKey() {
   return S._geminiKey || localStorage.getItem('_geminiKey') || '';
@@ -13791,5 +13791,54 @@ auth.onAuthStateChanged(async user => {
 <script src="js/bwd-suggest.js"></script>
   <script src="js/bwd-fix.js?v=2"></script>
   <script src="js/bwd-dict-ui.js?v=6"></script>
+
+<script>
+/* Worddy AI fix (2026-06-13): model 2.5-flash + thinkingBudget0 + fallback + 난이도 모달 체크박스 */
+(function __wdShimFn(){
+    if(window.__wdShim) return; window.__wdShim=true;
+    window.__wdLevels={low:true,mid:true,high:true};
+    var of=window.fetch;
+    var FB=['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash-lite','gemini-flash-latest'];
+    window.fetch=async function(input,init){
+      var isGen=(typeof input==='string'&&input.indexOf('generativelanguage')>=0&&input.indexOf(':generateContent')>=0);
+      if(isGen&&init&&init.body){try{
+        var b=JSON.parse(init.body);
+        b.generationConfig=Object.assign({},b.generationConfig,{thinkingConfig:{thinkingBudget:0}});
+        if(!b.generationConfig.maxOutputTokens||b.generationConfig.maxOutputTokens<512)b.generationConfig.maxOutputTokens=512;
+        var parts=(b.contents&&b.contents[0]&&b.contents[0].parts)||[];
+        var hasInline=parts.some(function(p){return p.inline_data||p.inlineData;});
+        var tp=parts.find(function(p){return typeof p.text==='string';});
+        var isExtract=hasInline||(tp&&/JSON\s*배열|영어 단어를 모두/.test(tp.text));
+        if(isExtract&&tp){var ck=['low','mid','high'].filter(function(l){return window.__wdLevels[l];});
+          if(ck.length>0&&ck.length<3){var nm={low:'초급(기초·일상 단어)',mid:'중급(중·고교 수준)',high:'고급(학술적·고난도)'};
+            tp.text+=' 단, 다음 수준에 해당하는 영어 단어만 추출하고 나머지 수준은 제외하세요: '+ck.map(function(l){return nm[l];}).join(', ')+'.';}}
+        init=Object.assign({},init,{body:JSON.stringify(b)});
+      }catch(e){}}
+      if(isGen){var base=input.replace(/models\/[^:]+:/,'models/__M__:');var last;
+        for(var i=0;i<FB.length;i++){last=await of.call(this,base.replace('__M__',FB[i]),init);if(last.status!==429)return last;}return last;}
+      return of.apply(this,arguments);
+    };
+    document.addEventListener('change',function(e){var inp=e.target;
+      if(inp&&inp.tagName==='INPUT'&&inp.type==='file'&&inp.files&&inp.files[0]&&/image|pdf/i.test(inp.accept||'')){window.__lastFile=inp.files[0];window.__lastInput=inp;}},true);
+    function mkModal(){
+      var all=[].slice.call(document.querySelectorAll('div,h2,h3,span'));
+      var head=all.find(function(e){var t=(e.textContent||'').trim();return /추출됨/.test(t)&&t.length<22;});
+      if(!head)return;
+      var card=head;while(card&&card.parentElement&&getComputedStyle(card.parentElement).position!=='fixed')card=card.parentElement;
+      if(!card||card.querySelector('.wd-mlvl'))return;
+      var bar=document.createElement('div');bar.className='wd-mlvl';bar.style.cssText='margin:8px 0 10px;padding:10px;background:var(--theme-tint,#EFF6FF);border-radius:10px';
+      var ti=document.createElement('div');ti.textContent='추출 수준 (해당하는 것 모두 선택 후 다시 추출)';ti.style.cssText='font-size:11px;font-weight:700;color:var(--text2,#555);margin-bottom:6px';
+      var row=document.createElement('div');row.style.cssText='display:flex;gap:6px;margin-bottom:8px';
+      [['초급','low'],['중급','mid'],['고급','high']].forEach(function(pr){var btn=document.createElement('button');
+        function paint(){var on=window.__wdLevels[pr[1]];btn.textContent=(on?'☑ ':'☐ ')+pr[0];btn.style.cssText='flex:1;padding:7px;border-radius:8px;border:1.5px solid var(--theme,#3B82F6);cursor:pointer;font-size:12px;font-weight:700;background:'+(on?'var(--theme,#3B82F6)':'#fff')+';color:'+(on?'#fff':'var(--theme,#3B82F6)');}
+        paint();btn.onclick=function(){window.__wdLevels[pr[1]]=!window.__wdLevels[pr[1]];paint();};row.appendChild(btn);});
+      var re=document.createElement('button');re.textContent='🔄 이 수준으로 다시 추출';re.style.cssText='width:100%;padding:9px;border-radius:9px;border:none;background:var(--theme,#3B82F6);color:#fff;font-weight:800;font-size:13px;cursor:pointer';
+      re.onclick=function(){if(window.__lastFile&&window.__lastInput){var dt=new DataTransfer();dt.items.add(window.__lastFile);window.__lastInput.files=dt.files;window.__lastInput.dispatchEvent(new Event('change',{bubbles:true}));}};
+      bar.appendChild(ti);bar.appendChild(row);bar.appendChild(re);
+      var fc=card.children[0];if(fc&&fc.nextSibling)card.insertBefore(bar,fc.nextSibling);else card.appendChild(bar);
+    }
+    new MutationObserver(mkModal).observe(document.body,{childList:true,subtree:true});setInterval(mkModal,600);
+  })();
+</script>
 </body>
 </html>

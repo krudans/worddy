@@ -1074,32 +1074,52 @@ const MARK_INFO = [
 
 function buildSentenceFromWords(wordList) {
   const pool=(wordList||S.gWords||[]);
-  // 문장형(en 자체가 3~12단어) 우선, 없으면 예문(ex) 사용
   const _cnt=w=>(((w&&w.en)||'').trim().split(/\s+/).filter(Boolean)).length;
   const sentPool=pool.filter(w=>{const n=_cnt(w);return n>=3&&n<=12;});
-  let chosen=null, source=null, hint=null;
-  if(sentPool.length){ chosen=rnd(sentPool); source=chosen.en; hint=chosen.kr||''; }
-  if(chosen&&source){
-    const sentence=source.replace(/[.,!?;:]/g,'').trim();
+  const _lastEn=S._sbLastEn||'';
+  if(sentPool.length){
+    let chosen=rnd(sentPool);
+    for(let t=0;t<6 && sentPool.length>1 && chosen.en===_lastEn;t++) chosen=rnd(sentPool);
+    const sentence=chosen.en.replace(/[.,!?;:]/g,'').trim();
     const words=sentence.split(/\s+/).filter(w=>w.length>0);
     if(words.length>=3){
-      const wrongPool=pool
-        .filter(w=>w.en!==chosen.en)
-        .map(w=>((w.en||'').split(/\s+/)[0]))
-        .filter(w=>w&&!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()))
-        .slice(0,3);
-      S.sbS={kr:hint,en:sentence,words};
+      const wrongPool=pool.filter(w=>w.en!==chosen.en).map(w=>((w.en||'').split(/\s+/)[0])).filter(w=>w&&!words.map(x=>x.toLowerCase()).includes(w.toLowerCase())).slice(0,3);
+      S.sbS={kr:chosen.kr||'',en:sentence,words};
       S.sbP=shuf([...words,...wrongPool].slice(0,words.length+2));
-      S.sbC=[];S.sbAns=false;S.sbOk=false;return;
+      S.sbC=[];S.sbAns=false;S.sbOk=false;S._sbLastEn=sentence;return;
     }
   }
-  const fallback=[
-    {kr:'나는 매일 공부한다',en:'I study every day',words:['I','study','every','day'],wrong:['she','playing']},
-    {kr:'그녀는 행복하다',en:'She is happy',words:['She','is','happy'],wrong:['He','are']},
-    {kr:'우리는 영어를 배운다',en:'We learn English',words:['We','learn','English'],wrong:['They','teach']},
+  const BANK=[
+    {lv:1,kr:'나는 매일 공부한다',en:'I study every day'},
+    {lv:1,kr:'그녀는 행복하다',en:'She is happy'},
+    {lv:1,kr:'우리는 영어를 배운다',en:'We learn English'},
+    {lv:1,kr:'그는 빠르게 달린다',en:'He runs fast'},
+    {lv:1,kr:'나는 물을 마신다',en:'I drink water'},
+    {lv:1,kr:'고양이가 잠을 잔다',en:'The cat sleeps'},
+    {lv:1,kr:'우리는 함께 논다',en:'We play together'},
+    {lv:2,kr:'나는 매일 열심히 공부한다',en:'I study hard every day'},
+    {lv:2,kr:'그녀는 아름다운 미소를 가지고 있다',en:'She has a beautiful smile'},
+    {lv:2,kr:'우리는 함께 새 단어를 배운다',en:'We learn new words together'},
+    {lv:2,kr:'그는 학교에 걸어서 간다',en:'He walks to school'},
+    {lv:2,kr:'나는 아침에 커피를 마신다',en:'I drink coffee in the morning'},
+    {lv:2,kr:'그들은 공원에서 축구를 한다',en:'They play soccer in the park'},
+    {lv:3,kr:'나는 시험을 위해 열심히 공부하고 있다',en:'I am studying hard for the exam'},
+    {lv:3,kr:'그녀는 매주 도서관에서 책을 읽는다',en:'She reads books at the library every week'},
+    {lv:3,kr:'우리는 다음 달에 함께 여행을 갈 것이다',en:'We will travel together next month'},
+    {lv:3,kr:'그는 영어를 유창하게 말할 수 있다',en:'He can speak English fluently'},
+    {lv:3,kr:'나는 어제 친구들과 영화를 보았다',en:'I watched a movie with my friends yesterday'}
   ];
-  const st=rnd(fallback);
-  S.sbS=st;S.sbP=shuf([...st.words,...st.wrong]);S.sbC=[];S.sbAns=false;S.sbOk=false;
+  const lvSel=(S.gameSettings&&S.gameSettings.sentLevel);
+  let bank=(lvSel===1||lvSel===2||lvSel===3)?BANK.filter(b=>b.lv===lvSel):BANK;
+  if(!bank.length) bank=BANK;
+  let st=rnd(bank);
+  for(let t=0;t<6 && bank.length>1 && st.en===_lastEn;t++) st=rnd(bank);
+  const words=st.en.split(/\s+/);
+  const others=BANK.filter(b=>b.en!==st.en).flatMap(b=>b.en.split(/\s+/)).filter(w=>!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()));
+  const wrong=shuf(others).slice(0,2);
+  S.sbS={kr:st.kr,en:st.en,words};
+  S.sbP=shuf([...words,...wrong]);
+  S.sbC=[];S.sbAns=false;S.sbOk=false;S._sbLastEn=st.en;
 }
 
 // ── 성향 파악 + 캐릭터 색상 ──
@@ -6013,7 +6033,7 @@ function rGameOnlyTab() {
       <div style="background:rgba(255,255,255,.28);border-radius:99px;height:8px;overflow:hidden;position:relative">
         <div style="height:100%;background:#fff;border-radius:99px;width:${Math.max(_conquerPct,_clearedGames>0?6:0)}%;transition:width .6s"></div>
       </div>
-      <div style="font-size:10px;opacity:.9;margin-top:6px;position:relative">${_clearedGames>=_totalGames?'🏆 모든 게임 클리어! 대단해요':_clearedGames===0?'게임을 클리어하고 정복도를 채워봐요!':'잘하고 있어요 · 남은 게임도 도전!'}</div>
+      <div style="font-size:10px;opacity:.92;margin-top:6px;position:relative;line-height:1.4">전체 ${_totalGames}개 게임 중 ${_clearedGames}개를 1회 이상 완료했어요 · ${_clearedGames>=_totalGames?'🏆 전부 클리어! 대단해요':_clearedGames===0?'게임을 한 번 끝내면 채워져요':'남은 게임도 도전!'}</div>
     </div>
 
     <!-- 통계 3칸 -->
@@ -6032,11 +6052,11 @@ function rGameOnlyTab() {
       const _weekTotal=Object.entries(_gdc).filter(([k])=>k>=_wAgo).reduce((s,[,v])=>s+Object.values(v).reduce((a,b)=>a+_vwld(b),0),0);
       // 전체 플레이 횟수
       const _allTotal=Object.values(_gpc).reduce((s,v)=>s+v,0);
-      const _cleared=Object.keys(bestScores).length;
+      const _cleared=_clearedGames;
       return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px">
         ${[
           {v:_todayTotal>0?_todayTotal+'단어':'없음', lb:'오늘 게임', ic:'🔥', color:_todayTotal>0?'#F59E0B':'var(--text3,#9CA3AF)'},
-          {v:_cleared+'/'+_totalGames, lb:'클리어', ic:'🏆', color:'var(--theme)'},
+          {v:_cleared+'/'+_totalGames, lb:'완료한 게임', ic:'🏆', color:'var(--theme)'},
           {v:_allTotal>0?_allTotal+'단어':'없음', lb:'누적 게임', ic:'📊', color:_allTotal>0?'var(--theme)':'var(--text3,#9CA3AF)'},
         ].map(s=>`<div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px 4px;text-align:center;border:1px solid var(--border,#E2E8F0)">
           <div style="font-size:14px;line-height:1">${s.ic}</div>
@@ -9988,6 +10008,15 @@ function showGameSettings(gameId, tab) {
         <input type="range" min="5" max="${maxCnt}" step="5" value="${curCnt}" oninput="S.gameSettings.count=+this.value;showGameSettings('${gameId}')" style="width:100%;accent-color:#EC4899">
       </div>
 
+      ${(gameId==='sentence'||gameId==='ssort')?`
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px">문장 난이도</div>
+        <div style="font-size:11px;color:#9CA3AF;margin-bottom:9px">초급=짧은 문장, 고급=긴 문장</div>
+        <div style="display:flex;gap:6px">
+          ${[[0,'전체'],[1,'초급'],[2,'중급'],[3,'고급']].map(o=>{const sel=(+(gs.sentLevel||0))===o[0];return `<button onclick="S.gameSettings.sentLevel=${o[0]};showGameSettings('${gameId}')" style="flex:1;padding:10px 0;border-radius:10px;border:1.5px solid ${sel?'#EC4899':'#E5E7EB'};background:${sel?'#FCE7F3':'#F9FAFB'};color:${sel?'#EC4899':'#374151'};font-size:13px;font-weight:${sel?'800':'600'};cursor:pointer">${o[1]}</button>`;}).join('')}
+        </div>
+      </div>
+      `:''}
       <div>
         <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px">출제할 단어</div>
         <div style="font-size:11px;color:#9CA3AF;margin-bottom:9px">어떤 단어로 문제를 낼지 선택해요</div>
@@ -11404,7 +11433,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false; S._ssPlayedIdx=-1;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -11916,6 +11945,7 @@ function rScramble(){
   if(!S.scLetters||S._scIdx!==S.gIdx) _scInit();
   const answered=!!S.gAns;
   const isCorrect=S.gRes==='ok';
+  const _scUp=(S.scCase!=='lower');
   var html=ghdr('🔀 스크램블',''+(S.gIdx+1)+'/'+S.gWords.length);
   html+='<div style="padding:16px 14px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:0 auto;width:100%;box-sizing:border-box">';
   var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
@@ -11923,15 +11953,16 @@ function rScramble(){
   if(w.img) html+='<div style="font-size:34px;margin-bottom:6px">'+w.img+'</div>';
   html+='<div style="font-size:13px;opacity:.8;margin-bottom:6px">철자를 순서대로 탭하세요</div>';
   html+='<div style="font-size:22px;font-weight:900;margin-bottom:8px">'+w.kr+'</div>';
-  var builtStr=(S.scBuilt||[]).map(function(x){return x.ch;}).join('');
+  var builtStr=(S.scBuilt||[]).map(function(x){return _scUp?x.ch.toUpperCase():x.ch.toLowerCase();}).join('');
   html+='<div style="font-size:26px;font-weight:900;font-family:Georgia,serif;letter-spacing:3px;min-height:34px">'+(builtStr||'&nbsp;')+'</div>';
   html+='<div style="margin-top:8px;font-size:16px;font-weight:800;visibility:'+(answered?'visible':'hidden')+'">'+(answered?(isCorrect?'✅ 정답!':'❌ 정답: '+w.en):'✅ 정답!')+'</div>';
   html+='</div>';
   if(!answered){
+    html+='<div style="display:flex;justify-content:center"><button onclick="S.scCase=(S.scCase===\'lower\'?\'upper\':\'lower\');go()" style="background:var(--theme-tint);color:var(--theme);border:1.5px solid var(--theme-soft);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:800;cursor:pointer">'+(_scUp?'🔤 대문자 → 소문자':'🔡 소문자 → 대문자')+'</button></div>';
     html+='<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">';
     S.scLetters.forEach(function(t){
       var u=t.used;
-      html+='<button onclick="scTap('+t.id+')" '+(u?'disabled':'')+' style="min-width:46px;height:50px;padding:0 6px;border-radius:12px;border:2px solid '+(u?'#E5E7EB':'var(--theme)')+';background:'+(u?'#F3F4F6':'#fff')+';color:'+(u?'#CBD5E1':'var(--theme)')+';font-size:22px;font-weight:900;font-family:Georgia,serif;cursor:'+(u?'default':'pointer')+'">'+t.ch.toUpperCase()+'</button>';
+      html+='<button onclick="scTap('+t.id+')" '+(u?'disabled':'')+' style="min-width:46px;height:50px;padding:0 6px;border-radius:12px;border:2px solid '+(u?'#E5E7EB':'var(--theme)')+';background:'+(u?'#F3F4F6':'#fff')+';color:'+(u?'#CBD5E1':'var(--theme)')+';font-size:22px;font-weight:900;font-family:Georgia,serif;cursor:'+(u?'default':'pointer')+'">'+(_scUp?t.ch.toUpperCase():t.ch.toLowerCase())+'</button>';
     });
     html+='</div>';
     html+='<button onclick="scBack()" style="width:100%;padding:12px;border:none;border-radius:14px;background:#F3F4F6;color:#374151;font-size:14px;font-weight:800;cursor:pointer">⌫ 지우기</button>';
@@ -12351,6 +12382,7 @@ function speak(text, force){try{if(!('speechSynthesis'in window))return;text=Str
 const SORT_SENTENCES=[{en:'I study hard every day',kr:'나는 매일 열심히 공부한다',words:['I','study','hard','every','day']},{en:'She has a beautiful smile',kr:'그녀는 아름다운 미소를 가지고 있다',words:['She','has','a','beautiful','smile']},{en:'We learn new words together',kr:'우리는 함께 새 단어를 배운다',words:['We','learn','new','words','together']}];
 function rSSorting(){
   if(!S.sbS||!S.sbS.words){buildSentenceFromWords&&buildSentenceFromWords(S.gWords);if(!S.sbS||!S.sbS.words){const st=rnd(SORT_SENTENCES);S.sbS=st;S.sbP=shuf([...st.words]);S.sbC=[];S.sbAns=false;S.sbOk=false;}}
+  if(!S.sbAns && S._ssPlayedIdx!==S.gIdx){ S._ssPlayedIdx=S.gIdx; setTimeout(function(){ try{ if(S.gameId==='ssort'&&!S.sbAns&&S.sbS&&S.sbS.en) speak(S.sbS.en); }catch(e){} },350); }
   return ghdr('🔊 문장 배열',`<button onclick="SFX.stopBG();if(typeof savePartialGameScore==='function')savePartialGameScore();S._gameRunning=false;S.gDone=true;go(S._prevTab||'game')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#fff">✕</button>`)+`<div class="pad">
     ${cbrow(S.sbAns?(S.sbOk?'완벽해! 🎉':'아쉬워!'):'음성을 듣고 올바른 순서로 배열해봐!',S.lid,S.sbAns?(S.sbOk?'happy':'sad'):'normal')}
     <div style="background:#FFF8E1;border-radius:20px;padding:16px;text-align:center;border:3px solid #FFE082">

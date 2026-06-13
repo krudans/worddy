@@ -2022,9 +2022,8 @@ function rMarket() {
           ${owned
             ? `<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
               <span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700">✅ 보유</span>
-              <button onclick="removePack('${pk.id}')" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">🗑 삭제</button>
             </div>`
-            : `<button onclick="downloadPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
+            : `<button onclick="_doBuyPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
         </div>
         ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
         <div id="preview-${pk.id}" style="display:none;margin-top:10px">
@@ -3706,6 +3705,26 @@ function getBookWords(book) {
     return livePack ? (livePack.words || []) : [];
   }
   return book.words || [];
+}
+// 단어장 드롭다운 아래 한 줄 요약 (외움/남음/진행율) — 홈/학습/게임 공용
+function _bookSummaryLine(bookName) {
+  const bn = bookName || S.currentBook || '내 단어장';
+  let words, mm;
+  if (bn === '내 단어장') { words = S.words || []; mm = S.markMap || {}; }
+  else {
+    const b = (S.books || []).find(x => x.name === bn);
+    words = (typeof getBookWords === 'function' ? getBookWords(b) : (b && b.words) || []) || [];
+    mm = (b && b.markMap) || {};
+  }
+  const total = words.length;
+  const done = words.filter(w => mm[w.en] === 1).length;
+  const remain = total - done;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  return `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:7px;font-size:11px;color:var(--text3,#9CA3AF);font-weight:600">
+    <span>✅ 외움 <b style="color:var(--theme)">${done}</b></span><span style="opacity:.35">·</span>
+    <span>📚 남음 <b style="color:var(--text2,#374151)">${remain}</b></span><span style="opacity:.35">·</span>
+    <span>진행률 <b style="color:var(--theme)">${pct}%</b></span>
+  </div>`;
 }
 function _booksForSave() {
   return (S.books || []).map(b => {
@@ -5408,6 +5427,7 @@ function rLearnTab() {
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
+    ${_bookSummaryLine(bookName)}
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;font-weight:600;color:var(--text2,#374151)">암기 진행률</span>
@@ -5981,6 +6001,7 @@ function rGameOnlyTab() {
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
+    ${_bookSummaryLine(bookName)}
 
     <!-- 통계 4칸 한 줄 -->
     ${(()=>{
@@ -8420,7 +8441,7 @@ function rHome() {
   // ── 단어장 드롭다운 (캐릭터 카드 아래) ──
   const _allBooksHome = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
   const _bookNameHome = S.currentBook||'내 단어장';
-  parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_allBooksHome.map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div></div>`);
+  parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_allBooksHome.map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>${_bookSummaryLine(_bookNameHome)}</div>`);
 
   parts.push(renderGoalSummary());
   // 스트릭 위기 배너 제거됨

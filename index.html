@@ -905,6 +905,7 @@ function checkAttend() {
   showAttendPopup();
 }
 
+function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
 function logStudy(type, wordEn) {
   // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
   const todayKey = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
@@ -959,7 +960,7 @@ function logStudy(type, wordEn) {
   }
   else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
   if(type==='words') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.1)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.1)*10)/10; }
-  else if(type==='quiz') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.05)*10)/10; }
+  else if(type==='quiz') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.05)*10)/10; } _syncDayMin();
   updStreak();
   // 단어 학습 → 배부름 직접 연결 (10개마다 +1)
   if(type==='words') {
@@ -3254,7 +3255,7 @@ const _LT = {
       if(this.elapsed > 0 && this.elapsed % 60 === 0) {
         const todayKey = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
         if(S._dailyDate !== todayKey) { S._dailyStudiedMin=0; S._dailyDate=todayKey; }
-        S._dailyStudiedMin = (S._dailyStudiedMin||0) + 1;
+        S._dailyStudiedMin = (S._dailyStudiedMin||0) + 1; _syncDayMin();
         const goal=S._dailyGoalMin||30, studied=S._dailyStudiedMin||0;
         const pct=Math.round(studied/goal*100);
         // 10%마다 XP 지급 (각 구간 1회만)
@@ -5287,7 +5288,7 @@ function go(tab,sub) {
     if((S.tab==='learn'||S.tab==='study'||S.tab==='mybooks') && tab && tab!==S.tab) {
       if(S._learnEnterTime) {
         const _mins=(Date.now()-S._learnEnterTime)/60000;
-        if(_mins>=0.1){const _tk=(typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));if(S._dailyDate!==_tk){S._dailyStudiedMin=0;S._dailyDate=_tk;}S._dailyStudiedMin=Math.round(((S._dailyStudiedMin||0)+_mins)*10)/10;sv();}
+        if(_mins>=0.1){const _tk=(typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));if(S._dailyDate!==_tk){S._dailyStudiedMin=0;S._dailyDate=_tk;}S._dailyStudiedMin=Math.round(((S._dailyStudiedMin||0)+_mins)*10)/10;_syncDayMin();sv();}
         S._learnEnterTime=null;
       }
     }
@@ -5478,7 +5479,7 @@ function rLearnTab() {
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-        <div style="font-size:22px;font-weight:900;color:#16A34A">${todayLog.marked||0}</div>
+        <div style="font-size:22px;font-weight:900;color:#16A34A">${(typeof _planTodayMemo==='function'?_planTodayMemo(null,t):(todayLog.marked||0))}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 외운 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">

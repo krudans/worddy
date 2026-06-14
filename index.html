@@ -11346,7 +11346,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false; S._ssPlayedIdx=-1;
+  S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false; S._ssPlayedIdx=-1; S._gtDeadline=null;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
   const cnt=ws?ws.length:Math.min(gs.count||10, src.length);
@@ -11601,6 +11601,35 @@ function _armQTimer(){
     }
   }, total*1000);
 }
+function _clearGameTimer(){ if(window._gtIV){clearInterval(window._gtIV);window._gtIV=null;} }
+function _armGameTimer(mins){
+  _clearGameTimer();
+  if(!mins||S.gDone||!S._gameRunning){ return; }
+  if(!S._gtDeadline){ S._gtDeadline=Date.now()+mins*60000; }
+  var gid=S.gameId;
+  var tick=function(){
+    if(S.gameId!==gid||!S._gameRunning||S.gDone){ _clearGameTimer(); return; }
+    var leftMs=S._gtDeadline-Date.now();
+    var left=Math.max(0,Math.ceil(leftMs/1000));
+    var mm=Math.floor(left/60), ss=left%60;
+    var col=leftMs>60000?'#86EFAC':(leftMs>20000?'#FBBF24':'#EF4444');
+    var el=document.getElementById('gt-timer');
+    if(el){ el.textContent='\u23f1 '+mm+':'+(ss<10?'0':'')+ss; el.style.color=col; }
+    if(leftMs<=0){
+      _clearGameTimer();
+      if(!S.gDone){
+        if(gid==='wordfind'){ S.gScore=((S._wfCleared||(S.wfFound?S.wfFound.size:0)))*100; }
+        else if(gid==='match'){ S.gScore=S.mScore||0; }
+        S.gDone=true;
+        if(typeof toast==='function'){ toast('\u23f0 \uc2dc\uac04 \uc885\ub8cc!'); }
+        go();
+      }
+    }
+  };
+  tick();
+  window._gtIV=setInterval(tick,250);
+}
+
 function pickQ4(ci){
   var cs=S._gCs||[]; var w=S.gWords[S.gIdx]; var ch=cs[ci];
   if(!ch||!w||S.gAns)return;
@@ -11695,7 +11724,8 @@ function rQ4(){
 
   // ── 설정바 ──
   H+=gsetBar(
-     gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
+     gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
+    +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])
     +gsetRow('\uc74c\uc131',[['\ub055',"S.gameSettings.voiceMode='off';sv();go()",(gs.voiceMode||'off')==='off'],['\uc815\ub2f5 \ub2e8\uc5b4',"S.gameSettings.voiceMode='answer';sv();go()",gs.voiceMode==='answer'],['\ubb38\uc81c \ub2e8\uc5b4',"S.gameSettings.voiceMode='question';sv();go()",gs.voiceMode==='question']])
     +gsetRow('\uc120\ud0dd\uc9c0',[['4\uac1c',"S.gameSettings.choiceCount=4;S._gCs=null;sv();go()",choiceCount===4],['6\uac1c',"S.gameSettings.choiceCount=6;S._gCs=null;sv();go()",choiceCount===6]])
@@ -11812,7 +11842,8 @@ function rListenQ(){
   H+='</div>';
 
   H+=gsetBar(
-     gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
+     gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
+    +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])
     +gsetRow('\ub2e4\uc2dc\ub4e3\uae30',[['1\ud68c',"S.gameSettings.listenTimes=1;sv();go();_lqPlay()",lt===1],['2\ud68c',"S.gameSettings.listenTimes=2;sv();go();_lqPlay()",lt===2],['3\ud68c',"S.gameSettings.listenTimes=3;sv();go();_lqPlay()",lt===3]])
     +gsetRow('\uc608\ubb38\uc77d\uae30',[['\ub055',"S.gameSettings.listenEx=false;sv();go()",!lex],['\ucf2c',"S.gameSettings.listenEx=true;sv();go();_lqPlay()",lex]])
@@ -11921,7 +11952,8 @@ function rFill(){
   H+='</div>';
 
   H+=gsetBar(
-     gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
+     gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
+    +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ub73b',"S.gameSettings.showKr=(S.gameSettings.showKr===false);sv();go()",gs.showKr!==false],['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===true)?false:true;sv();go()",gs.showEmoji===true]])
     +gsetRow('\uc74c\uc131',[['\ub055',"S.gameSettings.voiceMode='off';sv();go()",(gs.voiceMode||'off')==='off'],['\uc815\ub2f5 \ub2e8\uc5b4',"S.gameSettings.voiceMode='answer';sv();go()",gs.voiceMode==='answer'],['\uc608\ubb38',"S.gameSettings.voiceMode='sentence';sv();go()",gs.voiceMode==='sentence']])
     +gsetRow('\uc120\ud0dd\uc9c0',[['4\uac1c',"S.gameSettings.choiceCount=4;S._gCs=null;sv();go()",choiceCount===4],['6\uac1c',"S.gameSettings.choiceCount=6;S._gCs=null;sv();go()",choiceCount===6]])
@@ -12169,16 +12201,19 @@ function rMatch(){
 
   var H='<div style="position:fixed;inset:0;background:'+gameBg('match')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
   H+=ghdrDark('\ud83d\udd17 \uc9dd \ub9de\ucd94\uae30', matchedN+'/'+total+' \uc9dd'+(S._matchPlayed?' \u00b7 '+(Math.floor(S._matchPlayed/pairsN)+1)+'\uc138\ud2b8':''));
+  H+=(gs.matchTimeMin?'<div style="text-align:right;padding:0 16px 4px;flex-shrink:0"><span id="gt-timer" style="font-size:15px;font-weight:900;font-family:monospace;color:#86EFAC">\u23f1 --</span></div>':'');
   H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+prog+'%;transition:width .3s"></div></div></div>';
   H+='<div style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">';
   H+='<div style="text-align:center;font-size:12px;color:#94A3B8;margin-bottom:12px">\ud83d\udca1 \ub2e8\uc5b4\uc640 \ub73b\uc744 \ud0ed\ud574\uc11c \uc9dd\uc744 \ub9de\ucd94\uc138\uc694</div>';
   H+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div style="display:flex;flex-direction:column;gap:7px">'+enCol+'</div><div style="display:flex;flex-direction:column;gap:7px">'+krCol+'</div></div>';
   H+='</div>';
   H+=gsetBar(
-     gsetRow('\uc9dd \uac1c\uc218',[['4',"S.gameSettings.matchPairs=4;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===4],['5',"S.gameSettings.matchPairs=5;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===5],['6',"S.gameSettings.matchPairs=6;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===6]])
+     gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.matchTimeMin=0;S._gtDeadline=null;sv();go()",!(gs.matchTimeMin)],['1\ubd84',"S.gameSettings.matchTimeMin=1;S._gtDeadline=null;sv();go()",gs.matchTimeMin===1],['2\ubd84',"S.gameSettings.matchTimeMin=2;S._gtDeadline=null;sv();go()",gs.matchTimeMin===2],['3\ubd84',"S.gameSettings.matchTimeMin=3;S._gtDeadline=null;sv();go()",gs.matchTimeMin===3]])
+    +gsetRow('\uc9dd \uac1c\uc218',[['4',"S.gameSettings.matchPairs=4;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===4],['5',"S.gameSettings.matchPairs=5;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===5],['6',"S.gameSettings.matchPairs=6;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===6]])
     +gsetRow('\uc774\ubaa8\uc9c0',[['\ub055',"S.gameSettings.matchEmoji=false;sv();go()",gs.matchEmoji===false],['\ucf2c',"S.gameSettings.matchEmoji=true;sv();go()",gs.matchEmoji!==false]])
   );
   H+='</div>';
+  _armGameTimer(gs.matchTimeMin||0);
   return H;
 }
 function selM(t,v){
@@ -12374,6 +12409,7 @@ function rWF(){
   H+=ghdrDark('\ud83d\udd0d \uc228\uc740 \ub2e8\uc5b4 \ucc3e\uae30', foundN+'/'+total+' \ucc3e\uc74c'+(S._wfRound?' \u00b7 \uc138\ud2b8 '+((S._wfRound||0)+1):''));
   H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+prog+'%;transition:width .3s"></div></div></div>';
 
+  H+=(gs.wfTimeMin?'<div style="text-align:right;padding:0 16px 4px;flex-shrink:0"><span id="gt-timer" style="font-size:15px;font-weight:900;font-family:monospace;color:#86EFAC">\u23f1 --</span></div>':'');
   H+='<div style="flex:1;overflow-y:auto;padding:10px 14px;min-height:0">';
   H+='<div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-bottom:6px">'+chips+'</div>';
   H+=hint;
@@ -12384,13 +12420,15 @@ function rWF(){
   H+='</div>';
 
   H+=gsetBar(
-     gsetRow('\uae00\uc790',[['\ub300\ubb38\uc790',"S.wfCase='upper';go()",_wfUp],['\uc18c\ubb38\uc790',"S.wfCase='lower';go()",!_wfUp]])
+     gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.wfTimeMin=0;S._gtDeadline=null;sv();go()",!(gs.wfTimeMin)],['2\ubd84',"S.gameSettings.wfTimeMin=2;S._gtDeadline=null;sv();go()",gs.wfTimeMin===2],['3\ubd84',"S.gameSettings.wfTimeMin=3;S._gtDeadline=null;sv();go()",gs.wfTimeMin===3],['5\ubd84',"S.gameSettings.wfTimeMin=5;S._gtDeadline=null;sv();go()",gs.wfTimeMin===5]])
+    +gsetRow('\uae00\uc790',[['\ub300\ubb38\uc790',"S.wfCase='upper';go()",_wfUp],['\uc18c\ubb38\uc790',"S.wfCase='lower';go()",!_wfUp]])
     +gsetRow('\ubaa9\ub85d',[['\ub2e8\uc5b4',"S.gameSettings.wfChipMode='word';sv();go()",chipMode==='word'],['\ub73b',"S.gameSettings.wfChipMode='kr';sv();go()",chipMode==='kr']])
     +gsetRow('\uc774\ubaa8\uc9c0',[['\ub055',"S.gameSettings.wfChipEmoji=false;sv();go()",gs.wfChipEmoji===false],['\ucf2c',"S.gameSettings.wfChipEmoji=true;sv();go()",gs.wfChipEmoji!==false]])
     +gsetRow('\uaca9\uc790',[['7\u00d77',"S.gameSettings.wfGridSz=7;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===7],['8\u00d78',"S.gameSettings.wfGridSz=8;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===8],['9\u00d79',"S.gameSettings.wfGridSz=9;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===9],['10\u00d710',"S.gameSettings.wfGridSz=10;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===10]])
     +gsetRow('\ub2e8\uc5b4\uc218',[['4',"S.gameSettings.wfWordCount=4;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===4],['5',"S.gameSettings.wfWordCount=5;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===5],['6',"S.gameSettings.wfWordCount=6;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===6],['7',"S.gameSettings.wfWordCount=7;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===7],['8',"S.gameSettings.wfWordCount=8;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===8],['9',"S.gameSettings.wfWordCount=9;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===9],['10',"S.gameSettings.wfWordCount=10;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===10]])
   );
   H+='</div>';
+  _armGameTimer(gs.wfTimeMin||0);
   return H;
 }
 function wfCheckSel(){

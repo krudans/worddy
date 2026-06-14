@@ -675,6 +675,7 @@ const SFX = {
   ctx: null,
   init() { try { if(!this.ctx) this.ctx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){} },
   play(type) {
+    if(window.S&&S.gameSettings&&S.gameSettings.sfxOn===false) return;
     try {
       this.init(); const c = this.ctx;
       const g = c.createGain(); g.connect(c.destination);
@@ -724,6 +725,7 @@ const SFX = {
   bgTimer: null,
   bgIdx: 0,
   playBG() {
+    if(window.S&&S.gameSettings&&S.gameSettings.bgmOn===false) return;
     try {
       this.init();
       if(this.bgTimer) return;
@@ -11345,7 +11347,8 @@ function startGameW(id, ws) {
   const gs = S.gameSettings||{count:10};
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
-  const src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  let src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  if(!ws && gs.markFilter>=0){ var _mm=(typeof getCurrentBookMarkMap==='function')?getCurrentBookMarkMap():(S.markMap||{}); var _rf=src.filter(function(w){return (_mm[w.en]||0)===gs.markFilter;}); if(_rf.length>=2) src=_rf; }
   S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false; S._ssPlayedIdx=-1; S._gtDeadline=null;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
@@ -11604,13 +11607,13 @@ function _armQTimer(){
 }
 // ── 문항별 타이머(초) : 5개 단문항 게임 공용 ──
 function _clearItemTimer(){ if(window._itIV){clearInterval(window._itIV);window._itIV=null;} }
-function _itAnswered(gid){ return (gid==='sentence'||gid==='ssort') ? !!S.sbAns : !!S.gAns; }
+function _itAnswered(gid){ if(gid==='sentence'||gid==='ssort') return !!S.sbAns; if(gid==='wc') return !!S._wcResolving; return !!S.gAns; }
 function _itemTimeout(gid){
   if(gid==='scramble'||gid==='typing'){ S.gAns='__t__'; S.gRes='no'; }
-  else if(gid==='wc'){ S.wcWrong=(S.gameSettings&&S.gameSettings.wcMaxWrong)||6; if(typeof _wcFail==='function')_wcFail(); }
+  else if(gid==='wc'){ S.wcWrong=(S.gameSettings&&S.gameSettings.wcMaxWrong)||6; S._wcResolving=true; }
   else if(gid==='sentence'||gid==='ssort'){ S.sbAns=true; S.sbOk=false; }
   if(!S.gResultMap) S.gResultMap={};
-  if(gid!=='wc') S.gResultMap[S.gIdx]=false;
+  S.gResultMap[S.gIdx]=false;
   if(typeof toast==='function') toast('\u23f0 \uc2dc\uac04 \ucd08\uacfc!');
   go();
 }
@@ -11678,6 +11681,24 @@ function _wcFail(){
     S.wcWord=nw; S.wcLetters=_wcHideLetters(nw.en,(S.gameSettings&&S.gameSettings.wcDiff)||'mid');
     S.wcGuessed=new Set(); S.wcWrong=0; S.wcWrongSet=new Set(); S._itDeadline=null; go();
   }, 1200);
+}
+function _wcNext(){
+  S._wcResolving=false; S._wcAdv=false;
+  S.gIdx++;
+  if(S.gIdx>=S.gWords.length){ S.gDone=true; go(); return; }
+  var nw=S.gWords[S.gIdx]; if(!nw){ S.gDone=true; go(); return; }
+  S.wcWord=nw; S.wcLetters=_wcHideLetters(nw.en,(S.gameSettings&&S.gameSettings.wcDiff)||'mid');
+  S.wcGuessed=new Set(); S.wcWrong=0; S.wcWrongSet=new Set(); S._itDeadline=null; go();
+}
+function gsetCommon(){
+  var gs=S.gameSettings||{}; var mf=gs.markFilter;
+  return gsetRow('출제범위',[['전체',"_setRange(-1)",!(mf===0||mf===1||mf===2)],['미암기',"_setRange(0)",mf===0],['헷갈림',"_setRange(2)",mf===2]])
+    +gsetRow('음향',[['🎵 배경음',"var on=(S.gameSettings.bgmOn!==false);S.gameSettings.bgmOn=!on;if(on){SFX.stopBG();}else{SFX.playBG();}sv();go()",gs.bgmOn!==false],['🔊 효과음',"var on=(S.gameSettings.sfxOn!==false);S.gameSettings.sfxOn=!on;sv();go()",gs.sfxOn!==false]]);
+}
+function _setRange(v){
+  var gs=S.gameSettings||{}; gs.markFilter=v;
+  if(typeof sv==='function')sv();
+  if(S.gameId) startGameW(S.gameId);
 }
 function _setWcDiff(level){
   var gs=S.gameSettings||{}; gs.wcDiff=level;
@@ -11760,7 +11781,7 @@ function rQ4(){
   const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;
   const acc=gameAccent(S.gameId||'quiz');
 
-  if(!answered && gs.voiceMode==='question' && S._q4Spoke!==S.gIdx){ S._q4Spoke=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(w.en,'en');},150); }
+  if(!dir && !answered && gs.voiceMode==='question' && S._q4Spoke!==S.gIdx){ S._q4Spoke=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(w.en,'en');},150); }
 
   var H='<div style="position:fixed;inset:0;background:'+gameBg(S.gameId||'quiz')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
   H+=ghdrDark('\ud83c\udfaf \ub73b \uace0\ub974\uae30',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
@@ -11768,11 +11789,12 @@ function rQ4(){
 
   // ── 본문(가변 영역). 단어/발음/품사/이모지는 설정값에만 의존 → 정답여부와 무관하게 높이 고정 ──
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
-  H+='<div style="font-size:11px;color:'+acc+';font-weight:700;background:'+acc+'22;border-radius:20px;padding:5px 16px;margin-bottom:16px">\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?</div>';
+  var dir=(S.gameSettings&&S.gameSettings.quizDir===1)?1:0; var _qt=dir?w.kr:w.en;
+  H+='<div style="font-size:11px;color:'+acc+';font-weight:700;background:'+acc+'22;border-radius:20px;padding:5px 16px;margin-bottom:16px">'+(dir?'\uc774 \ub73b\uc758 \ub2e8\uc5b4\ub294?':'\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?')+'</div>';
   if(w.img && gs.showEmoji!==false) H+='<div style="font-size:34px;margin-bottom:8px">'+w.img+'</div>';
-  var enFz=w.en.length>30?'20px':w.en.length>20?'26px':w.en.length>12?'34px':w.en.length>8?'40px':'44px';
-  H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+w.en+'</div>';
-  if(w.ph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+w.ph+'</div>';
+  var enFz=_qt.length>30?'20px':_qt.length>20?'26px':_qt.length>12?'34px':_qt.length>8?'40px':'44px';
+  H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+_qt+'</div>';
+  if(!dir && w.ph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+w.ph+'</div>';
   if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px">'+w.pos+'</div>';
   if(gs.showEx && exList.length) H+='<div style="font-size:12px;color:rgba(255,255,255,.45);font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+exList[0]+'</div>';
   // 결과 한 줄(높이 항상 예약 → 정답 시 화면 안 움직임)
@@ -11800,7 +11822,7 @@ function rQ4(){
     else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
     else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
     var oc=answered?'':'pickQ4('+_ci+')';
-    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+ch.kr+'</button>';
+    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+(dir?ch.en:ch.kr)+'</button>';
   });
   H+='</div>';
 
@@ -11812,7 +11834,7 @@ function rQ4(){
   H+='</div>';
 
   // ── 설정바 ──
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+gsetRow('출제방향',[['영\u2192한',"S.gameSettings.quizDir=0;S._gCs=null;sv();go()",!(S.gameSettings&&S.gameSettings.quizDir===1)],['한\u2192영',"S.gameSettings.quizDir=1;S._gCs=null;sv();go()",(S.gameSettings&&S.gameSettings.quizDir===1)]])+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
     +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])
@@ -11835,11 +11857,11 @@ function hintQ4(){
 }
 function _playPron(en, times){ _playPronSeq(en, times, ''); }
 // 단어를 times번 읽고, exText가 있으면 이어서 예문도 읽음
-function _playPronSeq(en, times, exText){
+function _playPronSeq(en, times, exText, rate0){
   try{
     times=Math.max(1,times||1);
     window.speechSynthesis.cancel();
-    var seq=[]; for(var i=0;i<times;i++) seq.push({t:en,rate:0.85});
+    var seq=[]; var _r0=rate0||0.85; for(var i=0;i<times;i++) seq.push({t:en,rate:_r0});
     if(exText) seq.push({t:exText,rate:0.82});
     var idx=0;
     (function speakNext(){
@@ -11858,7 +11880,7 @@ function _lqPlay(){
   var t=(S.gameSettings&&S.gameSettings.listenTimes)||1;
   var exL=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
   var ex=(S.gameSettings&&S.gameSettings.listenEx&&exL.length)?exL[0]:'';
-  _playPronSeq(w.en, t, ex);
+  _playPronSeq(w.en, t, ex, (S.gameSettings&&S.gameSettings.listenRate)||0.85);
 }
 function rListenQ(){
   const w=S.gWords[S.gIdx];
@@ -11930,11 +11952,12 @@ function rListenQ(){
   }
   H+='</div>';
 
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
     +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])
     +gsetRow('\ub2e4\uc2dc\ub4e3\uae30',[['1\ud68c',"S.gameSettings.listenTimes=1;sv();go();_lqPlay()",lt===1],['2\ud68c',"S.gameSettings.listenTimes=2;sv();go();_lqPlay()",lt===2],['3\ud68c',"S.gameSettings.listenTimes=3;sv();go();_lqPlay()",lt===3]])
+    +gsetRow('속도',[['보통',"S.gameSettings.listenRate=0.85;sv();go()",!(gs.listenRate)||gs.listenRate>=0.85],['느리게',"S.gameSettings.listenRate=0.6;sv();go();_lqPlay()",gs.listenRate&&gs.listenRate<0.85]])
     +gsetRow('\uc608\ubb38\uc77d\uae30',[['\ub055',"S.gameSettings.listenEx=false;sv();go()",!lex],['\ucf2c',"S.gameSettings.listenEx=true;sv();go();_lqPlay()",lex]])
     +gsetRow('\uc120\ud0dd\uc9c0',[['4\uac1c',"S.gameSettings.choiceCount=4;S._gCs=null;sv();go()",choiceCount===4],['6\uac1c',"S.gameSettings.choiceCount=6;S._gCs=null;sv();go()",choiceCount===6]])
   );
@@ -12040,7 +12063,7 @@ function rFill(){
   }
   H+='</div>';
 
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
     +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ub73b',"S.gameSettings.showKr=(S.gameSettings.showKr===false);sv();go()",gs.showKr!==false],['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===true)?false:true;sv();go()",gs.showEmoji===true]])
@@ -12117,7 +12140,7 @@ function rScramble(){
   }
   H+='</div>';
   var sd=gs.scrambleDiff;
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('제한시간',[['끔',"S.gameSettings.scrambleTimeSec=0;S._itDeadline=null;sv();go()",!(gs.scrambleTimeSec)],['10초',"S.gameSettings.scrambleTimeSec=10;S._itDeadline=null;sv();go()",gs.scrambleTimeSec===10],['15초',"S.gameSettings.scrambleTimeSec=15;S._itDeadline=null;sv();go()",gs.scrambleTimeSec===15],['20초',"S.gameSettings.scrambleTimeSec=20;S._itDeadline=null;sv();go()",gs.scrambleTimeSec===20]])
     +gsetRow('난이도',[['전체',"_setWordDiff('scramble','all')",!(sd==='easy'||sd==='mid'||sd==='hard')],['초급',"_setWordDiff('scramble','easy')",sd==='easy'],['중급',"_setWordDiff('scramble','mid')",sd==='mid'],['고급',"_setWordDiff('scramble','hard')",sd==='hard']])
     +gsetRow('글자',[['ABC',"S.scCase='upper';sv();go()",up],['abc',"S.scCase='lower';sv();go()",!up]])
@@ -12127,6 +12150,8 @@ function rScramble(){
   _armItemTimer(gs.scrambleTimeSec||0,'scramble');
   return H;
 }
+function typKey(ch){ if(S.gAns)return; S.typBuf=(S.typBuf||'')+ch; if(typeof SFX!=='undefined')SFX.play('tap'); if(typeof vib==='function')vib(12); go(); }
+function typBack(){ if(S.gAns)return; S.typBuf=(S.typBuf||'').slice(0,-1); if(typeof vib==='function')vib(12); go(); }
 function rTyping(){
   var w=S.gWords[S.gIdx];
   if(!w){ S.gDone=true; return rGame(); }
@@ -12134,33 +12159,51 @@ function rTyping(){
   var answered=!!S.gAns, isCorrect=S.gRes==='ok';
   var exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
   var times=gs.typingListen||1;
+  if(S._typIdx!==S.gIdx){ S._typIdx=S.gIdx; S.typBuf=''; }
   if(!answered && S._typPlayedIdx!==S.gIdx){ S._typPlayedIdx=S.gIdx; setTimeout(function(){ try{ if(S.gameId==='typing'&&!S.gAns) _playPronSeq(w.en,times,''); }catch(e){} },350); }
   var acc=gameAccent('typing');
   var hint=(gs.typingHint===true);
+  var buf=S.typBuf||'';
   var H='<div style="position:fixed;inset:0;background:'+gameBg('typing')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
   H+=ghdrDark('✏️ 받아쓰기',(S.gIdx+1)+'/'+S.gWords.length);
   H+=_itBar(gs.typingTimeSec);
-  H+='<div style="flex:1;overflow-y:auto;padding:12px 16px;min-height:0">';
+  H+='<div style="flex:1;overflow-y:auto;padding:10px 14px;min-height:0">';
   var cardBg=answered?(isCorrect?'rgba(34,197,94,.18)':'rgba(239,68,68,.18)'):'rgba(255,255,255,.05)';
-  H+='<div style="background:'+cardBg+';border:1.5px solid '+(answered?(isCorrect?'#86EFAC':'#FCA5A5'):'rgba(255,255,255,.12)')+';border-radius:20px;padding:22px;text-align:center;min-height:180px;display:flex;flex-direction:column;justify-content:center;margin-bottom:12px">';
-  H+='<div style="font-size:12px;opacity:.7;margin-bottom:10px">이 뜻의 영단어를 입력하세요</div>';
-  H+='<div style="font-size:26px;font-weight:900;margin-bottom:8px">'+w.kr+'</div>';
-  if(hint && !answered) H+='<div style="font-size:15px;color:'+acc+';font-weight:800;letter-spacing:2px;font-family:monospace">첫 글자: '+w.en.charAt(0).toUpperCase()+' …</div>';
+  H+='<div style="background:'+cardBg+';border:1.5px solid '+(answered?(isCorrect?'#86EFAC':'#FCA5A5'):'rgba(255,255,255,.12)')+';border-radius:18px;padding:16px;text-align:center;margin-bottom:10px">';
+  H+='<div style="font-size:11px;opacity:.7;margin-bottom:6px">이 뜻의 영단어를 입력하세요</div>';
+  H+='<div style="font-size:23px;font-weight:900;margin-bottom:6px">'+w.kr+'</div>';
+  if(hint && !answered) H+='<div style="font-size:13px;color:'+acc+';font-weight:800;font-family:monospace">첫 글자: '+w.en.charAt(0).toUpperCase()+' …</div>';
   if(answered){
-    if(w.ph) H+='<div style="font-size:13px;opacity:.7;font-family:monospace">'+w.ph+'</div>';
-    H+='<div style="margin-top:10px;font-size:18px;font-weight:800;color:'+(isCorrect?'#86EFAC':'#FCA5A5')+'">'+(isCorrect?'✅ 정답!':'❌ 정답: '+w.en)+'</div>';
-    if(exList[0]) H+='<div style="font-size:12px;opacity:.7;margin-top:8px;font-style:italic">'+exList[0]+'</div>';
+    if(w.ph) H+='<div style="font-size:12px;opacity:.7;font-family:monospace">'+w.ph+'</div>';
+    H+='<div style="margin-top:8px;font-size:17px;font-weight:800;color:'+(isCorrect?'#86EFAC':'#FCA5A5')+'">'+(isCorrect?'✅ 정답!':'❌ 정답: '+w.en)+'</div>';
   }
   H+='</div>';
   if(!answered){
-    H+='<button onclick="_playPronSeq(\''+String(w.en).replace(/'/g,"\\'")+'\','+times+',\'\')" style="padding:11px;width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;margin-bottom:10px">🔊 발음 듣기 ('+times+'회)</button>';
-    H+='<input id="typ-inp" type="text" placeholder="영단어 입력..." autocomplete="off" style="width:100%;padding:14px;border:2px solid rgba(255,255,255,.18);border-radius:14px;font-size:16px;outline:none;box-sizing:border-box;text-align:center;font-family:monospace;background:rgba(255,255,255,.06);color:#fff;margin-bottom:10px" onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(!v)return;chkAnsInput(v);}">';
-    H+='<button onclick="var el=document.getElementById(\'typ-inp\');var v=el?el.value.trim():\'\';if(!v)return;chkAnsInput(v)" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+acc+';color:#fff;font-size:16px;font-weight:800;cursor:pointer">확인</button>';
+    var disp = buf ? buf : '<span style="opacity:.35;font-size:14px">아래 글자를 눌러 입력</span>';
+    H+='<div style="background:rgba(255,255,255,.06);border:2px solid '+acc+';border-radius:14px;min-height:48px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;font-family:monospace;letter-spacing:3px;padding:8px 12px;margin-bottom:10px;word-break:break-all;text-transform:lowercase">'+disp+'</div>';
+    H+='<button onclick="_playPronSeq(\''+String(w.en).replace(/'/g,"\\'")+'\','+times+',\'\')" style="padding:9px;width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;margin-bottom:10px">🔊 발음 듣기 ('+times+'회)</button>';
+    var rows=['qwertyuiop','asdfghjkl','zxcvbnm'];
+    H+='<div style="display:flex;flex-direction:column;gap:6px;align-items:center;margin-bottom:4px">';
+    rows.forEach(function(row){
+      H+='<div style="display:flex;gap:5px;justify-content:center;width:100%">';
+      row.split('').forEach(function(ch){
+        H+='<button onclick="typKey(\''+ch+'\')" style="flex:1;max-width:42px;height:48px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:8px;color:#fff;font-size:18px;font-weight:800;font-family:monospace;cursor:pointer;padding:0">'+ch+'</button>';
+      });
+      H+='</div>';
+    });
+    H+='<div style="display:flex;gap:5px;justify-content:center;width:100%">';
+    H+='<button onclick="typKey(\' \')" style="flex:2;height:44px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">⎵ 띄어쓰기</button>';
+    H+='<button onclick="typKey(\'-\')" style="flex:1;height:44px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;color:#fff;font-size:18px;font-weight:800;font-family:monospace;cursor:pointer">-</button>';
+    H+='<button onclick="typBack()" style="flex:1;height:44px;background:rgba(239,68,68,.18);border:1px solid rgba(252,165,165,.5);border-radius:8px;color:#FCA5A5;font-size:18px;font-weight:800;cursor:pointer">⌫</button>';
+    H+='</div>';
+    H+='</div>';
+    H+='<button onclick="var v=(S.typBuf||\'\').trim();if(!v)return;chkAnsInput(v)" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+(buf?acc:'rgba(255,255,255,.12)')+';color:#fff;font-size:16px;font-weight:800;cursor:'+(buf?'pointer':'default')+';margin-top:10px">확인</button>';
   } else {
-    H+='<button onclick="S.gAns=null;S.gRes=null;S.gIdx++;go()" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+acc+';color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+((S.gIdx+1)>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
+    if(exList[0]) H+='<div style="font-size:12px;opacity:.7;margin:6px 0 10px;font-style:italic;text-align:center">'+exList[0]+'</div>';
+    H+='<button onclick="S.gAns=null;S.gRes=null;S.typBuf=\'\';S._typIdx=-1;S.gIdx++;go()" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+acc+';color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+((S.gIdx+1)>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
   }
   H+='</div>';
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('제한시간',[['끔',"S.gameSettings.typingTimeSec=0;S._itDeadline=null;sv();go()",!(gs.typingTimeSec)],['15초',"S.gameSettings.typingTimeSec=15;S._itDeadline=null;sv();go()",gs.typingTimeSec===15],['20초',"S.gameSettings.typingTimeSec=20;S._itDeadline=null;sv();go()",gs.typingTimeSec===20],['30초',"S.gameSettings.typingTimeSec=30;S._itDeadline=null;sv();go()",gs.typingTimeSec===30]])
     +gsetRow('듣기',[['1회',"S.gameSettings.typingListen=1;sv();go()",(gs.typingListen||1)===1],['2회',"S.gameSettings.typingListen=2;sv();go()",gs.typingListen===2],['3회',"S.gameSettings.typingListen=3;sv();go()",gs.typingListen===3]])
     +gsetRow('첫글자',[['끔',"S.gameSettings.typingHint=false;sv();go()",!hint],['켬',"S.gameSettings.typingHint=true;sv();go()",hint]])
@@ -12207,14 +12250,14 @@ function rWC(){
   var acc=gameAccent('wc');
   if(!S.wcWrongSet)S.wcWrongSet=new Set();
   var allDone=S.wcLetters.every(function(l,i){return !l.hidden||S.wcGuessed.has(i);});
-  if(allDone && !S._wcAdv){
-    S._wcAdv=true; S.gScore+=Math.max(0,(maxW-S.wcWrong)*20); if(typeof ok==='function')ok();
+  if(allDone && !S._wcResolving){
+    S._wcResolving=true; S._wcAdv=true; S.gScore+=Math.max(0,(maxW-S.wcWrong)*20); if(typeof ok==='function')ok();
     if(!S.gResultMap)S.gResultMap={}; S.gResultMap[S.gIdx]=true;
-    setTimeout(function(){ S._wcAdv=false; S.gIdx++; if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;} var nw=S.gWords[S.gIdx]; if(!nw){S.gDone=true;go();return;} S.wcWord=nw; S.wcLetters=_wcHideLetters(nw.en,(S.gameSettings&&S.gameSettings.wcDiff)||'mid'); S.wcGuessed=new Set(); S.wcWrong=0; S.wcWrongSet=new Set(); S._itDeadline=null; go(); }, 800);
+    setTimeout(_wcNext, 900);
   }
   var failed=S.wcWrong>=maxW;
   var visible=S.wcLetters.map(function(l,i){
-    if(!l.hidden||S.wcGuessed.has(i)) return '<span style="font-size:26px;font-weight:900;font-family:monospace;color:'+acc+';margin:0 2px;border-bottom:3px solid '+acc+';padding:0 4px">'+(up?l.letter.toUpperCase():l.letter.toLowerCase())+'</span>';
+    if(!l.hidden||S.wcGuessed.has(i)||failed) return '<span style="font-size:26px;font-weight:900;font-family:monospace;color:'+acc+';margin:0 2px;border-bottom:3px solid '+acc+';padding:0 4px">'+(up?l.letter.toUpperCase():l.letter.toLowerCase())+'</span>';
     return '<span style="font-size:26px;font-weight:900;font-family:monospace;color:transparent;margin:0 2px;border-bottom:3px solid '+(failed?'#EF4444':'rgba(255,255,255,.3)')+';padding:0 4px">_</span>';
   }).join('');
   var H='<div style="position:fixed;inset:0;background:'+gameBg('wc')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
@@ -12229,6 +12272,9 @@ function rWC(){
   H+='<div style="font-size:12px;color:'+(failed?'#FCA5A5':'#94A3B8')+';margin-top:8px">오답: '+S.wcWrong+'/'+(maxW>=999?'∞':maxW)+(allDone?' · ✅ 완성!':failed?' · ❌ 정답: '+w.en:'')+'</div>';
   H+='<button onclick="hintWC()" style="margin-top:10px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:10px;padding:6px 14px;font-size:11px;font-weight:700;color:#FCD34D;cursor:pointer">💡 힌트 (-10점)</button>';
   H+='</div>';
+  if(failed){
+    H+='<button onclick="_wcNext()" style="width:100%;padding:15px;border:none;border-radius:14px;background:'+acc+';color:#fff;font-size:16px;font-weight:800;cursor:pointer">'+((S.gIdx+1)>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
+  } else {
   var alpha='abcdefghijklmnopqrstuvwxyz'.split('');
   H+='<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center">';
   H+=alpha.map(function(letter){
@@ -12239,9 +12285,10 @@ function rWC(){
     return '<button onclick="guessWC(\''+letter+'\')" '+((correctHit||wrongHit)?'disabled':'')+' style="width:32px;height:38px;background:'+bg+';border:1.5px solid '+bd+';border-radius:8px;font-size:14px;font-weight:700;cursor:'+((correctHit||wrongHit)?'default':'pointer')+';font-family:monospace;color:#fff">'+(up?letter.toUpperCase():letter.toLowerCase())+'</button>';
   }).join('');
   H+='</div>';
+  }
   H+='</div>';
   var wd=gs.wcDiff;
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('제한시간',[['끔',"S.gameSettings.wcTimeSec=0;S._itDeadline=null;sv();go()",!(gs.wcTimeSec)],['10초',"S.gameSettings.wcTimeSec=10;S._itDeadline=null;sv();go()",gs.wcTimeSec===10],['15초',"S.gameSettings.wcTimeSec=15;S._itDeadline=null;sv();go()",gs.wcTimeSec===15],['20초',"S.gameSettings.wcTimeSec=20;S._itDeadline=null;sv();go()",gs.wcTimeSec===20]])
     +gsetRow('난이도',[['초급',"_setWcDiff('easy')",wd==='easy'],['중급',"_setWcDiff('mid')",!wd||wd==='mid'],['고급',"_setWcDiff('hard')",wd==='hard']])
     +gsetRow('글자',[['ABC',"S.wcCase='upper';sv();go()",up],['abc',"S.wcCase='lower';sv();go()",!up]])
@@ -12275,7 +12322,7 @@ function guessWC(letter){
     if(!S.wcWrongSet)S.wcWrongSet=new Set(); S.wcWrongSet.add(lc);
     S.wcWrong++; if(typeof ng==='function')ng();
     var maxW=(S.gameSettings&&S.gameSettings.wcMaxWrong)||6;
-    if(S.wcWrong>=maxW){ _wcFail(); }
+    if(S.wcWrong>=maxW){ S._wcResolving=true; if(!S.gResultMap)S.gResultMap={}; S.gResultMap[S.gIdx]=false; }
   }
   go();
 }
@@ -12337,7 +12384,7 @@ function rMatch(){
   H+='<div style="text-align:center;font-size:12px;color:#94A3B8;margin-bottom:12px">\ud83d\udca1 \ub2e8\uc5b4\uc640 \ub73b\uc744 \ud0ed\ud574\uc11c \uc9dd\uc744 \ub9de\ucd94\uc138\uc694</div>';
   H+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div style="display:flex;flex-direction:column;gap:7px">'+enCol+'</div><div style="display:flex;flex-direction:column;gap:7px">'+krCol+'</div></div>';
   H+='</div>';
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.matchTimeMin=0;S._gtDeadline=null;sv();go()",!(gs.matchTimeMin)],['1\ubd84',"S.gameSettings.matchTimeMin=1;S._gtDeadline=null;sv();go()",gs.matchTimeMin===1],['2\ubd84',"S.gameSettings.matchTimeMin=2;S._gtDeadline=null;sv();go()",gs.matchTimeMin===2],['3\ubd84',"S.gameSettings.matchTimeMin=3;S._gtDeadline=null;sv();go()",gs.matchTimeMin===3]])
     +gsetRow('\uc9dd \uac1c\uc218',[['4',"S.gameSettings.matchPairs=4;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===4],['5',"S.gameSettings.matchPairs=5;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===5],['6',"S.gameSettings.matchPairs=6;S.mPairs=null;S._matchPlayed=0;S.mEn0=null;S.mKr0=null;sv();go()",pairsN===6]])
     +gsetRow('\uc774\ubaa8\uc9c0',[['\ub055',"S.gameSettings.matchEmoji=false;sv();go()",gs.matchEmoji===false],['\ucf2c',"S.gameSettings.matchEmoji=true;sv();go()",gs.matchEmoji!==false]])
@@ -12416,7 +12463,7 @@ function rSentence(){
   }
   H+='</div>';
   var sl=gs.sentLevel;
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('제한시간',[['끔',"S.gameSettings.sentTimeSec=0;S._itDeadline=null;sv();go()",!(gs.sentTimeSec)],['20초',"S.gameSettings.sentTimeSec=20;S._itDeadline=null;sv();go()",gs.sentTimeSec===20],['30초',"S.gameSettings.sentTimeSec=30;S._itDeadline=null;sv();go()",gs.sentTimeSec===30],['45초',"S.gameSettings.sentTimeSec=45;S._itDeadline=null;sv();go()",gs.sentTimeSec===45]])
     +gsetRow('난이도',[['전체',"S.gameSettings.sentLevel=0;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",!(sl===1||sl===2||sl===3)],['초급',"S.gameSettings.sentLevel=1;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",sl===1],['중급',"S.gameSettings.sentLevel=2;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",sl===2],['고급',"S.gameSettings.sentLevel=3;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",sl===3]])
   );
@@ -12463,17 +12510,22 @@ function buildWF(src){
   const placed = [];
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+  const _dirs=_gs.wfDiag?[[0,1],[1,0],[1,1],[1,-1]]:[[0,1],[1,0]];
   pickWords.forEach(w=>{
-    for(let t=0;t<100;t++){
-      const dir=Math.floor(Math.random()*2);
-      const dr=[0,1][dir], dc=[1,0][dir];
-      const r=Math.floor(Math.random()*(gridSz-dr*(w.length-1)));
-      const c=Math.floor(Math.random()*(gridSz-dc*(w.length-1)));
-      if(r+dr*(w.length-1)>=gridSz||c+dc*(w.length-1)>=gridSz) continue;
+    for(let t=0;t<150;t++){
+      const _d=_dirs[Math.floor(Math.random()*_dirs.length)];
+      const dr=_d[0], dc=_d[1];
+      const _rMax=dr>0?(gridSz-(w.length-1)):gridSz;
+      const _cMin=dc<0?(w.length-1):0;
+      const _cMax=dc>0?(gridSz-(w.length-1)):gridSz;
+      if(_rMax<=0||_cMax-_cMin<=0) continue;
+      const r=Math.floor(Math.random()*_rMax);
+      const c=_cMin+Math.floor(Math.random()*(_cMax-_cMin));
       let ok=true;
       const cells=[];
       for(let i=0;i<w.length;i++){
         const cr=r+dr*i, cc=c+dc*i;
+        if(cr<0||cr>=gridSz||cc<0||cc>=gridSz){ok=false;break;}
         if(grid[cr][cc]&&grid[cr][cc]!==w[i]){ok=false;break;}
         cells.push(`${cr},${cc}`);
       }
@@ -12566,13 +12618,14 @@ function rWF(){
   }
   H+='</div>';
 
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.wfTimeMin=0;S._gtDeadline=null;sv();go()",!(gs.wfTimeMin)],['2\ubd84',"S.gameSettings.wfTimeMin=2;S._gtDeadline=null;sv();go()",gs.wfTimeMin===2],['3\ubd84',"S.gameSettings.wfTimeMin=3;S._gtDeadline=null;sv();go()",gs.wfTimeMin===3],['5\ubd84',"S.gameSettings.wfTimeMin=5;S._gtDeadline=null;sv();go()",gs.wfTimeMin===5]])
     +gsetRow('\uae00\uc790',[['\ub300\ubb38\uc790',"S.wfCase='upper';go()",_wfUp],['\uc18c\ubb38\uc790',"S.wfCase='lower';go()",!_wfUp]])
     +gsetRow('\ubaa9\ub85d',[['\ub2e8\uc5b4',"S.gameSettings.wfChipMode='word';sv();go()",chipMode==='word'],['\ub73b',"S.gameSettings.wfChipMode='kr';sv();go()",chipMode==='kr']])
     +gsetRow('\uc774\ubaa8\uc9c0',[['\ub055',"S.gameSettings.wfChipEmoji=false;sv();go()",gs.wfChipEmoji===false],['\ucf2c',"S.gameSettings.wfChipEmoji=true;sv();go()",gs.wfChipEmoji!==false]])
     +gsetRow('\uaca9\uc790',[['7\u00d77',"S.gameSettings.wfGridSz=7;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===7],['8\u00d78',"S.gameSettings.wfGridSz=8;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===8],['9\u00d79',"S.gameSettings.wfGridSz=9;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===9],['10\u00d710',"S.gameSettings.wfGridSz=10;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfGridSz||8)===10]])
     +gsetRow('\ub2e8\uc5b4\uc218',[['4',"S.gameSettings.wfWordCount=4;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===4],['5',"S.gameSettings.wfWordCount=5;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===5],['6',"S.gameSettings.wfWordCount=6;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===6],['7',"S.gameSettings.wfWordCount=7;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===7],['8',"S.gameSettings.wfWordCount=8;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===8],['9',"S.gameSettings.wfWordCount=9;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===9],['10',"S.gameSettings.wfWordCount=10;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",(gs.wfWordCount||6)===10]])
+    +gsetRow('대각선',[['끔',"S.gameSettings.wfDiag=false;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",!gs.wfDiag],['켬',"S.gameSettings.wfDiag=true;S.wfGrid=null;S._wfRound=0;S._wfCleared=0;sv();go()",!!gs.wfDiag]])
   );
   H+='</div>';
   _armGameTimer(gs.wfTimeMin||0);
@@ -12703,7 +12756,7 @@ function rSSorting(){
     H+='<div style="margin-top:14px"><button onclick="chkSB()" '+(S.sbC.length<2?'disabled':'')+' style="width:100%;background:'+(S.sbC.length<2?'rgba(255,255,255,.1)':acc)+';border:none;border-radius:14px;padding:14px;color:#fff;font-size:15px;font-weight:800;cursor:pointer;opacity:'+(S.sbC.length<2?.5:1)+'">확인 ✓</button></div>';
   }
   H+='</div>';
-  H+=gsetBar(
+  H+=gsetBar(gsetCommon()+
      gsetRow('제한시간',[['끔',"S.gameSettings.ssortTimeSec=0;S._itDeadline=null;sv();go()",!(gs.ssortTimeSec)],['20초',"S.gameSettings.ssortTimeSec=20;S._itDeadline=null;sv();go()",gs.ssortTimeSec===20],['30초',"S.gameSettings.ssortTimeSec=30;S._itDeadline=null;sv();go()",gs.ssortTimeSec===30],['45초',"S.gameSettings.ssortTimeSec=45;S._itDeadline=null;sv();go()",gs.ssortTimeSec===45]])
     +gsetRow('듣기',[['1회',"S.gameSettings.ssortListen=1;sv();go()",(gs.ssortListen||1)===1],['2회',"S.gameSettings.ssortListen=2;sv();go()",gs.ssortListen===2],['3회',"S.gameSettings.ssortListen=3;sv();go()",gs.ssortListen===3]])
     +gsetRow('한글힌트',[['켬',"S.gameSettings.ssortKrHint=true;sv();go()",krHint],['끔',"S.gameSettings.ssortKrHint=false;sv();go()",!krHint]])

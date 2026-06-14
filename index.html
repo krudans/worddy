@@ -4216,34 +4216,45 @@ window._autoRender = function() {
     }
 
     // 정렬 버튼
-    var sortBtns = [['추가순','default'],['A-Z','alpha'],['가나다','alpha_kr'],['마크','mark'],['랜덤','random']]
-      .map(function(it){return btn(it[0],"_arSetSort('"+it[1]+"')",(S.autoSort||'default')===it[1]);}).join('');
+    var sortItems = [['추가순','default'],['A-Z','alpha'],['가나다','alpha_kr'],['마크','mark'],['랜덤','random']]
+      .map(function(it){return [it[0],"_arSetSort('"+it[1]+"')",(S.autoSort||'default')===it[1]];});
 
     // 단위 버튼
     var unitBtns = [['10','10'],['20','20'],['50','50'],['전체','all']]
       .map(function(it){return btn(it[0],"_arSetUnit('"+it[1]+"')",(A.unit||'all')===it[1]);}).join('');
 
     // 학습범위 버튼
-    var rangeBtns = [['전체',-1],['미암기',0],['외웠음',1],['헷갈림',2]]
-      .map(function(it){return btn(it[0],'_arSetRange('+it[1]+')',(A.range??-1)===it[1]);}).join('');
+    var rangeItems = [['전체',-1],['미암기',0],['외웠음',1],['헷갈림',2]]
+      .map(function(it){return [it[0],'_arSetRange('+it[1]+')',(A.range??-1)===it[1]];});
 
     // 발음 버튼
-    var _ws=window._autoWords||[];var _sb=_isSentenceBook(_ws);var readBtns = (_sb?[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr']]:[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']])
-      .map(function(it){return btn(it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]);}).join('');
-    var krDelayBtns = [['3초',3],['5초',5],['7초',7]]
-      .map(function(it){return btn(it[0],'window._auto.krFirstDelay='+it[1]+';window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]);}).join('');
+    var _ws=window._autoWords||[];var _sb=_isSentenceBook(_ws);var readItems = (_sb?[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr']]:[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']])
+      .map(function(it){return [it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]];});
+    var krDelayItems = [['3초',3],['5초',5],['7초',7]]
+      .map(function(it){return [it[0],'window._auto.krFirstDelay='+it[1]+';window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]];});
 
     // 속도 버튼
-    var speedBtns = [['느림',0.5],['보통',0.8],['빠름',1.1],['최대',1.5]]
-      .map(function(it){return btn(it[0],'_arSetSpeed('+it[1]+')',(A.shadowRate===it[1]));}).join('');
+    var speedItems = [['느림',0.5],['보통',0.8],['빠름',1.1],['최대',1.5]]
+      .map(function(it){return [it[0],'_arSetSpeed('+it[1]+')',(A.shadowRate===it[1])];});
 
     // 예문읽기 토글 (켜면 단어 발음 뒤 예문 1개를 읽음)
     var exOn = parseInt(A.exCount??0) > 0;
-    var exToggleBtn = '<button onclick="_arSetExCount('+(exOn?0:1)+')" style="flex:1;background:'+(exOn?'rgba(251,146,60,.5)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:5px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(exOn?700:400)+'">예문</button>';
+    var optItems = [['예문','_arSetExCount('+(exOn?0:1)+')',exOn],['반복','_arToggleLoop()',!!A.loop],['쉐도잉','_arToggleShadow()',!!A.shadow]];
 
     function row(label, btns) {
       return '<div style="margin-bottom:5px"><div style="font-size:9px;color:var(--panel-text3,#9CA3AF);margin-bottom:2px">'+label+'</div>'
         +'<div style="display:flex;gap:2px">'+btns+'</div></div>';
+    }
+    // 한 줄 형식: 제목 : 값 / 값 / 값 (활성값 강조, 탭 가능)
+    function iopt(label, items) {
+      var inner = items.map(function(it){
+        var ac = it[2];
+        return '<span onclick="'+it[1]+'" style="cursor:pointer;font-weight:'+(ac?800:500)+';color:'+(ac?'#60A5FA':'rgba(255,255,255,.5)')+'">'+it[0]+'</span>';
+      }).join('<span style="color:rgba(255,255,255,.22);margin:0 6px">/</span>');
+      return '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px;font-size:13px;line-height:1.4;flex-wrap:wrap">'
+        +'<span style="color:var(--panel-text3,#9CA3AF);font-weight:700;flex-shrink:0;min-width:48px">'+label+'</span>'
+        +'<span style="color:rgba(255,255,255,.3);flex-shrink:0">:</span>'
+        +'<span style="flex:1;min-width:0">'+inner+'</span></div>';
     }
 
     mr.style.pointerEvents='auto';
@@ -4274,16 +4285,12 @@ window._autoRender = function() {
         +'</div>'
         // 설정 패널
         +'<div style="flex-shrink:0;overflow-y:auto;padding:6px 16px 8px;border-top:1px solid rgba(255,255,255,.1)">'
-          +'<div style="margin-bottom:5px"><div style="font-size:9px;color:var(--panel-text3,#9CA3AF);margin-bottom:2px">정렬</div><div style="display:flex;gap:2px">'+sortBtns+'</div></div>'
-          +row('학습범위', rangeBtns)
-          +row('발음', readBtns)
-          +(A.read==='kr_first'?row('지연', krDelayBtns):'')
-          +row('속도', speedBtns)
-          +'<div style="display:flex;gap:4px">'
-            +exToggleBtn
-            +'<button onclick="_arToggleLoop()" style="flex:1;background:'+(A.loop?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:5px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(A.loop?700:400)+'">반복</button>'
-            +'<button onclick="_arToggleShadow()" style="flex:1;background:'+(A.shadow?'rgba(236,72,153,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:6px;padding:5px 2px;font-size:9px;color:#fff;cursor:pointer;font-weight:'+(A.shadow?700:400)+'">쉐도잉</button>'
-          +'</div>'
+          +iopt('정렬', sortItems)
+          +iopt('학습범위', rangeItems)
+          +iopt('발음', readItems)
+          +(A.read==='kr_first'?iopt('지연', krDelayItems):'')
+          +iopt('속도', speedItems)
+          +iopt('옵션', optItems)
         +'</div>'
       +'</div>';
 };;;

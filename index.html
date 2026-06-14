@@ -3566,6 +3566,8 @@ function setMark(en, val) {
 //  '전체 단어장 합산' = 각 책의 markMap 외움(1)을 그 책의 실제 단어와 매칭해 합산(유령 제외).
 //   → 단어장 탭 헤더 '암기 N개'와 동일 기준. 전역 S.markMap은 저장 구조상 불완전해 사용하지 않음.
 //  today/week/month = markDates(외운 날짜) 기반 + 현재 외움 상태인 단어만.
+function _myBookWords(){ try{ return (S.currentBook==='내 단어장') ? (S.words||[]) : (JSON.parse(localStorage.getItem('wd-w')||'[]')); }catch(e){ return S.words||[]; } }
+function _myBookMM(){ try{ return (S.currentBook==='내 단어장') ? (S.markMap||{}) : (JSON.parse(localStorage.getItem('wd-mk')||'{}')); }catch(e){ return S.markMap||{}; } }
 function _memorizedAcrossBooks(){
   // 반환: {sum: 전체 외운 고유 단어 수(중복 제거), set: 고유 en 집합}
   // 주의: S.words 는 '현재 펼친 책'의 작업본이라 그대로 쓰면 현재 책이 이중집계됨.
@@ -5402,7 +5404,7 @@ function _wordTierColor(n){
 const LEARN_GAMES=['flip','quiz','fill','typing','wc','match','sentence','chain','listen','wordfind','wordle','ssort'];
 
 function rLearnTab() {
-  const allBooks = [{name:'내 단어장', words:S.words||[], markMap:S.markMap||{}},
+  const allBooks = [{name:'내 단어장', words:_myBookWords(), markMap:_myBookMM()},
     ...(S.books||[]).map(b=>({name:b.name, words:getBookWords(b), markMap:b.markMap||{}}))];
   const bookName = S.currentBook||'내 단어장';
   const curBook = allBooks.find(b=>b.name===bookName)||allBooks[0];
@@ -5924,7 +5926,7 @@ function showLevelUpFlash(cb) {
 function rGameOnlyTab() {
   if(S._gameRunning && S.gameId) return '<div style="max-width:600px;margin:0 auto;width:100%">'+rGame()+'</div>';
 
-  const allBooks = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
+  const allBooks = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const bookName = S.currentBook||'내 단어장';
   const bestScores = S.bestScores||{};
 
@@ -6038,7 +6040,7 @@ function rButterflyTab() {
   const xpPct = Math.min(100, Math.round((S.xp||0) / xpTarget * 100));
   const canLvUp = (S.xp||0) >= xpTarget;
 
-  const allBooks = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
+  const allBooks = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const bookName = S.currentBook||'내 단어장';
   let html = '<div class="pad" style="padding-bottom:24px">';
 
@@ -8386,7 +8388,7 @@ function rHome() {
   parts.push(renderCharBanner({}));
 
   // ── 단어장 드롭다운 (캐릭터 카드 아래) ──
-  const _allBooksHome = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
+  const _allBooksHome = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const _bookNameHome = S.currentBook||'내 단어장';
   parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_allBooksHome.map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>${_bookSummaryLine(_bookNameHome)}</div>`);
 
@@ -8732,7 +8734,7 @@ async function renderHomeRank() {
 function showBooksModal() {
   // books 구조: [{name, words:[], markMap:{}, learned:[]}]
   // 현재 words를 기본 단어장으로 취급
-  const allBooks = [{name:'내 단어장', cnt:S.words.length, isDefault:true}, ...(S.books||[]).map(b=>({name:b.name, cnt:((typeof getBookWords==='function'?getBookWords(b):null)||b.words||[]).length, isDefault:false}))];
+  const allBooks = [{name:'내 단어장', cnt:_myBookWords().length, isDefault:true}, ...(S.books||[]).map(b=>({name:b.name, cnt:((typeof getBookWords==='function'?getBookWords(b):null)||b.words||[]).length, isDefault:false}))];
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
     <div style="font-size:17px;font-weight:800;margin-bottom:14px">📚 내 단어장</div>
@@ -9455,7 +9457,7 @@ function showBookWordList(bookName) {
 function _renderBookWordList(mr, bookName, searchQ) {
   window._bwlCurrentBook = bookName;
   window._bwlCurrentQ = searchQ || '';
-  const allBooks = [{name:'내 단어장', words:S.words, markMap:S.markMap}, ...(S.books||[])];
+  const allBooks = [{name:'내 단어장', words:_myBookWords(), markMap:_myBookMM()}, ...(S.books||[])];
   const bk = allBooks.find(function(b){return b.name===bookName;}) || allBooks[0];
   const words = getBookWords(bk);
   const bkMark = (bookName==='내 단어장') ? (S.markMap||{}) : (bk.markMap||S.markMap||{});
@@ -9684,7 +9686,7 @@ function selectBookAndLearn(bookName) {
 
 function rStudyMode() {
   const bookName = S.currentBook || '내 단어장';
-  const allBooks = [{name:'내 단어장', words:S.words}, ...(S.books||[])];
+  const allBooks = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const cnt = curWords.length;
   const mm = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});

@@ -11854,45 +11854,76 @@ function reEsc(s){return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 function rFill(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
+  const gs=S.gameSettings||{};
   const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
   const ex=exList[0]||'';
-  const blanked=ex?ex.replace(new RegExp('\\b'+reEsc(w.en)+'\\b','gi'),'_____'):('_____ : '+w.kr);
+  const acc=gameAccent('fill');
+  const blanked=ex?ex.replace(new RegExp('\\b'+reEsc(w.en)+'\\b','gi'),'<span style="color:'+acc+';font-weight:900">_____</span>'):('<span style="color:'+acc+';font-weight:900">_____</span>');
+  const filled=ex?ex.replace(new RegExp('\\b'+reEsc(w.en)+'\\b','gi'),'<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>'):w.en;
   const src=S.gWords.length>=4?S.gWords:(S.words.length>=4?S.words:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
   const otherPool=src.filter(x=>x.en!==w.en);
-  const needCount=Math.min(3,otherPool.length);
+  const choiceCount=(gs.choiceCount===6?6:4);
+  const needCount=Math.min(choiceCount-1,otherPool.length);
   const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(function(){S._gCs=shuf([w,...pick(otherPool,needCount)]);return S._gCs;})();
   const answered=!!S.gAns;
   const isCorrect=S.gRes==='ok';
+  const progress=S.gWords.length>0?Math.round((S.gIdx+1)/S.gWords.length*100):0;
+  const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;
 
-  var html=ghdr('📝 빈칸 채우기',''+(S.gIdx+1)+'/'+S.gWords.length);
-  html+='<div style="padding:16px 14px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:0 auto;width:100%;box-sizing:border-box">';
-  var cardBg=answered?(isCorrect?'#1A5C3A':'#7F1D1D'):'var(--theme-d)';
-  html+='<div style="background:'+cardBg+';border-radius:20px;padding:22px;color:#fff;position:relative;overflow:hidden;min-height:200px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;transition:background .3s">';
-  html+='<div style="position:absolute;top:10px;right:14px;font-size:22px;opacity:.15">🦋</div>';
-  if(!answered && S.gameSettings && S.gameSettings.timeLimit){ html+='<div id="qtimer" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.34);border-radius:20px;padding:5px 18px;font-size:20px;font-weight:900;color:#fff;letter-spacing:.5px;z-index:6;box-shadow:0 2px 10px rgba(0,0,0,.3)">⏱ '+(S.gameSettings.timeSec||10)+'초</div>'; }
-  html+='<div style="font-size:11px;opacity:.7;margin-bottom:10px">빈칸에 들어갈 단어는?</div>';
-  html+='<div style="font-size:18px;line-height:1.6;font-style:italic;color:#fff">'+blanked+'</div>';
-  if(w.kr) html+='<div style="font-size:13px;opacity:.7;margin-top:8px">뜻: '+w.kr+'</div>';
-  html+='<div style="margin-top:12px;font-size:16px;font-weight:800;visibility:'+(answered?'visible':'hidden')+'">'+(answered?(isCorrect?'✅ 정답!':'❌ 정답: '+w.en):'✅ 정답!')+'</div>';
-  html+='</div>';
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-  cs.forEach(function(ch,_ci){
-    var isAns=ch.en===w.en; var picked=answered&&S.gAns===ch.en;
-    var bg,border,col;
-    if(!answered){bg='#fff';border='#E5E7EB';col='#111';}
-    else if(isAns){bg='#F0FDF4';border='#22C55E';col='#166534';}
-    else if(picked){bg='#FEF2F2';border='#EF4444';col='#991B1B';}
-    else{bg='#F9FAFB';border='#E5E7EB';col='#9CA3AF';}
-    var oc=answered?'':('pickQ4('+_ci+')');
-    html+='<button onclick="'+oc+'" style="background:'+bg+';border:2px solid '+border+';border-radius:16px;padding:16px 10px;font-size:15px;font-weight:700;color:'+col+';cursor:'+(answered?'default':'pointer')+';text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);min-height:54px;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif">'+(isAns&&answered?'✅ ':'')+(picked&&!isAns?'❌ ':'')+ch.en+'</button>';
-  });
-  html+='</div>';
-  if(answered && !isCorrect){
-    html+='<button onclick="S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go()" style="width:100%;padding:14px;border:none;border-radius:16px;background:#111;color:#fff;font-size:16px;font-weight:800;cursor:pointer">'+(S.gIdx+1>=S.gWords.length?'결과 보기 🎉':'다음 단어 →')+'</button>';
+  var H='<div style="position:fixed;inset:0;background:'+gameBg('fill')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
+  H+=ghdrDark('\ud83d\udcdd \ube48\uce78 \ucc44\uc6b0\uae30',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
+  H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
+
+  H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;min-height:0;text-align:center">';
+  H+='<div style="font-size:11px;color:'+acc+';font-weight:700;background:'+acc+'22;border-radius:20px;padding:5px 16px;margin-bottom:18px">\ube48\uce78\uc5d0 \ub4e4\uc5b4\uac08 \ub2e8\uc5b4\ub294?</div>';
+  if(w.img && gs.showEmoji===true) H+='<div style="font-size:30px;margin-bottom:10px">'+w.img+'</div>';
+  H+='<div style="font-size:20px;line-height:1.7;font-style:italic;max-width:340px">'+(answered?filled:blanked)+'</div>';
+  if(w.kr && gs.showKr!==false) H+='<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:12px">\ub73b: '+w.kr+'</div>';
+  var fbTxt='', fbCol='#fff';
+  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+w.en;fbCol='#FCA5A5';} if(w.ph && gs.showPh!==false) fbTxt+='  '+w.ph; }
+  H+='<div style="min-height:26px;margin-top:14px;font-size:16px;font-weight:800;color:'+fbCol+'">'+fbTxt+'</div>';
+  H+='</div>';
+
+  if(gs.timeLimit){
+    H+='<div style="padding:0 32px 8px;flex-shrink:0;min-height:28px">';
+    if(!answered){
+      H+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:rgba(255,255,255,.1);border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div>';
+    }
+    H+='</div>';
   }
-  html+='</div>';
+
+  H+='<div style="padding:0 32px 4px;display:grid;grid-template-columns:1fr 1fr;gap:11px;flex-shrink:0">';
+  cs.forEach(function(ch,_ci){
+    var isAns=ch.en===w.en, picked=answered&&S.gAns===ch.en;
+    var bg,bd,col;
+    if(!answered){bg='rgba(255,255,255,.06)';bd='rgba(255,255,255,.14)';col='#fff';}
+    else if(isAns){bg='rgba(34,197,94,.2)';bd='#22C55E';col='#fff';}
+    else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
+    else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
+    var oc=answered?'':'pickQ4('+_ci+')';
+    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+ch.en+'</button>';
+  });
+  H+='</div>';
+
+  H+='<div style="padding:8px 32px 10px;flex-shrink:0;min-height:50px;display:flex;align-items:center">';
+  if(answered){
+    H+='<button onclick="S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go()" style="width:100%;padding:13px;border:none;border-radius:14px;background:'+acc+';color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+(S.gIdx+1>=S.gWords.length?'\uacb0\uacfc \ubcf4\uae30 \ud83c\udf89':'\ub2e4\uc74c \ub2e8\uc5b4 \u2192')+'</button>';
+  }
+  H+='</div>';
+
+  H+=gsetBar(
+     gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
+    +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ub73b',"S.gameSettings.showKr=(S.gameSettings.showKr===false);sv();go()",gs.showKr!==false],['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===true)?false:true;sv();go()",gs.showEmoji===true]])
+    +gsetRow('\uc74c\uc131',[['\ub055',"S.gameSettings.voiceMode='off';sv();go()",(gs.voiceMode||'off')==='off'],['\uc815\ub2f5 \ub2e8\uc5b4',"S.gameSettings.voiceMode='answer';sv();go()",gs.voiceMode==='answer'],['\uc608\ubb38',"S.gameSettings.voiceMode='sentence';sv();go()",gs.voiceMode==='sentence']])
+    +gsetRow('\uc120\ud0dd\uc9c0',[['4\uac1c',"S.gameSettings.choiceCount=4;S._gCs=null;sv();go()",choiceCount===4],['6\uac1c',"S.gameSettings.choiceCount=6;S._gCs=null;sv();go()",choiceCount===6]])
+  );
+  H+='</div>';
   if(answered){ _clearQTimer(); } else { _armQTimer(); }
-  return html;
+  if(answered && S._fillSpoke!==S.gIdx && typeof speak==='function'){
+    if(gs.voiceMode==='answer'){ S._fillSpoke=S.gIdx; setTimeout(function(){speak(w.en,'en');},120); }
+    else if(gs.voiceMode==='sentence' && ex){ S._fillSpoke=S.gIdx; setTimeout(function(){speak(ex,'en');},120); }
+  }
+  return H;
 }
 function _scInit(){
   var w=S.gWords[S.gIdx]; if(!w)return;

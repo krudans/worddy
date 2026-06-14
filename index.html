@@ -5333,9 +5333,15 @@ function go(tab,sub) {
   // 게임 화면 자체에 ← 나가기 버튼이 있으므로 오버레이 제거
   body.innerHTML=newHTML;
   if(S.tab==='butterfly'||S.tab==='game') setTimeout(renderBFDogamGrid,50);
-  // 광고 배너 고정 div에 렌더링
+  // 광고 배너 고정 div에 렌더링 (게임 진행 중엔 숨김 - 모든 게임 공통)
   const adEl=document.getElementById('ad-banner-fixed');
-  if(adEl) adEl.innerHTML=renderAdBanner()||'';
+  if(adEl){
+    const _inGame = S._gameRunning && S.gameId && !S.gDone;
+    adEl.innerHTML = _inGame ? '' : (renderAdBanner()||'');
+    adEl.style.display = _inGame ? 'none' : '';
+    // 우측 하단 단어사전 검색 플로팅 버튼(.bwdui-fab)도 게임 중 숨김
+    document.querySelectorAll('.bwdui-fab').forEach(function(fb){ fb.style.display=_inGame?'none':''; });
+  }
   body.scrollTop = tab ? 0 : _prevScroll;
   // 30일 캘린더 동적 렌더링
   requestAnimationFrame(()=>{
@@ -11624,29 +11630,33 @@ function rQ4(){
   var H='<div style="position:fixed;inset:0;background:#0F172A;z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
   H+=ghdrDark('\ud83c\udfaf \ub73b \uace0\ub974\uae30',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
   H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+progress+'%;transition:width .3s"></div></div></div>';
+
+  // ── 본문(가변 영역). 단어/발음/품사/이모지는 설정값에만 의존 → 정답여부와 무관하게 높이 고정 ──
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
-  if(!answered){
-    H+='<div style="font-size:11px;color:#60A5FA;font-weight:700;background:rgba(96,165,250,.12);border-radius:20px;padding:5px 16px;margin-bottom:16px">\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?</div>';
-    if(w.img) H+='<div style="font-size:34px;margin-bottom:8px">'+w.img+'</div>';
-    var enFz=w.en.length>30?'20px':w.en.length>20?'26px':w.en.length>12?'34px':w.en.length>8?'40px':'44px';
-    H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+w.en+'</div>';
-    if(w.ph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+w.ph+'</div>';
-    if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px">'+w.pos+'</div>';
-    if(gs.showEx && exList.length) H+='<div style="font-size:12px;color:rgba(255,255,255,.45);font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+exList[0]+'</div>';
-  } else {
-    var fb=isCorrect?'#22C55E':'#EF4444';
-    H+='<div style="font-size:40px;margin-bottom:6px">'+(isCorrect?'\u2705':'\u274c')+'</div>';
-    var enFz2=w.en.length>14?'28px':'38px';
-    H+='<div style="font-size:'+enFz2+';font-weight:900">'+w.en+'</div>';
-    H+='<div style="font-size:20px;font-weight:800;color:'+fb+';margin-top:8px">'+w.kr+'</div>';
-    if(w.ph) H+='<div style="font-size:12px;color:rgba(96,165,250,.8);font-family:monospace;margin-top:6px">'+w.ph+'</div>';
-    if(exList.length) H+='<div style="background:rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;margin-top:10px;font-size:12px;color:rgba(255,255,255,.7);font-style:italic;max-width:320px;line-height:1.5">'+exList[0]+'</div>';
-  }
+  H+='<div style="font-size:11px;color:#60A5FA;font-weight:700;background:rgba(96,165,250,.12);border-radius:20px;padding:5px 16px;margin-bottom:16px">\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?</div>';
+  if(w.img && gs.showEmoji!==false) H+='<div style="font-size:34px;margin-bottom:8px">'+w.img+'</div>';
+  var enFz=w.en.length>30?'20px':w.en.length>20?'26px':w.en.length>12?'34px':w.en.length>8?'40px':'44px';
+  H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+w.en+'</div>';
+  if(w.ph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+w.ph+'</div>';
+  if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px">'+w.pos+'</div>';
+  if(gs.showEx && exList.length) H+='<div style="font-size:12px;color:rgba(255,255,255,.45);font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+exList[0]+'</div>';
+  // 결과 한 줄(높이 항상 예약 → 정답 시 화면 안 움직임)
+  var fbTxt='', fbCol='#fff';
+  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+w.kr;fbCol='#FCA5A5';} }
+  H+='<div style="min-height:26px;margin-top:12px;font-size:16px;font-weight:800;color:'+fbCol+';display:flex;align-items:center;justify-content:center">'+fbTxt+'</div>';
   H+='</div>';
-  if(gs.timeLimit && !answered){
-    H+='<div style="padding:0 32px 8px;flex-shrink:0"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:rgba(255,255,255,.1);border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div></div>';
+
+  // ── 게이지 영역: 시간제한이면 높이 항상 예약(정답 시 비워도 높이 유지) ──
+  if(gs.timeLimit){
+    H+='<div style="padding:0 32px 8px;flex-shrink:0;min-height:28px">';
+    if(!answered){
+      H+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:rgba(255,255,255,.1);border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div>';
+    }
+    H+='</div>';
   }
-  H+='<div style="padding:0 32px 14px;display:grid;grid-template-columns:1fr 1fr;gap:11px;flex-shrink:0">';
+
+  // ── 선택지(색만 바뀌고 크기 동일) ──
+  H+='<div style="padding:0 32px 4px;display:grid;grid-template-columns:1fr 1fr;gap:11px;flex-shrink:0">';
   cs.forEach(function(ch,_ci){
     var isAns=ch.en===w.en, picked=answered&&S.gAns===ch.en;
     var bg,bd,col;
@@ -11658,12 +11668,18 @@ function rQ4(){
     H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+ch.kr+'</button>';
   });
   H+='</div>';
+
+  // ── 액션 영역(다음 버튼): 높이 항상 예약 → 정답 시 설정바 안 움직임 ──
+  H+='<div style="padding:8px 32px 10px;flex-shrink:0;min-height:50px;display:flex;align-items:center">';
   if(answered && !isCorrect){
-    H+='<div style="padding:0 32px 12px;flex-shrink:0"><button onclick="S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go()" style="width:100%;padding:14px;border:none;border-radius:14px;background:#60A5FA;color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+(S.gIdx+1>=S.gWords.length?'\uacb0\uacfc \ubcf4\uae30 \ud83c\udf89':'\ub2e4\uc74c \ub2e8\uc5b4 \u2192')+'</button></div>';
+    H+='<button onclick="S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go()" style="width:100%;padding:13px;border:none;border-radius:14px;background:#60A5FA;color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+(S.gIdx+1>=S.gWords.length?'\uacb0\uacfc \ubcf4\uae30 \ud83c\udf89':'\ub2e4\uc74c \ub2e8\uc5b4 \u2192')+'</button>';
   }
+  H+='</div>';
+
+  // ── 설정바 ──
   H+=gsetBar(
      gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
-    +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx]])
+    +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])
     +gsetRow('\uc74c\uc131',[['\ub055',"S.gameSettings.voiceMode='off';sv();go()",(gs.voiceMode||'off')==='off'],['\uc815\ub2f5 \ub2e8\uc5b4',"S.gameSettings.voiceMode='answer';sv();go()",gs.voiceMode==='answer'],['\ubb38\uc81c \ub2e8\uc5b4',"S.gameSettings.voiceMode='question';sv();go()",gs.voiceMode==='question']])
     +gsetRow('\uc120\ud0dd\uc9c0',[['4\uac1c',"S.gameSettings.choiceCount=4;S._gCs=null;sv();go()",choiceCount===4],['6\uac1c',"S.gameSettings.choiceCount=6;S._gCs=null;sv();go()",choiceCount===6]])
   );

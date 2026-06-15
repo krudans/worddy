@@ -922,6 +922,24 @@ function _fixInflatedStudyTime(){
     if(changed && typeof sv==='function') sv();
   }catch(e){}
 }
+function _restoreCloudExtras(_data){
+  if(!_data) return;
+  // 학습 목표(wd-plan): 클라우드+로컬 병합(로컬 우선). 로컬 비면 클라우드로 복원.
+  try{ if(_data.plan && typeof _data.plan==='object'){
+    var _lp={}; try{_lp=JSON.parse(localStorage.getItem('wd-plan')||'{}')||{};}catch(e){}
+    localStorage.setItem('wd-plan', JSON.stringify(Object.assign({}, _data.plan, _lp)));
+  }}catch(e){}
+  // 목표 범위
+  try{ if(_data.planScope && !localStorage.getItem('wd-plan-scope')) localStorage.setItem('wd-plan-scope', _data.planScope); }catch(e){}
+  // 퀴즈 목표
+  try{ if(_data.quizGoal && !localStorage.getItem('wd-quizgoal')) localStorage.setItem('wd-quizgoal', String(_data.quizGoal)); }catch(e){}
+  // markDates 합집합(가장 이른 날짜 보존)
+  try{ if(_data.markDates && typeof _data.markDates==='object'){
+    if(!S.markDates) S.markDates={};
+    for(var k in _data.markDates){ var cv=_data.markDates[k]; if(!S.markDates[k] || String(cv)<String(S.markDates[k])) S.markDates[k]=cv; }
+    try{localStorage.setItem('wd-mkd', JSON.stringify(S.markDates));}catch(e){}
+  }}catch(e){}
+}
 function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S.studyLog[t]._mc=1; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
 function logStudy(type, wordEn) {
   // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
@@ -3898,6 +3916,10 @@ function sv() {
       _dailyGoalMin:S._dailyGoalMin||30, _dailyStudiedMin:S._dailyStudiedMin||0,
       _dailyDate:S._dailyDate||'', _dailyXpGiven:S._dailyXpGiven||{},
       studyLog:S.studyLog||{}, fontFamily:S.fontFamily||'default',
+      plan:(function(){try{return JSON.parse(localStorage.getItem('wd-plan')||'{}');}catch(_e){return {};}})(),
+      planScope:localStorage.getItem('wd-plan-scope')||'',
+      quizGoal:localStorage.getItem('wd-quizgoal')||'',
+      markDates:S.markDates||{},
       _totalXp:S._totalXp||0,
       attendCount:S.attendCount||0,
       attendDates:S.attendDates||[],
@@ -7991,7 +8013,7 @@ function _planAllLoad(){
   }catch(e){ return {}; }
 }
 function _planLoadFor(key){ var a=_planAllLoad(); return a[key]||{}; }
-function _planSaveFor(key,plan){ var a=_planAllLoad(); a[key]=plan; try{ localStorage.setItem('wd-plan',JSON.stringify(a)); }catch(e){} }
+function _planSaveFor(key,plan){ var a=_planAllLoad(); a[key]=plan; try{ localStorage.setItem('wd-plan',JSON.stringify(a)); }catch(e){} if(typeof sv==='function'){ try{sv();}catch(e){} } }
 function _planScopeSel(){ try{ return localStorage.getItem('wd-plan-scope')||'__all__'; }catch(e){ return '__all__'; } }
 
 function _planScopeData(){
@@ -14151,6 +14173,7 @@ auth.onAuthStateChanged(async user => {
             });
             S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
           }
+          try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(_data); }catch(_e){}
           // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
           if(_data.gameDailyCount && typeof _data.gameDailyCount === 'object') {
             const _localGdc = S.gameDailyCount || {};
@@ -14300,6 +14323,7 @@ auth.onAuthStateChanged(async user => {
             });
             S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
           }
+          try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(_data); }catch(_e){}
           // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
           if(_data.gameDailyCount && typeof _data.gameDailyCount === 'object') {
             const _localGdc = S.gameDailyCount || {};

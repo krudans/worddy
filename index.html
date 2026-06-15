@@ -945,6 +945,26 @@ function _restoreCloudExtras(_data){
   }}catch(e){}
 }
 function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S.studyLog[t]._mc=1; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
+// [A안] 게임 시간 집계: 게임 시작~종료 실제 분을 gameMin(게임 분)과 총 공부시간에 누적
+function _accrueGameTime(){
+  try{
+    if(!S._gameStartTs) return;
+    var _mins=(Date.now()-S._gameStartTs)/60000;
+    S._gameStartTs=null;
+    if(_mins<0.05) return;
+    if(_mins>180) _mins=180;
+    var _tk=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+    if(S._dailyDate!==_tk){ S._dailyStudiedMin=0; S._dailyDate=_tk; }
+    if(!S.studyLog) S.studyLog={};
+    if(!S.studyLog[_tk]) S.studyLog[_tk]={words:0,quiz:0,min:0};
+    S.studyLog[_tk].gameMin=Math.round(((S.studyLog[_tk].gameMin||0)+_mins)*10)/10;
+    S._dailyStudiedMin=Math.round(((S._dailyStudiedMin||0)+_mins)*10)/10;
+    if(typeof _syncDayMin==='function') _syncDayMin();
+    if(typeof sv==='function') sv();
+  }catch(e){}
+}
+// [A안] 게임 정답 XP만 지급(문제수 카운트는 올리지 않음 — 게임은 시간 개념)
+function _gQuizXP(){ try{ if(typeof addXP==='function' && typeof xp==='function') addXP(xp('quiz_correct'), true); if(typeof updHD==='function') updHD(); }catch(e){} }
 function logStudy(type, wordEn) {
   // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
   const todayKey = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
@@ -5329,6 +5349,7 @@ setTimeout(function() {
 
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
+  if(S._gameStartTs && !S._gameRunning && typeof _accrueGameTime==='function'){ _accrueGameTime(); }
   if(tab&&tab!=='game'&&tab!=='ranking') {
     // 학습 탭을 직접 클릭(sub 없이)하면 항상 단어장 선택 첫 화면으로
     if(tab==='study'&&!sub) S.stab='books';
@@ -8419,12 +8440,12 @@ function rHome() {
       progress: Math.min(100, Math.round(learnedCount/wordGoal*100))
     },
     {
-      ic:'🎯', xp:20,
-      lb:`퀴즈 ${quizGoal}문제 풀기`,
-      sub:`오늘 ${todayLog.quiz}문제 풀었어요 (목표: ${quizGoal}문제)`,
-      done: todayLog.quiz>=quizGoal,
-      fn:"showGameSettings('quiz')",
-      progress: Math.min(100, Math.round(todayLog.quiz/quizGoal*100))
+      ic:'🎮', xp:20,
+      lb:`게임 ${(parseInt(localStorage.getItem('wd-gamegoal'))||20)}분 플레이`,
+      sub:`오늘 게임 ${Math.round(todayLog.gameMin||0)}분 했어요 (목표: ${(parseInt(localStorage.getItem('wd-gamegoal'))||20)}분)`,
+      done: (todayLog.gameMin||0)>=(parseInt(localStorage.getItem('wd-gamegoal'))||20),
+      fn:"go('game')",
+      progress: Math.min(100, Math.round((todayLog.gameMin||0)/(parseInt(localStorage.getItem('wd-gamegoal'))||20)*100))
     },
     {
       ic:'⏱', xp:50,
@@ -8562,7 +8583,7 @@ function rHome() {
     const total=log.words+log.quiz;
     const isToday=k===t;
     const dayNames=['일','월','화','수','목','금','토'];
-    return {k,total,words:log.words,quiz:log.quiz,min:log.min||0,isToday,day:dayNames[d.getDay()]};
+    return {k,total,words:log.words,quiz:log.quiz,min:log.min||0,gameMin:log.gameMin||0,isToday,day:dayNames[d.getDay()]};
   });
   const maxDay=Math.max(...last7.map(d=>d.total),1);
   const maxMin=Math.max(...last7.map(d=>d.min),0.1);
@@ -8617,8 +8638,8 @@ function rHome() {
           <div style="font-size:10px;color:#6B7280;margin-top:1px">단어 학습</div>
         </div>
         <div style="background:#F9FAFB;border-radius:10px;padding:8px;text-align:center">
-          <div style="font-size:16px;font-weight:900;color:#111">${last7.reduce((s,d)=>s+d.quiz,0)}</div>
-          <div style="font-size:10px;color:#6B7280;margin-top:1px">퀴즈</div>
+          <div style="font-size:16px;font-weight:900;color:#111">${fmtM(last7.reduce((s,d)=>s+(d.gameMin||0),0))}</div>
+          <div style="font-size:10px;color:#6B7280;margin-top:1px">게임 시간</div>
         </div>
         <div style="background:#F9FAFB;border-radius:10px;padding:8px;text-align:center">
           <div style="font-size:16px;font-weight:900;color:#111">${last7.filter(d=>d.total>0).length}</div>
@@ -11457,7 +11478,7 @@ function rGameIntro(){
   H+='</div>';
   H+='<div style="width:184px;height:262px;border:2px solid rgba(255,255,255,.2);border-radius:14px;overflow:hidden;position:relative;background:#16213e;margin-bottom:14px;box-shadow:0 10px 28px rgba(0,0,0,.5)">';
   H+='<div style="transform:scale(.368);transform-origin:top left;width:500px;height:714px;display:flex;flex-direction:column;background:#16213e;pointer-events:none">'+bodyInner+'</div></div>';
-  H+='<button onclick="S._gameIntro=false;S._gameRunning=true;showCountdown(function(){go();})" style="padding:16px 56px;border:none;border-radius:16px;background:linear-gradient(135deg,#22C55E,#16A34A);color:#fff;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 6px 22px rgba(34,197,94,.45)">\u25b6  \uac8c\uc784 \uc2dc\uc791</button>';
+  H+='<button onclick="S._gameIntro=false;S._gameRunning=true;S._gameStartTs=Date.now();showCountdown(function(){go();})" style="padding:16px 56px;border:none;border-radius:16px;background:linear-gradient(135deg,#22C55E,#16A34A);color:#fff;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 6px 22px rgba(34,197,94,.45)">\u25b6  \uac8c\uc784 \uc2dc\uc791</button>';
 H+='<div style="font-size:12.5px;color:'+ac+';font-weight:700;text-align:center;margin-top:16px">\ud83d\udc47 \uc544\ub798\uc5d0\uc11c \ub2e8\uc5b4\uc7a5\u00b7\ubb38\uc81c \uc218\u00b7\uc2dc\uac04\uc744 \uc124\uc815\ud558\uace0 \uc2dc\uc791\ud558\uc138\uc694</div>';
   H+='</div>'+gset+'</div>';
   return H;
@@ -11465,6 +11486,7 @@ H+='<div style="font-size:12.5px;color:'+ac+';font-weight:700;text-align:center;
 function rGameDone(){
   SFX.stopBG();
   S._gameRunning=false;
+  if(typeof _accrueGameTime==='function') _accrueGameTime();
   if(!S._inLevelTest && !S._inLearnSession && typeof savePartialGameScore==='function') savePartialGameScore();
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
   S._gameScoreSaved=true; // 완료 저장 완료 표시 (부분저장 중복 방지)
@@ -11541,14 +11563,8 @@ function rGameDone(){
   const isNewBest=pct>prevBest;
   if(isNewBest){ S.bestScores[S.gameId]=S.gScore; sv(); } // gScore로 저장(saveGameScore와 통일)
 
-  // 자동 마킹: gameSettings.autoMark가 true일 때만
-  const autoMark = S.gameSettings?.autoMark !== false;
-  if(autoMark && S.gResultMap && Object.keys(S.gResultMap).length) {
-    Object.entries(S.gResultMap).forEach(([en,isOk])=>{
-      if(isOk) { if(getMark(en)!==1) setMark(en,1); }
-      else setMark(en,2);
-    });
-  }
+  // [정책] 게임 결과는 외웠음으로 기록하지 않음. 외웠음은 학습탭 4가지 방법(자동학습/플래시카드/쉐도잉/말하기)에서만.
+  //  (이전: gResultMap을 돌며 setMark — gIdx 숫자키까지 외움으로 잘못 기록되는 버그가 있었음)
 
   return `<div class="pad" style="align-items:center;text-align:center;gap:16px">
     ${cbrow(msg[0],msg[1],msg[2])}
@@ -11835,11 +11851,10 @@ function pickQ4(ci){
   var okk=ch.en===w.en;
   S.gRes=okk?'ok':'no';
   if(!S.gResultMap)S.gResultMap={};
-  if(typeof logStudy==='function') logStudy('quiz'); // 홈 '퀴즈 N문제' 미션 카운트 (문제당 1회)
+  if(typeof logStudy==='function') _gQuizXP(); // 홈 '퀴즈 N문제' 미션 카운트 (문제당 1회)
   var qi=S.gIdx;
   if(okk){
     if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true;
-    if(typeof window._markBtnXP==='function') window._markBtnXP(w.en, 1); // 맞춘 단어 외웠음 처리
     go();
     if(S.gameSettings&&S.gameSettings.autoNext){
       var d=Math.round((S.gameSettings.autoNextSec||1.0)*1000);
@@ -12061,7 +12076,7 @@ function ansQ(c,ok2){
   } else {
     ng(); S.gResultMap[S.gIdx]=false;
   }
-  logStudy('quiz'); go();
+  _gQuizXP(); go();
   const delay=S.gameSettings?.autoNext?600:900;
   setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gSc=null;S._gLastAns=null;S._q4HintUsed=false;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
@@ -12075,7 +12090,7 @@ function ansQIdx(ci,wIdx){
   S.gAns=true; S.gRes=isOk?'ok':'ng';
   if(isOk){S.gScore+=100;ok();S.gResultMap[w.en]=true;}
   else{ng();S.gResultMap[w.en]=false;}
-  logStudy('quiz'); checkAchievements(); go();
+  _gQuizXP(); checkAchievements(); go();
   const delay=S.gameSettings?.autoNext?600:900;
   setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S._gCs=null;S._gLastAns=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},delay);
 }
@@ -12184,9 +12199,9 @@ function scTap(slotId){
     var r=built.toLowerCase()===w.en.toLowerCase();
     S.gAns=built; S.gRes=r?'ok':'no';
     if(!S.gResultMap)S.gResultMap={};
-    if(r){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; if(typeof window._markBtnXP==='function')window._markBtnXP(w.en,1); }
+    if(r){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; }
     else{ if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; }
-    if(typeof logStudy==='function')logStudy('quiz');
+    if(typeof logStudy==='function')_gQuizXP();
     go();
     var qi=S.gIdx;
     var d=r?((S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):800):3000;
@@ -12302,7 +12317,7 @@ function chkAnsInput(v){
   if(!S.gResultMap)S.gResultMap={};
   if(r){ if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true; }
   else{ if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; }
-  if(typeof logStudy==='function') logStudy('quiz');
+  if(typeof logStudy==='function') _gQuizXP();
   go();
   var qi=S.gIdx;
   var d = r ? ((S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):800) : 3000;
@@ -12315,10 +12330,10 @@ function chkT2(inputVal, ok2){
   S.gAns=true; S.gRes=r?'ok':'ng';
   if(r){S.gScore+=100;ok();S.gResultMap[S.gIdx]=true;}
   else{ng();toast('❌ 정답: '+ok2);S.gResultMap[S.gIdx]=false;}
-  logStudy('quiz'); go();
+  _gQuizXP(); go();
   setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);
 }
-function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[S.gIdx]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[S.gIdx]=false;}logStudy('quiz');go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';S._gSc=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
+function chkT(ok2){const v=(document.getElementById('ti')?.value||'').trim().toLowerCase();const r=v===ok2.toLowerCase();S.gAns=true;S.gRes=r?'ok':'ng';if(r){S.gScore+=100;ok();S.gResultMap[S.gIdx]=true;}else{ng();toast('❌ 정답: '+ok2);S.gResultMap[S.gIdx]=false;}_gQuizXP();go();setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';S._gSc=null;if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);}
 
 // 단어 완성하기
 function rWC(){
@@ -12397,7 +12412,7 @@ function guessWC(letter){
   if(hits.length>0){
     hits.forEach(function(i){S.wcGuessed.add(i);}); if(typeof ok==='function')ok();
     var hid=S.wcLetters.map(function(l,i){return l.hidden?i:-1;}).filter(function(i){return i>=0;});
-    if(hid.length && hid.every(function(i){return S.wcGuessed.has(i);})){ if(!S.gResultMap)S.gResultMap={}; S.gResultMap[S.gIdx]=true; if(typeof logStudy==='function')logStudy('quiz'); }
+    if(hid.length && hid.every(function(i){return S.wcGuessed.has(i);})){ if(!S.gResultMap)S.gResultMap={}; S.gResultMap[S.gIdx]=true; if(typeof logStudy==='function')_gQuizXP(); }
   } else {
     if(!S.wcWrongSet)S.wcWrongSet=new Set(); S.wcWrongSet.add(lc);
     S.wcWrong++; if(typeof ng==='function')ng();
@@ -12494,7 +12509,7 @@ function selM(t,v){
     if(isMatch){
       S.mMatched.add(enVal);
       S.mMatched.add('kr_'+krIdx);
-      S.mScore+=100; ok(); logStudy('quiz');
+      S.mScore+=100; ok(); _gQuizXP();
       if(!S.gResultMap) S.gResultMap={}; S.gResultMap[enVal]=true; // 통계 기록
       S.mEn0=null; S.mKr0=null;
     } else {
@@ -12554,7 +12569,7 @@ function rSentence(){
 function pickSB(w){SFX.play('tap');vib(20);S.sbC.push(w);go();}
 function pickSBi(i){if(S.sbP&&S.sbP[i]!=null)pickSB(S.sbP[i]);}
 function rmSB(i){S.sbC.splice(i,1);go();}
-function chkSB(){const ans=S.sbC.join(' ');const ok2=ansEq(ans, S.sbS.en);S.sbAns=true;S.sbOk=ok2;if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=ok2;if(ok2){S.gScore+=100;ok();logStudy('quiz');}else ng();go();var qi=S.gIdx;var d=ok2?((S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):1000):3000;if(S.gameSettings&&S.gameSettings.autoNext){setTimeout(function(){ if(S.sbAns&&S.gIdx===qi){ nxtSB(); } }, d);}}
+function chkSB(){const ans=S.sbC.join(' ');const ok2=ansEq(ans, S.sbS.en);S.sbAns=true;S.sbOk=ok2;if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.gIdx]=ok2;if(ok2){S.gScore+=100;ok();_gQuizXP();}else ng();go();var qi=S.gIdx;var d=ok2?((S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):1000):3000;if(S.gameSettings&&S.gameSettings.autoNext){setTimeout(function(){ if(S.sbAns&&S.gIdx===qi){ nxtSB(); } }, d);}}
 function nxtSB(){
   S.gIdx++;
   if(S.gIdx>=S.gWords.length){S.gDone=true;go();return;}
@@ -12716,7 +12731,7 @@ function wfCheckSel(){
   S.wfWords.forEach(wd=>{
     if(S.wfFound.has(wd.word))return;
     const m=wd.cells.every(c2=>S.wfSel.includes(c2))&&S.wfSel.every(c2=>wd.cells.includes(c2));
-    if(m){S.wfFound.add(wd.word);S.wfSel=[];ok();logStudy('quiz');vib([50,30,50]);
+    if(m){S.wfFound.add(wd.word);S.wfSel=[];ok();_gQuizXP();vib([50,30,50]);
       const wi=S.gWords.find(x=>x.en.toUpperCase()===wd.word);
       toast('✅ '+wd.word+(wi?' = '+wi.kr:'')+'!');
       S.gResultMap[wd.word.toLowerCase()]=true; found=true;}
@@ -12764,7 +12779,7 @@ function rWordle(){
     <button class="btn" onclick="subW('${W}')" style="background:var(--theme);color:#fff;width:100%">제출 ✓</button>`}
   </div>`;
 }
-function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;if(typeof logStudy==='function')logStudy('quiz');}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;if(typeof logStudy==='function')logStudy('quiz');}go();}
+function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;if(typeof logStudy==='function')_gQuizXP();}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;if(typeof logStudy==='function')_gQuizXP();}go();}
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
 function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[?？]$/.test(t))return true;return /(까요|ㄹ까요|을까요|나요|은가요|는가요|습니까|ㅂ니까|읍니까)[.\u2026]?$/.test(t);}

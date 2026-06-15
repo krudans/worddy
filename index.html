@@ -924,20 +924,24 @@ function _fixInflatedStudyTime(){
 }
 function _restoreCloudExtras(_data){
   if(!_data) return;
-  // 학습 목표(wd-plan): 클라우드+로컬 병합(로컬 우선). 로컬 비면 클라우드로 복원.
-  try{ if(_data.plan && typeof _data.plan==='object'){
-    var _lp={}; try{_lp=JSON.parse(localStorage.getItem('wd-plan')||'{}')||{};}catch(e){}
-    localStorage.setItem('wd-plan', JSON.stringify(Object.assign({}, _data.plan, _lp)));
+  // 학습 목표(plan): Firestore가 '__all__' 키를 못 쓰므로 문자열로 저장/복원. 객체(레거시)도 호환.
+  try{ if(_data.plan){
+    var _cp; try{_cp=(typeof _data.plan==='string')?JSON.parse(_data.plan):_data.plan;}catch(e){_cp=null;}
+    if(_cp && typeof _cp==='object'){
+      var _lp={}; try{_lp=JSON.parse(localStorage.getItem('wd-plan')||'{}')||{};}catch(e){}
+      localStorage.setItem('wd-plan', JSON.stringify(Object.assign({}, _cp, _lp)));
+    }
   }}catch(e){}
-  // 목표 범위
   try{ if(_data.planScope && !localStorage.getItem('wd-plan-scope')) localStorage.setItem('wd-plan-scope', _data.planScope); }catch(e){}
-  // 퀴즈 목표
   try{ if(_data.quizGoal && !localStorage.getItem('wd-quizgoal')) localStorage.setItem('wd-quizgoal', String(_data.quizGoal)); }catch(e){}
-  // markDates 합집합(가장 이른 날짜 보존)
-  try{ if(_data.markDates && typeof _data.markDates==='object'){
-    if(!S.markDates) S.markDates={};
-    for(var k in _data.markDates){ var cv=_data.markDates[k]; if(!S.markDates[k] || String(cv)<String(S.markDates[k])) S.markDates[k]=cv; }
-    try{localStorage.setItem('wd-mkd', JSON.stringify(S.markDates));}catch(e){}
+  // markDates 합집합(문자열/객체 호환, 가장 이른 날짜 보존)
+  try{ if(_data.markDates){
+    var _cmd; try{_cmd=(typeof _data.markDates==='string')?JSON.parse(_data.markDates):_data.markDates;}catch(e){_cmd=null;}
+    if(_cmd && typeof _cmd==='object'){
+      if(!S.markDates) S.markDates={};
+      for(var k in _cmd){ var cv=_cmd[k]; if(!S.markDates[k] || String(cv)<String(S.markDates[k])) S.markDates[k]=cv; }
+      try{localStorage.setItem('wd-mkd', JSON.stringify(S.markDates));}catch(e){}
+    }
   }}catch(e){}
 }
 function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S.studyLog[t]._mc=1; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
@@ -3916,10 +3920,10 @@ function sv() {
       _dailyGoalMin:S._dailyGoalMin||30, _dailyStudiedMin:S._dailyStudiedMin||0,
       _dailyDate:S._dailyDate||'', _dailyXpGiven:S._dailyXpGiven||{},
       studyLog:S.studyLog||{}, fontFamily:S.fontFamily||'default',
-      plan:(function(){try{return JSON.parse(localStorage.getItem('wd-plan')||'{}');}catch(_e){return {};}})(),
+      plan:localStorage.getItem('wd-plan')||'',
       planScope:localStorage.getItem('wd-plan-scope')||'',
       quizGoal:localStorage.getItem('wd-quizgoal')||'',
-      markDates:S.markDates||{},
+      markDates:JSON.stringify(S.markDates||{}),
       _totalXp:S._totalXp||0,
       attendCount:S.attendCount||0,
       attendDates:S.attendDates||[],

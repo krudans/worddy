@@ -14137,9 +14137,14 @@ auth.onAuthStateChanged(async user => {
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
             ].forEach(k => {
-              // XP가 비정상적으로 낮은 데이터는 덮어쓰지 않음
-              if(k === 'xp' && _data[k] === 0 && (S.xp||0) > 100) return;
-              if(k === '_totalXp' && _data[k] === 0 && (S._totalXp||0) > 100) return;
+              // ── XP/연속일 최댓값 병합 (크로스 기기 역행 방지) ──
+              // _totalXp(평생 누적): 절대 안 줄어듦 → 최댓값
+              if(k === '_totalXp'){ S._totalXp = Math.max(S._totalXp||0, _data._totalXp||0); return; }
+              // xp(레벨업/구매로 소비되는 잔액): 평생 누적이 더 큰(=더 활동한) 기기 값 채택, 아니면 로컬 유지
+              //  ※ 이 시점 S._totalXp는 아직 로컬값 (xp가 _totalXp보다 먼저 순회됨) → 로컬 누적과 비교
+              if(k === 'xp'){ if((_data._totalXp||0) >= (S._totalXp||0) && _data.xp!==undefined) S.xp=_data.xp; return; }
+              // streak/alStreak(연속 학습일): 최댓값
+              if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=Math.max(S[k]||0, _data[k]); return; }
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
@@ -14301,9 +14306,14 @@ auth.onAuthStateChanged(async user => {
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
             ].forEach(k => {
-              // XP가 비정상적으로 낮은 데이터는 덮어쓰지 않음
-              if(k === 'xp' && _data[k] === 0 && (S.xp||0) > 100) return;
-              if(k === '_totalXp' && _data[k] === 0 && (S._totalXp||0) > 100) return;
+              // ── XP/연속일 최댓값 병합 (크로스 기기 역행 방지) ──
+              // _totalXp(평생 누적): 절대 안 줄어듦 → 최댓값
+              if(k === '_totalXp'){ S._totalXp = Math.max(S._totalXp||0, _data._totalXp||0); return; }
+              // xp(레벨업/구매로 소비되는 잔액): 평생 누적이 더 큰(=더 활동한) 기기 값 채택, 아니면 로컬 유지
+              //  ※ 이 시점 S._totalXp는 아직 로컬값 (xp가 _totalXp보다 먼저 순회됨) → 로컬 누적과 비교
+              if(k === 'xp'){ if((_data._totalXp||0) >= (S._totalXp||0) && _data.xp!==undefined) S.xp=_data.xp; return; }
+              // streak/alStreak(연속 학습일): 최댓값
+              if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=Math.max(S[k]||0, _data[k]); return; }
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
@@ -14444,6 +14454,8 @@ auth.onAuthStateChanged(async user => {
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'
           ].forEach(k => { if(data[k]!==undefined) S[k]=data[k]; });
+          // [A-2] 새 기기/완전 캐시삭제 시에도 학습목표·외운날짜·범위·퀴즈목표 복원
+          try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(data); }catch(_e){}
           // currentBook은 로컬 유지 (Firebase 동기화 제외 - 사용자 위치 보존)
           // 필드 순서 오류 자동 수정 (en↔ex 뒤바뀐 경우)
           const _fixWords = (arr) => (arr||[]).map(w => {

@@ -922,6 +922,26 @@ function _fixInflatedStudyTime(){
     if(changed && typeof sv==='function') sv();
   }catch(e){}
 }
+function _ensureDefaultBooks(){
+  // 처음 쓰는 사람에게 초등/중등/고등 단어장 기본 탑재(마켓팩). 1회만 — 삭제하면 다시 안 생김(_defBooksInit 클라우드 동기화).
+  try{
+    if(S._defBooksInit) return;
+    if(!Array.isArray(S.books)) S.books=[];
+    if(!Array.isArray(S._ownedPacks)) S._ownedPacks=[];
+    var defs=[
+      {id:'\ucd08\ub4f1\ud559\uad50_8129',name:'\ucd08\ub4f1\ud559\uc0dd \uc218\uc900 \ub2e8\uc5b4'},
+      {id:'\uc911\ud559\uc0dd_\ub2e8\uc5b4_3982',name:'\uc911\ud559\uc0dd \uc218\uc900 \ub2e8\uc5b4'},
+      {id:'\uace0\ub4f1\ud559\uc0dd_\uc218\uc900_\ub2e8\uc5b4_7519',name:'\uace0\ub4f1\ud559\uc0dd \uc218\uc900 \ub2e8\uc5b4'}
+    ];
+    defs.forEach(function(d){
+      if(!S.books.some(function(b){return b.packId===d.id;})) S.books.push({name:d.name, packId:d.id});
+      if(S._ownedPacks.indexOf(d.id)<0) S._ownedPacks.push(d.id);
+    });
+    S._defBooksInit=1;
+    if(typeof sv==='function') sv();
+    if(typeof go==='function'){ try{ go(); }catch(e){} }
+  }catch(e){}
+}
 function _restoreCloudExtras(_data){
   if(!_data) return;
   // 학습 목표(plan): Firestore가 '__all__' 키를 못 쓰므로 문자열로 저장/복원. 객체(레거시)도 호환.
@@ -943,6 +963,8 @@ function _restoreCloudExtras(_data){
       try{localStorage.setItem('wd-mkd', JSON.stringify(S.markDates));}catch(e){}
     }
   }}catch(e){}
+  try{ if(_data._defBooksInit) S._defBooksInit=_data._defBooksInit; }catch(e){}
+  try{ if(typeof _ensureDefaultBooks==='function') _ensureDefaultBooks(); }catch(e){}
 }
 function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S.studyLog[t]._mc=1; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
 // [A안] 게임 시간 집계: 게임 시작~종료 실제 분을 gameMin(게임 분)과 총 공부시간에 누적
@@ -3944,6 +3966,7 @@ function sv() {
       planScope:localStorage.getItem('wd-plan-scope')||'',
       quizGoal:localStorage.getItem('wd-quizgoal')||'',
       markDates:JSON.stringify(S.markDates||{}),
+      _defBooksInit:S._defBooksInit||0,
       _totalXp:S._totalXp||0,
       attendCount:S.attendCount||0,
       attendDates:S.attendDates||[],
@@ -14136,7 +14159,7 @@ auth.onAuthStateChanged(async user => {
       if(typeof db !== 'undefined') {
         setSplash(100, '', '');
         db.collection('users').doc(user.uid).get().then(_doc => {
-          if(!_doc.exists) return;
+          if(!_doc.exists){ try{ if(typeof _ensureDefaultBooks==='function') _ensureDefaultBooks(); }catch(e){} return; }
           const _data = _doc.data();
           // ── Firebase 데이터 유효성 검사 후 머지 ──
           const _localXp = parseInt(localStorage.getItem('wd-txp')||'0') || S._totalXp || S.xp || 0;
@@ -14463,6 +14486,7 @@ auth.onAuthStateChanged(async user => {
     // 백그라운드 Firebase 동기화
     if(typeof db !== 'undefined') {
       db.collection('users').doc(user.uid).get().then(doc => {
+        if(!doc.exists){ try{ if(typeof _ensureDefaultBooks==='function') _ensureDefaultBooks(); }catch(e){} }
         if(doc.exists) {
           const data = doc.data();
           ['xp','lid','streak','nick','words','books',

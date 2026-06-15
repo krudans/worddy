@@ -3623,6 +3623,7 @@ function countMemorized(period){
   else if(period==='week') from=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
   else if(period==='month') { const _d=new Date(Date.now()+9*3600000); _d.setMonth(_d.getMonth()-1); from=_d.toISOString().slice(0,10); }
   else from='1900-01-01';
+  if(period==='today'){ return (typeof _todayMemoCount==='function')?_todayMemoCount(_t):0; }
   let cnt=0;
   for(const en in md){
     if(agg.set[en] && md[en] && (period==='today' ? md[en]===_t : md[en]>=from)) cnt++;
@@ -5505,7 +5506,7 @@ function rLearnTab() {
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습한 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-        <div style="font-size:22px;font-weight:900;color:#16A34A">${(todayLog&&todayLog.marked)||0}</div>
+        <div style="font-size:22px;font-weight:900;color:#16A34A">${(typeof _todayMemoCount==='function')?_todayMemoCount():((todayLog&&todayLog.marked)||0)}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 외운 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
@@ -7962,11 +7963,16 @@ function _planDaysBetween(aStr,bStr){ return Math.round((_planParse(bStr)-_planP
 function _planDailyForDate(remaining,dateStr,todayStr){ var days=Math.max(1,_planDaysBetween(todayStr,dateStr)); return Math.max(1,Math.ceil(remaining/days)); }
 
 // 외운 날짜 기록(markDates) 기반 — 오늘/최근 외운 수
+function _todayMemoCount(dayStr){
+  // '오늘 외운 단어' 단일 소스 = 오늘 외웠음 표시한 단어 수(재확인 포함, 중복제거, 전체 단어장)
+  try{ var t=dayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+    var d=(S.studyLog||{})[t]||{};
+    return Array.isArray(d.markedEns)?d.markedEns.length:(d.marked||0);
+  }catch(e){ return 0; }
+}
 function _planTodayMemo(ens, todayStr){
-  var md=S.markDates||{}, c=0;
-  if(!ens){ for(var k in md){ if(String(md[k]).slice(0,10)===todayStr) c++; } return c; }
-  for(var i=0;i<ens.length;i++){ var d=md[ens[i]]; if(d&&String(d).slice(0,10)===todayStr) c++; }
-  return c;
+  // [통일] markDates(처음 외운) → 오늘 외웠음 표시 기준 단일 소스
+  return (typeof _todayMemoCount==='function') ? _todayMemoCount(todayStr) : 0;
 }
 function _planRecentMemo(ens, days, todayStr){
   var md=S.markDates||{}; var end=_planParse(todayStr).getTime(); var start=end-(days-1)*86400000;

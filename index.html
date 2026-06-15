@@ -910,8 +910,7 @@ function logStudy(type, wordEn) {
   // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
   const todayKey = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
   if(S._dailyDate !== todayKey) { S._dailyStudiedMin=0; S._dailyDate=todayKey; }
-  if(type==='words') S._dailyStudiedMin = Math.round(((S._dailyStudiedMin||0) + 0.1)*10)/10;
-  else if(type==='quiz') S._dailyStudiedMin = Math.round(((S._dailyStudiedMin||0) + 0.05)*10)/10;
+  // [수정] 학습시간은 실제 세션 타이머에서만 누적 — 단어/퀴즈당 가짜 0.1/0.05분 가산 제거
   // 목표 달성 체크
   const goal = S._dailyGoalMin||30;
   const studied = S._dailyStudiedMin||0;
@@ -959,8 +958,8 @@ function logStudy(type, wordEn) {
     checkXpUsable();
   }
   else if(type==='quiz') { addXP(xp('quiz_correct'), true); }
-  if(type==='words') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.1)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.1)*10)/10; }
-  else if(type==='quiz') { S.studyLog[t].min = Math.round(((S.studyLog[t].min||0)+0.05)*10)/10; S._totalStudyMins = Math.round(((S._totalStudyMins||0)+0.05)*10)/10; } _syncDayMin();
+  // [수정] studyLog[t].min / _totalStudyMins 가짜 가산 제거 — 실제 세션 타이머만. 정합은 _syncDayMin이 유지
+  _syncDayMin();
   updStreak();
   // 단어 학습 → 배부름 직접 연결 (10개마다 +1)
   if(type==='words') {
@@ -3575,7 +3574,7 @@ function _memorizedAcrossBooks(){
   const set = Object.create(null);
   for(const b of (S.books||[])){
     const bw = (typeof getBookWords==='function') ? getBookWords(b) : (b.words||[]);
-    const mm = (b.name===S.currentBook) ? (S.markMap||{}) : (b.markMap||{});
+    const mm = (b.markMap||{}); // [수정] 단일 소스: 책별 markMap만 사용 (전역 S.markMap 누수 제거)
     for(const w of bw){ if(mm[w.en]===1) set[w.en]=1; }
   }
   let myWords, myMM;
@@ -7972,7 +7971,9 @@ function _planScopeData(){
   (S.books||[]).forEach(function(b){ var w=(typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]; var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length, weak:w.filter(function(x){return mm[x.en]===2;}).length, ens:w.map(function(x){return x.en;})}); });
   var memoAll=0, totalAll=0, weak=0;
   books.forEach(function(b){ memoAll+=b.memo; totalAll+=b.total; weak+=b.weak; });
-  var scopes={ '__all__':{label:'전체', memo:memoAll, total:totalAll, ens:null} };
+  // [수정] 전체 외움은 정본(_memorizedAcrossBooks: 책별 markMap 기준 중복제거)과 동일하게 — 단어장 헤더와 일치
+  var _allMemo=(typeof _memorizedAcrossBooks==='function')?_memorizedAcrossBooks().sum:memoAll;
+  var scopes={ '__all__':{label:'전체', memo:_allMemo, total:totalAll, ens:null} };
   books.forEach(function(b){ if(b.total>0) scopes[b.name]={label:b.name, memo:b.memo, total:b.total, ens:b.ens}; });
   var act=[]; var now=new Date(); for(var i=29;i>=0;i--){var k=_planKstKey(new Date(now.getTime()-i*86400000)); act.push(((S.studyLog||{})[k]||{}).words||0);}
   return {scopes:scopes, books:books, weak:weak, act:act, streak:S.streak||0, today:_planTodayStr()};
@@ -9789,21 +9790,37 @@ function showBookMenu(name, type) {
 
 // 단어장별 '외웠음(1)' 표시만 초기화 (헷갈림 2는 유지). 내 단어장/일반/마켓팩 공통
 function _resetBookMarks(name){
-  function clr(mm){ var c=0; if(mm){ Object.keys(mm).forEach(function(k){ if(mm[k]===1){ delete mm[k]; c++; } }); } return c; }
-  var cnt=0;
+  // [수정] 외웠음(1)만 0으로(헷갈림 2 유지). 책 markMap + 전역 누수 + markDates + learned 까지 전부 정리해 '완전히 0' 보장.
+  if(typeof ensureMarkDates==='function') ensureMarkDates();
+  var cleared=[]; // 외움→해제된 단어 en 목록
   if(name==='내 단어장'){
-    cnt=clr(S.markMap=S.markMap||{});
+    // 내 단어장 정본 = wd-mk
+    try{
+      var mm=JSON.parse(localStorage.getItem('wd-mk')||'{}');
+      Object.keys(mm).forEach(function(en){ if(mm[en]===1){ delete mm[en]; cleared.push(en); } });
+      localStorage.setItem('wd-mk', JSON.stringify(mm));
+    }catch(e){}
+    // 현재 열려 있으면 작업사본(S.markMap)도
+    if(S.currentBook==='내 단어장' && S.markMap){ cleared.forEach(function(en){ if(S.markMap[en]===1) delete S.markMap[en]; }); }
   } else {
     var bk=(S.books||[]).find(function(x){return x.name===name;});
     if(!bk){ toast('단어장을 찾을 수 없어요','err'); return; }
     bk.markMap=bk.markMap||{};
-    cnt=clr(bk.markMap);
-    // 현재 활성 단어장이면 S.markMap(사본)도 함께 초기화
-    if(S.currentBook===name) clr(S.markMap);
+    var bw=(typeof getBookWords==='function')?(getBookWords(bk)||[]):(bk.words||[]);
+    var bws={}; bw.forEach(function(w){ bws[w.en]=1; });
+    Object.keys(bk.markMap).forEach(function(en){ if(bk.markMap[en]===1){ delete bk.markMap[en]; cleared.push(en); } });
+    // 이 책 단어에 한해 전역 작업사본도 함께 제거(분열/누수 방지)
+    if(S.markMap){ cleared.forEach(function(en){ if(S.markMap[en]===1) delete S.markMap[en]; }); }
   }
+  // 외운 날짜·learned 에서도 제거 → '오늘/주/월 외운' 잔재 방지
+  cleared.forEach(function(en){
+    if(S.markDates && S.markDates[en]) delete S.markDates[en];
+    if(S.learned && typeof S.learned.delete==='function') S.learned.delete(en);
+  });
+  try{ localStorage.setItem('wd-mkd', JSON.stringify(S.markDates||{})); }catch(e){}
   if(typeof sv==='function') sv();
   go();
-  toast('✅ 외웠음 '+cnt+'개 초기화했어요');
+  toast('✅ 외웠음 '+cleared.length+'개 초기화했어요');
 }
 
 function _confirmDeleteBook(name, fromModal) {
@@ -10246,7 +10263,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   var isMemorized = curMark === 1;
   html += '<div style="padding:0 16px 8px;display:flex;gap:10px;flex-shrink:0">';
   html += '<button onclick="window._doMark(0)" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(!isMemorized?'rgba(148,163,184,.3)':'rgba(255,255,255,.08)')+';color:'+(!isMemorized?'#CBD5E1':'rgba(255,255,255,.4)')+'">📝 미암기</button>';
-  html += '<button onclick="window._doMark('+(isMemorized?0:1)+')" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
+  html += '<button onclick="window._doMark(1)" style="flex:1;padding:14px;border:none;border-radius:16px;font-size:14px;font-weight:900;cursor:pointer;transition:all .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
   html += '</div>';
 
   // ── 이전/다음 버튼 ──

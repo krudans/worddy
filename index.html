@@ -8917,6 +8917,7 @@ function startMode(type) {
   if(type==='auto' || type==='stream' || type==='audio') showAutoMode();
   else if(type==='shadow') showShadowMode();
   else if(type==='speak') showSpeakMode();
+  else if(type==='flash'){ S._flipWords=null; S.idx=0; S.flip=false; S.stab='learn'; go('mybooks','learn'); } // [수정] 플래시카드 진입 복구
   else toast('준비 중이에요');
 }
 
@@ -10293,45 +10294,51 @@ function initFlashSwipe() {
   const card = document.getElementById('flash-card');
   if(!card) return;
   let sx=0, sy=0;
+  // [수정] 스와이프 동작을 함수로 분리 — 터치/마우스 공용. dx>50 일 때만 동작(작은 움직임=클릭 보존)
+  function _doFlashSwipe(dx,dy){
+    if(!(Math.abs(dx)>Math.abs(dy) && Math.abs(dx)>50)) return false;
+    const _fw = S._flipWords&&S._flipWords.length>0 ? S._flipWords : S.words;
+    const w = _fw.length>0 ? _fw[Math.min(S.idx||0, _fw.length-1)] : null;
+    if(!w) return false;
+    if(dx > 0) {
+      // 오른쪽 스와이프 = ✅ 외웠음
+      const _prevSM = getMark(w.en);
+      setMark(w.en, 1);
+      if(S.learned && !S.learned.has(w.en)) { S.learned.add(w.en); }
+      if(_prevSM !== 1) { addXP(xp('word_flip'), true); logStudy('words', w.en); _markTodayMemorized(); }
+      SFX.play && SFX.play('swipe_ok');
+      showSwipeHint('✅ 외웠음!', '#16A34A');
+      checkAchievements && checkAchievements();
+      checkLearnMilestone && checkLearnMilestone();
+    } else {
+      // 왼쪽 스와이프 = 🔁 복습 필요
+      setMark(w.en, 2);
+      SFX.play && SFX.play('swipe_ng');
+      showSwipeHint('🦋 헷갈리는 단어', '#DC2626');
+    }
+    S.flip = false;
+    S.idx = Math.min((S.idx||0)+1, _fw.length-1);
+    sv();
+    go();
+    return true;
+  }
+  // 터치
   card.addEventListener('touchstart', function(e){
-    sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY; card.style.transition='none';
   },{passive:true});
   card.addEventListener('touchend', function(e){
-    const dx=e.changedTouches[0].clientX-sx;
-    const dy=e.changedTouches[0].clientY-sy;
-    if(Math.abs(dx)>Math.abs(dy) && Math.abs(dx)>50) {
-      e.stopPropagation();
-      const _fw = S._flipWords&&S._flipWords.length>0 ? S._flipWords : S.words;
-      const w = _fw.length>0 ? _fw[Math.min(S.idx||0, _fw.length-1)] : null;
-      if(!w) return;
-      if(dx > 0) {
-        // 오른쪽 스와이프 = ✅ 외웠음
-        const _prevSM = getMark(w.en);
-        setMark(w.en, 1);
-        if(S.learned && !S.learned.has(w.en)) { S.learned.add(w.en); }
-        // 외웠음으로 새로 표시할 때만 XP
-        if(_prevSM !== 1) { addXP(xp('word_flip'), true); logStudy('words', w.en); _markTodayMemorized(); }
-        SFX.play && SFX.play('swipe_ok');
-        showSwipeHint('✅ 외웠음!', '#16A34A');
-        checkAchievements && checkAchievements();
-        checkLearnMilestone && checkLearnMilestone();
-      } else {
-        // 왼쪽 스와이프 = 🔁 복습 필요
-        setMark(w.en, 2);
-        SFX.play && SFX.play('swipe_ng');
-        showSwipeHint('🦋 헷갈리는 단어', '#DC2626');
-      }
-      // 다음 단어로 이동
-      S.flip = false;
-      S.idx = Math.min((S.idx||0)+1, _fw.length-1);
-      sv();
-      go();
-    }
+    const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+    if(_doFlashSwipe(dx,dy)) e.stopPropagation();
   });
-  // 시각적 힌트
-  card.addEventListener('touchstart', function(){
-    card.style.transition='none';
-  },{passive:true});
+  // [추가] 데스크톱 마우스 드래그 스와이프 (작은 움직임은 클릭→뒤집기로 보존)
+  let _md=false;
+  card.addEventListener('mousedown', function(e){ _md=true; sx=e.clientX; sy=e.clientY; card.style.transition='none'; });
+  card.addEventListener('mouseup', function(e){
+    if(!_md) return; _md=false;
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(_doFlashSwipe(dx,dy)){ e.stopPropagation(); e.preventDefault(); }
+  });
+  card.addEventListener('mouseleave', function(){ _md=false; });
 }
 
 function startAutoPlay() {
@@ -13807,7 +13814,7 @@ function showDataBackup() {
     <div style="background:#F9FAFB;border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📊 현재 데이터</div>
       <div style="font-size:12px;color:#6B7280;line-height:1.8">
-        단어장: ${S.words.length}개 · 외웠음: ${(typeof countMemorized==='function')?countMemorized('all'):Object.values(S.markMap).filter(v=>v===1).length}개<br>
+        단어장: ${S.words.length}개 · 외웠음: ${(typeof countMemorized==='function')?countMemorized('all'):0}개<br>
         일기: ${S.dList.length}개 · 출석: ${(typeof attendDays==='function')?attendDays():S.attendCount}일
       </div>
     </div>

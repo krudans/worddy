@@ -905,7 +905,24 @@ function checkAttend() {
   showAttendPopup();
 }
 
-function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
+function _fixInflatedStudyTime(){
+  // 일회성: 과거 가짜 가산(단어x0.1 + 퀴즈x0.05)을 studyLog[*].min에서 제거. 날짜별 _mc로 1회만.
+  try{
+    if(!S.studyLog || typeof S.studyLog!=='object') return;
+    var changed=false;
+    for(var d in S.studyLog){
+      var e=S.studyLog[d];
+      if(!e || e._mc) continue;
+      var fab=(e.words||0)*0.1 + (e.quiz||0)*0.05;
+      if(typeof e.min==='number' && e.min>0 && fab>0){ e.min=Math.max(0, Math.round((e.min-fab)*10)/10); }
+      e._mc=1; changed=true;
+    }
+    var t=(typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+    if(S.studyLog[t]) S._dailyStudiedMin=S.studyLog[t].min||0;
+    if(changed && typeof sv==='function') sv();
+  }catch(e){}
+}
+function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S.studyLog[t]._mc=1; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
 function logStudy(type, wordEn) {
   // 하루 공부시간 누적 (매 단어학습마다 약 0.1분 추가)
   const todayKey = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
@@ -14049,7 +14066,7 @@ auth.onAuthStateChanged(async user => {
       const dxg=ls.getItem('wd-dxg'); if(dxg) S._dailyXpGiven=JSON.parse(dxg);
       const txp=ls.getItem('wd-txp'); if(txp) S._totalXp=Number(txp)||0;
       const tsm=ls.getItem('wd-tsm'); if(tsm) S._totalStudyMins=Number(tsm)||0;
-      const sl2=ls.getItem('wd-sl'); if(sl2) S.studyLog=JSON.parse(sl2);
+      const sl2=ls.getItem('wd-sl'); if(sl2) S.studyLog=JSON.parse(sl2); try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
       const ad=ls.getItem('wd-ad'); if(ad) S.attendDates=JSON.parse(ad);
       const ac=ls.getItem('wd-ac'); if(ac) S.attendCount=Number(ac)||0;
       const pc=ls.getItem('wd-pet-color'); if(pc) S._petColor=pc;
@@ -14114,14 +14131,19 @@ auth.onAuthStateChanged(async user => {
             const merged = Object.assign({}, _data.studyLog);
             Object.entries(S.studyLog||{}).forEach(([date, local]) => {
               const fb = merged[date] || {};
+              const _meU = Array.from(new Set([].concat(Array.isArray(local.markedEns)?local.markedEns:[], Array.isArray(fb.markedEns)?fb.markedEns:[])));
+              const _lmc=local._mc, _fmc=fb._mc;
+              const _mn=(_lmc&&!_fmc)?(local.min||0):(_fmc&&!_lmc)?(fb.min||0):Math.max(local.min||0, fb.min||0);
               merged[date] = {
                 words: Math.max(local.words||0, fb.words||0),
                 quiz:  Math.max(local.quiz||0,  fb.quiz||0),
-                min:   Math.max(local.min||0,   fb.min||0),
+                min:   _mn,
                 xp:    Math.max(local.xp||0,    fb.xp||0),
               };
+              if(_meU.length){ merged[date].markedEns=_meU; merged[date].marked=_meU.length; }
+              if(_lmc||_fmc) merged[date]._mc=1;
             });
-            S.studyLog = merged;
+            S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
           }
           // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
           if(_data.gameDailyCount && typeof _data.gameDailyCount === 'object') {
@@ -14258,14 +14280,19 @@ auth.onAuthStateChanged(async user => {
             const merged = Object.assign({}, _data.studyLog);
             Object.entries(S.studyLog||{}).forEach(([date, local]) => {
               const fb = merged[date] || {};
+              const _meU = Array.from(new Set([].concat(Array.isArray(local.markedEns)?local.markedEns:[], Array.isArray(fb.markedEns)?fb.markedEns:[])));
+              const _lmc=local._mc, _fmc=fb._mc;
+              const _mn=(_lmc&&!_fmc)?(local.min||0):(_fmc&&!_lmc)?(fb.min||0):Math.max(local.min||0, fb.min||0);
               merged[date] = {
                 words: Math.max(local.words||0, fb.words||0),
                 quiz:  Math.max(local.quiz||0,  fb.quiz||0),
-                min:   Math.max(local.min||0,   fb.min||0),
+                min:   _mn,
                 xp:    Math.max(local.xp||0,    fb.xp||0),
               };
+              if(_meU.length){ merged[date].markedEns=_meU; merged[date].marked=_meU.length; }
+              if(_lmc||_fmc) merged[date]._mc=1;
             });
-            S.studyLog = merged;
+            S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
           }
           // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
           if(_data.gameDailyCount && typeof _data.gameDailyCount === 'object') {

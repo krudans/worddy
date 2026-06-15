@@ -3393,10 +3393,10 @@ function _studyHeader(title, subtitle, onExit, extraBtns='') {
 // ── 암기 체크 버튼 XP 처리 ──
 // 오늘 '외웠음'으로 새로 표시한 단어 수 카운트 (학습탭 '오늘 외운 단어' 표시용)
 function _markTodayMemorized(){
+  // 집계는 setMark에서 단일 처리 — 여기선 markedEns 길이로 동기화만(중복카운트 방지)
   try{
     const t = today();
-    if(!S.studyLog[t]) S.studyLog[t] = {words:0, quiz:0, min:0};
-    S.studyLog[t].marked = (S.studyLog[t].marked||0) + 1;
+    if(S.studyLog[t] && Array.isArray(S.studyLog[t].markedEns)) S.studyLog[t].marked = S.studyLog[t].markedEns.length;
   }catch(e){}
 }
 window._markBtnXP = function(wordEn, val) {
@@ -3556,6 +3556,14 @@ function setMark(en, val) {
   ensureMarkDates();
   if(val===1){
     if(!S.markDates[en]) S.markDates[en] = (typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+    // 오늘 외웠음 표시한 단어(재확인 포함, 중복제거) — '오늘 외운 단어' 집계용
+    try{ const _t=(typeof today==='function'?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+      if(!S.studyLog) S.studyLog={};
+      if(!S.studyLog[_t]) S.studyLog[_t]={words:0,quiz:0,min:0};
+      if(!Array.isArray(S.studyLog[_t].markedEns)) S.studyLog[_t].markedEns=[];
+      if(!S.studyLog[_t].markedEns.includes(en)) S.studyLog[_t].markedEns.push(en);
+      S.studyLog[_t].marked=S.studyLog[_t].markedEns.length;
+    }catch(e){}
   } else {
     delete S.markDates[en];
   }
@@ -5184,7 +5192,7 @@ function showOnboarding() {
   if(!window._popupOn || !window._popupOn('onboarding')) return;
   const steps = [
     {ic:'🏠', title:'홈', desc:'오늘의 학습 현황과 추천 학습 순서를 확인해요', color:'#1E5FA5'},
-    {ic:'📚', title:'플래시카드', desc:'카드를 탭하면 뜻이 나와요. 좌우로 스와이프해서 넘길 수 있어요', color:'#16A34A'},
+    {ic:'📚', title:'플래시카드 (카드 넘겨 외우기)', desc:'카드를 탭하면 뜻이 나와요. 좌우로 스와이프해서 넘길 수 있어요', color:'#16A34A'},
     {ic:'🏷️', title:'마크 시스템', desc:'○ 미암기 → ✅ 외웠음 → 🦋 헷갈리는 단어로 분류해요', color:'#1E5FA5'},
     {ic:'✨', title:'AI 자동완성', desc:'단어 추가 시 ✨AI 버튼을 누르면 뜻, 발음, 예문을 자동으로 채워줘요', color:'#7C3AED'},
     {ic:'🦋', title:'나비 도감 30종', desc:'단어를 외울수록 캐릭터가 자라고 나비를 수집해요. 지구상 2만여 종 중 대표 30종을 모아보세요!', color:'#7C3AED'},
@@ -5435,7 +5443,7 @@ function rLearnTab() {
      badgeColor: todayLog.words>0?'#0EA5E9':'#9CA3AF',
      sub: todayLog.min>0 ? `오늘 ${fmtMin(todayLog.min)} 학습` : '아직 학습 전',
      fn:"startMode('auto')", hot:false},
-    {id:'flash', ic:'⚡', nm:'플래시카드', dc:'카드 넘기며 빠르게 암기',
+    {id:'flash', ic:'⚡', nm:'플래시카드 (카드 넘겨 외우기)', dc:'카드 넘기며 빠르게 암기',
      badge: words.length>0 ? `${pct}% 암기` : '단어 없음',
      badgeColor: pct>=80?'#16A34A':pct>=40?'#D97706':'var(--theme)',
      sub: words.length>0 ? `${marked}/${words.length}개 외웠음` : '단어장에 단어를 추가하세요',
@@ -5480,7 +5488,7 @@ function rLearnTab() {
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습한 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-        <div style="font-size:22px;font-weight:900;color:#16A34A">${(typeof _planTodayMemo==='function'?_planTodayMemo(null,t):(todayLog.marked||0))}</div>
+        <div style="font-size:22px;font-weight:900;color:#16A34A">${(todayLog&&todayLog.marked)||0}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 외운 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
@@ -9408,7 +9416,7 @@ function rStudy() {
     </div>
     <button onclick="showBooksModal()" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#6B7280);white-space:nowrap;flex-shrink:0">＋ 단어장 만들기</button>
   </div>`;
-  const tabs = '<div class="stabs">' + [['learn','📚','플래시카드'],['quiz3','🎯','퀴즈'],['modes','🎧','암기모드'],['add','➕','단어추가'],['list','📋','단어목록']].map(function(item){var id=item[0],ic=item[1],lb=item[2];return '<div class="st '+(S.stab===id?'on':''  )+'" onclick="go(\'mybooks\',\''+id+'\')"><span class="st-ic">'+ic+'</span><span class="st-lb '+(S.stab===id?'on':'')+'">'+lb+'</span></div>';}).join('') + '</div>';
+  const tabs = '<div class="stabs">' + [['learn','📚','플래시카드 (카드 넘겨 외우기)'],['quiz3','🎯','퀴즈'],['modes','🎧','암기모드'],['add','➕','단어추가'],['list','📋','단어목록']].map(function(item){var id=item[0],ic=item[1],lb=item[2];return '<div class="st '+(S.stab===id?'on':''  )+'" onclick="go(\'mybooks\',\''+id+'\')"><span class="st-ic">'+ic+'</span><span class="st-lb '+(S.stab===id?'on':'')+'">'+lb+'</span></div>';}).join('') + '</div>';
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
@@ -9699,7 +9707,7 @@ function rStudyMode() {
 
   // 학습 모드 목록 (플래시카드 포함)
   const modes = [
-    {id:'learn',   ic:'⚡', nm:'플래시카드',  dc:'카드 넘기며 빠르게 암기',   fn:"S.stab='learn';go('mybooks','learn')"},
+    {id:'learn',   ic:'⚡', nm:'플래시카드 (카드 넘겨 외우기)',  dc:'카드 넘기며 빠르게 암기',   fn:"S.stab='learn';go('mybooks','learn')"},
     {id:'auto',    ic:'🎧', nm:'자동 재생 학습',    dc:'자동 재생 + 발음',           fn:"startMode('auto')"},
     {id:'speak',   ic:'🗣️', nm:'뜻 보고 영어로 말하기',      dc:'뜻 보고 영어로 말하기',      fn:"startMode('speak')"},
     {id:'shadow',  ic:'🎤', nm:'발음 듣고 따라 말하기',      dc:'발음 듣고 따라 말하기',      fn:"startMode('shadow')"},

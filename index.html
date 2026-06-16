@@ -9060,7 +9060,14 @@ function saveCurrentBook() {
     var _bwSC=(typeof getBookWords==='function')?(getBookWords(S.books[idx])||[]):(S.books[idx].words||[]);
     var _ownSC=new Set(_bwSC.map(function(w){return w&&w.en;}));
     var _mmSC={}; Object.keys(S.markMap||{}).forEach(function(en){ if(_ownSC.has(en)) _mmSC[en]=S.markMap[en]; });
-    S.books[idx].markMap=_mmSC;
+    // [안전망] 라이브 맵에 이 책 단어 마킹이 하나도 없는데 책엔 기존 진도가 있으면
+    //  = 로드 직후 S.markMap이 이 책과 미동기화된 상황 → 덮어쓰지 않고 진도 보존 (진도 소실 버그 차단)
+    var _prevHasMk = S.books[idx].markMap && Object.keys(S.books[idx].markMap).length>0;
+    if(Object.keys(_mmSC).length===0 && _prevHasMk){
+      console.warn('[saveCurrentBook] 라이브 마킹 비어있어 덮어쓰기 차단(진도 보존):', S.currentBook);
+    } else {
+      S.books[idx].markMap=_mmSC;
+    }
     S.books[idx].learned=[...S.learned];
   }
 }

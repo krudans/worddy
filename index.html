@@ -5606,7 +5606,7 @@ function rLearnTab() {
   <div style="padding:14px 14px 0;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E2E8F0)">
     <div style="position:relative;margin-bottom:12px">
       <select onchange="_selectBook(this.value);go('learn')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
+        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
@@ -6122,7 +6122,7 @@ function rGameOnlyTab() {
     <!-- 단어장 선택 -->
     <div style="position:relative;margin-bottom:10px">
       <select onchange="_selectBook(this.value);go('game')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:13px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${allBooks.map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
+        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
@@ -8544,7 +8544,7 @@ function rHome() {
   // ── 단어장 드롭다운 (캐릭터 카드 아래) ──
   const _allBooksHome = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const _bookNameHome = S.currentBook||'내 단어장';
-  parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_allBooksHome.map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>${_bookSummaryLine(_bookNameHome)}</div>`);
+  parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_orderBooks(_allBooksHome).map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>${_bookSummaryLine(_bookNameHome)}</div>`);
 
   parts.push(renderGoalSummary());
   // 스트릭 위기 배너 제거됨
@@ -8887,6 +8887,18 @@ async function renderHomeRank() {
 
 function _defGroupPacks(){ return ['초등학교_8129','중학생_단어_3982','고등학생_수준_단어_7519']; }
 function _defGroupNames(){ return {'초등학교_8129':'초등학생 수준 단어','중학생_단어_3982':'중학생 수준 단어','고등학생_수준_단어_7519':'고등학생 수준 단어'}; }
+// 모든 단어장 드롭다운/목록 공통 정렬: 기본 그룹(가나다순) 먼저, 그 외(가나다순). 그룹은 packId 또는 이름으로 식별.
+function _orderBooks(arr){
+  if(!Array.isArray(arr)) return arr;
+  const DEFGRP=_defGroupPacks();
+  const NAMES=_defGroupNames();
+  const grpNames=DEFGRP.map(function(pid){return NAMES[pid];});
+  const kc=function(a,b){ return String((a&&a.name)||'').localeCompare(String((b&&b.name)||''),'ko'); };
+  const isGrp=function(b){ return !!b && ((b.packId&&DEFGRP.indexOf(b.packId)>=0) || grpNames.indexOf(b.name)>=0); };
+  const grp=arr.filter(isGrp).slice().sort(kc);
+  const others=arr.filter(function(b){return !isGrp(b);}).slice().sort(kc);
+  return grp.concat(others);
+}
 
 function showBooksModal() {
   const DEFGRP = _defGroupPacks();
@@ -9860,7 +9872,7 @@ function rStudyBooks() {
     addFn:"S.currentBook='내 단어장';S.stab='add';go('mybooks','add')",
     menuFn:"showBookMenu&&showBookMenu('내 단어장','default')" };
 
-  const grpBooks = DEFGRP.map(pid=>books.find(b=>b.packId===pid)).filter(Boolean);
+  const grpBooks = _orderBooks(books.filter(b=>DEFGRP.includes(b.packId)));
   const otherBooks = books.filter(b=>!DEFGRP.includes(b.packId));
 
   let grpHtml='';
@@ -9894,13 +9906,13 @@ function rStudyBooks() {
   const _curName = S.currentBook||'내 단어장';
   html += '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:14px;padding:12px 13px">'
     +'<div style="position:relative"><select onchange="_selectBook(this.value);go(\'mybooks\',\'books\')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;background:var(--bg-card,#fff);appearance:none;cursor:pointer;color:var(--text1,#111);font-family:inherit;outline:none">'
-    + _allBooksTab.map(function(b){ return '<option value="'+String(b.name).replace(/"/g,'&quot;')+'" '+(b.name===_curName?'selected':'')+'>'+b.name+' ('+((typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length))+'개)</option>'; }).join('')
+    + _orderBooks(_allBooksTab).map(function(b){ return '<option value="'+String(b.name).replace(/"/g,'&quot;')+'" '+(b.name===_curName?'selected':'')+'>'+b.name+' ('+((typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length))+'개)</option>'; }).join('')
     +'</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>'
     + (typeof _bookSummaryLine==='function'?_bookSummaryLine(_curName):'')
   +'</div>';
   html += grpHtml;
-  html += _card(myOpts);
-  html += otherBooks.map(bk=>_card(_bookOpts(bk))).join('');
+  const _nonGroup = _orderBooks([{name:'내 단어장', __my:true}].concat(otherBooks));
+  html += _nonGroup.map(function(b){ return b.__my ? _card(myOpts) : _card(_bookOpts(b)); }).join('');
 
   if(books.length < 10) {
     html += '<div onclick="S.stab=\'market\';go(\'mybooks\',\'market\')" style="background:var(--bg-card,#fff);border-radius:14px;padding:13px;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px dashed var(--border,#E5E7EB)">'
@@ -9952,7 +9964,7 @@ function rStudyMode() {
   html += `<div style="background:#fff;border-bottom:1px solid #E5E7EB;padding:10px 14px;flex-shrink:0">
     <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-bottom:6px;font-weight:600">단어장 선택</div>
     <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none">
-${allBooks.map(b=>{ const active=b.name===bookName; const bWords=b.words||[]; const bClick=b.name==='내 단어장'?'S.currentBook=\'내 단어장\';go()':'switchBook(\''+b.name.replace(/'/g,"\\'")+'\');go()'; return '<button onclick="'+bClick+'" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1.5px solid '+(active?'#111':'#E5E7EB')+';background:'+(active?'#111':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+b.name+' <span style=\"opacity:.6\">'+bWords.length+'</span></button>'; }).join('')}
+${_orderBooks(allBooks).map(b=>{ const active=b.name===bookName; const bWords=b.words||[]; const bClick=b.name==='내 단어장'?'S.currentBook=\'내 단어장\';go()':'switchBook(\''+b.name.replace(/'/g,"\\'")+'\');go()'; return '<button onclick="'+bClick+'" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1.5px solid '+(active?'#111':'#E5E7EB')+';background:'+(active?'#111':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+b.name+' <span style=\"opacity:.6\">'+bWords.length+'</span></button>'; }).join('')}
     </div>
   </div>`;
 
@@ -10174,7 +10186,7 @@ function showGameSettings(gameId, tab) {
 
       <div>
         <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:6px">단어장</div>
-        <select onchange="_selectBook(this.value);showGameSettings('${gameId}')" style="width:100%;padding:11px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;outline:none">${allBooksForGame.map(b=>`<option value="${b.name}" ${b.name===bookName4Game?"selected":""}>${b.name} (${(typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length)}개)</option>`).join("")}</select>
+        <select onchange="_selectBook(this.value);showGameSettings('${gameId}')" style="width:100%;padding:11px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;outline:none">${_orderBooks(allBooksForGame).map(b=>`<option value="${b.name}" ${b.name===bookName4Game?"selected":""}>${b.name} (${(typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length)}개)</option>`).join("")}</select>
       </div>
 
       <div>
@@ -10800,7 +10812,7 @@ function rAdd() {
         <div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:5px">추가할 단어장</div>
         <div style="position:relative">
           <select onchange="switchBook(this.value);go('mybooks','add')" style="width:100%;padding:8px 30px 8px 10px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:13px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
-            ${allBooks.map(b=>`<option value="${b.name}" ${b.name===curBook?'selected':''}>${b.name} (${b.cnt}개)</option>`).join('')}
+            ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===curBook?'selected':''}>${b.name} (${b.cnt}개)</option>`).join('')}
           </select>
           <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
         </div>

@@ -3073,9 +3073,26 @@ function showSpeakMode() {
   if(!words.length){toast('단어가 없어요!');return;}
   const mr=document.getElementById('mr');if(!mr)return;
 
+  if(window._spkSort==null) window._spkSort='shuffle';
+  if(window._spkRange==null) window._spkRange=-1;
+  if(window._spkCount==null) window._spkCount=9999;
+  if(window._spkAutoRead==null) window._spkAutoRead=false;
+  window._spkBuild=function(){
+    var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
+    var r=window._spkRange;
+    var arr=(r===0||r===1||r===2)?base.filter(function(w){return (getMark(w.en)||0)===r;}):base.slice();
+    if(arr.length===0) arr=base.slice();
+    var so=window._spkSort;
+    if(so==='alpha') arr.sort(function(a,b){return a.en.localeCompare(b.en);});
+    else if(so==='kr') arr.sort(function(a,b){return (a.kr||'').localeCompare(b.kr||'');});
+    else if(so==='shuffle') arr=arr.slice().sort(function(){return Math.random()-.5;});
+    var c=window._spkCount; if(c&&c>0&&c<arr.length) arr=arr.slice(0,c);
+    window._spkWords=arr;
+  };
   window._spkIdx=0;
-  window._spkWords=[...words].sort(()=>Math.random()-.5);
   window._spkShow=false; // 영어 보이기/숨기기
+  window._spkActive=true; window._spkSpokeIdx=-1;
+  window._spkBuild();
 
   const _spkRender = ()=>{
     const idx=window._spkIdx;
@@ -3096,6 +3113,12 @@ function showSpeakMode() {
     }
     const w=words[idx];
     const pct=Math.round(idx/words.length*100);
+    if(show && window._spkAutoRead && window._spkSpokeIdx!==idx){ window._spkSpokeIdx=idx; try{window.speechSynthesis.cancel();var _u=new SpeechSynthesisUtterance(w.en);_u.lang='en-US';_u.rate=0.85;window.speechSynthesis.speak(_u);}catch(e){} }
+    var _spkRows=gsetRow('학습범위',[['전체',"window._spkRange=-1;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===-1],['미암기',"window._spkRange=0;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===0],['헷갈림',"window._spkRange=2;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===2]])
+      +gsetRow('정렬',[['셔플',"window._spkSort='shuffle';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='shuffle'],['순서',"window._spkSort='default';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='default'],['ABC',"window._spkSort='alpha';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='alpha'],['가나다',"window._spkSort='kr';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='kr']])
+      +gsetRow('문제 수',[['10',"window._spkCount=10;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkCount===10],['30',"window._spkCount=30;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkCount===30],['50',"window._spkCount=50;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkCount===50],['전체',"window._spkCount=9999;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkCount===9999]])
+      +gsetRow('정답 발음',[['켬',"window._spkAutoRead=true;_spkRender()",window._spkAutoRead===true],['끔',"window._spkAutoRead=false;_spkRender()",window._spkAutoRead===false]]);
+    var _spkPanel=_lsetBar(_spkRows);
 
     mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0F172A;display:flex;flex-direction:column;color:#fff">
       <!-- 헤더 -->
@@ -3127,6 +3150,7 @@ function showSpeakMode() {
             : `<button onclick="window._spkShow=true;_spkRender()" style="margin-top:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:10px 20px;color:rgba(255,255,255,.7);font-size:13px;font-weight:700;cursor:pointer">탭해서 확인</button>`}
         </div>
       </div>
+      ${_spkPanel}
       <!-- 하단 버튼 -->
       <div style="padding:8px 16px calc(env(safe-area-inset-bottom,0px)+8px);flex-shrink:0;display:flex;gap:8px">
         <button onclick="window._spkIdx=Math.max(0,window._spkIdx-1);window._spkShow=false;_spkRender()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
@@ -9298,11 +9322,27 @@ function showShadowMode() {
   if(!words.length){toast('단어가 없어요!');return;}
   const mr=document.getElementById('mr');if(!mr)return;
 
+  if(window._sdSort==null) window._sdSort='shuffle';
+  if(window._sdRange==null) window._sdRange=-1;
+  if(window._sdCount==null) window._sdCount=9999;
+  if(window._sdGap==null) window._sdGap=3; // 따라말하기 공백 (초)
+  if(window._sdRate==null) window._sdRate=0.8;
+  window._sdBuild=function(){
+    var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
+    var r=window._sdRange;
+    var arr=(r===0||r===1||r===2)?base.filter(function(w){return (getMark(w.en)||0)===r;}):base.slice();
+    if(arr.length===0) arr=base.slice();
+    var so=window._sdSort;
+    if(so==='alpha') arr.sort(function(a,b){return a.en.localeCompare(b.en);});
+    else if(so==='kr') arr.sort(function(a,b){return (a.kr||'').localeCompare(b.kr||'');});
+    else if(so==='shuffle') arr=arr.slice().sort(function(){return Math.random()-.5;});
+    var c=window._sdCount; if(c&&c>0&&c<arr.length) arr=arr.slice(0,c);
+    window._sdWords=arr;
+  };
   window._sdIdx=0;
-  window._sdWords=[...words].sort(()=>Math.random()-.5);
   window._sdPlaying=false;
-  window._sdGap=3; // 따라말하기 공백 (초)
-  window._sdRate=0.8;
+  window._sdActive=true;
+  window._sdBuild();
 
   const _sdRender = () => {
     const idx=window._sdIdx;
@@ -9320,6 +9360,12 @@ function showShadowMode() {
     const gap=window._sdGap;
     const rate=window._sdRate;
     const pct=Math.round(idx/words.length*100);
+    var _sdRows=gsetRow('학습범위',[['전체',"window._sdRange=-1;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===-1],['미암기',"window._sdRange=0;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===0],['헷갈림',"window._sdRange=2;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===2]])
+      +gsetRow('정렬',[['셔플',"window._sdSort='shuffle';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='shuffle'],['순서',"window._sdSort='default';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='default'],['ABC',"window._sdSort='alpha';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='alpha'],['가나다',"window._sdSort='kr';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='kr']])
+      +gsetRow('발음속도',[['느림',"window._sdRate=0.6;_sdRender()",window._sdRate===0.6],['보통',"window._sdRate=0.8;_sdRender()",window._sdRate===0.8],['빠름',"window._sdRate=1.0;_sdRender()",window._sdRate===1.0]])
+      +gsetRow('따라공백',[['2초',"window._sdGap=2;_sdRender()",window._sdGap===2],['3초',"window._sdGap=3;_sdRender()",window._sdGap===3],['5초',"window._sdGap=5;_sdRender()",window._sdGap===5],['8초',"window._sdGap=8;_sdRender()",window._sdGap===8]])
+      +gsetRow('문제 수',[['10',"window._sdCount=10;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdCount===10],['30',"window._sdCount=30;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdCount===30],['50',"window._sdCount=50;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdCount===50],['전체',"window._sdCount=9999;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdCount===9999]]);
+    var _sdPanel=_lsetBar(_sdRows);
 
     mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0F172A;display:flex;flex-direction:column;color:#fff">
       <!-- 헤더 -->
@@ -9352,13 +9398,9 @@ function showShadowMode() {
           <div style="font-size:11px;color:var(--panel-text3,#9CA3AF);margin-top:4px">초 후 다음 단어</div>
         </div>
       </div>
-      <!-- 옵션 + 컨트롤 -->
+      ${_sdPanel}
+      <!-- 컨트롤 -->
       <div style="padding:8px 16px;flex-shrink:0">
-        <!-- 공백 시간 설정 -->
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;justify-content:center">
-          <span style="font-size:11px;color:var(--panel-text3,#9CA3AF)">따라말하기 공백</span>
-          ${[2,3,5,8].map(s=>`<button onclick="window._sdGap=${s};_sdRender()" style="background:${gap===s?'rgba(236,72,153,.5)':'rgba(255,255,255,.08)'};border:none;border-radius:8px;padding:4px 8px;font-size:11px;color:#fff;cursor:pointer;font-weight:700">${s}초</button>`).join('')}
-        </div>
         <div style="display:flex;gap:8px">
           <button onclick="window._sdIdx=Math.max(0,window._sdIdx-1);window.speechSynthesis.cancel();_sdRender();_sdPlay()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
           <button onclick="_sdPlay()" style="flex:2;background:#EC4899;border:none;border-radius:14px;padding:13px;color:#fff;font-size:15px;font-weight:800;cursor:pointer">🎤 재생 + 따라하기</button>
@@ -11719,6 +11761,18 @@ function gsetRow(label, items){
   }).join('');
   return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span style="color:#94A3B8;font-weight:700;flex-shrink:0;width:54px;font-size:11px">'+label+'</span><div style="display:flex;gap:3px;flex:1;min-width:0">'+btns+'</div></div>';
 }
+function _lsetBar(inner){
+  // 학습모드용 접이식 설정 바 (상위 4줄 + 더보기). gsetBar의 학습 버전, 별도 open 상태(S._lsetOpen).
+  var rc=(inner.split('gap:8px;margin-bottom:').length-1);
+  var collap=rc>4; var op=(S._lsetOpen===true); var showAll=(!collap)||op;
+  var rt=collap?('<span style="font-size:11px;color:#94A3B8;font-weight:700">'+(op?'▼ 접기':'▲ 더보기')+'</span>'):'';
+  return '<div style="flex-shrink:0;background:rgba(255,255,255,.045);border-top:1px solid rgba(255,255,255,.08);border-radius:18px 18px 0 0;padding:7px 16px 9px">'
+    +'<div '+(collap?'onclick="S._lsetOpen=!S._lsetOpen;_lsetRerender()" ':'')+'style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#64748B;font-weight:700;margin-bottom:5px;letter-spacing:.5px'+(collap?';cursor:pointer':'')+'"><span>⚙ 학습 설정</span>'+rt+'</div>'
+    +'<style>.lsetcollapsed>div:nth-child(n+5){display:none!important}</style>'
+    +'<div class="'+(showAll?'':'lsetcollapsed')+'">'+inner+'</div>'
+  +'</div>';
+}
+function _lsetRerender(){ if(typeof window._spkRender==='function'&&window._spkActive)window._spkRender(); else if(typeof window._sdRender==='function'&&window._sdActive)window._sdRender(); }
 function gsetBar(inner){
   var rc=(inner.split('gap:8px;margin-bottom:').length-1);
   var collap=rc>4; var op=(S._gsetOpen===true); var showAll=(!collap)||op;

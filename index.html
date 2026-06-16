@@ -9814,10 +9814,12 @@ function rStudyBooks() {
     : (m1 + (S.books||[]).reduce((s,b)=>s+(getBookWords(b).filter(w=>(b.markMap||{})[w.en]===1).length),0));
 
   function _card(o){
-    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:14px;overflow:hidden">'
+    const _cb=o.isCur?'var(--theme-tint,#F1F5F9)':'var(--bg-card,#fff)';
+    const _cbd=o.isCur?'var(--theme-soft,#CBD5E1)':'#ECEEF1';
+    return '<div style="background:'+_cb+';border:1px solid '+_cbd+';border-radius:14px;overflow:hidden">'
       +'<div style="padding:12px 13px;cursor:pointer" onclick="'+o.openFn+'">'
         +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">'+o.icon
-          +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text1,#1F2937)">'+o.name+'</div>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text1,#1F2937)">'+o.name+(o.isCur?' <span style="font-size:10px;background:var(--theme,#475569);color:#fff;padding:1px 7px;border-radius:10px;font-weight:700;vertical-align:1px">현재</span>':'')+'</div>'
           +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">'+o.count+'개 단어 · 외운 '+o.mem+'</div></div>'
           +'<div style="font-size:16px;font-weight:800;color:var(--theme,#475569)">'+o.pct+'%</div>'
         +'</div>'
@@ -9843,7 +9845,7 @@ function rStudyBooks() {
       ? '<img src="'+img+'" style="width:40px;height:40px;border-radius:12px;object-fit:cover;flex-shrink:0">'
       : '<div style="width:40px;height:40px;background:var(--theme,#475569);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+emo+'</div>';
     return {
-      name:bk.name, icon:icon, count:bw.length, mem:bm, pct:bp,
+      name:bk.name, icon:icon, count:bw.length, mem:bm, pct:bp, isCur:(bk.name===S.currentBook),
       openFn:"showBookWordList('"+sn+"')",
       learnFn:"selectBookAndLearn&&selectBookAndLearn('"+sn+"')",
       addFn: bk.packId ? null : ("_selectBook&&_selectBook('"+sn+"');S.stab='add';go('mybooks','add')"),
@@ -9852,7 +9854,7 @@ function rStudyBooks() {
   }
 
   const myIcon='<div style="width:40px;height:40px;background:var(--theme,#475569);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📚</div>';
-  const myOpts={ name:'내 단어장', icon:myIcon, count:myCount, mem:m1, pct:pct1,
+  const myOpts={ name:'내 단어장', icon:myIcon, count:myCount, mem:m1, pct:pct1, isCur:((S.currentBook||'내 단어장')==='내 단어장'),
     openFn:"showBookWordList('내 단어장')",
     learnFn:"S.currentBook='내 단어장';S.stab='mode';go('mybooks','mode')",
     addFn:"S.currentBook='내 단어장';S.stab='add';go('mybooks','add')",
@@ -9888,6 +9890,14 @@ function rStudyBooks() {
     +'<button onclick="showBooksModal&&showBooksModal()" style="background:#1A1A2E;color:#fff;border:none;border-radius:20px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer">+ 새 단어장</button>'
   +'</div>';
   html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';
+  const _allBooksTab = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
+  const _curName = S.currentBook||'내 단어장';
+  html += '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:14px;padding:12px 13px">'
+    +'<div style="position:relative"><select onchange="_selectBook(this.value);go(\'mybooks\',\'books\')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;background:var(--bg-card,#fff);appearance:none;cursor:pointer;color:var(--text1,#111);font-family:inherit;outline:none">'
+    + _allBooksTab.map(function(b){ return '<option value="'+String(b.name).replace(/"/g,'&quot;')+'" '+(b.name===_curName?'selected':'')+'>'+b.name+' ('+((typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length))+'개)</option>'; }).join('')
+    +'</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>'
+    + (typeof _bookSummaryLine==='function'?_bookSummaryLine(_curName):'')
+  +'</div>';
   html += grpHtml;
   html += _card(myOpts);
   html += otherBooks.map(bk=>_card(_bookOpts(bk))).join('');

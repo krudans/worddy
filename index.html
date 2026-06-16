@@ -9056,7 +9056,11 @@ function saveCurrentBook() {
       return;
     }
     S.books[idx].words=[...S.words];
-    S.books[idx].markMap={...S.markMap};
+    // [수정] 현재 책에 속한 단어의 마킹만 저장 (전역/타 단어장 마킹 누수로 학습률이 부풀려지는 버그 차단)
+    var _bwSC=(typeof getBookWords==='function')?(getBookWords(S.books[idx])||[]):(S.books[idx].words||[]);
+    var _ownSC=new Set(_bwSC.map(function(w){return w&&w.en;}));
+    var _mmSC={}; Object.keys(S.markMap||{}).forEach(function(en){ if(_ownSC.has(en)) _mmSC[en]=S.markMap[en]; });
+    S.books[idx].markMap=_mmSC;
     S.books[idx].learned=[...S.learned];
   }
 }
@@ -14377,7 +14381,20 @@ auth.onAuthStateChanged(async user => {
                 var lv = S.markMap[w], cv = _mm[w];
                 _mm[w] = ((lv===1||lv===true)||(cv===1||cv===true)) ? 1 : (lv!==undefined?lv:cv);
               });
-              S.markMap = _mm;
+              // [수정] 활성 단어장의 라이브 마킹은 그 책 단어로만 스코프 + 로컬 우선.
+              //  (다른 기기/다른 책 마킹이 union으로 라이브 맵에 되살아나 학습률을 100%로 부풀리는 버그 차단)
+              try{
+                if(S.currentBook && S.currentBook!=='내 단어장' && typeof getBookWords==='function'){
+                  var _cbM=(S.books||[]).find(function(b){return b.name===S.currentBook;});
+                  if(_cbM){
+                    var _ownM=new Set((getBookWords(_cbM)||[]).map(function(w){return w&&w.en;}));
+                    var _locM=S.markMap||{};
+                    var _scM={};
+                    _ownM.forEach(function(en){ if(_locM[en]!==undefined) _scM[en]=_locM[en]; });
+                    S.markMap=_scM;
+                  } else { S.markMap=_mm; }
+                } else { S.markMap=_mm; }
+              }catch(e){ S.markMap=_mm; }
             }
             if(Array.isArray(_data.words) && _data.words.length){
               if(!Array.isArray(S.words)) S.words=[];

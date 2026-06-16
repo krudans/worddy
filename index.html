@@ -8951,7 +8951,7 @@ function _deleteDefaultGroup(){
   const delNames = (S.books||[]).filter(b=>DEFGRP.includes(b.packId)).map(b=>b.name);
   S.books = (S.books||[]).filter(b=>!DEFGRP.includes(b.packId));
   S._ownedPacks = (S._ownedPacks||[]).filter(id=>!DEFGRP.includes(id));
-  if(delNames.includes(S.currentBook)) S.currentBook='내 단어장';
+  if(delNames.includes(S.currentBook)){ if(typeof _selectBook==='function') _selectBook('내 단어장'); else S.currentBook='내 단어장'; }
   if(typeof db!=='undefined' && S.user && S.user.uid){ db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(function(){}); }
   if(typeof sv==='function') sv();
   if(typeof toast==='function') toast('🗑 기본 단어 그룹 삭제됨');
@@ -9797,9 +9797,8 @@ function _bwlSetMark(en, val) {
   if(mr) _renderBookWordList(mr, bookName, window._bwlCurrentQ||'');
 }
 function rStudyBooks() {
+  const DEFGRP = (typeof _defGroupPacks==='function') ? _defGroupPacks() : ['초등학교_8129','중학생_단어_3982','고등학생_수준_단어_7519'];
   const books = S.books||[];
-  // 내 단어장(커스텀)은 '현재 펼친 책'과 무관하게 항상 실제 데이터로 계산.
-  // (S.words 는 현재 펼친 책의 작업본이라, 마켓팩을 보는 중이면 그 팩 단어가 들어있음)
   let _myWords, _myMM;
   if(S.currentBook==='내 단어장'){ _myWords=S.words||[]; _myMM=S.markMap||{}; }
   else {
@@ -9814,96 +9813,92 @@ function rStudyBooks() {
     ? countMemorized('all')
     : (m1 + (S.books||[]).reduce((s,b)=>s+(getBookWords(b).filter(w=>(b.markMap||{})[w.en]===1).length),0));
 
-  let html = '<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA)">';
-  html += `<div style="padding:14px 14px 10px;display:flex;align-items:center;justify-content:space-between;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#EFEFEF)">
-    <div>
-      <div style="font-size:18px;font-weight:900;color:var(--text1,#1A1A2E)">단어장</div>
-      <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">총 ${totalAllWords}개 · 암기 ${totalMemorized}개</div>
-    </div>
-    <button onclick="showBooksModal&&showBooksModal()" style="background:#1A1A2E;color:#fff;border:none;border-radius:20px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer">+ 새 단어장</button>
-  </div>`;
-  html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';
+  function _card(o){
+    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:14px;overflow:hidden">'
+      +'<div style="padding:12px 13px;cursor:pointer" onclick="'+o.openFn+'">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">'+o.icon
+          +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text1,#1F2937)">'+o.name+'</div>'
+          +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">'+o.count+'개 단어 · 외운 '+o.mem+'</div></div>'
+          +'<div style="font-size:16px;font-weight:800;color:var(--theme,#475569)">'+o.pct+'%</div>'
+        +'</div>'
+        +'<div style="background:var(--bg-sub,#F1F3F5);border-radius:6px;height:6px;overflow:hidden"><div style="height:100%;background:var(--theme,#475569);border-radius:6px;width:'+Math.max(o.pct,o.pct>0?2:0)+'%;transition:width .4s"></div></div>'
+      +'</div>'
+      +'<div style="display:flex;border-top:1px solid #ECEEF1">'
+        +'<button onclick="'+o.learnFn+'" style="flex:3;padding:11px 8px;background:none;border:none;color:var(--theme,#475569);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">▶ 학습 시작</button>'
+        +(o.addFn?'<button onclick="'+o.addFn+'" style="flex:2;padding:11px 8px;background:none;border:none;border-left:1px solid #ECEEF1;color:#6B7280;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">＋ 추가</button>':'')
+        +'<button onclick="'+o.menuFn+'" style="flex:1;padding:11px 8px;background:none;border:none;border-left:1px solid #ECEEF1;color:#9CA3AF;font-size:18px;cursor:pointer">···</button>'
+      +'</div>'
+    +'</div>';
+  }
 
-  // 내 단어장 카드
-  html += `<div style="background:var(--bg-card,#fff);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
-    <div style="padding:16px;cursor:pointer" onclick="showBookWordList('내 단어장')">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div style="width:46px;height:46px;background:var(--theme);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📚</div>
-        <div style="flex:1">
-          <div style="font-size:15px;font-weight:800;color:var(--text1,#1A1A2E)">내 단어장</div>
-          <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${myCount}개 단어</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:20px;font-weight:900;color:var(--theme)">${pct1}%</div>
-          <div style="font-size:9px;color:#9CA3AF">암기율</div>
-        </div>
-      </div>
-      <div style="background:#EEF0FF;border-radius:8px;height:10px;overflow:hidden">
-        <div style="height:100%;background:var(--theme);border-radius:8px;width:${Math.max(pct1,pct1>0?2:0)}%;transition:width .4s;min-width:${pct1>0?'8px':'0'}"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text3,#9CA3AF)">
-        <span>✅ 외운 단어 ${m1}개</span><span>📚 미암기 ${myCount-m1}개</span>
-      </div>
-    </div>
-    <div style="display:flex;border-top:1.5px solid #E5E7EB">
-      <button onclick="S.currentBook='내 단어장';S.stab='mode';go('mybooks','mode')" style="flex:3;padding:13px 8px;background:var(--theme);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 0 0 18px;white-space:nowrap">▶ 학습시작</button>
-      <button onclick="S.currentBook='내 단어장';S.stab='add';go('mybooks','add')" style="flex:2;padding:13px 8px;background:var(--bg-sub,#F8F9FA);border:none;border-left:1.5px solid var(--border,#E5E7EB);font-size:12px;color:#374151;font-weight:700;cursor:pointer;white-space:nowrap">＋ 추가</button>
-      <button onclick="showBookMenu&&showBookMenu('내 단어장','default')" style="flex:1;padding:13px 8px;background:var(--bg-sub,#F8F9FA);border:none;border-left:1.5px solid var(--border,#E5E7EB);font-size:20px;cursor:pointer;color:#6B7280;border-radius:0 0 18px 0">···</button>
-    </div>
-  </div>`;
-
-  // 추가 단어장들
-  const bookColors = [
-    ['#FF6B6B','#FF8E8E'],['#4ECDC4','#44A8A2'],['#45B7D1','#357F9A'],
-    ['#96CEB4','#6BA888'],['#FFEAA7','#DDB870'],['#DDA0DD','#B87DB8'],
-  ];
-  books.forEach((bk, bi) => {
-    const bw=getBookWords(bk);
+  function _bookOpts(bk){
+    const bw=getBookWords(bk)||[];
     const bm=bw.filter(w=>(bk.markMap||{})[w.en]===1).length;
     const bp=bw.length?Math.min(100,Math.round(bm/bw.length*100)):0;
-    const sn=bk.name.replace(/'/g,"\'");
-    const c1='var(--theme)', c2='var(--theme-d)';
-    const bkLivePack = bk.packId ? (S._marketPacks||[]).find(p=>p.id===bk.packId) : null;
-    // 마켓팩은 오직 Firebase 최신값만 사용. 로컬 구 데이터(bk.imageUrl/emoji) 절대 사용 안 함
-    const bkImageUrl = bkLivePack ? (bkLivePack.imageUrl || '') : (bk.packId ? '' : '');
-    const bkEmoji = bkLivePack ? (bkLivePack.emoji || '📖') : (bk.packId ? '📦' : (bk.emoji || '📖'));
-    const bkIcon = bkImageUrl
-      ? `<img src="${bkImageUrl}" style="width:46px;height:46px;border-radius:14px;object-fit:cover;flex-shrink:0">`
-      : `<div style="width:46px;height:46px;background:${c1};border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${bkEmoji}</div>`;
-    html += `<div style="background:var(--bg-card,#fff);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
-      <div style="padding:16px;cursor:pointer" onclick="showBookWordList('${sn}')">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-          ${bkIcon}
-          <div style="flex:1">
-            <div style="font-size:15px;font-weight:800;color:var(--text1,#1A1A2E)">${bk.name}</div>
-            <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">${bw.length}개 단어</div>
-          </div>
-          <div style="font-size:18px;font-weight:900;color:${c1}">${bp}%</div>
-        </div>
-        <div style="background:var(--bg-sub,#F3F4F6);border-radius:8px;height:10px;overflow:hidden">
-          <div style="height:100%;background:${c1};border-radius:8px;width:${Math.max(bp,bp>0?2:0)}%;transition:width .4s;min-width:${bp>0?'8px':'0'}"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text3,#9CA3AF)">
-          <span>✅ 외운 단어 ${bm}개</span><span>📚 미암기 ${bw.length-bm}개</span>
-        </div>
-      </div>
-      <div style="display:flex;border-top:1.5px solid #E5E7EB">
-        <button onclick="selectBookAndLearn&&selectBookAndLearn('${sn}')" style="flex:3;padding:14px 8px;background:${c1};color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 0 0 18px;white-space:nowrap">▶ 학습시작</button>
-        ${!bk.packId?`<button onclick="_selectBook&&_selectBook('${sn}');S.stab='add';go('mybooks','add')" style="flex:2;padding:14px 8px;background:var(--bg-sub,#F8F9FA);border:none;border-left:1.5px solid var(--border,#E5E7EB);font-size:12px;color:#374151;font-weight:700;cursor:pointer;white-space:nowrap">＋ 추가</button>`:''}
-        <button onclick="showBookMenu&&showBookMenu('${sn}','extra')" style="flex:1;padding:14px 8px;background:var(--bg-sub,#F8F9FA);border:none;border-left:1.5px solid var(--border,#E5E7EB);font-size:20px;cursor:pointer;color:#6B7280;border-radius:0 0 18px 0">···</button>
-      </div>
-    </div>`;
-  });
+    const sn=bk.name.replace(/'/g,"\\'");
+    const lp=bk.packId?(S._marketPacks||[]).find(p=>p.id===bk.packId):null;
+    const img=lp?(lp.imageUrl||''):'';
+    const emo=lp?(lp.emoji||'📖'):(bk.packId?'📦':(bk.emoji||'📖'));
+    const icon=img
+      ? '<img src="'+img+'" style="width:40px;height:40px;border-radius:12px;object-fit:cover;flex-shrink:0">'
+      : '<div style="width:40px;height:40px;background:var(--theme,#475569);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+emo+'</div>';
+    return {
+      name:bk.name, icon:icon, count:bw.length, mem:bm, pct:bp,
+      openFn:"showBookWordList('"+sn+"')",
+      learnFn:"selectBookAndLearn&&selectBookAndLearn('"+sn+"')",
+      addFn: bk.packId ? null : ("_selectBook&&_selectBook('"+sn+"');S.stab='add';go('mybooks','add')"),
+      menuFn:"showBookMenu&&showBookMenu('"+sn+"','extra')"
+    };
+  }
+
+  const myIcon='<div style="width:40px;height:40px;background:var(--theme,#475569);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📚</div>';
+  const myOpts={ name:'내 단어장', icon:myIcon, count:myCount, mem:m1, pct:pct1,
+    openFn:"showBookWordList('내 단어장')",
+    learnFn:"S.currentBook='내 단어장';S.stab='mode';go('mybooks','mode')",
+    addFn:"S.currentBook='내 단어장';S.stab='add';go('mybooks','add')",
+    menuFn:"showBookMenu&&showBookMenu('내 단어장','default')" };
+
+  const grpBooks = DEFGRP.map(pid=>books.find(b=>b.packId===pid)).filter(Boolean);
+  const otherBooks = books.filter(b=>!DEFGRP.includes(b.packId));
+
+  let grpHtml='';
+  if(grpBooks.length){
+    grpHtml='<div style="border:1px solid #E3E6EA;border-radius:16px;padding:11px;background:var(--bg-sub,#FAFBFC)">'
+      +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">'
+        +'<span style="font-size:15px">🦋</span>'
+        +'<span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937);flex:1;line-height:1.3">Butterfly Word 기본 암기 단어</span>'
+        +'<span style="font-size:10px;background:var(--theme-tint,#F1F5F9);color:var(--theme,#475569);padding:2px 8px;border-radius:8px;font-weight:700;white-space:nowrap">기본 제공</span>'
+      +'</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;line-height:1.55;margin-bottom:10px">이 단어 그룹은 Butterfly Word에서 기본으로 제공하는 단어장입니다. 언제든지 삭제, 재등록이 가능합니다.</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px">'+grpBooks.map(bk=>_card(_bookOpts(bk))).join('')+'</div>'
+      +'<div style="display:flex;justify-content:flex-end;margin-top:9px"><button onclick="_deleteDefaultGroup&&_deleteDefaultGroup()" style="font-size:11px;color:#EF8B8B;background:none;border:1px solid #EEF0F2;border-radius:8px;padding:4px 10px;cursor:pointer">🗑 그룹 전체 삭제</button></div>'
+    +'</div>';
+  } else {
+    grpHtml='<div style="border:1px dashed #D9DCE0;border-radius:16px;padding:13px;text-align:center">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--text1,#1F2937);margin-bottom:3px">Butterfly Word 기본 암기 단어</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">기본 제공 단어 그룹이 삭제되었어요</div>'
+      +'<button onclick="_reRegisterDefaultGroup&&_reRegisterDefaultGroup()" style="width:100%;background:var(--theme,#475569);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">🔄 기본 단어 그룹 다시 등록</button>'
+    +'</div>';
+  }
+
+  let html = '<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA)">';
+  html += '<div style="padding:14px 14px 10px;display:flex;align-items:center;justify-content:space-between;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#EFEFEF)">'
+    +'<div><div style="font-size:18px;font-weight:900;color:var(--text1,#1A1A2E)">단어장</div>'
+    +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">총 '+totalAllWords+'개 · 암기 '+totalMemorized+'개</div></div>'
+    +'<button onclick="showBooksModal&&showBooksModal()" style="background:#1A1A2E;color:#fff;border:none;border-radius:20px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer">+ 새 단어장</button>'
+  +'</div>';
+  html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';
+  html += grpHtml;
+  html += _card(myOpts);
+  html += otherBooks.map(bk=>_card(_bookOpts(bk))).join('');
 
   if(books.length < 10) {
-    html += `<div onclick="S.stab='market';go('mybooks','market')" style="background:var(--bg-card,#fff);border-radius:18px;padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;border:2px dashed var(--border,#E5E7EB)">
-      <div style="width:46px;height:46px;background:var(--bg-sub,#F3F4F6);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🛒</div>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:700;color:var(--text2,#374151)">마켓에서 가져오기</div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">수능 · 토익 · 드라마 단어팩</div>
-      </div>
-      <span style="color:#9CA3AF;font-size:20px">›</span>
-    </div>`;
+    html += '<div onclick="S.stab=\'market\';go(\'mybooks\',\'market\')" style="background:var(--bg-card,#fff);border-radius:14px;padding:13px;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px dashed var(--border,#E5E7EB)">'
+      +'<div style="width:40px;height:40px;background:var(--bg-sub,#F3F4F6);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🛒</div>'
+      +'<div style="flex:1"><div style="font-size:14px;font-weight:700;color:var(--text2,#374151)">마켓에서 가져오기</div>'
+      +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">수능 · 토익 · 드라마 단어팩</div></div>'
+      +'<span style="color:#9CA3AF;font-size:20px">›</span>'
+    +'</div>';
   }
 
   html += '</div></div>';

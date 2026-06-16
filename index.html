@@ -1157,6 +1157,28 @@ const MARK_INFO = [
 ];
 
 function buildSentenceFromWords(wordList) {
+  // [신규] 문장 순서맞추기(ssort)는 단어장에 등록된 예문(ph)을 사용 — 음성 기반이라 한글 번역 불필요, 같은 문장 반복 해소
+  if(S.gameId==='ssort'){
+    const _lastEn0=S._sbLastEn||'';
+    const _cn=s=>((s||'').trim().split(/\s+/).filter(Boolean)).length;
+    const book=(S.words&&S.words.length)?S.words:(wordList||S.gWords||[]);
+    const lvSel0=(S.gameSettings&&S.gameSettings.sentLevel);
+    const _bucket=n=>n<=5?1:(n<=8?2:3);
+    let phPool=book.filter(w=>{const n=_cn(w.ph);return n>=3&&n<=14;});
+    if(lvSel0===1||lvSel0===2||lvSel0===3){const f=phPool.filter(w=>_bucket(_cn(w.ph))===lvSel0); if(f.length>=2) phPool=f;}
+    if(phPool.length){
+      let chosen=rnd(phPool);
+      for(let t=0;t<8&&phPool.length>1&&((chosen.ph||'').replace(/[.,!?;:]/g,'').trim()===_lastEn0);t++) chosen=rnd(phPool);
+      const sentence=(chosen.ph||'').replace(/[.,!?;:]/g,'').trim();
+      const words=sentence.split(/\s+/).filter(w=>w.length>0);
+      if(words.length>=3){
+        const wrong=shuf(book.filter(w=>w!==chosen).flatMap(w=>((w.ph||'').replace(/[.,!?;:]/g,'').split(/\s+/))).filter(w=>w&&!words.map(x=>x.toLowerCase()).includes(w.toLowerCase()))).slice(0,2);
+        S.sbS={kr:chosen.kr||'',en:sentence,words};
+        S.sbP=shuf([...words,...wrong]);
+        S.sbC=[];S.sbAns=false;S.sbOk=false;S._sbLastEn=sentence;return;
+      }
+    }
+  }
   const pool=(wordList||S.gWords||[]);
   const _cnt=w=>(((w&&w.en)||'').trim().split(/\s+/).filter(Boolean)).length;
   const sentPool=pool.filter(w=>{const n=_cnt(w);return n>=3&&n<=12;});

@@ -963,6 +963,7 @@ function _restoreCloudExtras(_data){
       try{localStorage.setItem('wd-mkd', JSON.stringify(S.markDates));}catch(e){}
     }
   }}catch(e){}
+  try{ if(_data.modeSettings && typeof _data.modeSettings==='object'){ var _cms=_data.modeSettings; for(var _mk in _cms){ if(_cms[_mk]!=null && S[_mk]==null) S[_mk]=_cms[_mk]; } } }catch(e){} // 학습모드 설정 클라우드 복원
   try{ if(_data._defBooksInit) S._defBooksInit=_data._defBooksInit; }catch(e){}
   try{ if(typeof _ensureDefaultBooks==='function') _ensureDefaultBooks(); }catch(e){}
 }
@@ -3878,6 +3879,7 @@ function load() {
   try { S.alStudy = JSON.parse(localStorage.getItem('wd-als')||JSON.stringify(S.alStudy)); } catch(e){}
   try { S.alGoal = JSON.parse(localStorage.getItem('wd-alg')||JSON.stringify(S.alGoal)); } catch(e){}
   try { S.alStreak = JSON.parse(localStorage.getItem('wd-alst')||JSON.stringify(S.alStreak)); } catch(e){}
+  try { var _ms=JSON.parse(localStorage.getItem('wd-mset')||'{}'); for(var _k in _ms){ if(_ms[_k]!=null) S[_k]=_ms[_k]; } } catch(e){} // 학습모드 설정 복원
 }
 // ── 마켓팩 단어는 항상 Firebase _marketPacks에서 실시간 조회 ──
 function getBookWords(book) {
@@ -3993,6 +3995,8 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
+  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','listMarkFilter'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
   localStorage.setItem('wd-alg',JSON.stringify(S.alGoal));
   localStorage.setItem('wd-alst',JSON.stringify(S.alStreak));
@@ -4043,6 +4047,7 @@ function sv() {
       gameDailyCount:S.gameDailyCount||{},
       gamePlayCount:S.gamePlayCount||{},
       bestScores:S.bestScores||{},
+      modeSettings:_mset,
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       updatedAt: new Date().toISOString()
@@ -4178,8 +4183,8 @@ async function _autoReadWord(w) {
 }
 
 // 자동학습 설정 헬퍼 함수들
-function _arSetSort(v){S.autoSort=v;showAutoMode();}
-function _arSetUnit(v){if(window._auto)window._auto.unit=v;_autoRefilter();window._autoRender&&window._autoRender();}
+function _arSetSort(v){S.autoSort=v;if(typeof sv==='function')sv();showAutoMode();}
+function _arSetUnit(v){if(window._auto)window._auto.unit=v;S.autoUnit=v;if(typeof sv==='function')sv();_autoRefilter();window._autoRender&&window._autoRender();}
 function _arSetRange(v){if(window._auto)window._auto.range=v;S.autoRange=v;if(typeof sv==='function')sv();_autoRefilter();window._autoRender&&window._autoRender();}
 
 // 학습범위/단위 변경 시 _autoWords 재필터링
@@ -4221,6 +4226,7 @@ window._releaseWakeLock = function() {
 // 페이지 다시 보일 때 Wake Lock 재획득
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState === 'visible' && window._autoPlaying) window._requestWakeLock();
+  if(document.visibilityState === 'hidden'){ try{ if(typeof sv==='function') sv(); }catch(e){} } // 백그라운드/종료 시 설정 영속화
   // [공부시간 정확도] 자동학습은 화면 끄고 듣는 게 정상 → 화면 숨김 시간도 실제 학습으로 계산(차감하지 않음).
   //  공부시간은 세션 시작/종료 시각(_sessTs)만으로 계산하므로 화면 상태와 무관하게 정확함.
 });
@@ -4289,6 +4295,7 @@ function showAutoMode() {
   };
   const A = window._auto;
   if(A.range==null && S.autoRange!=null) A.range=S.autoRange; // 범위 설정 유지
+  if(A.unit==null && S.autoUnit!=null) A.unit=S.autoUnit; // 단위 설정 유지
 
   // ── 학습범위 필터링 ──
   let words = [...rawWords];

@@ -14513,11 +14513,20 @@ auth.onAuthStateChanged(async user => {
             }
           }
           if(Array.isArray(_data.collection)) {
-            const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
-            const fbIds = new Set(_data.collection.map(x=>x.id));
-            const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))].slice(0, MAX_COLLECTION); // 도감 최대 MAX_COLLECTION개 캡 (무한 누적 방지)
-            S._collection = merged;
-            localStorage.setItem('bw-collection', JSON.stringify(merged));
+            // [버그수정] 합집합 병합 금지 — 뺀/비운 항목이 되살아나는 문제. 로컬이 권위.
+            // bw-collection 키가 아예 없을 때(이 기기 첫 사용)만 클라우드로 시드.
+            const _raw = localStorage.getItem('bw-collection');
+            if(_raw === null){
+              const _seed = _data.collection.slice(0, MAX_COLLECTION);
+              S._collection = _seed;
+              localStorage.setItem('bw-collection', JSON.stringify(_seed));
+            } else {
+              const _lsCol = JSON.parse(_raw||'[]').slice(0, MAX_COLLECTION);
+              S._collection = _lsCol;
+              if(S.user && typeof db!=='undefined' && JSON.stringify(_lsCol)!==JSON.stringify(_data.collection)){
+                try{ db.collection('users').doc(S.user.uid).set({collection:_lsCol},{merge:true}); }catch(e){}
+              }
+            }
           }
           const _fix = (arr) => (arr||[]).map(w => {
             if(!w||!w.en||!w.kr) return w;
@@ -14678,14 +14687,18 @@ auth.onAuthStateChanged(async user => {
           }
         }
         if(Array.isArray(_data.collection)) {
-          // localStorage 컬렉션과 Firebase 컬렉션 합집합 (id 기준)
-          const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
-          const fbIds = new Set(_data.collection.map(x=>x.id));
-          const merged = [..._data.collection, ...lsCol.filter(x=>!fbIds.has(x.id))].slice(0, MAX_COLLECTION); // 도감 최대 MAX_COLLECTION개 캡 (무한 누적 방지)
-          S._collection = merged;
-          localStorage.setItem('bw-collection', JSON.stringify(merged));
-          if(merged.length > _data.collection.length && S.user && typeof db!=='undefined') {
-            db.collection('users').doc(S.user.uid).set({collection:merged},{merge:true});
+          // [버그수정] 합집합 병합 금지 — 뺀/비운 항목 되살아남 방지. 로컬이 권위(키 없을 때만 클라우드 시드).
+          const _raw = localStorage.getItem('bw-collection');
+          if(_raw === null){
+            const _seed = _data.collection.slice(0, MAX_COLLECTION);
+            S._collection = _seed;
+            localStorage.setItem('bw-collection', JSON.stringify(_seed));
+          } else {
+            const _lsCol = JSON.parse(_raw||'[]').slice(0, MAX_COLLECTION);
+            S._collection = _lsCol;
+            if(S.user && typeof db!=='undefined' && JSON.stringify(_lsCol)!==JSON.stringify(_data.collection)){
+              try{ db.collection('users').doc(S.user.uid).set({collection:_lsCol},{merge:true}); }catch(e){}
+            }
           }
         } else {
           const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');

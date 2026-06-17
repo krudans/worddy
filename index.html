@@ -982,6 +982,11 @@ function _endStudySession(){ try{
   try{ var goal=S._dailyGoalMin||30, studied=S._dailyStudiedMin||0, pct=Math.round(studied/goal*100); if(!S._dailyXpGiven)S._dailyXpGiven={}; [10,20,30,40,50,60,70,80,90,100].forEach(function(m){ if(pct>=m && !S._dailyXpGiven[m]){ S._dailyXpGiven[m]=true; var r=(m===100?200:(m===50?80:30)); if(typeof addXP==='function')addXP(r); } }); }catch(e){}
   if(typeof sv==='function') sv();
 }catch(e){} }
+// [세션 시계] 모든 학습/게임 모드 상단에 경과시간(+학습은 모드 라벨) 표시 — 단일 구현, 전 모드 공통
+var _GAME_LABELS={quiz:'\ud83c\udfaf \ub73b \uace0\ub974\uae30',listenq:'\ud83c\udfa7 \ub4e3\uace0 \ub73b \uace0\ub974\uae30',fill:'\ud83d\udcdd \ube48\uce78 \ucc44\uc6b0\uae30',wc:'\ud83d\udd21 \ucca0\uc790 \uc644\uc131',match:'\u26a1 \uc9dd \ub9de\ucd94\uae30',typing:'\u270f\ufe0f \ubc1b\uc544\uc4f0\uae30',scramble:'\ud83d\udd00 \ucca0\uc790 \ub9de\ucd94\uae30',ssort:'\ud83d\udd00 \ubb38\uc7a5 \uc21c\uc11c',sentence:'\ud83d\udcd6 \ud55c\uae00 \uc601\uc791',wordfind:'\ud83d\udd0d \ub2e8\uc5b4 \ucc3e\uae30'};
+function _fmtClock(sec){ sec=Math.max(0,sec|0); var m=Math.floor(sec/60), x=sec%60; return m+':'+(x<10?'0':'')+x; }
+function _ensureSessionClock(){ var ex=document.getElementById('sess-clock-bar'); if(ex) return ex; if(!document.body) return null; var bar=document.createElement('div'); bar.id='sess-clock-bar'; bar.style.cssText='position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:9500;display:none;align-items:center;gap:7px;background:rgba(15,23,42,.92);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:5px 13px;pointer-events:none;box-shadow:0 2px 10px rgba(0,0,0,.25)'; bar.innerHTML='<span id="sess-clock-label" style="font-size:11px;font-weight:800;color:#CBD5E1;white-space:nowrap"></span><span id="sess-clock-time" style="font-size:15px;font-weight:900;color:#fff;font-family:monospace">0:00</span>'; document.body.appendChild(bar); return bar; }
+setInterval(function(){ try{ if(typeof S==='undefined') return; var ts=S._sessTs||S._gameStartTs||0; var bar=_ensureSessionClock(); if(!bar) return; if(ts>0){ var t=document.getElementById('sess-clock-time'); if(t) t.textContent=_fmtClock(Math.floor((Date.now()-ts)/1000)); var l=document.getElementById('sess-clock-label'); if(l){ var lb=S._modeLabel||''; l.textContent=lb; l.style.display=lb?'':'none'; } bar.style.display='flex'; } else { bar.style.display='none'; } }catch(e){} }, 1000);
 // [A안] 게임 시간 집계: 게임 시작~종료 실제 분을 gameMin(게임 분)과 총 공부시간에 누적
 function _accrueGameTime(){
   try{
@@ -5433,7 +5438,7 @@ setTimeout(function() {
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
   if(S._gameStartTs && !S._gameRunning && typeof _accrueGameTime==='function'){ _accrueGameTime(); }
-  if(S._gameRunning && S.gameId && !S.gDone && !S._gameIntro && !S._inLearnSession && !S._inLevelTest && !S._gameStartTs){ S._gameStartTs=Date.now(); }
+  if(S._gameRunning && S.gameId && !S.gDone && !S._gameIntro && !S._inLearnSession && !S._inLevelTest && !S._gameStartTs){ S._gameStartTs=Date.now(); S._modeLabel=(typeof _GAME_LABELS!=='undefined'?_GAME_LABELS[S.gameId]:'')||'\ud83c\udfae \uac8c\uc784'; }
   if(tab&&tab!=='game'&&tab!=='ranking') {
     // 학습 탭을 직접 클릭(sub 없이)하면 항상 단어장 선택 첫 화면으로
     if(tab==='study'&&!sub) S.stab='books';
@@ -9168,6 +9173,7 @@ function startMode(type) {
   if(!modeWords.length){toast('현재 단어장에 단어가 없어요! 단어를 먼저 추가해주세요.');return;}
   if(modeWords !== S.words) S.words = modeWords;
   if(typeof _startStudySession==='function') _startStudySession(); // [수정] 학습 4종(auto/shadow/speak/flash) 공통 세션 시작 시각 기록
+  S._modeLabel={auto:'\ud83c\udfa7 \uc790\ub3d9\ud559\uc2b5',shadow:'\ud83c\udfa4 \uc298\ub3c4\uc789',speak:'\ud83d\udde3\ufe0f \ub9d0\ud558\uae30',flash:'\ud83c\udccf \ud50c\ub798\uc2dc\uce74\ub4dc'}[type]||'';
   if(type==='auto' || type==='stream' || type==='audio') showAutoMode();
   else if(type==='shadow') showShadowMode();
   else if(type==='speak') showSpeakMode();

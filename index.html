@@ -4236,7 +4236,7 @@ window._releaseWakeLock = function() {
 // 페이지 다시 보일 때 Wake Lock 재획득
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState === 'visible' && window._autoPlaying) window._requestWakeLock();
-  if(document.visibilityState === 'hidden'){ try{ if(typeof sv==='function') sv(); }catch(e){} } // 백그라운드/종료 시 설정 영속화
+  if(document.visibilityState === 'hidden'){ try{ if(!window._autoPlaying && typeof _endStudySession==='function') _endStudySession(); if(typeof sv==='function') sv(); }catch(e){} } // 백그라운드/종료 시 세션 커밋(자동재생 중 제외)+설정 영속화
   // [공부시간 정확도] 자동학습은 화면 끄고 듣는 게 정상 → 화면 숨김 시간도 실제 학습으로 계산(차감하지 않음).
   //  공부시간은 세션 시작/종료 시각(_sessTs)만으로 계산하므로 화면 상태와 무관하게 정확함.
 });
@@ -5466,8 +5466,70 @@ setTimeout(function() {
   }
 }, 800);
 
+// ── [시스템 뒤로가기 가로채기] 앱 밖으로 안 나가게 + 학습/게임 중엔 종료 확인 후 기록 ──
+(function(){
+  if(window._backGuardInit) return; window._backGuardInit=true;
+  if(!window._navStack) window._navStack=[];
+  function _inStudyOrGame(){
+    try{
+      if(window._autoActive || window._spkActive || window._sdActive || window._audPlaying) return true;
+      if(typeof S!=='undefined' && S._gameRunning) return true;
+      if(typeof S!=='undefined' && S.tab==='mybooks' && S.stab==='learn') return true; // 플래시카드
+      return false;
+    }catch(e){ return false; }
+  }
+  function _forceExitMode(){
+    try{ window.speechSynthesis.cancel(); }catch(e){}
+    try{ window._autoPlaying=false; window._audPlaying=false; window._sdPlaying=false; }catch(e){}
+    try{ if(typeof S!=='undefined' && S._gameRunning && typeof savePartialGameScore==='function') savePartialGameScore(); }catch(e){}
+    try{ if(typeof _accrueGameTime==='function') _accrueGameTime(); }catch(e){}
+    try{ if(typeof _endStudySession==='function') _endStudySession(); }catch(e){}
+    try{ var n=document.getElementById('nav'); if(n)n.style.display=''; var h=document.getElementById('hd'); if(h)h.style.display=''; }catch(e){}
+    try{ if(typeof S!=='undefined') S._gameRunning=false; }catch(e){}
+    try{ if(typeof cm==='function') cm(); }catch(e){}
+    try{ if(typeof go==='function') go('home'); }catch(e){}
+  }
+  function _confirmExit(){
+    if(document.getElementById('back-exit-confirm')) return;
+    var ov=document.createElement('div');
+    ov.id='back-exit-confirm';
+    ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:24px';
+    ov.innerHTML='<div style="background:#1E293B;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px 20px;max-width:300px;width:100%;text-align:center;box-shadow:0 12px 44px rgba(0,0,0,.45)">'
+      +'<div style="font-size:30px;margin-bottom:8px">📚</div>'
+      +'<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:6px">학습을 끝낼까요?</div>'
+      +'<div style="font-size:12px;color:#94A3B8;margin-bottom:18px">지금까지 공부한 시간이 저장됩니다</div>'
+      +'<div style="display:flex;gap:8px">'
+      +'<button id="bec-no" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">계속 학습</button>'
+      +'<button id="bec-yes" style="flex:1;background:#EF4444;border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">끝내기</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    var no=document.getElementById('bec-no'); if(no) no.onclick=function(){ ov.remove(); };
+    var yes=document.getElementById('bec-yes'); if(yes) yes.onclick=function(){ ov.remove(); _forceExitMode(); };
+  }
+  function _backHandler(){
+    try{ history.pushState({_bg:1},'',location.href); }catch(e){}
+    var bec=document.getElementById('back-exit-confirm'); if(bec){ bec.remove(); return; }
+    if(_inStudyOrGame()){
+      _confirmExit();
+    } else {
+      try{
+        if(window._navStack && window._navStack.length>0){
+          var prev=window._navStack.pop();
+          window._backNavigating=true;
+          if(typeof go==='function') go(prev.tab, prev.sub);
+          window._backNavigating=false;
+        } else if(typeof S!=='undefined' && S.tab && S.tab!=='home'){
+          if(typeof go==='function') go('home');
+        }
+      }catch(e){ window._backNavigating=false; }
+    }
+  }
+  try{ history.pushState({_bg:1},'',location.href); }catch(e){}
+  window.addEventListener('popstate', _backHandler);
+})();
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
+  try{ if(!window._backNavigating){ if(!window._navStack)window._navStack=[]; if(S.tab && (S.tab!==tab || (S.stab||null)!==(sub||null))){ window._navStack.push({tab:S.tab,sub:S.stab||null}); if(window._navStack.length>50)window._navStack.shift(); } } }catch(e){}
   if(S._gameStartTs && !S._gameRunning && typeof _accrueGameTime==='function'){ _accrueGameTime(); }
   if(S._gameRunning && S.gameId && !S.gDone && !S._gameIntro && !S._inLearnSession && !S._inLevelTest && !S._gameStartTs){ S._gameStartTs=Date.now(); S._modeLabel=(typeof _GAME_LABELS!=='undefined'?_GAME_LABELS[S.gameId]:'')||'\ud83c\udfae \uac8c\uc784'; }
   if(tab&&tab!=='game'&&tab!=='ranking') {
@@ -10535,7 +10597,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   // ── 헤더 ──
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex-shrink:0">';
   html += '<div style="display:flex;align-items:center;gap:10px">';
-  html += '<button onclick="var n=document.getElementById(\'nav\');var h=document.getElementById(\'hd\');if(n)n.style.display=\'\';if(h)h.style.display=\'\';S.stab=\'mode\';go(\'mybooks\',\'mode\')" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">‹ 나가기</button>';
+  html += '<button onclick="var n=document.getElementById(\'nav\');var h=document.getElementById(\'hd\');if(n)n.style.display=\'\';if(h)h.style.display=\'\';S.stab=\'mode\';if(typeof _endStudySession===\'function\')_endStudySession();go(\'mybooks\',\'mode\')" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">‹ 나가기</button>';
   html += '<div style="font-size:11px;color:rgba(255,255,255,.5)">'+(idx+1)+' / '+total+'</div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';

@@ -3151,7 +3151,7 @@ function showSpeakMode() {
     mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0F172A;display:flex;flex-direction:column;color:#fff">
       <!-- 헤더 -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
-        <button onclick="window.speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:8px 14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+
         <div style="font-size:13px;color:rgba(255,255,255,.6)">${idx+1} / ${words.length}</div>
         <div style="font-size:12px;color:var(--panel-text3,#9CA3AF)">${pct}%</div>
       </div>
@@ -3341,7 +3341,7 @@ async function showConversationMode() {
           <button onclick="speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(window._cvSentences.filter(s=>s.cat===window._cvSelCat)[window._cvIdx]?.en||'');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u)" style="flex:2;background:#4299E1;border:none;border-radius:14px;padding:14px;color:#fff;font-size:16px;cursor:pointer;font-weight:700">🔊 발음 듣기</button>
           <button onclick="window._cvIdx=Math.min(window._cvSentences.filter(s=>s.cat===window._cvSelCat).length-1,window._cvIdx+1);window._cvFlip=false;window._cvRender()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;color:#fff;font-size:20px;cursor:pointer">▶</button>
         </div>
-        <button onclick="speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
+
       </div>
     </div></div>`;
     setTimeout(()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(s.en||'');u.lang='en-US';u.rate=0.85;speechSynthesis.speak(u);},300);
@@ -4466,7 +4466,6 @@ window._autoRender = function() {
           +(_LT&&_LT.barHTML?_LT.barHTML():'')
           +''  // 일시정지 버튼은 하단 컨트롤에만 표시
           +'<button onclick="window._toggleAutoLock()" style="background:'+(window._autoLocked?'rgba(239,68,68,.5)':'rgba(255,255,255,.1)')+';border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer" title="화면 잠금 (주머니 모드)">'+(window._autoLocked?'🔒':'🔓')+'</button>'
-          +'<button onclick="cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;cursor:pointer">✕</button>'
           +'</div>'
         +'</div>'
         // 진행바
@@ -5511,7 +5510,7 @@ setTimeout(function() {
     try{ history.pushState({_bg:1},'',location.href); }catch(e){}
     var bec=document.getElementById('back-exit-confirm'); if(bec){ bec.remove(); return; }
     if(_inStudyOrGame()){
-      _confirmExit();
+      exitConfirm();
     } else {
       try{
         if(window._navStack && window._navStack.length>0){
@@ -5593,6 +5592,71 @@ setTimeout(function() {
     clampRestore(); addDrag(); setInterval(vis,400);
   }
   setup();
+})();
+// ── [통합 나가기] 모든 학습4종·게임10종 공통 종료: 확인 → 기록 커밋 → 학습탭/게임탭 ──
+function _isGameMode(){ try{ return !!(typeof S!=='undefined' && S._gameRunning); }catch(e){ return false; } }
+function _commitAndLeave(){
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  try{ window._autoPlaying=false; window._audPlaying=false; window._sdPlaying=false; window._stPlaying=false; window._spkPlaying=false; }catch(e){}
+  try{ clearInterval(window._ttsKeepAlive); }catch(e){}
+  try{ if(window._streamTimer){ clearInterval(window._streamTimer); window._streamTimer=null; } }catch(e){}
+  try{ if(typeof window._releaseWakeLock==='function') window._releaseWakeLock(); }catch(e){}
+  var wasGame=_isGameMode();
+  try{ if(wasGame){ if(typeof savePartialGameScore==='function') savePartialGameScore(); if(typeof _accrueGameTime==='function') _accrueGameTime(); } }catch(e){}
+  try{ if(typeof _endStudySession==='function') _endStudySession(); }catch(e){}
+  try{ if(typeof _LT!=='undefined') _LT.stop(); }catch(e){}
+  window._studyActive=false; window._autoActive=false; window._spkActive=false; window._sdActive=false; window._autoLocked=false;
+  try{ if(typeof S!=='undefined'){ S._sessTs=0; S._gameStartTs=null; S._gameRunning=false; if(wasGame) S.gDone=true; } }catch(e){}
+  try{ var sc=document.getElementById('sess-clock-bar'); if(sc) sc.style.display='none'; }catch(e){}
+  try{ var ov=document.getElementById('auto-lock-overlay'); if(ov) ov.remove(); }catch(e){}
+  try{ var mr=document.getElementById('mr'); if(mr){ mr.innerHTML=''; mr.style.pointerEvents='none'; } }catch(e){}
+  try{ var n=document.getElementById('nav'); if(n)n.style.display=''; var h=document.getElementById('hd'); if(h)h.style.display=''; }catch(e){}
+  try{ if(typeof SFX!=='undefined' && SFX.stopBG) SFX.stopBG(); }catch(e){}
+  if(typeof go==='function') go(wasGame?'game':'learn');
+}
+function exitConfirm(){
+  if(document.getElementById('back-exit-confirm')) return;
+  var isGame=_isGameMode();
+  var ov=document.createElement('div');
+  ov.id='back-exit-confirm';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:24px';
+  ov.innerHTML='<div style="background:#1E293B;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px 20px;max-width:300px;width:100%;text-align:center;box-shadow:0 12px 44px rgba(0,0,0,.45)">'
+    +'<div style="font-size:30px;margin-bottom:8px">'+(isGame?'🎮':'📚')+'</div>'
+    +'<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:6px">'+(isGame?'게임을 끝낼까요?':'학습을 끝낼까요?')+'</div>'
+    +'<div style="font-size:12px;color:#94A3B8;margin-bottom:18px">지금까지의 기록이 저장됩니다</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="bec-no" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">'+(isGame?'계속하기':'계속 학습')+'</button>'
+    +'<button id="bec-yes" style="flex:1;background:#EF4444;border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">끝내기</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var no=document.getElementById('bec-no'); if(no) no.onclick=function(){ ov.remove(); };
+  var yes=document.getElementById('bec-yes'); if(yes) yes.onclick=function(){ ov.remove(); _commitAndLeave(); };
+}
+(function(){
+  if(window._exitBtnInit) return; window._exitBtnInit=true;
+  var btn=null;
+  function build(){
+    if(document.getElementById('study-exit-btn')){ btn=document.getElementById('study-exit-btn'); return; }
+    if(!document.body){ setTimeout(build,200); return; }
+    btn=document.createElement('button');
+    btn.id='study-exit-btn';
+    btn.setAttribute('aria-label','나가기');
+    btn.title='나가기';
+    btn.style.cssText='position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);right:12px;z-index:10002;width:38px;height:38px;border-radius:12px;border:none;background:rgba(15,23,42,.62);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 2px 10px rgba(0,0,0,.3)';
+    btn.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    btn.onclick=function(e){ e.preventDefault(); e.stopPropagation(); exitConfirm(); };
+    document.body.appendChild(btn);
+  }
+  function evis(){
+    if(!btn) return;
+    var show=false;
+    try{
+      show = !!(window._autoActive||window._spkActive||window._sdActive||window._audPlaying||window._stPlaying||(typeof S!=='undefined'&&S.tab==='mybooks'&&S.stab==='learn')||(typeof S!=='undefined'&&S._gameRunning));
+      if(window._autoLocked || document.getElementById('back-exit-confirm')) show=false;
+    }catch(e){ show=false; }
+    btn.style.display = show ? 'flex' : 'none';
+  }
+  build(); setInterval(evis, 300);
 })();
 function appExit(){
   if(document.getElementById('app-exit-confirm')) return;
@@ -9455,8 +9519,7 @@ function showStreamMode() {
         <div style="display:flex;gap:6px">
 ${[['느리게',5000],['보통',3000],['빠르게',1500],['매우빠름',800]].map(([lb,sp])=>` <button onclick="window._stSpeed=${sp};if(window._streamTimer){clearInterval(window._streamTimer);window._streamTimer=setInterval(window._stNext,window._stSpeed);}window._stRender();" style="flex:1;background:${sp===3000?'rgba(59,130,246,.4)':'var(--panel-muted,rgba(0,0,0,.06))'};border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:7px 4px;color:rgba(255,255,255,.8);font-size:10px;font-weight:700;cursor:pointer">${lb}</button> `).join('')}
         </div>
-        <button onclick="clearInterval(window._streamTimer);window._streamTimer=null;window._stPlaying=false;cm()"
-          style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:9px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
+
       </div>
     </div></div>`;
     // 발음
@@ -9573,7 +9636,7 @@ function showAudioMode() {
         <div style="font-size:16px;font-weight:900;color:#fff">🎧 오디오 모드</div>
         <div style="font-size:11px;color:var(--panel-text3,#9CA3AF);margin-top:2px">듣고 암기하기</div>
       </div>
-      ${_LT.barHTML()}<button onclick="window._audPlaying=false;window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 16px;color:#fff;cursor:pointer;font-size:13px;font-weight:700">✕ 나가기</button>
+      ${_LT.barHTML()}
     </div>
     <div style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;flex-shrink:0">
       ${[1,2,3,4,5,6,7].map(i=>`<div style="width:3px;background:rgba(99,179,237,.8);border-radius:4px;animation:audioWave ${0.6+i*.08}s ease-in-out infinite alternate;height:${8+Math.sin(i)*12}px"></div>`).join('')}
@@ -9604,7 +9667,7 @@ function showAudioMode() {
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window._audPlaying=false;window.speechSynthesis.cancel();window._audIdx=0;window._audPlaying=true;window._audPlay()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;color:rgba(255,255,255,.7);font-size:12px;cursor:pointer">🔄 처음부터</button>
-        <button onclick="window._audPlaying=false;window.speechSynthesis.cancel();document.getElementById('mr').innerHTML=''" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:10px;color:#FCA5A5;font-size:12px;cursor:pointer;font-weight:700">✕ 종료</button>
+
       </div>
     </div>
   </div></div>`;
@@ -9668,7 +9731,7 @@ function showShadowMode() {
     mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0F172A;display:flex;flex-direction:column;color:#fff">
       <!-- 헤더 -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
-        <button onclick="window._sdPlaying=false;window.speechSynthesis.cancel();cm()" style="background:rgba(255,255,255,.1);border:none;border-radius:10px;padding:8px 14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✕ 나가기</button>
+
         <div style="font-size:13px;color:rgba(255,255,255,.6)">${idx+1} / ${words.length}</div>
         <div style="font-size:12px;color:var(--panel-text3,#9CA3AF)">${pct}%</div>
       </div>
@@ -10698,7 +10761,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   // ── 헤더 ──
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex-shrink:0">';
   html += '<div style="display:flex;align-items:center;gap:10px">';
-  html += '<button onclick="var n=document.getElementById(\'nav\');var h=document.getElementById(\'hd\');if(n)n.style.display=\'\';if(h)h.style.display=\'\';S.stab=\'mode\';if(typeof _endStudySession===\'function\')_endStudySession();go(\'mybooks\',\'mode\')" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">‹ 나가기</button>';
+  html += '';
   html += '<div style="font-size:11px;color:rgba(255,255,255,.5)">'+(idx+1)+' / '+total+'</div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
@@ -12023,7 +12086,7 @@ function ghdr(title,prog){
     :'<span style="font-size:12px;color:rgba(255,255,255,.8)">'+prog+'</span>';
   return '<div style="background:'+grd+';flex-shrink:0">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px">'
-    +'<button onclick="SFX.stopBG();if(typeof savePartialGameScore===\'function\')savePartialGameScore();S._gameRunning=false;S.gDone=true;S._gameUsed&&(S._gameUsed[S.gameId||\'default\']=[]);go(S._prevTab||\'game\')" style="background:rgba(255,255,255,.18);border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#fff">← 나가기</button>'
+    +''
     +'<div style="text-align:center"><div style="font-size:14px;font-weight:900;color:#fff">'+title+'</div></div>'
     +'<div>'+scoreStr+'</div>'
     +'</div>'

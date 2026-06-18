@@ -879,8 +879,8 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
 };
 
 const lv = id => LEVELS.find(l=>l.id===id)||LEVELS[0];
-const shuf = a => [...a].sort(()=>Math.random()-.5);
-const pick=(a,n)=>{if(!a||!a.length)return[];n=Math.min(n,a.length);const gk=S.gameId||'default';if(!S._gameUsed)S._gameUsed={};if(!S._gameUsed[gk])S._gameUsed[gk]=[];const used=new Set(S._gameUsed[gk]);let pool=a.filter(w=>!used.has(w.en+'|'+(w.kr||'')));if(pool.length<n){S._gameUsed[gk]=[];pool=[...a];}const sel=pool.sort(()=>Math.random()-.5).slice(0,n);sel.forEach(w=>S._gameUsed[gk].push(w.en+'|'+(w.kr||'')));return sel;};
+const shuf = a => { const r=[...a]; for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=r[i];r[i]=r[j];r[j]=t;} return r; };
+const pick=(a,n)=>{if(!a||!a.length)return[];n=Math.min(n,a.length);const gk=S.gameId||'default';if(!S._gameUsed)S._gameUsed={};if(!S._gameUsed[gk])S._gameUsed[gk]=[];const used=new Set(S._gameUsed[gk]);let pool=a.filter(w=>!used.has(w.en+'|'+(w.kr||'')));if(pool.length<n){S._gameUsed[gk]=[];pool=[...a];}const sel=shuf(pool).slice(0,n);sel.forEach(w=>S._gameUsed[gk].push(w.en+'|'+(w.kr||'')));return sel;};
 const rnd = a => a[Math.floor(Math.random()*a.length)];
 
 // ── 출석 체크 & 학습 기록 ──
@@ -3110,7 +3110,7 @@ function showSpeakMode() {
     var so=window._spkSort;
     if(so==='alpha') arr.sort(function(a,b){return a.en.localeCompare(b.en);});
     else if(so==='kr') arr.sort(function(a,b){return (a.kr||'').localeCompare(b.kr||'');});
-    else if(so==='shuffle') arr=arr.slice().sort(function(){return Math.random()-.5;});
+    else if(so==='shuffle') arr=shuf(arr);
     else if(so==='mark') arr.sort(function(a,b){return (getMark(b.en)||0)-(getMark(a.en)||0);});
     var c=window._spkCount; if(c&&c>0&&c<arr.length) arr=arr.slice(0,c);
     try{S._spkSort=window._spkSort;S._spkRange=window._spkRange;S._spkCount=window._spkCount;S._spkAutoRead=window._spkAutoRead;if(typeof sv==='function')sv();}catch(e){}
@@ -4203,6 +4203,11 @@ function _autoRefilter() {
   if(range===0){ words=words.filter(w=>(getMark(w.en)||0)===0); if(!words.length){toast('미암기 단어가 없어요!');words=[...rawWords];window._autoRangeFallback=true;} }
   else if(range===1){ words=words.filter(w=>getMark(w.en)===1); if(!words.length){toast('외웠음 표시 단어가 없어요!');words=[...rawWords];window._autoRangeFallback=true;} }
   else if(range===2){ words=words.filter(w=>getMark(w.en)===2); if(!words.length){toast('복습 표시 단어가 없어요!');words=[...rawWords];window._autoRangeFallback=true;} }
+  const sort = S.autoSort||'default';
+  if(sort==='alpha') words.sort((a,b)=>a.en.localeCompare(b.en));
+  else if(sort==='alpha_kr') words.sort((a,b)=>a.kr.localeCompare(b.kr));
+  else if(sort==='mark') words.sort((a,b)=>getMark(b.en)-getMark(a.en));
+  else if(sort==='random') words=shuf(words);
   const unit = A.unit||'all';
   if(unit!=='all'){const n=parseInt(unit);if(!isNaN(n)&&n>0)words=words.slice(0,n);}
   window._autoWords = words;
@@ -4487,6 +4492,8 @@ window._autoToggle = async () => {
       return;
     }
     window._autoPlaying = true;
+    try{clearInterval(window._ttsKeepAlive);}catch(e){}
+    window._ttsKeepAlive=setInterval(function(){try{if(window._autoPlaying)speechSynthesis.resume();}catch(e){}},6000);
     window._requestWakeLock(); // 화면 꺼짐 방지
     window._autoRender();
     while(window._autoPlaying) {
@@ -4552,6 +4559,7 @@ const cm = () => {
   if(_mr) { _mr.innerHTML=''; _mr.style.pointerEvents='none'; }
   window._releaseWakeLock();
   window._autoPlaying = false;
+  try{clearInterval(window._ttsKeepAlive);}catch(e){}
   window._autoLocked = false;
   window._autoActive = false; window._spkActive = false; window._sdActive = false;
   const overlay = document.getElementById('auto-lock-overlay');
@@ -5615,7 +5623,7 @@ function rLearnTab() {
      badge: words.length>0 ? `${pct}% 암기` : '단어 없음',
      badgeColor: pct>=80?'#16A34A':pct>=40?'#D97706':'var(--theme)',
      sub: words.length>0 ? `${marked}/${words.length}개 외웠음` : '단어장에 단어를 추가하세요',
-     fn:"S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:todayLog.words===0},
+     fn:"S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;S.stab='learn';go('mybooks','learn')", hot:todayLog.words===0},
     {id:'speak', ic:'🗣️', nm:'뜻 보고 영어로 말하기', dc:'뜻 보고 영어로 말하기',
      badge: '',
      badgeColor:'#10B981',
@@ -5917,8 +5925,8 @@ function checkMiniQuiz() {
   if(done>0 && done%5===0 && S.words.length>=4) {
     const w = S.words[Math.min(S.idx, S.words.length-1)];
     if(!w) return;
-    const wrong = S.words.filter(x=>x.en!==w.en).sort(()=>Math.random()-.5).slice(0,3);
-    const choices = [w,...wrong].sort(()=>Math.random()-.5);
+    const wrong = shuf(S.words.filter(x=>x.en!==w.en)).slice(0,3);
+    const choices = shuf([w,...wrong]);
     const mr=document.getElementById('mr');
     if(!mr) return;
     // 다른 모달이 열려있으면 건너뜀
@@ -9191,7 +9199,7 @@ function startMode(type) {
   if(type==='auto' || type==='stream' || type==='audio') showAutoMode();
   else if(type==='shadow') showShadowMode();
   else if(type==='speak') showSpeakMode();
-  else if(type==='flash'){ S._flipWords=null; S.idx=0; S.flip=false; S.stab='learn'; go('mybooks','learn'); } // [수정] 플래시카드 진입 복구
+  else if(type==='flash'){ S._flashShuffled=null; S._flipWords=null; S.idx=0; S.flip=false; S.stab='learn'; go('mybooks','learn'); } // [수정] 플래시카드 진입 복구
   else toast('준비 중이에요');
 }
 
@@ -9451,7 +9459,7 @@ function showShadowMode() {
     var so=window._sdSort;
     if(so==='alpha') arr.sort(function(a,b){return a.en.localeCompare(b.en);});
     else if(so==='kr') arr.sort(function(a,b){return (a.kr||'').localeCompare(b.kr||'');});
-    else if(so==='shuffle') arr=arr.slice().sort(function(){return Math.random()-.5;});
+    else if(so==='shuffle') arr=shuf(arr);
     else if(so==='mark') arr.sort(function(a,b){return (getMark(b.en)||0)-(getMark(a.en)||0);});
     var c=window._sdCount; if(c&&c>0&&c<arr.length) arr=arr.slice(0,c);
     try{S._sdSort=window._sdSort;S._sdRange=window._sdRange;S._sdCount=window._sdCount;S._sdGap=window._sdGap;S._sdRate=window._sdRate;if(typeof sv==='function')sv();}catch(e){}
@@ -10415,7 +10423,7 @@ function rLearn() {
   else if(sort==='alpha_kr') baseWords.sort((a,b)=>a.kr.localeCompare(b.kr));
   else if(sort==='mark') baseWords.sort((a,b)=>getMark(b.en)-getMark(a.en));
   else if(sort==='random') {
-    if(!S._flashShuffled || S._flashShuffled.length!==baseWords.length) S._flashShuffled=[...baseWords].sort(()=>Math.random()-.5);
+    if(!S._flashShuffled || S._flashShuffled.length!==baseWords.length) S._flashShuffled=shuf(baseWords);
     baseWords=S._flashShuffled;
   }
   let filtered = filter===-1 ? baseWords : baseWords.filter(w=>getMark(w.en)===filter);
@@ -12008,7 +12016,7 @@ function _wcHideLetters(en, level){
   if(level==='easy') nHide=Math.min(1, inner.length);
   else if(level==='hard') nHide=Math.max(1, Math.round(inner.length*0.6));
   else nHide=Math.max(1, Math.round(inner.length*0.4));
-  var sh=inner.slice().sort(function(){return Math.random()-0.5;}).slice(0,nHide);
+  var sh=shuf(inner).slice(0,nHide);
   var hs={}; sh.forEach(function(i){hs[i]=true;});
   return chars.map(function(l,i){ return {letter:l, hidden:!!hs[i]}; });
 }

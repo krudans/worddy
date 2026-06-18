@@ -5527,6 +5527,72 @@ setTimeout(function() {
   try{ history.pushState({_bg:1},'',location.href); }catch(e){}
   window.addEventListener('popstate', _backHandler);
 })();
+// ── [사전검색 FAB 강화] 모든 학습 화면 표시 + 드래그 이동 + 위치 저장 ──
+(function(){
+  if(window._fabEnhInit) return; window._fabEnhInit=true;
+  var fab=null, tries=0;
+  function clampRestore(){
+    try{
+      var pos=JSON.parse(localStorage.getItem('bwd-fab-pos')||'null');
+      if(pos && pos.left!=null && fab){
+        var L=Math.max(4,Math.min(window.innerWidth-(fab.offsetWidth||50)-4, pos.left));
+        var T=Math.max(4,Math.min(window.innerHeight-(fab.offsetHeight||50)-4, pos.top));
+        fab.style.left=L+'px'; fab.style.top=T+'px'; fab.style.right='auto'; fab.style.bottom='auto';
+      }
+    }catch(e){}
+  }
+  function addDrag(){
+    var dragging=false, moved=false, sx=0, sy=0, ox=0, oy=0;
+    function down(e){
+      var pt=e.touches?e.touches[0]:e; dragging=true; moved=false; sx=pt.clientX; sy=pt.clientY;
+      var r=fab.getBoundingClientRect(); ox=r.left; oy=r.top;
+      document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+      document.addEventListener('touchmove',mv,{passive:false}); document.addEventListener('touchend',up);
+    }
+    function mv(e){
+      if(!dragging) return; var pt=e.touches?e.touches[0]:e;
+      var dx=pt.clientX-sx, dy=pt.clientY-sy;
+      if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;
+      if(moved){
+        if(e.cancelable) e.preventDefault();
+        var nl=Math.max(4,Math.min(window.innerWidth-fab.offsetWidth-4, ox+dx));
+        var nt=Math.max(4,Math.min(window.innerHeight-fab.offsetHeight-4, oy+dy));
+        fab.style.left=nl+'px'; fab.style.top=nt+'px'; fab.style.right='auto'; fab.style.bottom='auto';
+      }
+    }
+    function up(e){
+      document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+      document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up);
+      if(moved){
+        try{ var r=fab.getBoundingClientRect(); localStorage.setItem('bwd-fab-pos',JSON.stringify({left:Math.round(r.left),top:Math.round(r.top)})); }catch(e2){}
+        var stop=function(ev){ ev.stopPropagation(); ev.preventDefault(); };
+        fab.addEventListener('click',stop,true);
+        setTimeout(function(){ fab.removeEventListener('click',stop,true); },60);
+      }
+      dragging=false;
+    }
+    fab.addEventListener('mousedown',down);
+    fab.addEventListener('touchstart',down,{passive:true});
+  }
+  function vis(){
+    if(!fab) return;
+    var hide = window._autoLocked || !!document.getElementById('back-exit-confirm');
+    if(!hide){
+      var studyActive = window._autoActive||window._spkActive||window._sdActive||(typeof S!=='undefined'&&S.tab==='mybooks'&&S.stab==='learn');
+      if(!studyActive && document.querySelector('.mbg')) hide=true;
+    }
+    if(hide){ if(fab.style.display!=='none') fab.style.display='none'; }
+    else if(!document.body.classList.contains('gameplay-active')){ if(fab.style.display==='none') fab.style.display='flex'; }
+  }
+  function setup(){
+    fab=document.querySelector('.bwdui-fab');
+    if(!fab){ if(tries++<40){ setTimeout(setup,200); } return; }
+    fab.style.zIndex='10000';
+    var wrap=document.querySelector('.bwdui-wrap'); if(wrap) wrap.style.zIndex='10001';
+    clampRestore(); addDrag(); setInterval(vis,400);
+  }
+  setup();
+})();
 function go(tab,sub) {
   console.log('[앱] go', tab||S.tab);
   try{ if(!window._backNavigating){ if(!window._navStack)window._navStack=[]; if(S.tab && (S.tab!==tab || (S.stab||null)!==(sub||null))){ window._navStack.push({tab:S.tab,sub:S.stab||null}); if(window._navStack.length>50)window._navStack.shift(); } } }catch(e){}

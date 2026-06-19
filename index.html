@@ -972,13 +972,18 @@ function _restoreCloudExtras(_data){
 }
 function _syncDayMin(){ try{ var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; var mx=Math.max(S._dailyStudiedMin||0, S.studyLog[t].min||0); S.studyLog[t].min=mx; S.studyLog[t]._mc=1; S._dailyStudiedMin=mx; S._dailyDate=t; }catch(e){} }
 // [공부시간 단일 소스] 시작 시각/종료 시각만으로 계산 (예측·누적 없음).
-function _startStudySession(){ try{ document.body.classList.add('study-active'); if(!S._sessTs){ S._sessTs=Date.now(); if(typeof _LT!=='undefined'){ _LT.reset(); _LT.start(); } } }catch(e){} }
+function _startStudySession(){ try{ document.body.classList.add('study-active'); if(!S._sessTs){ S._sessTs=Date.now(); if(typeof _LT!=='undefined'){ _LT.reset(); _LT.start(); } } S._lastStudyTs=Date.now(); }catch(e){} }
 function _endStudySession(){ try{
   document.body.classList.remove('study-active');
   if(!S._sessTs) return;
-  var mins=(Date.now()-S._sessTs)/60000; S._sessTs=0;
+  var _now=Date.now();
+  var _lastAct=S._lastStudyTs||_now;
+  var _grace=120000; // 마지막 학습 활동 후 120초까지만 인정(유휴/방치 시간 제외)
+  var _endTs=Math.min(_now, _lastAct+_grace);
+  var mins=(_endTs - S._sessTs)/60000; S._sessTs=0; S._lastStudyTs=0;
   if(typeof _LT!=='undefined'){ _LT.stop(); }
   if(mins<0.05) return;
+  if(mins>180) mins=180; // 비정상 stale 세션 1회 가산 상한(게임과 동일)
   var tk=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   if(S._dailyDate!==tk){ S._dailyStudiedMin=0; S._dailyDate=tk; }
   S._dailyStudiedMin=Math.round(((S._dailyStudiedMin||0)+mins)*10)/10;
@@ -991,7 +996,8 @@ function _endStudySession(){ try{
 var _GAME_LABELS={quiz:'\ud83c\udfaf \ub73b \uace0\ub974\uae30',listenq:'\ud83c\udfa7 \ub4e3\uace0 \ub73b \uace0\ub974\uae30',fill:'\ud83d\udcdd \ube48\uce78 \ucc44\uc6b0\uae30',wc:'\ud83d\udd21 \ucca0\uc790 \uc644\uc131',match:'\u26a1 \uc9dd \ub9de\ucd94\uae30',typing:'\u270f\ufe0f \ubc1b\uc544\uc4f0\uae30',scramble:'\ud83d\udd00 \ucca0\uc790 \ub9de\ucd94\uae30',ssort:'\ud83d\udd00 \ubb38\uc7a5 \uc21c\uc11c',sentence:'\ud83d\udcd6 \ud55c\uae00 \uc601\uc791',wordfind:'\ud83d\udd0d \ub2e8\uc5b4 \ucc3e\uae30'};
 function _fmtClock(sec){ sec=Math.max(0,sec|0); var m=Math.floor(sec/60), x=sec%60; return m+':'+(x<10?'0':'')+x; }
 function _ensureSessionClock(){ var ex=document.getElementById('sess-clock-bar'); if(ex) return ex; if(!document.body) return null; var bar=document.createElement('div'); bar.id='sess-clock-bar'; bar.style.cssText='position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:9500;display:none;align-items:center;gap:7px;background:rgba(15,23,42,.92);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:5px 13px;pointer-events:none;box-shadow:0 2px 10px rgba(0,0,0,.25)'; bar.innerHTML='<span id="sess-clock-label" style="font-size:11px;font-weight:800;color:#CBD5E1;white-space:nowrap"></span><span id="sess-clock-time" style="font-size:15px;font-weight:900;color:#fff;font-family:monospace">0:00</span>'; document.body.appendChild(bar); return bar; }
-setInterval(function(){ try{ if(typeof S==='undefined') return; var _gc=document.getElementById("game-clock"); if(_gc&&S._gameStartTs){ _gc.textContent=_fmtClock(Math.floor((Date.now()-S._gameStartTs)/1000)); } if(S._sessTs){ var _tt=_fmtClock(Math.floor((Date.now()-S._sessTs)/1000)); var _lts=document.querySelectorAll('._lt-display'); for(var _q=0;_q<_lts.length;_q++) _lts[_q].textContent=_tt; } var _scb=document.getElementById('sess-clock-bar'); if(_scb) _scb.style.display='none'; }catch(e){} }, 1000);
+setInterval(function(){ try{ if(typeof S==='undefined') return; var _gc=document.getElementById("game-clock"); if(_gc&&S._gameStartTs){ _gc.textContent=_fmtClock(Math.floor((Date.now()-S._gameStartTs)/1000)); } if(S._sessTs){ if(window._autoPlaying) S._lastStudyTs=Date.now(); var _tt=_fmtClock(Math.floor((Date.now()-S._sessTs)/1000)); var _lts=document.querySelectorAll('._lt-display'); for(var _q=0;_q<_lts.length;_q++) _lts[_q].textContent=_tt; } var _scb=document.getElementById('sess-clock-bar'); if(_scb) _scb.style.display='none'; }catch(e){} }, 1000);
+['click','keydown','touchstart','pointerdown'].forEach(function(ev){ try{ document.addEventListener(ev, function(){ try{ if(typeof S!=='undefined' && S._sessTs) S._lastStudyTs=Date.now(); }catch(e){} }, true); }catch(e){} });
 // [A안] 게임 시간 집계: 게임 시작~종료 실제 분을 gameMin(게임 분)과 총 공부시간에 누적
 function _accrueGameTime(){
   try{

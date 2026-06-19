@@ -976,11 +976,7 @@ function _startStudySession(){ try{ document.body.classList.add('study-active');
 function _endStudySession(){ try{
   document.body.classList.remove('study-active');
   if(!S._sessTs) return;
-  var _now=Date.now();
-  var _lastAct=S._lastStudyTs||_now;
-  var _grace=120000; // 마지막 학습 활동 후 120초까지만 인정(유휴/방치 시간 제외)
-  var _endTs=Math.min(_now, _lastAct+_grace);
-  var mins=(_endTs - S._sessTs)/60000; S._sessTs=0; S._lastStudyTs=0;
+  var mins=(Date.now() - S._sessTs)/60000; S._sessTs=0; S._lastStudyTs=0; // [단순화] 진입~이탈 전체 경과 집계(게임과 동일, 유휴 클리핑 제거)
   if(typeof _LT!=='undefined'){ _LT.stop(); }
   if(mins<0.05) return;
   if(mins>180) mins=180; // 비정상 stale 세션 1회 가산 상한(게임과 동일)
@@ -3885,6 +3881,7 @@ function load() {
   try { S.alGoal = JSON.parse(localStorage.getItem('wd-alg')||JSON.stringify(S.alGoal)); } catch(e){}
   try { S.alStreak = JSON.parse(localStorage.getItem('wd-alst')||JSON.stringify(S.alStreak)); } catch(e){}
   try { var _ms=JSON.parse(localStorage.getItem('wd-mset')||'{}'); for(var _k in _ms){ if(_ms[_k]!=null) S[_k]=_ms[_k]; } } catch(e){} // 학습모드 설정 복원
+  try { var _wa=JSON.parse(localStorage.getItem('wd-auto')||'null'); if(_wa){ window._autoSaved=_wa; if(window._auto){ for(var _ak in _wa){ window._auto[_ak]=_wa[_ak]; } } } } catch(e){} // 자동재생 옵션 복원
 }
 // ── 마켓팩 단어는 항상 Firebase _marketPacks에서 실시간 조회 ──
 function getBookWords(book) {
@@ -4000,8 +3997,9 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
-  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','listMarkFilter'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
+  try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
   localStorage.setItem('wd-alg',JSON.stringify(S.alGoal));
   localStorage.setItem('wd-alst',JSON.stringify(S.alStreak));
@@ -4098,6 +4096,7 @@ window._auto = window._auto || {
   read: 'en+kr',     // 읽기 모드: en/kr/ex/en+kr/en+ex/all
   voice: 'en-US',    // 영어 음성
 };
+try{ var _waInit=JSON.parse(localStorage.getItem('wd-auto')||'null'); if(_waInit){ for(var _ak in _waInit){ window._auto[_ak]=_waInit[_ak]; } } }catch(e){} // 자동재생 옵션 저장값 복원
 function _autoSpeak(text, lang='en-US', rateOverride) {
   return new Promise(res => {
     text = String(text==null?'':text).trim();
@@ -4213,11 +4212,11 @@ function _autoRefilter() {
   window._autoWords = words;
   window._autoIdx = 0;
 }
-function _arSetRead(v){var ws=window._autoWords||[];var sg=function(x){var e=((x&&x.en)||'').trim();return e.length>0&&!/\s/.test(e);};var sb=ws.length>=5&&(ws.filter(sg).length/ws.length)<0.5;if(v==='spell'&&sb){if(typeof toast==='function')toast('문장 단어장은 스펠링 모드를 쓸 수 없어요');v='en+kr';}if(window._auto)window._auto.read=v;window._autoRender&&window._autoRender();}
-function _arSetSpeed(sr){if(window._auto){window._auto.shadowRate=sr;window._auto.speed=700;}window._autoRender&&window._autoRender();}
-function _arSetExCount(v){if(window._auto)window._auto.exCount=v;window._autoRender&&window._autoRender();}
-function _arToggleLoop(){if(window._auto)window._auto.loop=!window._auto.loop;window._autoRender&&window._autoRender();}
-function _arToggleShadow(){if(window._auto)window._auto.shadow=!window._auto.shadow;window._autoRender&&window._autoRender();}
+function _arSetRead(v){var ws=window._autoWords||[];var sg=function(x){var e=((x&&x.en)||'').trim();return e.length>0&&!/\s/.test(e);};var sb=ws.length>=5&&(ws.filter(sg).length/ws.length)<0.5;if(v==='spell'&&sb){if(typeof toast==='function')toast('문장 단어장은 스펠링 모드를 쓸 수 없어요');v='en+kr';}if(window._auto)window._auto.read=v;if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
+function _arSetSpeed(sr){if(window._auto){window._auto.shadowRate=sr;window._auto.speed=700;}if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
+function _arSetExCount(v){if(window._auto)window._auto.exCount=v;if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
+function _arToggleLoop(){if(window._auto)window._auto.loop=!window._auto.loop;if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
+function _arToggleShadow(){if(window._auto)window._auto.shadow=!window._auto.shadow;if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
 
 
 // ── Wake Lock (화면 꺼짐 방지) ──
@@ -4434,7 +4433,7 @@ window._autoRender = function() {
     var _ws=window._autoWords||[];var _sb=_isSentenceBook(_ws);var readItems = (_sb?[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr']]:[['영어','en'],['한글먼저','kr_first'],['영+한','en+kr'],['한글','kr'],['스펠링','spell'],['전체','all']])
       .map(function(it){return [it[0],"_arSetRead('"+it[1]+"')",A.read===it[1]];});
     var krDelayItems = [['3초',3],['5초',5],['7초',7]]
-      .map(function(it){return [it[0],'window._auto.krFirstDelay='+it[1]+';window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]];});
+      .map(function(it){return [it[0],'window._auto.krFirstDelay='+it[1]+';if(typeof sv===\"function\")sv();window._autoRender&&window._autoRender()',parseInt(A.krFirstDelay||3)===it[1]];});
 
     // 속도 버튼
     var speedItems = [['느림',0.5],['보통',0.8],['빠름',1.1],['최대',1.5]]
@@ -4477,8 +4476,8 @@ window._autoRender = function() {
         +'<div style="padding:0 16px 4px;flex-shrink:0">'        +'<div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div>'        +'</div>'
         // 단어 카드 (kr_first 모드 분기)
         +(A.read==='kr_first'
-          ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 영어 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+w.kr+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 영어가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none"><div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'+(w.ph&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')+(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>':'')+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
-          : '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'              +(w.ph&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')              +(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>':'')              +exHtml              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>')
+          ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 영어 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+w.kr+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 영어가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none">'+((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:8px">'+w.img+'</div>':'')+'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'+(w.ph&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')+(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>':'')+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
+          : '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:10px">'+w.img+'</div>':'')              +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'              +(w.ph&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')              +(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>':'')              +exHtml              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>')
         // 컨트롤 버튼
         +'<div style="padding:6px 16px;display:flex;gap:6px;flex-shrink:0">'
           +'<button onclick="window._autoIdx=Math.max(0,window._autoIdx-1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">◀ 이전</button>'

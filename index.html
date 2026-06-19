@@ -3146,6 +3146,7 @@ function showSpeakMode() {
       return;
     }
     const w=words[idx];
+    if(typeof _seenW==='function') _seenW(w.en);
     const pct=Math.round(idx/words.length*100);
     if(show && window._spkAutoRead && window._spkSpokeIdx!==idx){ window._spkSpokeIdx=idx; try{window.speechSynthesis.cancel();var _u=new SpeechSynthesisUtterance(w.en);_u.lang='en-US';_u.rate=(window._spkRate||0.8);window.speechSynthesis.speak(_u);}catch(e){} }
     var _spkRows=
@@ -3709,6 +3710,7 @@ function setMark(en, val) {
     S.markMap[en] = val;
   }
   // 외운 단어 → learned에도 추가
+  if(typeof _seenW==='function') _seenW(en); // 마크한 단어는 오늘 화면에 나온 단어
   if(val===1) S.learned.add(en);
   else if(val===2) S.learned.delete(en);
   // 외운 날짜 기록 (오늘/이번주/이번달 외운 단어 집계용, 단어장 무관 전역).
@@ -4407,6 +4409,7 @@ function showAutoMode() {
 window._autoRender = function() {
     var mr = document.getElementById('mr'); if(!mr) return;
     var w = window._autoWords[window._autoIdx];
+    if(w && typeof _seenW==='function') _seenW(w.en);
     if(!w) return;
     var total = window._autoWords.length;
     var A = window._auto;
@@ -5878,7 +5881,7 @@ function rLearnTab() {
     <!-- 오늘 3칸: 학습 단어 + 외운 단어 + 공부시간 -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
-        <div style="font-size:22px;font-weight:900;color:var(--theme)">${todayLog&&todayLog.xpWords?Object.keys(todayLog.xpWords).length:0}</div>
+        <div style="font-size:22px;font-weight:900;color:var(--theme)">${(typeof _todaySeenCount==='function')?_todaySeenCount():0}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습한 단어</div>
       </div>
       <div style="background:var(--bg,#F4F6F8);border-radius:12px;padding:10px;text-align:center;border:1px solid var(--border,#E2E8F0)">
@@ -8339,6 +8342,8 @@ function _planDaysBetween(aStr,bStr){ return Math.round((_planParse(bStr)-_planP
 function _planDailyForDate(remaining,dateStr,todayStr){ var days=Math.max(1,_planDaysBetween(todayStr,dateStr)); return Math.max(1,Math.ceil(remaining/days)); }
 
 // 외운 날짜 기록(markDates) 기반 — 오늘/최근 외운 수
+function _seenW(en){ try{ if(!en)return; var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; if(!Array.isArray(S.studyLog[t].seenEns))S.studyLog[t].seenEns=[]; var k=String(en); if(S.studyLog[t].seenEns.indexOf(k)<0)S.studyLog[t].seenEns.push(k); }catch(e){} }
+function _todaySeenCount(dayStr){ try{ var t=dayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10)); var d=(S.studyLog||{})[t]||{}; var seen=Array.isArray(d.seenEns)?d.seenEns.length:0; var mem=Array.isArray(d.markedEns)?d.markedEns.length:0; return Math.max(seen,mem); }catch(e){ return 0; } }
 function _todayMemoCount(dayStr){
   // '오늘 외운 단어' 단일 소스 = 오늘 외웠음 표시한 단어 수(재확인 포함, 중복제거, 전체 단어장)
   try{ var t=dayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
@@ -9700,6 +9705,7 @@ function showShadowMode() {
       return;
     }
     const w=words[idx];
+    if(typeof _seenW==='function') _seenW(w.en);
     const gap=window._sdGap;
     const rate=window._sdRate;
     const pct=Math.round(idx/words.length*100);
@@ -10748,6 +10754,7 @@ function rLearn() {
   }
 
   const allFw=typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words;
+  if(typeof _seenW==='function') _seenW(w.en);
   const curMark=getMark(w.en)||0, isFav=(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0;
   const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
 

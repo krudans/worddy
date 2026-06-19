@@ -9728,11 +9728,18 @@ function showShadowMode() {
         </div>
         <!-- 상태 -->
         <div id="sd-status" style="margin-top:18px;font-size:14px;font-weight:700;color:#EC4899;text-align:center;min-height:20px">🔊 [듣기]를 누르세요</div>
-        <!-- 마이크 파형 그래프 -->
-        <div id="sd-wave" style="margin-top:14px;display:flex;align-items:flex-end;justify-content:center;gap:3px;height:48px"></div>
-        <!-- 발음 매칭 그래프 -->
-        <div style="margin-top:14px;width:100%;max-width:300px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--panel-text3,#9CA3AF);margin-bottom:4px"><span>발음 매칭</span><span id="sd-match-pct">0%</span></div>
+        <!-- 파형 비교 캔버스 (앱 파형 + 내 파형 오버레이) -->
+        <div style="margin-top:14px;width:100%;max-width:340px">
+          <canvas id="sd-canvas" width="660" height="130" style="width:100%;height:96px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:18px;display:block"></canvas>
+          <div style="display:flex;justify-content:center;gap:18px;margin-top:7px;font-size:11px;font-weight:700">
+            <span style="color:#63B3ED">● 앱 발음</span>
+            <span style="color:#EC4899">● 내 발음</span>
+          </div>
+        </div>
+        <!-- 발음 매칭률 -->
+        <div style="margin-top:16px;width:100%;max-width:300px;text-align:center">
+          <div id="sd-match-pct" style="font-size:34px;font-weight:900;color:#9CA3AF;line-height:1">0%</div>
+          <div style="font-size:11px;color:var(--panel-text3,#9CA3AF);margin:4px 0 6px">발음 매칭률</div>
           <div style="background:rgba(255,255,255,.12);border-radius:6px;height:10px;overflow:hidden"><div id="sd-match-bar" style="height:100%;width:0%;background:#EC4899;border-radius:6px;transition:width .2s"></div></div>
           <div id="sd-heard" style="font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;min-height:14px;text-align:center"></div>
         </div>
@@ -9762,10 +9769,38 @@ function showShadowMode() {
     for(var i=1;i<=m;i++){ for(var j=1;j<=n;j++){ var c=a.charAt(i-1)===b.charAt(j-1)?0:1; dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+c); } }
     return Math.max(0, 1 - dp[m][n]/Math.max(m,n)); }
 
+  // ===== 파형 시각화 엔진 (앱 발음=파랑, 내 발음=분홍 오버레이) =====
+  window._sdWaveN = 56;
+  function _sdDrawWaves(){
+    var cv=document.getElementById('sd-canvas'); if(!cv) return; var ctx=cv.getContext('2d');
+    var W=cv.width, H=cv.height, mid=H/2; ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(W,mid); ctx.stroke();
+    function wv(arr,color,alpha){ if(!arr||!arr.length) return; var n=arr.length, step=W/(n-1);
+      ctx.globalAlpha=alpha; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.strokeStyle=color; ctx.fillStyle=color;
+      ctx.beginPath();
+      for(var i=0;i<n;i++){ var a=Math.max(0.02,arr[i]); var y=mid-a*(H*0.42); if(i===0)ctx.moveTo(0,y); else ctx.lineTo(i*step,y); }
+      for(var j=n-1;j>=0;j--){ var a2=Math.max(0.02,arr[j]); var y2=mid+a2*(H*0.42); ctx.lineTo(j*step,y2); }
+      ctx.closePath(); ctx.globalAlpha=alpha*0.22; ctx.fill(); ctx.globalAlpha=alpha; ctx.stroke(); ctx.globalAlpha=1;
+    }
+    wv(window._sdAppWave, '#63B3ED', window._sdUserWave?0.45:0.95);
+    wv(window._sdUserWave, '#EC4899', 0.95);
+  }
+  window._sdResetWaves=function(){ window._sdAppWave=null; window._sdUserWave=null; _sdDrawWaves(); };
+  function _sdAppWaveAnim(){
+    var N=window._sdWaveN; window._sdAppWave=new Array(N).fill(0); window._sdUserWave=null;
+    var i=0, ph=0;
+    (function tick(){
+      if(!window._sdActive || !window.speechSynthesis.speaking){ window._sdAppRAF=0; _sdDrawWaves(); return; }
+      ph+=0.4; var amp=(0.3+0.5*Math.abs(Math.sin(ph))+0.18*Math.random())*(0.55+0.45*Math.sin(i*0.28));
+      if(i<N){ window._sdAppWave[i]=amp; i++; } else { window._sdAppWave.shift(); window._sdAppWave.push(amp); }
+      _sdDrawWaves(); window._sdAppRAF=requestAnimationFrame(tick);
+    })();
+  }
   window._sdStop = function(){
     try{ window.speechSynthesis.cancel(); }catch(e){}
     try{ if(window._sdRec){ window._sdRec.onresult=null; window._sdRec.onend=null; window._sdRec.onerror=null; window._sdRec.abort(); window._sdRec=null; } }catch(e){}
     try{ if(window._sdRAF){ cancelAnimationFrame(window._sdRAF); window._sdRAF=0; } }catch(e){}
+    try{ if(window._sdAppRAF){ cancelAnimationFrame(window._sdAppRAF); window._sdAppRAF=0; } }catch(e){}
     try{ if(window._sdStream){ window._sdStream.getTracks().forEach(function(t){ t.stop(); }); window._sdStream=null; } }catch(e){}
     try{ if(window._sdAC && window._sdAC.state!=='closed'){ window._sdAC.close(); window._sdAC=null; } }catch(e){}
   };
@@ -9779,6 +9814,7 @@ function showShadowMode() {
       u.onend=function(){ if(!window._sdActive) return; if(!window._sdPaused && thenListen===true){ window._sdListen(); } else { var s2=_sdEl('sd-status'); if(s2){ s2.textContent='🎤 [말하기]를 누르고 따라 읽으세요'; s2.style.color='#EC4899'; } } };
       u.onerror=u.onend;
       window.speechSynthesis.speak(u);
+      try{ _sdAppWaveAnim(); }catch(e){}
     }catch(e){}
   };
 
@@ -9798,8 +9834,11 @@ function showShadowMode() {
           var ACtx=window.AudioContext||window.webkitAudioContext; var ac=new ACtx(); window._sdAC=ac;
           var src=ac.createMediaStreamSource(stream); var an=ac.createAnalyser(); an.fftSize=64; src.connect(an);
           var data=new Uint8Array(an.frequencyBinCount);
-          var wave=_sdEl('sd-wave'); if(wave){ wave.innerHTML=''; for(var b=0;b<16;b++){ var bar=document.createElement('div'); bar.style.cssText='width:5px;height:4px;background:#EC4899;border-radius:3px;transition:height .05s'; wave.appendChild(bar); } }
-          var draw=function(){ if(!window._sdStream) return; an.getByteFrequencyData(data); var bars=wave?wave.children:[]; for(var b=0;b<bars.length;b++){ var v=data[b*2]||0; bars[b].style.height=Math.max(4, v/255*44)+'px'; } window._sdRAF=requestAnimationFrame(draw); };
+          var _N=window._sdWaveN||56; window._sdUserWave=new Array(_N).fill(0); var _ui=0;
+          var draw=function(){ if(!window._sdStream) return; an.getByteFrequencyData(data);
+            var sum=0; for(var b=0;b<data.length;b++){ sum+=data[b]; } var amp=Math.min(1,(sum/data.length)/95);
+            if(_ui<_N){ window._sdUserWave[_ui]=amp; _ui++; } else { window._sdUserWave.shift(); window._sdUserWave.push(amp); }
+            _sdDrawWaves(); window._sdRAF=requestAnimationFrame(draw); };
           draw();
         }).catch(function(){});
       }
@@ -9815,7 +9854,7 @@ function showShadowMode() {
         var pct=Math.round(best*100);
         var bar=_sdEl('sd-match-bar'), pe=_sdEl('sd-match-pct'), he2=_sdEl('sd-heard');
         if(bar){ bar.style.width=pct+'%'; bar.style.background=pct>=70?'#22C55E':(pct>=40?'#FBBF24':'#EC4899'); }
-        if(pe) pe.textContent=pct+'%';
+        if(pe){ pe.textContent=pct+'%'; pe.style.color=pct>=70?'#22C55E':(pct>=40?'#FBBF24':'#EC4899'); }
         if(he2) he2.textContent='\ub4e4\ub9b0 \ubc1c\uc74c: '+(txt||'...');
         if(best>=0.7){ try{ rec.stop(); }catch(e){} window._sdMatched(pct); }
       };

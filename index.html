@@ -9747,14 +9747,15 @@ function showShadowMode() {
         </div>
         <!-- 상태 -->
         <div id="sd-status" style="margin-top:18px;font-size:14px;font-weight:700;color:#EC4899;text-align:center;min-height:20px">🔊 [듣기]를 누르세요</div>
-        <!-- 발음 매칭률 (한 줄 그래프) -->
-        <div style="margin-top:18px;width:100%;max-width:340px;text-align:center">
-          <div style="display:flex;align-items:baseline;justify-content:center;gap:10px;margin-bottom:8px">
-            <span style="font-size:13px;color:var(--panel-text3,#9CA3AF);font-weight:700">발음 매칭률</span>
-            <span id="sd-match-pct" style="font-size:32px;font-weight:900;color:#9CA3AF;line-height:1">0%</span>
+        <!-- 발음 비교 막대그래프 (앱=파랑, 내=분홍) + 매칭률 -->
+        <div style="margin-top:14px;width:100%;max-width:340px">
+          <canvas id="sd-canvas" width="680" height="150" style="width:100%;height:74px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:14px;display:block"></canvas>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <div style="display:flex;gap:12px;font-size:11px;font-weight:700"><span style="color:#63B3ED">▮ 앱 발음</span><span style="color:#EC4899">▮ 내 발음</span></div>
+            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:11px;color:var(--panel-text3,#9CA3AF);font-weight:700">매칭률</span><span id="sd-match-pct" style="font-size:24px;font-weight:900;color:#9CA3AF;line-height:1">0%</span></div>
           </div>
-          <div style="background:rgba(255,255,255,.12);border-radius:9px;height:18px;overflow:hidden"><div id="sd-match-bar" style="height:100%;width:0%;background:#EC4899;border-radius:9px;transition:width .25s"></div></div>
-          <div id="sd-heard" style="font-size:11px;color:rgba(255,255,255,.4);margin-top:7px;min-height:14px;text-align:center"></div>
+          <div style="background:rgba(255,255,255,.12);border-radius:7px;height:10px;overflow:hidden;margin-top:6px"><div id="sd-match-bar" style="height:100%;width:0%;background:#EC4899;border-radius:7px;transition:width .25s"></div></div>
+          <div id="sd-heard" style="font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;min-height:14px;text-align:center"></div>
         </div>
       </div>
       <!-- 컨트롤 (자동학습과 동일: 설정 위) -->
@@ -9782,21 +9783,32 @@ function showShadowMode() {
     for(var i=1;i<=m;i++){ for(var j=1;j<=n;j++){ var c=a.charAt(i-1)===b.charAt(j-1)?0:1; dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+c); } }
     return Math.max(0, 1 - dp[m][n]/Math.max(m,n)); }
 
-  // ===== 파형 시각화 엔진 (앱 발음=파랑, 내 발음=분홍 오버레이) =====
-  window._sdWaveN = 56;
+  // ===== 발음 비교 막대그래프 (앱=파랑, 내=분홍, 소리 크기에 따라 차오름) =====
+  window._sdWaveN = 16;
   function _sdDrawWaves(){
     var cv=document.getElementById('sd-canvas'); if(!cv) return; var ctx=cv.getContext('2d');
-    var W=cv.width, H=cv.height, mid=H/2; ctx.clearRect(0,0,W,H);
-    ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(W,mid); ctx.stroke();
-    function wv(arr,color,alpha){ if(!arr||!arr.length) return; var n=arr.length, step=W/(n-1);
-      ctx.globalAlpha=alpha; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.strokeStyle=color; ctx.fillStyle=color;
-      ctx.beginPath();
-      for(var i=0;i<n;i++){ var a=Math.max(0.02,arr[i]); var y=mid-a*(H*0.42); if(i===0)ctx.moveTo(0,y); else ctx.lineTo(i*step,y); }
-      for(var j=n-1;j>=0;j--){ var a2=Math.max(0.02,arr[j]); var y2=mid+a2*(H*0.42); ctx.lineTo(j*step,y2); }
-      ctx.closePath(); ctx.globalAlpha=alpha*0.22; ctx.fill(); ctx.globalAlpha=alpha; ctx.stroke(); ctx.globalAlpha=1;
+    var W=cv.width, H=cv.height; ctx.clearRect(0,0,W,H);
+    var app=window._sdAppWave, usr=window._sdUserWave;
+    var N=window._sdWaveN||16, base=H-8, maxH=H-16;
+    var gw=W/N, bw=Math.min(gw*0.32, 16), gap=gw*0.10;
+    function bar(x,amp,color,alpha){
+      var h=Math.max(4, Math.min(1,amp||0)*maxH), y=base-h, r=Math.min(bw/2,6);
+      ctx.globalAlpha=alpha; ctx.fillStyle=color;
+      ctx.beginPath(); ctx.moveTo(x,base); ctx.lineTo(x,y+r);
+      ctx.quadraticCurveTo(x,y,x+r,y); ctx.lineTo(x+bw-r,y);
+      ctx.quadraticCurveTo(x+bw,y,x+bw,y+r); ctx.lineTo(x+bw,base);
+      ctx.closePath(); ctx.fill(); ctx.globalAlpha=1;
     }
-    wv(window._sdAppWave, '#63B3ED', window._sdUserWave?0.45:0.95);
-    wv(window._sdUserWave, '#EC4899', 0.95);
+    // 바닥선
+    ctx.globalAlpha=1; ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,base+0.5); ctx.lineTo(W,base+0.5); ctx.stroke();
+    for(var i=0;i<N;i++){
+      var gx=i*gw + (gw-(bw*2+gap))/2;
+      var av=(app&&app[i]!=null)?app[i]:0;
+      var uv=(usr&&usr[i]!=null)?usr[i]:0;
+      bar(gx, av, '#63B3ED', usr?0.45:0.95);   // 앱 발음(파랑) — 내가 말하는 중엔 흐려짐
+      bar(gx+bw+gap, uv, '#EC4899', usr?0.98:0.30); // 내 발음(분홍)
+    }
   }
   window._sdResetWaves=function(){ window._sdAppWave=null; window._sdUserWave=null; _sdDrawWaves(); };
   function _sdAppWaveAnim(){
@@ -9804,7 +9816,7 @@ function showShadowMode() {
     var i=0, ph=0;
     (function tick(){
       if(!window._sdActive || !window.speechSynthesis.speaking){ window._sdAppRAF=0; _sdDrawWaves(); return; }
-      ph+=0.4; var amp=(0.3+0.5*Math.abs(Math.sin(ph))+0.18*Math.random())*(0.55+0.45*Math.sin(i*0.28));
+      ph+=0.4; var amp=(0.3+0.5*Math.abs(Math.sin(ph))+0.18*Math.random())*(0.55+0.45*Math.sin(i*0.7));
       if(i<N){ window._sdAppWave[i]=amp; i++; } else { window._sdAppWave.shift(); window._sdAppWave.push(amp); }
       _sdDrawWaves(); window._sdAppRAF=requestAnimationFrame(tick);
     })();
@@ -9854,6 +9866,24 @@ function showShadowMode() {
     var st=_sdEl('sd-status');
     if(st){ st.textContent='🎤 지금 말하세요!'; st.style.color='#EC4899'; }
     var he=_sdEl('sd-heard'); if(he) he.textContent='';
+    // 마이크 입력 → 내 발음(분홍) 막대 실시간
+    try{
+      if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+          if(!window._sdActive){ stream.getTracks().forEach(function(t){t.stop();}); return; }
+          window._sdStream=stream;
+          var ACtx=window.AudioContext||window.webkitAudioContext; var ac=new ACtx(); window._sdAC=ac;
+          var src=ac.createMediaStreamSource(stream); var an=ac.createAnalyser(); an.fftSize=64; src.connect(an);
+          var data=new Uint8Array(an.frequencyBinCount);
+          var _N=window._sdWaveN||16; window._sdUserWave=new Array(_N).fill(0); var _ui=0;
+          var draw=function(){ if(!window._sdStream) return; an.getByteFrequencyData(data);
+            var sum=0; for(var b=0;b<data.length;b++){ sum+=data[b]; } var amp=Math.min(1,(sum/data.length)/85);
+            if(_ui<_N){ window._sdUserWave[_ui]=amp; _ui++; } else { window._sdUserWave.shift(); window._sdUserWave.push(amp); }
+            _sdDrawWaves(); window._sdRAF=requestAnimationFrame(draw); };
+          draw();
+        }).catch(function(){});
+      }
+    }catch(e){}
     try{
       var rec=new SR(); window._sdRec=rec; rec.lang='en-US'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=5;
       var best=0;
@@ -9871,6 +9901,7 @@ function showShadowMode() {
       };
       rec.onerror=function(){ window._sdStop(); var s2=_sdEl('sd-status'); if(s2){ s2.textContent='🎤 다시 [말하기]를 눌러보세요'; s2.style.color='#EC4899'; } };
       rec.onend=function(){
+        try{ if(window._sdStream){ window._sdStream.getTracks().forEach(function(t){t.stop();}); window._sdStream=null; } if(window._sdRAF){ cancelAnimationFrame(window._sdRAF); window._sdRAF=0; } }catch(e){}
         if(best<0.7){ var s2=_sdEl('sd-status'); if(s2){ s2.textContent=Math.round(best*100)+'% \u2014 \ub2e4\uc2dc [\ub9d0\ud558\uae30] \ub610\ub294 [\ub2e4\uc74c \u23ed]'; s2.style.color='#FBBF24'; } }
       };
       rec.start();
@@ -12245,7 +12276,7 @@ function _lsetBar(inner){
   return '<div style="flex-shrink:0;background:rgba(255,255,255,.045);border-top:1px solid rgba(255,255,255,.08);border-radius:18px 18px 0 0;padding:7px 16px 9px">'
     +'<div '+(collap?'onclick="S._lsetOpen=!S._lsetOpen;_lsetRerender()" ':'')+'style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#64748B;font-weight:700;margin-bottom:5px;letter-spacing:.5px'+(collap?';cursor:pointer':'')+'"><span>⚙ 학습 설정</span>'+rt+'</div>'
     +'<style>.lsetcollapsed>div:nth-child(n+3){display:none!important}</style>'
-    +'<div class="'+(showAll?'':'lsetcollapsed')+'">'+inner+'</div>'
+    +'<div class="'+(showAll?'':'lsetcollapsed')+'"'+((showAll&&collap)?' style="max-height:42vh;overflow-y:auto"':'')+'>'+inner+'</div>'
   +'</div>';
 }
 function _lsetRerender(){ if(window._autoActive&&typeof window._autoRender==='function')window._autoRender(); else if(typeof window._spkRender==='function'&&window._spkActive)window._spkRender(); else if(typeof window._sdRender==='function'&&window._sdActive)window._sdRender(); else if(typeof go==='function')go(); }

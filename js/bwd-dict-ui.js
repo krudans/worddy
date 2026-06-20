@@ -155,6 +155,7 @@
     };
     s.onerror = function () { _dictLoading = false; toastMsg('사전 데이터를 불러오지 못했어요'); };
     document.head.appendChild(s);
+    if(!window.__bwdEx5Loaded){ window.__bwdEx5Loaded=true; var s2=document.createElement('script'); s2.src='js/bwd-ex5.js?cb='+Date.now(); s2.async=true; document.head.appendChild(s2); }
   }
   function onDictReady() {
     try {
@@ -483,11 +484,14 @@
     }
     input.value = word; clrBtn.style.display = 'block';
     var d = D(); var e = (d && d[word]) || null;
+    var x5 = (window.BWD_EX5 && window.BWD_EX5[word]) || null;
+    var x5img = (x5 && x5.img) ? x5.img : '';
     var ipa = pronOf(word);
     var rel = relatedOf(word);
 
     var html = '<div class="bwdui-card">' +
       '<div class="bwdui-hd">' +
+        (x5img ? '<span class="bwdui-emoji" style="font-size:26px;margin-right:7px;vertical-align:middle">' + x5img + '</span>' : '') +
         '<span class="bwdui-word">' + esc(word) + '</span>' +
         (ipa ? '<span class="bwdui-ipa">' + esc(ipa) + '</span>' : '') +
         (e && e.pos ? '<span class="bwdui-pos">' + esc(e.pos) + '</span>' : '') +
@@ -503,7 +507,18 @@
       html += '<div class="bwdui-exwrap"><div class="bwdui-ex">이 단어는 사전에 뜻이 아직 없어요. 발음과 단어장 추가는 가능해요.</div></div>';
     }
 
-    if (e && e.ex) {
+    if (x5 && x5.ex5 && x5.ex5.length) {
+      var FCOL = ['#3B82F6','#10B981','#8B5CF6','#F97316','#EC4899'];
+      html += '<div class="bwdui-mlb">문장 5형식</div>';
+      for (var fi = 0; fi < x5.ex5.length; fi++) {
+        var sx = x5.ex5[fi]; var col = FCOL[(sx.t||1)-1] || '#3B82F6';
+        html += '<div class="bwdui-exwrap" style="margin-top:8px">' +
+          '<div style="flex:none;width:34px;height:24px;border-radius:7px;background:' + col + ';color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">' + (sx.t||'') + '형</div>' +
+          '<div class="bwdui-ex" style="flex:1">' + hl(sx.en, word) + '<div style="font-size:13px;color:#94A3B8;margin-top:3px">' + esc(sx.kr||'') + '</div></div>' +
+          '<button class="bwdui-explay" data-exsay="' + esc(sx.en) + '" aria-label="문장 듣기">🔊</button>' +
+        '</div>';
+      }
+    } else if (e && e.ex) {
       html += '<div class="bwdui-mlb">예문</div>' +
         '<div class="bwdui-exwrap">' +
           '<div class="bwdui-ex">' + hl(e.ex, word) + '</div>' +
@@ -531,6 +546,8 @@
     card.querySelector('[data-act="spell"]').addEventListener('click', function () { spellOut(word); });
     var exb = card.querySelector('[data-act="exsay"]');
     if (exb) exb.addEventListener('click', function () { say(e.ex, 0.9); });
+    var exsayBtns = card.querySelectorAll('[data-exsay]');
+    for (var xi = 0; xi < exsayBtns.length; xi++) { (function (b) { b.addEventListener('click', function () { say(b.getAttribute('data-exsay'), 0.9); }); })(exsayBtns[xi]); }
     card.querySelector('[data-act="add"]').addEventListener('click', function () { addToBook(word); });
     card.querySelector('[data-act="copy"]').addEventListener('click', function () {
       var txt = word + (e && e.kr ? ' — ' + e.kr : '');
@@ -549,10 +566,13 @@
   }
   function _bwduiBuildW(word) {
     var d = D(); var e = (d && d[word]) || null;
+    var x5 = (window.BWD_EX5 && window.BWD_EX5[word]) || null;
+    var exList = (x5 && x5.ex5 && x5.ex5.length) ? x5.ex5.map(function (s) { return s.en; }) : ((e && e.ex) ? [e.ex] : []);
     return {
       en: word, kr: (e && e.kr) || '', ph: pronOf(word) || '', ex: (e && e.ex) || '',
-      exList: (e && e.ex) ? [e.ex] : [], tip: word + (e && e.kr ? ' = ' + e.kr : ''),
-      meanings: (e && e.kr) ? [e.kr] : [], img: '📖', pos: (e && e.pos) || ''
+      exList: exList, tip: word + (e && e.kr ? ' = ' + e.kr : ''),
+      meanings: (e && e.kr) ? [e.kr] : [], img: (x5 && x5.img) ? x5.img : '📖', pos: (e && e.pos) || '',
+      ex5: (x5 && x5.ex5) ? x5.ex5 : null
     };
   }
   // 기본: 내 단어장에 저장 → 이후 다른 단어장으로 옮기기 픽커

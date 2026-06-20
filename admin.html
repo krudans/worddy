@@ -5195,7 +5195,10 @@ function rDICT(){
   mi.innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
       '<h2 style="font-size:22px;font-weight:900">📖 ButterFly Word Dictionary</h2>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
       '<button class="btn bg" onclick="bwdExport()">📥 bwd-dict.js 내보내기</button>'+
+      '<button class="btn bg" onclick="bwdExportEx5()" style="background:#16A34A">🎨 bwd-ex5.js 내보내기</button>'+
+      '</div>'+
     '</div>'+
     '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:12px;color:#1E40AF;margin-bottom:16px;line-height:1.7">자동완성용 통합 사전입니다. <b>추천 목록</b>(철자)과 <b>발음 사전</b>은 거의 전체 단어를 덮고, <b>뜻 검수 코어</b>는 직접 검수한 단어의 뜻·예문을 담습니다. 아래에서 코어 단어를 추가·삭제한 뒤 <b>내보내기</b>로 받은 파일을 <code>js/bwd-dict.js</code>에 다시 올리면 앱에 반영돼요.</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">'+
@@ -5381,35 +5384,50 @@ function bwdExport(){
       var fcells='';
       for(var ti=1;ti<=5;ti++){
         var sen=(x5&&x5.ex5)?x5.ex5.filter(function(s){return s.t===ti;})[0]:null;
-        if(sen){ fcells+='<td style="text-align:center" title="'+String(sen.en||'').replace(/"/g,'&quot;')+'"><span style="color:#16A34A;font-weight:800">✓</span></td>'; }
-        else { fcells+='<td style="text-align:center"><span style="color:#E5E7EB">·</span></td>'; }
+        if(sen){ fcells+='<td style="font-size:10px;line-height:1.35;vertical-align:top;min-width:118px;max-width:160px"><div style="color:#111827;font-weight:600">'+String(sen.en||'').replace(/</g,'&lt;')+'</div><div style="color:#9CA3AF">'+String(sen.kr||'').replace(/</g,'&lt;')+'</div></td>'; }
+        else { fcells+='<td style="text-align:center;color:#E5E7EB;vertical-align:middle">·</td>'; }
       }
       return '<tr><td style="text-align:center">'+img+'</td><td><strong style="font-family:monospace">'+k+'</strong></td><td>'+pos+'</td><td>'+(e.kr||'')+'</td><td style="font-size:11px;color:#9CA3AF">'+(ph||'-')+'</td>'+fcells+'<td style="white-space:nowrap"><button data-bwd="edit" data-k="'+k+'" class="btn" style="font-size:11px;padding:4px 8px;margin-right:4px;border:1.5px solid #1E5FA5;background:#fff;color:#1E5FA5;cursor:pointer">✏️</button><button data-bwd="del" data-k="'+k+'" class="btn br" style="font-size:11px;padding:4px 8px;cursor:pointer">🗑</button></td></tr>';
     }).join('');
     var pager=_pager(page,pages,total);
-    el.innerHTML=pager+'<table><tr><th style="width:42px">이모지</th><th>영단어</th><th style="width:72px">품사</th><th>한국어 뜻</th><th>발음기호</th><th style="width:30px;text-align:center" title="1형식">1형</th><th style="width:30px;text-align:center" title="2형식">2형</th><th style="width:30px;text-align:center" title="3형식">3형</th><th style="width:30px;text-align:center" title="4형식">4형</th><th style="width:30px;text-align:center" title="5형식">5형</th><th style="width:96px">작업</th></tr>'+rows+'</table>'+pager;
+    el.innerHTML=pager+'<table style="font-size:12px"><tr><th style="width:42px">이모지</th><th style="width:80px">영단어</th><th style="width:64px">품사</th><th style="width:110px">한국어 뜻</th><th style="width:70px">발음기호</th><th style="min-width:118px">1형식<br><span style="font-weight:400;color:#9CA3AF">S+V</span></th><th style="min-width:118px">2형식<br><span style="font-weight:400;color:#9CA3AF">S+V+C</span></th><th style="min-width:118px">3형식<br><span style="font-weight:400;color:#9CA3AF">S+V+O</span></th><th style="min-width:118px">4형식<br><span style="font-weight:400;color:#9CA3AF">S+V+IO+DO</span></th><th style="min-width:118px">5형식<br><span style="font-weight:400;color:#9CA3AF">S+V+O+OC</span></th><th style="width:96px">작업</th></tr>'+rows+'</table>'+pager;
   };
   window.bwdEditEntry=function(en){
     var d=_bwdDict(),e=d[en];if(!e)return;
     window.__dicEditKey=en;
     var POS2=['','명사','대명사','동사','조동사','형용사','부사','전치사','접속사','관계대명사','의문사','감탄사','한정사','명사·동사','동사·명사','형용사·명사','명사·형용사','형용사·부사'];
     var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
-    var ph=(typeof _bwdPron==='function')?_bwdPron(en):'';
     var opts=POS2.map(function(p){return '<option value="'+esc(p)+'"'+(p===(e.pos||'')?' selected':'')+'>'+(p||'(품사 없음)')+'</option>';}).join('');
+    var x5=(window.BWD_EX5&&window.BWD_EX5[en])||{};
+    var img=x5.img||'';
+    var getSen=function(t){ if(!x5.ex5)return {en:'',kr:''}; var s=x5.ex5.filter(function(z){return z.t===t;})[0]; return s||{en:'',kr:''}; };
+    var FLAB={1:'1형식<br><span style="font-weight:400;color:#9CA3AF">S+V</span>',2:'2형식<br><span style="font-weight:400;color:#9CA3AF">S+V+C</span>',3:'3형식<br><span style="font-weight:400;color:#9CA3AF">S+V+O</span>',4:'4형식<br><span style="font-weight:400;color:#9CA3AF">S+V+IO+DO</span>',5:'5형식<br><span style="font-weight:400;color:#9CA3AF">S+V+O+OC</span>'};
+    var formRows='';
+    for(var t=1;t<=5;t++){ var s=getSen(t);
+      formRows+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:7px">'
+        +'<div style="flex:0 0 70px;font-size:11px;font-weight:700;color:#1E5FA5;padding-top:7px;line-height:1.3">'+FLAB[t]+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<input id="de-f'+t+'-en" value="'+esc(s.en)+'" placeholder="영어 문장" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:8px;margin-bottom:3px">'
+          +'<input id="de-f'+t+'-kr" value="'+esc(s.kr)+'" placeholder="한국어 번역" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:8px">'
+        +'</div></div>';
+    }
     var host=document.getElementById('tw')||document.body;
-    host.innerHTML='<div class="mbg" onclick="if(event.target===this)document.getElementById(\'tw\').innerHTML=\'\'" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999">'+
-      '<div class="modal" onclick="event.stopPropagation()" style="background:#fff;border-radius:16px;padding:20px;width:min(440px,92vw);max-height:90vh;overflow:auto">'+
-      '<div style="font-size:17px;font-weight:800;margin-bottom:12px">✏️ 사전 단어 수정</div>'+
-      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:8px 0 4px">영단어</div>'+
-      '<input id="de-en" value="'+esc(en)+'" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:monospace">'+
-      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">품사</div>'+
-      '<select id="de-pos" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+opts+'</select>'+
-      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">한국어 뜻 *</div>'+
-      '<input id="de-kr" value="'+esc(e.kr)+'" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+
-      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">예문</div>'+
-      '<input id="de-ex" value="'+esc(e.ex)+'" style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+
-      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:10px 0 4px">발음기호 <span style="font-weight:400;color:#9CA3AF">(bwd-pron.js에서 관리 · 참고용)</span></div>'+
-      '<input value="'+esc(ph)+'" disabled style="width:100%;padding:10px 12px;border:1.5px solid #F3F4F6;border-radius:8px;background:#F9FAFB;color:#9CA3AF">'+
+    host.innerHTML='<div id="bwd-ed-bg" onclick="if(event.target===this)document.getElementById(\'tw\').innerHTML=\'\'" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999">'+
+      '<div id="bwd-ed-card" style="box-sizing:border-box;background:#fff;border-radius:16px;padding:20px;width:500px;max-width:94vw;max-height:90vh;overflow:auto">'+
+      '<div style="font-size:17px;font-weight:800;margin-bottom:14px">✏️ 사전 단어 수정</div>'+
+      '<div style="display:flex;gap:10px;margin-bottom:8px">'+
+        '<div style="flex:0 0 64px"><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:4px">이모지</div>'+
+          '<input id="de-img" value="'+esc(img)+'" placeholder="🍎" style="width:100%;box-sizing:border-box;text-align:center;font-size:22px;padding:6px;border:1.5px solid #E5E7EB;border-radius:8px"></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:4px">영단어</div>'+
+          '<input id="de-en" value="'+esc(en)+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:monospace"></div>'+
+        '<div style="flex:0 0 116px"><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:4px">품사</div>'+
+          '<select id="de-pos" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px">'+opts+'</select></div>'+
+      '</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#6B7280;margin:8px 0 4px">한국어 뜻 *</div>'+
+      '<input id="de-kr" value="'+esc(e.kr)+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px">'+
+      '<div style="font-size:13px;font-weight:800;color:#1E5FA5;margin:14px 0 8px">📝 예문 — 1형식부터 5형식까지</div>'+
+      formRows+
+      '<div style="font-size:11px;color:#9CA3AF;margin-top:4px">이모지는 단어와 모양·색이 닮은 것 (apple→🍎, water→💧)</div>'+
       '<div style="display:flex;gap:8px;margin-top:16px">'+
       '<button onclick="window.bwdSaveEdit()" style="flex:1;background:#1E5FA5;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;cursor:pointer">저장</button>'+
       '<button onclick="document.getElementById(\'tw\').innerHTML=\'\'" style="flex:1;background:#E5E7EB;color:#374151;border:none;border-radius:10px;padding:12px;font-weight:700;cursor:pointer">취소</button>'+
@@ -5421,17 +5439,28 @@ function bwdExport(){
     var newEn=(document.getElementById('de-en').value||'').trim().toLowerCase();
     var kr=(document.getElementById('de-kr').value||'').trim();
     var pos=(document.getElementById('de-pos').value||'').trim();
-    var ex=(document.getElementById('de-ex').value||'').trim();
     if(!newEn){toast('영단어는 비울 수 없어요','err');return;}
     if(!kr){toast('뜻은 비울 수 없어요','err');return;}
     if(!/^[a-z][a-z\-]*$/.test(newEn)){toast('영단어는 영문 소문자만 가능해요','err');return;}
     if(newEn!==oldEn && d[newEn]){toast('"'+newEn+'"는 이미 있는 단어예요','err');return;}
-    var obj={kr:kr,ex:ex};if(pos)obj.pos=pos;
+    var prevEx=(d[oldEn]&&d[oldEn].ex)||'';
+    var obj={kr:kr,ex:prevEx};if(pos)obj.pos=pos;
     if(newEn!==oldEn){ delete d[oldEn]; }
     d[newEn]=obj;
+    window.BWD_EX5=window.BWD_EX5||{};
+    var img=(document.getElementById('de-img').value||'').trim();
+    var ex5=[];
+    for(var t=1;t<=5;t++){
+      var fen=(document.getElementById('de-f'+t+'-en').value||'').trim();
+      var fkr=(document.getElementById('de-f'+t+'-kr').value||'').trim();
+      if(fen){ ex5.push({t:t,en:fen,kr:fkr}); }
+    }
+    if(newEn!==oldEn){ delete window.BWD_EX5[oldEn]; }
+    if(img||ex5.length){ window.BWD_EX5[newEn]={img:img,ex5:ex5}; }
+    else { delete window.BWD_EX5[newEn]; }
     if(typeof window.dicBust==='function')window.dicBust();
     var h=document.getElementById('tw');if(h)h.innerHTML='';
-    toast('"'+newEn+'" 수정됨 · 내보내기 후 업로드해야 앱에 반영','ok');
+    toast('"'+newEn+'" 수정됨 · bwd-ex5.js 내보내기 후 업로드해야 반영','ok');
     window.bwdRenderTable();
   };
   window.bwdAddEntry=function(){
@@ -5449,6 +5478,23 @@ function bwdExport(){
     var pv=document.getElementById('dic-pron-prev');if(pv)pv.textContent='';
     toast('"'+en+'" '+(exists?'수정됨':'추가됨')+' · 내보내기 후 업로드해야 앱에 반영','ok');
     rDICT();
+  };
+  window.bwdExportEx5=function(){
+    var X=window.BWD_EX5||{};
+    var keys=Object.keys(X).sort();
+    var lines=keys.map(function(k){
+      var e=X[k]||{};
+      var ex5=(e.ex5||[]).map(function(s){return '{t:'+s.t+',en:'+JSON.stringify(s.en||'')+',kr:'+JSON.stringify(s.kr||'')+'}';}).join(',');
+      return '  '+JSON.stringify(k)+': {img:'+JSON.stringify(e.img||'')+', ex5:['+ex5+']},';
+    });
+    if(lines.length)lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
+    var content='/* Butterfly Word \u2014 \ub2e8\uc5b4\uc0ac\uc804 \uc774\ubaa8\uc9c0 + 5\ud615\uc2dd \uc608\ubb38 \uc624\ubc84\ub808\uc774 (bwd-ex5.js) */\n'+
+      'window.BWD_EX5 = Object.assign(window.BWD_EX5||{}, {\n'+lines.join('\n')+'\n});\n';
+    var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download='bwd-ex5.js';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+    toast('bwd-ex5.js \ub0b4\ubcf4\ub0b4\uae30 \uc644\ub8cc ('+keys.length+'\uac1c) \u2014 js/ \ud3f4\ub354\uc5d0 \uc62c\ub9ac\uc138\uc694','ok');
   };
   window.bwdExport=function(){
     var d=_bwdDict();var keys=Object.keys(d).sort();

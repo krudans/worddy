@@ -5345,6 +5345,21 @@ function startApp() {
   const _dummyKeys = ['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'];
   S.words = S.words.filter(w => w.en && w.kr && !_dummyKeys.includes(w.en) && w.en.length < 80);
   (S.books||[]).forEach(bk => { if(bk.words) bk.words = bk.words.filter(w => w.en && w.kr && !_dummyKeys.includes(w.en) && w.en.length < 80); });
+  // ph(발음기호) 칸에 발음기호 대신 예문이 잘못 들어간 단어 자동교정 → 예문(ex)으로 옮기고 ph 비움.
+  // 진짜 발음기호([..]/IPA)는 건드리지 않음. 시작 시마다 실행(Firebase 옛값 덮어도 재교정).
+  (function(){
+    function looksSentence(ph){ if(!ph) return false; ph=String(ph).trim(); if(!ph) return false; if(/^[\[\/]/.test(ph)) return false; if(/[ˈˌːæʌɪʊəɛɔɑɜθðʃʒŋɡ]/.test(ph)) return false; return /[.?!]$/.test(ph)||ph.split(/\s+/).length>=3; }
+    function fix(arr){ if(!Array.isArray(arr)) return; arr.forEach(function(w){
+      if(w && looksSentence(w.ph)){
+        var sent=String(w.ph).trim();
+        var ex=(w.ex||'').trim();
+        var exWordOnly = ex && ex.toLowerCase().replace(/[.\s]/g,'')===String(w.en||'').toLowerCase().replace(/[.\s]/g,'');
+        if(!ex || exWordOnly){ w.ex=sent; }
+        w.ph='';
+      }
+    }); }
+    try{ fix(S.words); (S.books||[]).forEach(function(b){ fix(b.words); }); }catch(e){}
+  })();
   window._appStartTime = Date.now();
   window._svDisabled=false;
   loadSysWords(S.lid);

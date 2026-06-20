@@ -9747,20 +9747,14 @@ function showShadowMode() {
         </div>
         <!-- 상태 -->
         <div id="sd-status" style="margin-top:18px;font-size:14px;font-weight:700;color:#EC4899;text-align:center;min-height:20px">🔊 [듣기]를 누르세요</div>
-        <!-- 파형 비교 캔버스 (앱 파형 + 내 파형 오버레이) -->
-        <div style="margin-top:14px;width:100%;max-width:340px">
-          <canvas id="sd-canvas" width="660" height="130" style="width:100%;height:96px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:18px;display:block"></canvas>
-          <div style="display:flex;justify-content:center;gap:18px;margin-top:7px;font-size:11px;font-weight:700">
-            <span style="color:#63B3ED">● 앱 발음</span>
-            <span style="color:#EC4899">● 내 발음</span>
+        <!-- 발음 매칭률 (한 줄 그래프) -->
+        <div style="margin-top:18px;width:100%;max-width:340px;text-align:center">
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:10px;margin-bottom:8px">
+            <span style="font-size:13px;color:var(--panel-text3,#9CA3AF);font-weight:700">발음 매칭률</span>
+            <span id="sd-match-pct" style="font-size:32px;font-weight:900;color:#9CA3AF;line-height:1">0%</span>
           </div>
-        </div>
-        <!-- 발음 매칭률 -->
-        <div style="margin-top:16px;width:100%;max-width:300px;text-align:center">
-          <div id="sd-match-pct" style="font-size:34px;font-weight:900;color:#9CA3AF;line-height:1">0%</div>
-          <div style="font-size:11px;color:var(--panel-text3,#9CA3AF);margin:4px 0 6px">발음 매칭률</div>
-          <div style="background:rgba(255,255,255,.12);border-radius:6px;height:10px;overflow:hidden"><div id="sd-match-bar" style="height:100%;width:0%;background:#EC4899;border-radius:6px;transition:width .2s"></div></div>
-          <div id="sd-heard" style="font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;min-height:14px;text-align:center"></div>
+          <div style="background:rgba(255,255,255,.12);border-radius:9px;height:18px;overflow:hidden"><div id="sd-match-bar" style="height:100%;width:0%;background:#EC4899;border-radius:9px;transition:width .25s"></div></div>
+          <div id="sd-heard" style="font-size:11px;color:rgba(255,255,255,.4);margin-top:7px;min-height:14px;text-align:center"></div>
         </div>
       </div>
       <!-- 컨트롤 (자동학습과 동일: 설정 위) -->
@@ -9816,6 +9810,7 @@ function showShadowMode() {
     })();
   }
   window._sdStop = function(){
+    try{ if(window._sdCountTimer){ clearInterval(window._sdCountTimer); window._sdCountTimer=0; } }catch(e){}
     try{ window.speechSynthesis.cancel(); }catch(e){}
     try{ if(window._sdRec){ window._sdRec.onresult=null; window._sdRec.onend=null; window._sdRec.onerror=null; window._sdRec.abort(); window._sdRec=null; } }catch(e){}
     try{ if(window._sdRAF){ cancelAnimationFrame(window._sdRAF); window._sdRAF=0; } }catch(e){}
@@ -9843,25 +9838,22 @@ function showShadowMode() {
     var st=_sdEl('sd-status');
     if(!SR){ if(st){ st.textContent='\u26a0\ufe0f \uc774 \ube0c\ub77c\uc6b0\uc800\ub294 \uc74c\uc131\uc778\uc2dd \ubbf8\uc9c0\uc6d0 \u2014 [\ub2e4\uc74c \u23ed]\uc73c\ub85c'; st.style.color='#FBBF24'; } return; }
     window._sdStop();
-    if(st){ st.textContent='🎤 지금 말하세요...'; st.style.color='#EC4899'; }
+    // 3·2·1 카운트다운 (사용자가 준비할 시간)
+    var n=3;
+    if(st){ st.textContent='🎤 준비하세요... '+n; st.style.color='#FBBF24'; st.style.fontSize='22px'; }
+    window._sdCountTimer=setInterval(function(){
+      if(!window._sdActive || window._sdPaused){ clearInterval(window._sdCountTimer); window._sdCountTimer=0; if(st) st.style.fontSize=''; return; }
+      n--;
+      if(n>0){ if(st) st.textContent='🎤 준비하세요... '+n; }
+      else { clearInterval(window._sdCountTimer); window._sdCountTimer=0; if(st) st.style.fontSize=''; window._sdStartRec(w); }
+    },700);
+  };
+
+  window._sdStartRec = function(w){
+    var SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
+    var st=_sdEl('sd-status');
+    if(st){ st.textContent='🎤 지금 말하세요!'; st.style.color='#EC4899'; }
     var he=_sdEl('sd-heard'); if(he) he.textContent='';
-    try{
-      if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-        navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
-          if(!window._sdActive){ stream.getTracks().forEach(function(t){t.stop();}); return; }
-          window._sdStream=stream;
-          var ACtx=window.AudioContext||window.webkitAudioContext; var ac=new ACtx(); window._sdAC=ac;
-          var src=ac.createMediaStreamSource(stream); var an=ac.createAnalyser(); an.fftSize=64; src.connect(an);
-          var data=new Uint8Array(an.frequencyBinCount);
-          var _N=window._sdWaveN||56; window._sdUserWave=new Array(_N).fill(0); var _ui=0;
-          var draw=function(){ if(!window._sdStream) return; an.getByteFrequencyData(data);
-            var sum=0; for(var b=0;b<data.length;b++){ sum+=data[b]; } var amp=Math.min(1,(sum/data.length)/95);
-            if(_ui<_N){ window._sdUserWave[_ui]=amp; _ui++; } else { window._sdUserWave.shift(); window._sdUserWave.push(amp); }
-            _sdDrawWaves(); window._sdRAF=requestAnimationFrame(draw); };
-          draw();
-        }).catch(function(){});
-      }
-    }catch(e){}
     try{
       var rec=new SR(); window._sdRec=rec; rec.lang='en-US'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=5;
       var best=0;
@@ -9879,7 +9871,6 @@ function showShadowMode() {
       };
       rec.onerror=function(){ window._sdStop(); var s2=_sdEl('sd-status'); if(s2){ s2.textContent='🎤 다시 [말하기]를 눌러보세요'; s2.style.color='#EC4899'; } };
       rec.onend=function(){
-        try{ if(window._sdStream){ window._sdStream.getTracks().forEach(function(t){t.stop();}); window._sdStream=null; } if(window._sdRAF){ cancelAnimationFrame(window._sdRAF); window._sdRAF=0; } }catch(e){}
         if(best<0.7){ var s2=_sdEl('sd-status'); if(s2){ s2.textContent=Math.round(best*100)+'% \u2014 \ub2e4\uc2dc [\ub9d0\ud558\uae30] \ub610\ub294 [\ub2e4\uc74c \u23ed]'; s2.style.color='#FBBF24'; } }
       };
       rec.start();

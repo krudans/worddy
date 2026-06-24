@@ -8410,7 +8410,17 @@ function _planDailyForDate(remaining,dateStr,todayStr){ var days=Math.max(1,_pla
 
 // 외운 날짜 기록(markDates) 기반 — 오늘/최근 외운 수
 function _seenW(en){ try{ if(!en)return; var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); if(!S.studyLog)S.studyLog={}; if(!S.studyLog[t])S.studyLog[t]={words:0,quiz:0,min:0}; if(!Array.isArray(S.studyLog[t].seenEns))S.studyLog[t].seenEns=[]; var k=String(en); if(S.studyLog[t].seenEns.indexOf(k)<0)S.studyLog[t].seenEns.push(k); }catch(e){} }
-function _todaySeenCount(dayStr){ try{ var t=dayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10)); var d=(S.studyLog||{})[t]||{}; var seen=Array.isArray(d.seenEns)?d.seenEns.length:0; var mem=Array.isArray(d.markedEns)?d.markedEns.length:0; return Math.max(seen,mem); }catch(e){ return 0; } }
+function _todaySeenCount(dayStr){ try{ var t=dayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10)); var d=(S.studyLog||{})[t]||{};
+  // [버그수정] 기존 max(seenEns,markedEns)는 seenEns가 비면 '외운 단어' 수로 주저앉아
+  //  '오늘 학습한 단어'와 '오늘 외운 단어'가 같아지던 문제. 고유 학습단어(seen∪xpWords∪marked)와
+  //  실제 학습량(words)을 함께 반영해 학습량이 외운 수보다 작아지지 않게 한다.
+  var _set=Object.create(null);
+  if(Array.isArray(d.seenEns)) d.seenEns.forEach(function(e){_set[e]=1;});
+  if(d.xpWords&&typeof d.xpWords==='object') Object.keys(d.xpWords).forEach(function(e){_set[e]=1;});
+  if(Array.isArray(d.markedEns)) d.markedEns.forEach(function(e){_set[e]=1;});
+  var _distinct=Object.keys(_set).length;
+  return Math.max(_distinct, d.words||0);
+}catch(e){ return 0; } }
 function _todayMemoCount(dayStr){
   // '오늘 외운 단어' 단일 소스 = 오늘 외웠음 표시한 단어 수(재확인 포함, 중복제거, 전체 단어장)
   try{ var t=dayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));

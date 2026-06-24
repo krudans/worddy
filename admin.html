@@ -3666,72 +3666,18 @@ function showPackWordTab(tab) {
       cont.innerHTML='<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:36px">📭</div><p>단어가 없어요</p></div>';
       return;
     }
-    // 예문 없는 단어 감지
-    const noExWords = words.filter(w=>!w.ex && (!w.exList||!w.exList.length));
-    const noExBanner = noExWords.length>0 ? `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <div style="font-size:12px;color:#1E40AF;font-weight:600">📝 예문 없는 단어 ${noExWords.length}개 · 예문 3개씩 자동 생성 가능</div>
-      <button onclick="generateExamples('${selPack}')" style="background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📖 전체 생성</button>
-    </div>` : '';
-    // 단어 목록 표 생성 (template literal 없이 문자열 연결)
-    let tableHTML = '';
-    tableHTML += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
-    tableHTML += '<input placeholder="🔍 단어 검색..." oninput="filterPackWords(this.value)" style="flex:1;min-width:140px;font-size:13px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px;outline:none">';
-    tableHTML += '<button onclick="generateExamples(selPack)" style="background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">📖 예문 생성</button>';
-    tableHTML += '<button class="btn br" style="font-size:12px;padding:7px 10px" onclick="if(confirm(\'모든 단어를 삭제할까요?\')){(window._adminPacks||[]).find(x=>x.id===selPack)?.words?.splice(0);showPackWordTab(\'list\')}">전체삭제</button>';
-    tableHTML += '</div>';
-    tableHTML += '<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">' + words.length + '개</div>';
-    tableHTML += '<div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB" id="pack-word-list">';
-    tableHTML += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-    tableHTML += '<thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">';
-    tableHTML += '<th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">#</th>';
-    tableHTML += '<th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">영어</th>';
-    tableHTML += '<th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">한국어</th>';
-    tableHTML += '<th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">발음기호</th>';
-    tableHTML += '<th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151">예문 (최대 3개)</th>';
-    tableHTML += '<th style="padding:8px 10px;text-align:center;font-weight:700;color:#374151">관리</th>';
-    tableHTML += '</tr></thead><tbody>';
-
-    words.forEach(function(w, i) {
-      const rowBg = i%2===0 ? '#fff' : '#FAFAFA';
-      // 예문 처리
-      const exList = (w.exList && w.exList.length) ? w.exList : (w.ex ? [w.ex] : []);
-      let exHtml = '';
-      if (exList.length === 0) {
-        exHtml = '<button onclick="generateOneWordEx(\'' + selPack + '\',' + i + ')" style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;padding:2px 8px;font-size:10px;color:#6366F1;cursor:pointer;font-weight:700">+ 예문 생성</button>';
-      } else {
-        exHtml = exList.slice(0, 3).map(function(ex, ei) {
-          return '<div style="font-size:11px;line-height:1.5;' + (ei > 0 ? 'margin-top:3px;color:#9CA3AF;' : 'color:#374151;') + '">' + String(ex).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
-        }).join('');
-      }
-
-      tableHTML += '<tr style="border-bottom:1px solid #F3F4F6;background:' + rowBg + '">';
-      tableHTML += '<td style="padding:7px 10px;color:#9CA3AF;font-size:11px">' + (i+1) + '</td>';
-      tableHTML += '<td style="padding:7px 10px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">' + (w.en||'') + '</td>';
-      tableHTML += '<td style="padding:7px 10px;font-weight:600;color:#374151;white-space:nowrap">' + (w.kr||'') + '</td>';
-      tableHTML += '<td style="padding:7px 10px;color:#9CA3AF;font-size:11px;white-space:nowrap">' + (w.ph||'-') + '</td>';
-      tableHTML += '<td style="padding:7px 10px;max-width:250px">' + exHtml + '</td>';
-      tableHTML += '<td style="padding:7px 10px;text-align:center;white-space:nowrap">';
-      tableHTML += '<button onclick="editPackWord(\'' + selPack + '\',' + i + ')" style="background:none;border:none;font-size:13px;cursor:pointer" title="수정">✏️</button>';
-      tableHTML += '<button onclick="deletePackWord(\'' + selPack + '\',' + i + ')" style="background:none;border:none;font-size:13px;cursor:pointer" title="삭제">🗑</button>';
-      tableHTML += '</td>';
-      tableHTML += '</tr>';
-    });
-
-    tableHTML += '</tbody></table></div>';
-    cont.innerHTML = noExBanner + tableHTML;
-  // 필드 오류 배너 업데이트
-  requestAnimationFrame(()=>{
-    const banner=document.getElementById('field-err-banner');
-    const msg=document.getElementById('field-err-msg');
-    if(banner&&msg&&words){
-      const bad=words.filter(w=>w.en&&w.en.includes(' ')&&w.en.length>10&&w.kr&&/^[a-zA-Z]+$/.test(w.kr));
-      if(bad.length>0){msg.textContent='⚠️ 필드 순서 오류 '+bad.length+'개 감지 (예문↔영단어 뒤바뀜)';banner.style.display='flex';}
-      else{banner.style.display='none';}
-    }
-  });
+    window.__pwFilter=''; window.__pwPage=0;
+    cont.innerHTML=
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap;position:sticky;top:0;background:#fff;padding-bottom:4px;z-index:2">'
+      +'<input id="pw-search" placeholder="🔍 영어/뜻 검색..." oninput="filterPackWords(this.value)" style="flex:1;min-width:160px;font-size:13px;padding:9px 12px;border:1px solid #E5E7EB;border-radius:10px;outline:none">'
+      +'<button onclick="generateExamples(selPack)" style="background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer">📖 예문 생성</button>'
+      +'</div>'
+      +'<div id="pw-listwrap"></div>';
+    _renderPackList();
   }
 
   else if(tab==='dup') {
+
     // 중복 단어 찾기 (팩 내부 + 다른 팩과의 중복)
     const enSet = new Set();
     const dups = [];
@@ -3773,10 +3719,62 @@ ${crossDups.slice(0,20).map(w=>{ const inPacks = otherPacks.filter(op=>(op.words
   }
 }
 
-function filterPackWords(v) {
-  document.querySelectorAll('#pack-word-list > div').forEach(el=>{
-    el.style.display = el.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
-  });
+function filterPackWords(v) { window.__pwFilter=v||''; window.__pwPage=0; _renderPackList(); }
+function _pwGo(d){ window.__pwPage=Math.max(0,(window.__pwPage||0)+d); _renderPackList(); var w=document.getElementById('pw-content'); if(w) w.scrollTop=0; }
+function _renderPackList(){
+  var wrap=document.getElementById('pw-listwrap'); if(!wrap) return;
+  var _packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
+  var p=_packs.find(function(x){return x.id===selPack;}); if(!p) return;
+  var words=p.words||[];
+  var f=(window.__pwFilter||'').toLowerCase().trim();
+  var idxed=words.map(function(w,i){return {w:w,i:i};});
+  var filt=f? idxed.filter(function(o){var w=o.w; return (w.en&&w.en.toLowerCase().indexOf(f)>=0)||(w.kr&&String(w.kr).toLowerCase().indexOf(f)>=0);}) : idxed;
+  var per=30, page=window.__pwPage||0, pages=Math.max(1,Math.ceil(filt.length/per));
+  if(page>=pages) page=pages-1; if(page<0) page=0; window.__pwPage=page;
+  var slice=filt.slice(page*per,(page+1)*per);
+  var pager='<span style="display:flex;align-items:center;gap:6px">'
+    +'<button onclick="_pwGo(-1)" style="border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:4px 11px;cursor:pointer'+(page<=0?';opacity:.35':'')+'">‹</button>'
+    +'<span style="min-width:54px;text-align:center">'+(page+1)+' / '+pages+'</span>'
+    +'<button onclick="_pwGo(1)" style="border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:4px 11px;cursor:pointer'+(page>=pages-1?';opacity:.35':'')+'">›</button>'
+    +'</span>';
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;color:#6B7280"><span><b style="color:#111;font-size:13px">'+filt.length.toLocaleString()+'</b>개'+(f?' · 검색결과':'')+'</span>'+pager+'</div>';
+  wrap.innerHTML=head+'<div style="display:flex;flex-direction:column;gap:8px">'+(slice.length?slice.map(function(o){return _pwCard(o.w,o.i);}).join(''):'<div style="text-align:center;color:#9CA3AF;padding:30px">검색 결과 없음</div>')+'</div>'+(pages>1?'<div style="display:flex;justify-content:center;margin-top:12px">'+pager+'</div>':'');
+}
+function _pwEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _pwCard(w,i){
+  var en=String(w.en||'').toLowerCase().trim();
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(window.BWD_EX5||{});
+  var d=D[en], e5=E[en];
+  var img=(e5&&e5.img)||w.img||''; if(img==='📝') img='';
+  var ph=w.ph||P[en]||'';
+  var pos=w.pos||(d&&d.pos)||'';
+  var kr=w.kr||(d&&d.kr)||'';
+  var exHtml='';
+  if(e5&&e5.ex5&&e5.ex5.length){
+    exHtml=e5.ex5.map(function(s,n){return '<div style="font-size:12px;line-height:1.65"><span style="color:#A78BFA;font-weight:700">'+(n+1)+'</span> <span style="color:#374151">'+_pwEsc(s.en)+'</span> <span style="color:#9CA3AF">— '+_pwEsc(s.kr)+'</span></div>';}).join('');
+  } else {
+    var lst=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
+    if(lst.length){ exHtml=lst.slice(0,5).map(function(ex,n){return '<div style="font-size:12px;line-height:1.65"><span style="color:#A78BFA;font-weight:700">'+(n+1)+'</span> <span style="color:#374151">'+_pwEsc(ex)+'</span></div>';}).join(''); }
+    else { exHtml='<button onclick="generateOneWordEx(\''+selPack+'\','+i+')" style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;padding:3px 10px;font-size:11px;color:#6366F1;cursor:pointer;font-weight:700">+ 예문 생성</button>'; }
+  }
+  return '<div style="border:1px solid #EEE;border-radius:12px;padding:12px 14px;background:#fff">'
+    +'<div style="display:flex;align-items:flex-start;gap:10px">'
+      +'<div style="font-size:26px;line-height:1.1;flex-shrink:0;width:34px;text-align:center">'+(img||'<span style="color:#E5E7EB;font-size:15px">·</span>')+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+          +'<span style="font-family:monospace;font-weight:800;font-size:16px;color:#111">'+_pwEsc(w.en||'')+'</span>'
+          +(ph?'<span style="font-family:monospace;font-size:12px;color:#9CA3AF">'+_pwEsc(ph)+'</span>':'')
+          +(pos?'<span style="font-size:11px;background:#F3E8FF;color:#7C3AED;border-radius:5px;padding:1px 7px;font-weight:700">'+_pwEsc(pos)+'</span>':'')
+        +'</div>'
+        +'<div style="font-size:13px;color:#374151;font-weight:600;margin:3px 0 7px">'+_pwEsc(kr)+'</div>'
+        +'<div style="display:flex;flex-direction:column;gap:2px">'+exHtml+'</div>'
+      +'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">'
+        +'<button onclick="editPackWord(\''+selPack+'\','+i+')" style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;padding:4px 9px;font-size:13px;cursor:pointer" title="수정">✏️</button>'
+        +'<button onclick="deletePackWord(\''+selPack+'\','+i+')" style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:4px 9px;font-size:13px;cursor:pointer" title="삭제">🗑</button>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
 }
 async function fixPackWordFields(packId) {
   const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);

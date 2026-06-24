@@ -991,6 +991,26 @@ function _endStudySession(){ try{
 // [세션 시계] 모든 학습/게임 모드 상단에 경과시간(+학습은 모드 라벨) 표시 — 단일 구현, 전 모드 공통
 var _GAME_LABELS={quiz:'\ud83c\udfaf \ub73b \uace0\ub974\uae30',listenq:'\ud83c\udfa7 \ub4e3\uace0 \ub73b \uace0\ub974\uae30',fill:'\ud83d\udcdd \ube48\uce78 \ucc44\uc6b0\uae30',wc:'\ud83d\udd21 \ucca0\uc790 \uc644\uc131',match:'\u26a1 \uc9dd \ub9de\ucd94\uae30',typing:'\u270f\ufe0f \ubc1b\uc544\uc4f0\uae30',scramble:'\ud83d\udd00 \ucca0\uc790 \ub9de\ucd94\uae30',ssort:'\ud83d\udd00 \ubb38\uc7a5 \uc21c\uc11c',sentence:'\ud83d\udcd6 \ud55c\uae00 \uc601\uc791',wordfind:'\ud83d\udd0d \ub2e8\uc5b4 \ucc3e\uae30'};
 function _fmtClock(sec){ sec=Math.max(0,sec|0); var m=Math.floor(sec/60), x=sec%60; return m+':'+(x<10?'0':'')+x; }
+// ───────────────────────────────────────────────────────────────────
+// [ex5 예문 사전 연동] 단어별 예문 5개(t=1~5) + 형식/랜덤 선택
+//   S.exForm: 1~5 = 해당 번호 예문 고정, 0 또는 'random' = 랜덤(기본).
+//   학습 4종·게임(특히 문장형)에서 공통으로 사용. 미수록 단어는 기존 w.ex로 폴백.
+// ───────────────────────────────────────────────────────────────────
+function _ex5List(en){ try{ var d=(window.BWD_EX5||{})[String(en||'').toLowerCase().trim()]; return (d&&Array.isArray(d.ex5)&&d.ex5.length)?d.ex5:null; }catch(e){ return null; } }
+function _exFormVal(){ try{ var f=(typeof S!=='undefined'&&S.exForm!=null)?S.exForm:0; if(f==='random'||f==='r') return 0; var n=parseInt(f); return (n>=1&&n<=5)?n:0; }catch(e){ return 0; } }
+// 선택된 형식에 맞는 단일 예문 {en,kr} 반환 (없으면 null)
+function _ex5One(en){ var a=_ex5List(en); if(!a) return null; var f=_exFormVal(); var i=(f===0)?Math.floor(Math.random()*a.length):Math.min(f-1,a.length-1); var s=a[i]||a[0]; return {en:(s.en||''),kr:(s.kr||'')}; }
+// 표시용 예문 배열: cnt개의 {en,kr}. 형식 고정이면 그 번호부터 순환, 랜덤이면 섞어서.
+function _ex5Pick(en, cnt){ cnt=cnt||1; var a=_ex5List(en); if(!a) return null; var f=_exFormVal(); var out=[];
+  if(f===0){ var sh=a.slice(); for(var i=sh.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=sh[i];sh[i]=sh[j];sh[j]=t;} for(var k=0;k<Math.min(cnt,sh.length);k++) out.push({en:sh[k].en||'',kr:sh[k].kr||''}); }
+  else { var st=Math.min(f-1,a.length-1); for(var k2=0;k2<cnt;k2++){ var s=a[(st+k2)%a.length]; out.push({en:s.en||'',kr:s.kr||''}); } }
+  return out; }
+// 플래시/자동학습 본문용: '영문 (한글)' 문자열 배열. 폴백=기존 exList/ex.
+function _ex5Strings(w, cnt){ cnt=cnt||1; var en=(w&&w.en)||''; var picked=_ex5Pick(en,cnt);
+  if(picked&&picked.length) return picked.map(function(s){ return s.en + (s.kr?'  ('+s.kr+')':''); });
+  if(w&&w.exList&&w.exList.length) return w.exList.slice(0,cnt);
+  if(w&&w.ex) return [w.ex];
+  return []; }
 function _ensureSessionClock(){ var ex=document.getElementById('sess-clock-bar'); if(ex) return ex; if(!document.body) return null; var bar=document.createElement('div'); bar.id='sess-clock-bar'; bar.style.cssText='position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:9500;display:none;align-items:center;gap:7px;background:rgba(15,23,42,.92);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:5px 13px;pointer-events:none;box-shadow:0 2px 10px rgba(0,0,0,.25)'; bar.innerHTML='<span id="sess-clock-label" style="font-size:11px;font-weight:800;color:#CBD5E1;white-space:nowrap"></span><span id="sess-clock-time" style="font-size:15px;font-weight:900;color:#fff;font-family:monospace">0:00</span>'; document.body.appendChild(bar); return bar; }
 setInterval(function(){ try{ if(typeof S==='undefined') return; var _gc=document.getElementById("game-clock"); if(_gc&&S._gameStartTs){ _gc.textContent=_fmtClock(Math.floor((Date.now()-S._gameStartTs)/1000)); } if(S._sessTs){ if(window._autoPlaying) S._lastStudyTs=Date.now(); var _tt=_fmtClock(Math.floor((Date.now()-S._sessTs)/1000)); var _lts=document.querySelectorAll('._lt-display'); for(var _q=0;_q<_lts.length;_q++) _lts[_q].textContent=_tt; } var _scb=document.getElementById('sess-clock-bar'); if(_scb) _scb.style.display='none'; }catch(e){} }, 1000);
 ['click','keydown','touchstart','pointerdown'].forEach(function(ev){ try{ document.addEventListener(ev, function(){ try{ if(typeof S!=='undefined' && S._sessTs) S._lastStudyTs=Date.now(); }catch(e){} }, true); }catch(e){} });
@@ -1184,6 +1204,34 @@ const MARK_INFO = [
 ];
 
 function buildSentenceFromWords(wordList) {
+  // [ex5 사전 연동] 모든 단어가 예문 5개를 가지므로, 형식(1~5/랜덤) 선택을 반영해 문장 생성.
+  //   문장형 게임(문장 순서/한글 영작) 공통. 미수록 단어장은 아래 기존 로직으로 폴백.
+  try{
+    if(typeof _ex5List==='function' && typeof _ex5One==='function' && (S.gameId==='ssort'||S.gameId==='sentence')){
+      var _book=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=2)?getCurrentBookWords():(wordList||S.gWords||S.words||[]);
+      var _cand=_book.filter(function(w){return w&&_ex5List(w.en);});
+      if(_cand.length){
+        var _lvSel=(S.gameSettings&&S.gameSettings.sentLevel);
+        var _bucket=function(n){return n<=5?1:(n<=8?2:3);};
+        var _lastEn5=S._sbLastEn||'';
+        for(var _try=0; _try<16; _try++){
+          var _w=_cand[Math.floor(Math.random()*_cand.length)];
+          var _one=_ex5One(_w.en); if(!_one||!_one.en) continue;
+          var _sent=_one.en.replace(/[.,!?;:"']/g,'').trim();
+          var _words=_sent.split(/\s+/).filter(function(x){return x.length>0;});
+          if(_words.length<3||_words.length>14) continue;
+          if((_lvSel===1||_lvSel===2||_lvSel===3) && _bucket(_words.length)!==_lvSel) continue;
+          if(_sent===_lastEn5) continue;
+          var _pile=[]; for(var _d=0;_d<8;_d++){ var _o=_cand[Math.floor(Math.random()*_cand.length)]; var _oo=_ex5One(_o.en); if(_oo&&_oo.en) _pile=_pile.concat(_oo.en.replace(/[.,!?;:"']/g,'').split(/\s+/)); }
+          var _lw=_words.map(function(y){return y.toLowerCase();});
+          var _wrong=shuf(_pile.filter(function(x){return x&&_lw.indexOf(x.toLowerCase())<0;})).slice(0,2);
+          S.sbS={kr:_one.kr||_w.kr||'',en:_sent,words:_words};
+          S.sbP=shuf(_words.concat(_wrong));
+          S.sbC=[];S.sbAns=false;S.sbOk=false;S._sbLastEn=_sent;return;
+        }
+      }
+    }
+  }catch(e){}
   // [신규] 문장 순서맞추기(ssort): 현재 선택된 단어장의 단어에서 예문을 사용 — 같은 문장 반복 해소
   // 예문 위치는 단어장마다 다름(초등=ph, 중등/고등=ex). ex/ph 중 실제 '문장'인 필드를 자동 선택. 발음기호([..])는 제외.
   if(S.gameId==='ssort'){
@@ -3483,7 +3531,11 @@ const _LT = {
   barHTML() {
     const pct = this.goal>0 ? Math.min(100, Math.round(this.elapsed/this.goal*100)) : 0;
     const color = this.goal>0 && pct>=100 ? '#34D399' : this.goal>0 && pct>=80 ? '#FBBF24' : '#63B3ED';
-    return `<span class="_lt-display" style="display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:monospace;color:#fff;background:rgba(255,255,255,.12);border-radius:20px;padding:5px 12px">0:00</span>`;
+    // [버그수정] 헤더 재렌더마다 0:00을 새로 찍어 전역 1초 인터벌 다음 틱까지 깜빡이던 문제 →
+    //  렌더 시점에 세션 경과시간을 즉시 계산해 찍는다(인터벌과 동일 소스 _sessTs).
+    var _cur=0; try{ if(typeof S!=='undefined' && S._sessTs){ _cur=Math.floor((Date.now()-S._sessTs)/1000); } else { _cur=this.elapsed||0; } }catch(e){ _cur=this.elapsed||0; }
+    var _disp=(typeof _fmtClock==='function')?_fmtClock(_cur):this.fmt(_cur);
+    return `<span class="_lt-display" style="display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:monospace;color:#fff;background:rgba(255,255,255,.12);border-radius:20px;padding:5px 12px">${_disp}</span>`;
   }
 };
 
@@ -4008,7 +4060,7 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
-  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -4415,7 +4467,7 @@ window._autoRender = function() {
     var A = window._auto;
     var pct = Math.round((window._autoIdx+1)/total*100);
 
-    var exList = (w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
+    var exList = (typeof _ex5Strings==='function')?_ex5Strings(w,3):((w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]));
     var exCount = parseInt(A.exCount||0);
     var exHtml = '';
     if(exCount>0&&exList.length>0&&S._vSent!==false){
@@ -4497,7 +4549,7 @@ window._autoRender = function() {
           +'<button onclick="window._autoIdx=Math.min(window._autoWords.length-1,window._autoIdx+1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">다음 ▶</button>'
         +'</div>'
         // 설정 패널
-        +_lsetBar(iopt('정렬', sortItems)+iopt('학습범위', rangeItems)+iopt('보기', _viewItems("window._autoRender&&window._autoRender()"))+iopt('발음', readItems)+(A.read==='kr_first'?iopt('지연', krDelayItems):'')+iopt('속도', speedItems)+iopt('옵션', optItems))
+        +_lsetBar(iopt('정렬', sortItems)+iopt('학습범위', rangeItems)+iopt('보기', _viewItems("window._autoRender&&window._autoRender()"))+iopt('예문형식', _exFormItems("window._autoRender&&window._autoRender()"))+iopt('발음', readItems)+(A.read==='kr_first'?iopt('지연', krDelayItems):'')+iopt('속도', speedItems)+iopt('옵션', optItems))
       +'</div>';
 };;;
   
@@ -10793,7 +10845,7 @@ function rLearn() {
   const allFw=typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words;
   if(typeof _seenW==='function') _seenW(w.en);
   const curMark=getMark(w.en)||0, isFav=(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0;
-  const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
+  const exList=(typeof _ex5Strings==='function')?_ex5Strings(w,3):((w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]));
 
   let filterHtml='';
   [[-1,'전체',allFw.length],[0,'미암기',allFw.filter(x=>getMark(x.en)===0).length],[1,'암기',allFw.filter(x=>getMark(x.en)===1).length],[2,'헷갈림',allFw.filter(x=>getMark(x.en)===2).length]].forEach(function(item){
@@ -10944,6 +10996,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
       gsetRow('정렬',[['추가순',"S.flashSort='default';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='default'],['A-Z',"S.flashSort='alpha';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='alpha'],['가나다',"S.flashSort='alpha_kr';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='alpha_kr'],['마크순',"S.flashSort='mark';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='mark'],['랜덤',"S.flashSort='random';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='random']])
     + gsetRow('학습범위',[['전체',"S.listMarkFilter=-1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===-1],['미암기',"S.listMarkFilter=0;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===0],['암기',"S.listMarkFilter=1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===1],['헷갈림',"S.listMarkFilter=2;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===2]])
     + gsetRow('보기',_viewItems("go()"))
+    + gsetRow('예문 형식',_exFormItems("S._flipWords=null;go()"))
     + gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
     + gsetRow('속도',[['느림',"S._flashRate=0.5;sv();go()",_frt===0.5],['보통',"S._flashRate=0.8;sv();go()",_frt===0.8],['빠름',"S._flashRate=1.1;sv();go()",_frt===1.1],['최대',"S._flashRate=1.5;sv();go()",_frt===1.5]])
     + gsetRow('옵션',[['예문 읽기','','dis'],['반복','','dis'],['발음 듣고 따라 말하기','','dis']])
@@ -12256,6 +12309,8 @@ function gsetRow(label, items){
   return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px'+(locked?';opacity:.55':'')+'"><span style="color:#94A3B8;font-weight:700;flex-shrink:0;width:54px;font-size:11px">'+(locked?'🔒 ':'')+label+'</span><div style="display:flex;gap:3px;flex:1;min-width:0">'+btns+'</div></div>';
 }
 function _viewItems(rr){return [['뜻',"S._vMean=(S._vMean===false);sv();"+rr,S._vMean!==false],['발음',"S._vPh=(S._vPh===false);sv();"+rr,S._vPh!==false],['이모지',"S._vEmoji=(S._vEmoji===false);sv();"+rr,S._vEmoji!==false],['예문',"S._vSent=(S._vSent===false);sv();"+rr,S._vSent!==false]];}
+// 예문 형식(1~5번 예문 고정 / 랜덤) 선택 항목 — 학습·게임 공통
+function _exFormItems(rr){ var f=(typeof _exFormVal==='function')?_exFormVal():0; var mk=function(lb,v){return [lb,"S.exForm="+v+";sv();"+rr,f===v];}; return [mk('랜덤',0),mk('1',1),mk('2',2),mk('3',3),mk('4',4),mk('5',5)]; }
 var _LSETORD={'정렬':0,'학습범위':1,'보기':1.5,'옵션':2,'발음':3,'속도':4};
 var _GSETORD={'출제범위':0,'문제 수':1,'음향':2,'제한시간':3,'넘기기':4,'부가정보':5,'선택지':6};
 function _rowDedup(inner){
@@ -13226,6 +13281,7 @@ function rSentence(){
   H+=gsetBar(_gUnified()+
      gsetRow('제한시간',[['끔',"S.gameSettings.sentTimeSec=0;S._itDeadline=null;sv();go()",!(gs.sentTimeSec)],['20초',"S.gameSettings.sentTimeSec=20;S._itDeadline=null;sv();go()",gs.sentTimeSec===20],['30초',"S.gameSettings.sentTimeSec=30;S._itDeadline=null;sv();go()",gs.sentTimeSec===30],['45초',"S.gameSettings.sentTimeSec=45;S._itDeadline=null;sv();go()",gs.sentTimeSec===45]])
     +gsetRow('난이도',[['전체',"S.gameSettings.sentLevel=0;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",!(sl===1||sl===2||sl===3)],['초급',"S.gameSettings.sentLevel=1;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",sl===1],['중급',"S.gameSettings.sentLevel=2;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",sl===2],['고급',"S.gameSettings.sentLevel=3;buildSentenceFromWords(S.gWords);S._itDeadline=null;sv();go()",sl===3]])
+    +gsetRow('예문 형식',_exFormItems("buildSentenceFromWords(S.gWords);S._itDeadline=null;go()"))
   );
   H+='</div>';
   _armItemTimer(gs.sentTimeSec||0,'sentence');

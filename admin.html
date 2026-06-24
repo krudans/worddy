@@ -4362,6 +4362,156 @@ async function runEnrichCommit(){
   toast('보강 완료: '+done+'팩 / '+totChg+'단어'+(added?' · 사전 +'+added:''),'ok');
 }
 
+// ════════════════ AI 예문 자동생성 (ex5) — Gemini, 무인·재개·엄격검증 ════════════════
+var _aiGen = { running:false, stop:false, total:0, done:0, ok:0, fail:0, flagged:[], queue:[], batch:8, throttle:4000, retries:3, autoCkpt:2000, sinceCkpt:0, started:0 };
+
+function _aiGenMissing(){
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}; var E=window.BWD_EX5||{};
+  return Object.keys(D).filter(function(k){ return !E[k]; });
+}
+function _aiGenStem(w){ w=w.toLowerCase(); return w.replace(/(e|y)$/,'').slice(0, Math.max(4, w.length-2)); }
+// 엄격 검증: 문제 있으면 사유 문자열 반환, 정상이면 null
+function _aiGenVerify(word, e){
+  if(!e || typeof e!=='object') return '구조';
+  if(!e.img || /\ufffd/.test(e.img) || e.img==='📝' || e.img.length>8) return '이모지';
+  if(!Array.isArray(e.ex5) || e.ex5.length!==5) return '문장수';
+  var wl=word.toLowerCase(), stem=_aiGenStem(word), seen={};
+  for(var i=0;i<5;i++){ var s=e.ex5[i];
+    if(!s || typeof s!=='object' || !s.en || !s.kr) return 't'+(i+1)+'누락';
+    var en=String(s.en), kr=String(s.kr);
+    if(/\ufffd/.test(en) || /\ufffd/.test(kr)) return '깨진문자';
+    if(/[\u4e00-\u9fff\u3040-\u30ff]/.test(en)) return 'en비영문';
+    if(!/[가-힣]/.test(kr)) return 'kr없음';
+    if(en.length<6 || en.length>140) return '길이';
+    var enl=en.toLowerCase();
+    if(enl.indexOf(wl)<0 && enl.indexOf(stem)<0) return 't'+(i+1)+'단어미포함';
+    if(seen[enl]) return '중복문장'; seen[enl]=1;
+  }
+  return null;
+}
+function _aiGenPrompt(batch){
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{};
+  var list=batch.map(function(w){ var kr=(D[w]&&D[w].kr)?D[w].kr.split(';')[0].trim():''; return '- '+w+(kr?' ('+kr+')':''); }).join('\n');
+  return '너는 한국 초·중·고 영어 학습용 예문 작성 전문가야. 아래 영어 단어 각각에 대해 학습용 데이터를 만들어줘.\n'
+    +'각 단어마다:\n'
+    +'1) img: 그 단어의 의미를 잘 나타내는 이모지 1개(추상어는 상징 이모지). 절대 📝 금지.\n'
+    +'2) ex5: 영어 예문 5개. 규칙(엄수):\n'
+    +'   - 5문장 모두 반드시 해당 단어(또는 그 굴절형/복수형)를 실제로 포함.\n'
+    +'   - 짧고 자연스러운 일상 영어. 각 문장 6~120자. 5문장은 서로 다른 상황.\n'
+    +'   - 영어 문장에 한자·일본어·중국어 절대 금지(순수 영어만).\n'
+    +'   - 각 문장의 자연스러운 한국어 번역(kr) 포함.\n'
+    +'대상 단어:\n'+list+'\n\n'
+    +'반드시 아래 JSON "한 개"만 출력(설명·마크다운·코드펜스 금지):\n'
+    +'{"단어":{"img":"🍎","ex5":[{"t":1,"en":"...","kr":"..."},{"t":2,...},{"t":3,...},{"t":4,...},{"t":5,...}]}, ...}';
+}
+function _aiGenParse(text){
+  if(!text) return null;
+  var t=String(text).replace(/```json/gi,'').replace(/```/g,'').trim();
+  var i=t.indexOf('{'), j=t.lastIndexOf('}');
+  if(i<0||j<0||j<=i) return null;
+  try{ return JSON.parse(t.slice(i,j+1)); }catch(e){ return null; }
+}
+// 한 묶음 처리: {okMap, failWords}
+async function _aiGenProcessBatch(batch, onStatus){
+  var prompt=_aiGenPrompt(batch);
+  var raw;
+  try{ raw=await callAI(prompt, 4096, 0, onStatus); }catch(e){ return {okMap:{}, failWords:batch.slice(), err:e.message}; }
+  var obj=_aiGenParse(raw);
+  var okMap={}, failWords=[];
+  // 키 정규화(소문자)
+  var norm={}; if(obj) Object.keys(obj).forEach(function(k){ norm[k.toLowerCase().trim()]=obj[k]; });
+  batch.forEach(function(w){
+    var e=norm[w.toLowerCase().trim()];
+    if(!e){ failWords.push(w); return; }
+    // t 정규화
+    if(Array.isArray(e.ex5)) e.ex5=e.ex5.slice(0,5).map(function(s,idx){ return {t:idx+1, en:(s&&s.en)||'', kr:(s&&s.kr)||''}; });
+    var bad=_aiGenVerify(w,e);
+    if(bad){ failWords.push(w); }
+    else { okMap[w]={img:e.img, ex5:e.ex5}; }
+  });
+  return {okMap:okMap, failWords:failWords};
+}
+function _aiGenRender(){
+  var el=document.getElementById('aigen-status'); if(!el) return;
+  var pct=_aiGen.total?Math.round(_aiGen.done/_aiGen.total*100):0;
+  var elapsed=_aiGen.started?Math.round((Date.now()-_aiGen.started)/1000):0;
+  var rate=elapsed?(_aiGen.done/elapsed):0; // 초당 단어
+  var remain=rate>0?Math.round((_aiGen.total-_aiGen.done)/rate):0;
+  var fmt=function(s){ if(s<=0)return '-'; var h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return (h?h+'시간 ':'')+m+'분'; };
+  el.innerHTML='<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px">'
+    +'<div style="height:10px;background:#EDE9FE;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+pct+'%;background:#7C3AED;transition:width .3s"></div></div>'
+    +'<div style="font-size:13px;font-weight:700;color:#5B21B6">진행 '+_aiGen.done.toLocaleString()+' / '+_aiGen.total.toLocaleString()+' ('+pct+'%) · ✅생성 '+_aiGen.ok.toLocaleString()+' · ⚠️보류 '+_aiGen.flagged.length+'</div>'
+    +'<div style="font-size:11px;color:#7C3AED;margin-top:3px">경과 '+fmt(elapsed)+' · 예상 잔여 '+fmt(remain)+(_aiGen.running?' · 🟢 실행 중':' · ⏸ 정지')+'</div>'
+    +(_aiGen.flagged.length?'<div style="font-size:11px;color:#B45309;margin-top:6px;max-height:60px;overflow:auto">보류(검증실패): '+_aiGen.flagged.slice(-30).join(', ')+'</div>':'')
+    +'</div>';
+}
+function showAiGenEx5(){
+  if(typeof BWD_DICT==='undefined'||!window.BWD_EX5){ toast('사전(bwd-dict.js·bwd-ex5.js) 미로드','err'); return; }
+  var miss=_aiGenMissing();
+  var key=getGeminiKey();
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:600px">'
+    +'<div class="mt">🤖 AI 예문 자동생성 (ex5)</div>'
+    +'<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#5B21B6;line-height:1.7">'
+      +'사전(dict)에 있지만 <b>ex5 예문이 없는</b> 단어 <b>'+miss.length.toLocaleString()+'개</b>를 Gemini로 자동 생성합니다. 5문장 모두 단어 포함·이모지·한자혼입 등 <b>엄격 검증</b> 후 통과한 것만 저장하고, 실패는 자동 재시도(최대 '+_aiGen.retries+'회)합니다.<br>'
+      +'<span style="color:'+(key?'#16A34A':'#DC2626')+'">Gemini 키: '+(key?'✅ 설정됨':'❌ 없음 — 앱 설정에서 입력 필요')+'</span></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:6px">'
+      +'<div class="fg" style="margin:0"><label>이번에 생성할 개수</label><input id="aig-count" type="number" value="'+Math.min(miss.length,500)+'" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>묶음당 단어 수</label><input id="aig-batch" type="number" value="8" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="aig-throttle" type="number" value="4" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>자동저장 간격(개)</label><input id="aig-ckpt" type="number" value="2000" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ 무료 한도(분당 요청·일일 상한)에 걸리면 자동 대기·재개합니다. 창을 닫지 말고 켜두세요. 자동저장 간격마다 bwd-ex5.js가 다운로드됩니다(업로드하면 다음에 이어서).</div>'
+    +'<div style="display:flex;gap:8px">'
+      +'<button class="btn" id="aig-start" onclick="aiGenStart()" style="flex:1;background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:9px;font-weight:700;cursor:pointer">▶ 시작</button>'
+      +'<button class="btn bgr" onclick="aiGenStop()">⏹ 정지</button>'
+      +'<button class="btn bg" onclick="bwdExportEx5()">📥 내보내기</button>'
+    +'</div>'
+    +'<div id="aigen-status" style="margin-top:12px"></div>'
+    +'</div></div>';
+  _aiGenRender();
+}
+async function aiGenStart(){
+  if(_aiGen.running){ toast('이미 실행 중','err'); return; }
+  if(!getGeminiKey()){ toast('Gemini 키가 없습니다','err'); return; }
+  var miss=_aiGenMissing();
+  var count=Math.max(1, parseInt(document.getElementById('aig-count').value)||100);
+  _aiGen.batch=Math.max(1, Math.min(20, parseInt(document.getElementById('aig-batch').value)||8));
+  _aiGen.throttle=Math.max(0, (parseInt(document.getElementById('aig-throttle').value)||4))*1000;
+  _aiGen.autoCkpt=Math.max(0, parseInt(document.getElementById('aig-ckpt').value)||2000);
+  _aiGen.queue=miss.slice(0, count);
+  _aiGen.total=_aiGen.queue.length; _aiGen.done=0; _aiGen.ok=0; _aiGen.fail=0; _aiGen.flagged=[]; _aiGen.sinceCkpt=0;
+  _aiGen.running=true; _aiGen.stop=false; _aiGen.started=Date.now();
+  var sb=document.getElementById('aig-start'); if(sb){ sb.textContent='⏳ 실행 중...'; sb.disabled=true; }
+  await _aiGenLoop();
+}
+function aiGenStop(){ _aiGen.stop=true; toast('정지 요청 — 현재 묶음 후 멈춥니다','ok'); }
+async function _aiGenLoop(){
+  var onStatus=function(msg){ var el=document.getElementById('aigen-status'); if(el){ var d=el.querySelector('.aig-msg'); if(!d){ d=document.createElement('div'); d.className='aig-msg'; d.style.cssText='font-size:11px;color:#7C3AED;margin-top:4px'; el.appendChild(d);} d.textContent=msg; } };
+  while(_aiGen.queue.length && !_aiGen.stop){
+    var batch=_aiGen.queue.splice(0, _aiGen.batch);
+    var pending=batch.slice(), attempt=0;
+    while(pending.length && attempt<=_aiGen.retries && !_aiGen.stop){
+      var r=await _aiGenProcessBatch(pending, onStatus);
+      Object.keys(r.okMap).forEach(function(w){ window.BWD_EX5[w]=r.okMap[w]; _aiGen.ok++; _aiGen.done++; _aiGen.sinceCkpt++; });
+      pending=r.failWords;
+      attempt++;
+      if(pending.length && attempt<=_aiGen.retries){ await new Promise(function(res){setTimeout(res, _aiGen.throttle);}); }
+    }
+    // 재시도 후에도 실패 → 보류
+    pending.forEach(function(w){ _aiGen.fail++; _aiGen.done++; _aiGen.flagged.push(w); });
+    _aiGenRender();
+    // 자동 체크포인트
+    if(_aiGen.autoCkpt && _aiGen.sinceCkpt>=_aiGen.autoCkpt){ _aiGen.sinceCkpt=0; try{ bwdExportEx5(); }catch(e){} }
+    if(_aiGen.queue.length && !_aiGen.stop){ await new Promise(function(res){setTimeout(res, _aiGen.throttle);}); }
+  }
+  _aiGen.running=false;
+  var sb=document.getElementById('aig-start'); if(sb){ sb.textContent='▶ 시작'; sb.disabled=false; }
+  _aiGenRender();
+  if(_aiGen.ok>0){ try{ bwdExportEx5(); }catch(e){} } // 종료 시 최종 저장
+  toast('자동생성 종료 · 생성 '+_aiGen.ok+'개 / 보류 '+_aiGen.flagged.length+'개 · bwd-ex5.js 업로드하세요','ok');
+}
+
+
 // ── 레벨 관리 ──
 async function rLV(){
   const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🐌',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🪺',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'🫧',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#1565C0'},{id:'big',n:'큰 나비',e:'🌸',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'나비의 신',e:'🦚',desc:'God',basis:"GRE + Barron's 3500",c:'#B71C1C'}];
@@ -5343,6 +5493,7 @@ function rDICT(){
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
       '<h2 style="font-size:22px;font-weight:900">📖 Butterfly Dic</h2>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button class="btn bg" onclick="showAiGenEx5()" style="background:#7C3AED">🤖 AI 예문 자동생성</button>'+
       '<button class="btn bg" onclick="bwdExport()">📥 bwd-dict.js 내보내기</button>'+
       '<button class="btn bg" onclick="bwdExportEx5()" style="background:#16A34A">🎨 bwd-ex5.js 내보내기</button>'+
       '</div>'+

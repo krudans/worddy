@@ -1,21 +1,26 @@
-// sw.js v8 - 캐시 비활성화 + HTML 항상 최신(CDN 엣지 캐시까지 우회) + 새 버전 자동 반영
-const CACHE = 'butterfly-word-v8';
+// sw.js v9 - HTML/스크립트는 항상 최신(네트워크) + Noto 이모지 이미지만 영구 캐시(cache-first) + prefetch 지원
+const CACHE = 'butterfly-word-v9';
+const EMOJI_CACHE = 'noto-emoji-v1';   // 이모지 이미지 영구 캐시(버전 갱신 시에도 보존)
+
+function isEmojiReq(url){
+  return url.indexOf('noto-emoji') >= 0 && url.indexOf('.png') >= 0;
+}
 
 self.addEventListener('install', e => {
-  // 이전 캐시 전부 삭제
+  // 이모지 캐시는 보존하고 나머지 캐시만 삭제
   e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== EMOJI_CACHE).map(k => caches.delete(k))
+    ))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
-    // 이전 캐시 전부 삭제
     const keys = await caches.keys();
-    await Promise.all(keys.map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => k !== EMOJI_CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
-    // 새 SW가 활성화되면, 통제 중인 모든 페이지에 '새 버전' 알림 → 자동 새로고침 유도
     const clientList = await self.clients.matchAll({ type: 'window' });
     for (const client of clientList) {
       client.postMessage({ type: 'SW_UPDATED', version: CACHE });
@@ -23,17 +28,32 @@ self.addEventListener('activate', e => {
   })());
 });
 
-// 모든 요청을 캐시 없이 네트워크에서 직접 (HTML 내비게이션 포함)
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = e.request.url;
 
+  // Noto 이모지 이미지: 영구 캐시-우선 (한 번 받으면 다시 네트워크 안 탐)
+  if (isEmojiReq(url)) {
+    e.respondWith((async () => {
+      const cache = await caches.open(EMOJI_CACHE);
+      const hit = await cache.match(e.request);
+      if (hit) return hit;
+      try {
+        const res = await fetch(e.request);
+        if (res && (res.ok || res.type === 'opaque')) cache.put(e.request, res.clone());
+        return res;
+      } catch (err) {
+        const any = await cache.match(e.request);
+        return any || Response.error();
+      }
+    })());
+    return;
+  }
+
   // Firebase는 그냥 통과
   if (url.includes('googleapis.com') || url.includes('firebase') || url.includes('gstatic.com')) return;
 
-  // HTML 문서(내비게이션) 요청: 브라우저 HTTP 캐시는 물론, GitHub Pages(Fastly) 엣지 캐시까지 우회.
-  // ?nocache 같은 쿼리만으로는 Fastly가 같은 경로의 옛 HTML을 계속 주므로,
-  // 매 요청마다 고유 쿼리(_cb)를 붙여 항상 오리진의 최신본을 받도록 한다.
+  // HTML 문서(내비게이션): 엣지 캐시까지 우회해 항상 최신
   const isNavigation = e.request.mode === 'navigate' ||
     (e.request.headers.get('accept') || '').includes('text/html');
 
@@ -56,7 +76,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 나머지(스크립트/이미지 등)도 네트워크 직접
+  // 나머지(스크립트 등)도 네트워크 직접
   e.respondWith(
     fetch(e.request, { cache: 'no-store' }).catch(() => fetch(e.request))
   );
@@ -91,7 +111,6 @@ self.addEventListener('message', e => {
       });
     }, delay);
   }
-  // 페이지가 즉시 새 SW로 전환을 요청할 때
   if (e.data && e.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

@@ -436,7 +436,7 @@ if(typeof firebase === 'undefined') {
   }
 }
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js?v=8').catch(()=>{});
+  navigator.serviceWorker.register('sw.js?v=9').catch(()=>{});
   // 새 서비스워커가 활성화되면(=새 배포 감지) 페이지를 한 번 자동 새로고침해 최신 버전 반영.
   // sessionStorage 가드로 무한 새로고침 방지.
   navigator.serviceWorker.addEventListener('message', function(ev){
@@ -15403,7 +15403,20 @@ auth.onAuthStateChanged(async user => {
   function sched(){ if(pending)return; pending=true; requestAnimationFrame(function(){pending=false;['body','nav','mr','tw'].forEach(function(id){var el=document.getElementById(id);if(el)notofy(el);});}); }
   function init(){ ['body','nav','mr','tw'].forEach(function(id){var el=document.getElementById(id); if(el){notofy(el); try{new MutationObserver(sched).observe(el,{childList:true,subtree:true});}catch(e){}}});
     try{ new MutationObserver(sched).observe(document.body,{childList:true,subtree:true}); }catch(e){}
-    window._notoReady=true; }
+    window._notoReady=true; try{ setTimeout(prefetchEmoji, 2500); }catch(e){} }
+  function prefetchEmoji(){
+    try{
+      if(sessionStorage.getItem('_notoPrefetched')) return;
+      var E=window.BWD_EX5;
+      if(!E || !Object.keys(E).length){ setTimeout(prefetchEmoji, 3000); return; }
+      sessionStorage.setItem('_notoPrefetched','1');
+      var seen={}, urls=[];
+      Object.keys(E).forEach(function(k){ var im=E[k]&&E[k].img; if(im){ var c=notoCode(im); if(c&&!seen[c]){ seen[c]=1; urls.push(NOTO+c+'.png'); } } });
+      var i=0;
+      function chunk(){ var n=0; while(i<urls.length && n<10){ fetch(urls[i]).catch(function(){}); i++; n++; } if(i<urls.length){ (window.requestIdleCallback||function(f){setTimeout(f,250);})(chunk); } }
+      (window.requestIdleCallback||function(f){setTimeout(f,2000);})(chunk);
+    }catch(e){}
+  }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
 })();
 </script>

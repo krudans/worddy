@@ -2804,7 +2804,8 @@ async function callAI(prompt, maxTokens=300, _retry=0, _onStatus=null) {
   const apiKey = getGeminiKey();
   if(!apiKey) throw new Error('Gemini API 키가 없습니다. 설정에서 입력해주세요.');
   if(_onStatus) _onStatus('🌐 API 요청 중...');
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+  const _aiModel = window._aiModel || localStorage.getItem('ai_model') || 'gemini-2.5-flash-lite';
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${_aiModel}:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
@@ -4435,14 +4436,16 @@ function _aiGenRender(){
   var el=document.getElementById('aigen-status'); if(!el) return;
   var pct=_aiGen.total?Math.round(_aiGen.done/_aiGen.total*100):0;
   var elapsed=_aiGen.started?Math.round((Date.now()-_aiGen.started)/1000):0;
-  var rate=elapsed?(_aiGen.done/elapsed):0; // 초당 단어
+  var rate=elapsed?(_aiGen.done/elapsed):0;
   var remain=rate>0?Math.round((_aiGen.total-_aiGen.done)/rate):0;
-  var fmt=function(s){ if(s<=0)return '-'; var h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return (h?h+'시간 ':'')+m+'분'; };
+  var fmt=function(s){ if(s<=0)return '-'; var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; return (h?h+'시간 ':'')+(m?m+'분 ':'')+(h?'':ss+'초'); };
   el.innerHTML='<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px">'
-    +'<div style="height:10px;background:#EDE9FE;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+pct+'%;background:#7C3AED;transition:width .3s"></div></div>'
-    +'<div style="font-size:13px;font-weight:700;color:#5B21B6">진행 '+_aiGen.done.toLocaleString()+' / '+_aiGen.total.toLocaleString()+' ('+pct+'%) · ✅생성 '+_aiGen.ok.toLocaleString()+' · ⚠️보류 '+_aiGen.flagged.length+'</div>'
+    +'<div style="height:12px;background:#EDE9FE;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+pct+'%;background:#7C3AED;transition:width .3s"></div></div>'
+    +'<div style="font-size:15px;font-weight:800;color:#5B21B6">진행 '+_aiGen.done.toLocaleString()+' / '+_aiGen.total.toLocaleString()+' ('+pct+'%)</div>'
+    +'<div style="font-size:12px;color:#5B21B6;margin-top:3px">✅ 생성 '+_aiGen.ok.toLocaleString()+' · ⚠️ 보류 '+_aiGen.flagged.length+' · 🤖 '+(window._aiModel||'-')+'</div>'
     +'<div style="font-size:11px;color:#7C3AED;margin-top:3px">경과 '+fmt(elapsed)+' · 예상 잔여 '+fmt(remain)+(_aiGen.running?' · 🟢 실행 중':' · ⏸ 정지')+'</div>'
-    +(_aiGen.flagged.length?'<div style="font-size:11px;color:#B45309;margin-top:6px;max-height:60px;overflow:auto">보류(검증실패): '+_aiGen.flagged.slice(-30).join(', ')+'</div>':'')
+    +(_aiGen.curMsg?'<div style="font-size:12px;color:#1E40AF;margin-top:7px;background:#EFF6FF;border-radius:6px;padding:7px 9px;font-weight:600">'+_aiGen.curMsg+'</div>':'')
+    +(_aiGen.flagged.length?'<div style="font-size:11px;color:#B45309;margin-top:6px;max-height:54px;overflow:auto">보류(검증실패): '+_aiGen.flagged.slice(-30).join(', ')+'</div>':'')
     +'</div>';
 }
 function showAiGenEx5(){
@@ -4454,10 +4457,24 @@ function showAiGenEx5(){
     +'<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#5B21B6;line-height:1.7">'
       +'사전(dict)에 있지만 <b>ex5 예문이 없는</b> 단어 <b>'+miss.length.toLocaleString()+'개</b>를 Gemini로 자동 생성합니다. 5문장 모두 단어 포함·이모지·한자혼입 등 <b>엄격 검증</b> 후 통과한 것만 저장하고, 실패는 자동 재시도(최대 '+_aiGen.retries+'회)합니다.<br>'
       +'<span style="color:'+(key?'#16A34A':'#DC2626')+'">Gemini 키: '+(key?'✅ 설정됨':'❌ 없음 — 앱 설정에서 입력 필요')+'</span></div>'
+    +'<div class="fg" style="margin:0 0 8px"><label>AI 모델 (한도에 막히면 다른 모델로 바꾸세요)</label>'
+      +'<select id="aig-model" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px">'
+        +'<option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — 추천 (30 RPM, 최고 한도)</option>'
+        +'<option value="gemini-2.5-flash">gemini-2.5-flash — 품질 높음 (10 RPM)</option>'
+        +'<option value="gemini-flash-latest">gemini-flash-latest — 최신 Flash</option>'
+        +'<option value="gemini-flash-lite-latest">gemini-flash-lite-latest — 최신 Lite</option>'
+        +'<option value="gemini-2.0-flash">gemini-2.0-flash — (지금 한도 초과 상태)</option>'
+      +'</select></div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;font-size:12px"><span style="color:#6B7280">빠른 설정:</span>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'aig-count\').value=100">100개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'aig-count\').value=500">500개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'aig-count\').value=2000">2000개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'aig-count\').value='+miss.length+'">전체('+miss.length.toLocaleString()+')</button>'
+    +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:6px">'
-      +'<div class="fg" style="margin:0"><label>이번에 생성할 개수</label><input id="aig-count" type="number" value="'+Math.min(miss.length,500)+'" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>이번에 생성할 개수</label><input id="aig-count" type="number" value="100" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
       +'<div class="fg" style="margin:0"><label>묶음당 단어 수</label><input id="aig-batch" type="number" value="8" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
-      +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="aig-throttle" type="number" value="4" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="aig-throttle" type="number" value="3" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
       +'<div class="fg" style="margin:0"><label>자동저장 간격(개)</label><input id="aig-ckpt" type="number" value="2000" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
     +'</div>'
     +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ 무료 한도(분당 요청·일일 상한)에 걸리면 자동 대기·재개합니다. 창을 닫지 말고 켜두세요. 자동저장 간격마다 bwd-ex5.js가 다운로드됩니다(업로드하면 다음에 이어서).</div>'
@@ -4473,6 +4490,7 @@ function showAiGenEx5(){
 async function aiGenStart(){
   if(_aiGen.running){ toast('이미 실행 중','err'); return; }
   if(!getGeminiKey()){ toast('Gemini 키가 없습니다','err'); return; }
+  var msel=document.getElementById('aig-model'); if(msel){ window._aiModel=msel.value; try{localStorage.setItem('ai_model',msel.value);}catch(e){} }
   var miss=_aiGenMissing();
   var count=Math.max(1, parseInt(document.getElementById('aig-count').value)||100);
   _aiGen.batch=Math.max(1, Math.min(20, parseInt(document.getElementById('aig-batch').value)||8));
@@ -4486,9 +4504,10 @@ async function aiGenStart(){
 }
 function aiGenStop(){ _aiGen.stop=true; toast('정지 요청 — 현재 묶음 후 멈춥니다','ok'); }
 async function _aiGenLoop(){
-  var onStatus=function(msg){ var el=document.getElementById('aigen-status'); if(el){ var d=el.querySelector('.aig-msg'); if(!d){ d=document.createElement('div'); d.className='aig-msg'; d.style.cssText='font-size:11px;color:#7C3AED;margin-top:4px'; el.appendChild(d);} d.textContent=msg; } };
+  var onStatus=function(msg){ _aiGen.curMsg=msg; _aiGenRender(); };
   while(_aiGen.queue.length && !_aiGen.stop){
     var batch=_aiGen.queue.splice(0, _aiGen.batch);
+    _aiGen.curMsg='⚙️ 생성 중: '+batch.slice(0,5).join(', ')+(batch.length>5?' 외 '+(batch.length-5)+'개':''); _aiGenRender();
     var pending=batch.slice(), attempt=0;
     while(pending.length && attempt<=_aiGen.retries && !_aiGen.stop){
       var r=await _aiGenProcessBatch(pending, onStatus);

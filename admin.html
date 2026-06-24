@@ -4411,10 +4411,41 @@ function _aiGenParse(text){
   try{ return JSON.parse(t.slice(i,j+1)); }catch(e){ return null; }
 }
 // 한 묶음 처리: {okMap, failWords}
+// 모델 자동 회전 + 한도 쿨다운 (429/503 시 다음 모델로 전환, 부드러운 페이싱)
+var _aiGenModels=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash'];
+var _aiCooldown={};
+function _aiSleep(ms){ return new Promise(function(r){setTimeout(r,ms);}); }
+function _aiAvailModel(){
+  var now=Date.now(), soonest=Infinity, soonestM=_aiGenModels[0];
+  for(var i=0;i<_aiGenModels.length;i++){ var m=_aiGenModels[i], cd=_aiCooldown[m]||0;
+    if(cd<=now) return {model:m, wait:0};
+    if(cd<soonest){ soonest=cd; soonestM=m; } }
+  return {model:soonestM, wait:soonest-now};
+}
+async function _aiGenCall(prompt, onStatus){
+  var key=getGeminiKey(); if(!key) throw new Error('키 없음');
+  for(var attempt=0; attempt<14; attempt++){
+    var pick=_aiAvailModel();
+    if(pick.wait>0){ var ws=Math.min(Math.ceil(pick.wait/1000),95); if(onStatus) onStatus('⏳ 전 모델 한도 — '+ws+'초 대기 후 재개'); await _aiSleep(Math.min(pick.wait+500,95000)); }
+    var model=pick.model; window._aiModel=model; _aiGenRender();
+    try{
+      var r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+key,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({contents:[{parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:4096, temperature:0.7}})});
+      if(r.status===429||r.status===503||r.status===500){ _aiCooldown[model]=Date.now()+90000; if(onStatus) onStatus('⚠️ '+model+' 한도 → 다른 모델로 전환'); await _aiSleep(700); continue; }
+      if(!r.ok){ await _aiSleep(1500); continue; }
+      var j=await r.json();
+      var txt=(j&&j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)? j.candidates[0].content.parts.map(function(p){return p.text||'';}).join('') : '';
+      if(txt) return txt;
+      await _aiSleep(700);
+    }catch(e){ await _aiSleep(1500); }
+  }
+  return ''; // 실패 → 빈 응답(상위에서 보류 처리)
+}
 async function _aiGenProcessBatch(batch, onStatus){
   var prompt=_aiGenPrompt(batch);
   var raw;
-  try{ raw=await callAI(prompt, 4096, 0, onStatus); }catch(e){ return {okMap:{}, failWords:batch.slice(), err:e.message}; }
+  try{ raw=await _aiGenCall(prompt, onStatus); }catch(e){ return {okMap:{}, failWords:batch.slice(), err:e.message}; }
   var obj=_aiGenParse(raw);
   var okMap={}, failWords=[];
   // 키 정규화(소문자)
@@ -4455,7 +4486,7 @@ function showAiGenEx5(){
     +'<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#5B21B6;line-height:1.7">'
       +'사전(dict)에 있지만 <b>ex5 예문이 없는</b> 단어 <b>'+miss.length.toLocaleString()+'개</b>를 Gemini로 자동 생성합니다. 5문장 모두 단어 포함·이모지·한자혼입 등 <b>엄격 검증</b> 후 통과한 것만 저장하고, 실패는 자동 재시도(최대 '+_aiGen.retries+'회)합니다.<br>'
       +'<span style="color:'+(key?'#16A34A':'#DC2626')+'">Gemini 키: '+(key?'✅ 설정됨':'❌ 없음 — 앱 설정에서 입력 필요')+'</span></div>'
-    +'<div class="fg" style="margin:0 0 8px"><label>AI 모델 (한도에 막히면 다른 모델로 바꾸세요)</label>'
+    +'<div class="fg" style="margin:0 0 8px"><label>시작 모델 (한도 시 자동으로 다른 모델로 회전)</label>'
       +'<select id="aig-model" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px">'
         +'<option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — 추천 (30 RPM, 최고 한도)</option>'
         +'<option value="gemini-2.5-flash">gemini-2.5-flash — 품질 높음 (10 RPM)</option>'
@@ -4475,7 +4506,7 @@ function showAiGenEx5(){
       +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="aig-throttle" type="number" value="3" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
       +'<div class="fg" style="margin:0"><label>자동저장 간격(개)</label><input id="aig-ckpt" type="number" value="2000" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
     +'</div>'
-    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ 무료 한도(분당 요청·일일 상한)에 걸리면 자동 대기·재개합니다. 창을 닫지 말고 켜두세요. 자동저장 간격마다 bwd-ex5.js가 다운로드됩니다(업로드하면 다음에 이어서).</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ <b>자동 모델 회전</b>: 한 모델이 한도(429)에 걸리면 즉시 다음 모델로 전환하고, 그 모델은 90초 쿨다운 후 재사용합니다. 전 모델이 동시에 걸리면 잠깐 대기 후 재개. 창은 닫지 말고 켜두세요. 자동저장 간격마다 bwd-ex5.js가 다운로드됩니다(업로드하면 다음에 이어서).</div>'
     +'<div style="display:flex;gap:8px">'
       +'<button class="btn" id="aig-start" onclick="aiGenStart()" style="flex:1;background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:9px;font-weight:700;cursor:pointer">▶ 시작</button>'
       +'<button class="btn bgr" onclick="aiGenStop()">⏹ 정지</button>'
@@ -4488,7 +4519,10 @@ function showAiGenEx5(){
 async function aiGenStart(){
   if(_aiGen.running){ toast('이미 실행 중','err'); return; }
   if(!getGeminiKey()){ toast('Gemini 키가 없습니다','err'); return; }
-  var msel=document.getElementById('aig-model'); if(msel){ window._aiModel=msel.value; try{localStorage.setItem('ai_model',msel.value);}catch(e){} }
+  var msel=document.getElementById('aig-model');
+  if(msel){ var _first=msel.value; window._aiModel=_first; try{localStorage.setItem('ai_model',_first);}catch(e){}
+    var _pool=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash'];
+    _aiGenModels=[_first].concat(_pool.filter(function(m){return m!==_first;})); _aiCooldown={}; }
   var miss=_aiGenMissing();
   var count=Math.max(1, parseInt(document.getElementById('aig-count').value)||100);
   _aiGen.batch=Math.max(1, Math.min(20, parseInt(document.getElementById('aig-batch').value)||8));

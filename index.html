@@ -3947,12 +3947,36 @@ function load() {
   try { var _wa=JSON.parse(localStorage.getItem('wd-auto')||'null'); if(_wa){ window._autoSaved=_wa; if(window._auto){ for(var _ak in _wa){ window._auto[_ak]=_wa[_ak]; } } } } catch(e){} // 자동재생 옵션 복원
 }
 // ── 마켓팩 단어는 항상 Firebase _marketPacks에서 실시간 조회 ──
+// 사전 라이브 연동: 마켓팩 단어를 표시할 때 단어사전(dict/pron/ex5)에서 뜻·발음·예문·이모지를
+// 실시간으로 덮어씀 → 사전만 고치면 모든 팩에 자동 반영. 사전에 없는 단어(회화·숙어 등)는 원본 유지.
+var _dictOverlayCache = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
+function _dictOverlayOne(w){
+  if(!w || !w.en) return w;
+  var en=String(w.en).toLowerCase().trim();
+  var E=(window.BWD_EX5||{}), e5=E[en];
+  var P=(typeof BWD_PRON!=='undefined')?BWD_PRON:null;
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:null;
+  var pr=P?P[en]:null, d=D?D[en]:null;
+  if(!e5 && !pr && !d) return w; // 사전 미수록 → 원본 유지
+  var o=Object.assign({}, w);
+  if(d){ if(d.kr){ o.kr=d.kr; o.meanings=d.kr.split(';').map(function(s){return s.trim();}).filter(Boolean).slice(0,6); } if(d.pos) o.pos=d.pos; }
+  if(pr) o.ph=pr;
+  if(e5){ if(e5.img) o.img=e5.img; if(e5.ex5&&e5.ex5.length){ o.exList=e5.ex5.map(function(s){return s.en;}); o.ex=o.exList[0]; } }
+  return o;
+}
+function _dictOverlayArr(raw){
+  if(!Array.isArray(raw)) return raw||[];
+  if(_dictOverlayCache){ var c=_dictOverlayCache.get(raw); if(c) return c; }
+  var out=raw.map(_dictOverlayOne);
+  if(_dictOverlayCache){ try{ _dictOverlayCache.set(raw, out); }catch(e){} }
+  return out;
+}
 function getBookWords(book) {
   if (!book) return [];
   if (book.packId) {
-    // 마켓팩은 오직 Firebase _marketPacks에서만 조회. 로컬 구 데이터 절대 사용 안 함
+    // 마켓팩은 오직 Firebase _marketPacks에서만 조회 + 단어사전 라이브 오버레이
     const livePack = (S._marketPacks || []).find(p => p.id === book.packId);
-    return livePack ? (livePack.words || []) : [];
+    return _dictOverlayArr(livePack ? (livePack.words || []) : []);
   }
   return book.words || [];
 }
@@ -15357,5 +15381,32 @@ auth.onAuthStateChanged(async user => {
     new MutationObserver(mkModal).observe(document.body,{childList:true,subtree:true});setInterval(mkModal,600);
   })();
 </script>
+<script>
+/* ── Noto 이모지 변환기: 화면의 이모지를 동일 화풍 Noto 이미지로 표시(기기 통일). 데이터는 안 건드림. 없으면 기기 이모지로 폴백. ── */
+(function(){
+  if(window._notoReady) return;
+  var NOTO='https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji/png/128/emoji_u';
+  function notoCode(s){var pts=[];for(var ch of s){var c=ch.codePointAt(0);if(c===0xFE0F)continue;var h=c.toString(16);while(h.length<4)h='0'+h;pts.push(h);}return pts.join('_');}
+  var seg=(window.Intl&&Intl.Segmenter)?new Intl.Segmenter('en',{granularity:'grapheme'}):null;
+  var EMRE=/[\u00a9\u00ae\u203c\u2049\u2122\u2139\u2190-\u21ff\u2300-\u27bf\u2934\u2935\u2b00-\u2bff\u3030\u303d\u3297\u3299\ufe0f\u20e3]|[\ud800-\udbff][\udc00-\udfff]/;
+  function graphemes(str){ if(seg){var o=[];for(var s of seg.segment(str))o.push(s.segment);return o;} return Array.from(str); }
+  function isEm(g){ for(var ch of g){var c=ch.codePointAt(0); if(c>=0x1F000||c===0x20E3||(c>=0x2600&&c<=0x27BF)||(c>=0x2B00&&c<=0x2BFF)||(c>=0x2300&&c<=0x23FF)||(c>=0x2190&&c<=0x21FF)||c===0x2122||c===0x2139||c===0x00A9||c===0x00AE)return true;} return false; }
+  function mk(g){ var img=document.createElement('img'); img.src=NOTO+notoCode(g)+'.png'; img.alt=g; img.setAttribute('data-nemoji','1'); img.style.cssText='display:inline-block;height:1em;width:auto;vertical-align:-0.15em'; img.onerror=function(){var sp=document.createElement('span');sp.setAttribute('data-nemoji','1');sp.textContent=g;if(img.parentNode)img.parentNode.replaceChild(sp,img);}; return img; }
+  var SKIP={SCRIPT:1,STYLE:1,TEXTAREA:1,INPUT:1,SELECT:1,OPTION:1,CODE:1,PRE:1};
+  function notofy(root){ if(!root)return;
+    var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:function(n){ if(!n.nodeValue||!EMRE.test(n.nodeValue))return NodeFilter.FILTER_REJECT; var p=n.parentNode; while(p&&p!==root){ if(SKIP[p.nodeName]||(p.getAttribute&&p.getAttribute('data-nemoji')))return NodeFilter.FILTER_REJECT; p=p.parentNode;} return NodeFilter.FILTER_ACCEPT; }});
+    var nodes=[],n; while(n=w.nextNode())nodes.push(n);
+    nodes.forEach(function(tn){ var parts=graphemes(tn.nodeValue); if(!parts.some(isEm))return; var frag=document.createDocumentFragment(),buf=''; parts.forEach(function(g){ if(isEm(g)){if(buf){frag.appendChild(document.createTextNode(buf));buf='';}frag.appendChild(mk(g));} else buf+=g; }); if(buf)frag.appendChild(document.createTextNode(buf)); if(tn.parentNode)tn.parentNode.replaceChild(frag,tn); });
+  }
+  window._notofy=notofy;
+  var pending=false;
+  function sched(){ if(pending)return; pending=true; requestAnimationFrame(function(){pending=false;['body','nav','mr','tw'].forEach(function(id){var el=document.getElementById(id);if(el)notofy(el);});}); }
+  function init(){ ['body','nav','mr','tw'].forEach(function(id){var el=document.getElementById(id); if(el){notofy(el); try{new MutationObserver(sched).observe(el,{childList:true,subtree:true});}catch(e){}}});
+    try{ new MutationObserver(sched).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+    window._notoReady=true; }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+})();
+</script>
+
 </body>
 </html>

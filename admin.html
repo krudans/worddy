@@ -3737,7 +3737,10 @@ function _renderPackList(){
     +'<span style="min-width:54px;text-align:center">'+(page+1)+' / '+pages+'</span>'
     +'<button onclick="_pwGo(1)" style="border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:4px 11px;cursor:pointer'+(page>=pages-1?';opacity:.35':'')+'">›</button>'
     +'</span>';
-  var head='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;color:#6B7280"><span><b style="color:#111;font-size:13px">'+filt.length.toLocaleString()+'</b>개'+(f?' · 검색결과':'')+'</span>'+pager+'</div>';
+  var D2=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P2=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E2=(window.BWD_EX5||{});
+  var syncedN=0, dictN=0;
+  words.forEach(function(w){ var en=String(w.en||'').toLowerCase().trim(); if(D2[en]||E2[en]||P2[en]){ dictN++; if((w.img&&w.img!=='📝')&&(w.exList&&w.exList.length)) syncedN++; } });
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;color:#6B7280;flex-wrap:wrap;gap:6px"><span><b style="color:#111;font-size:13px">'+filt.length.toLocaleString()+'</b>개'+(f?' · 검색결과':'')+(dictN?' · <span style="color:#16A34A;font-weight:700">✓ 보강 '+syncedN.toLocaleString()+'</span>/<span style="color:#B45309">'+dictN.toLocaleString()+'</span>':'')+'</span>'+pager+'</div>';
   wrap.innerHTML=head+'<div style="display:flex;flex-direction:column;gap:8px">'+(slice.length?slice.map(function(o){return _pwCard(o.w,o.i);}).join(''):'<div style="text-align:center;color:#9CA3AF;padding:30px">검색 결과 없음</div>')+'</div>'+(pages>1?'<div style="display:flex;justify-content:center;margin-top:12px">'+pager+'</div>':'');
 }
 function _pwEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -3745,6 +3748,8 @@ function _pwCard(w,i){
   var en=String(w.en||'').toLowerCase().trim();
   var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(window.BWD_EX5||{});
   var d=D[en], e5=E[en];
+  var inDict=!!(d||e5||P[en]);
+  var synced=!!((w.img&&w.img!=='📝') && (w.exList&&w.exList.length));
   var img=(e5&&e5.img)||w.img||''; if(img==='📝') img='';
   var ph=w.ph||P[en]||'';
   var pos=w.pos||(d&&d.pos)||'';
@@ -3765,6 +3770,7 @@ function _pwCard(w,i){
           +'<span style="font-family:monospace;font-weight:800;font-size:16px;color:#111">'+_pwEsc(w.en||'')+'</span>'
           +(ph?'<span style="font-family:monospace;font-size:12px;color:#9CA3AF">'+_pwEsc(ph)+'</span>':'')
           +(pos?'<span style="font-size:11px;background:#F3E8FF;color:#7C3AED;border-radius:5px;padding:1px 7px;font-weight:700">'+_pwEsc(pos)+'</span>':'')
+          +(inDict?(synced?'<span style="font-size:10px;background:#DCFCE7;color:#16A34A;border-radius:5px;padding:1px 6px;font-weight:700">✓ 보강됨</span>':'<span style="font-size:10px;background:#FEF3C7;color:#B45309;border-radius:5px;padding:1px 6px;font-weight:700">미보강</span>'):'')
         +'</div>'
         +'<div style="font-size:13px;color:#374151;font-weight:600;margin:3px 0 7px">'+_pwEsc(kr)+'</div>'
         +'<div style="display:flex;flex-direction:column;gap:2px">'+exHtml+'</div>'
@@ -4120,42 +4126,73 @@ function editPackWord(packId, idx) {
   const p=packs.find(x=>x.id===packId);
   if(!p||!p.words)return;
   const w=p.words[idx];
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+  const en=String(w.en||'').toLowerCase().trim();
+  const D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(window.BWD_EX5||{});
+  const d=D[en], e5=E[en], inDict=!!(d||e5||P[en]);
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const img=(e5&&e5.img)||(w.img&&w.img!=='📝'?w.img:'')||'';
+  const ph=w.ph||P[en]||'';
+  const pos=w.pos||(d&&d.pos)||'';
+  const kr=w.kr||(d&&d.kr)||'';
+  let exLines='';
+  if(e5&&e5.ex5&&e5.ex5.length){ exLines=e5.ex5.map(s=>(s.en||'')+' | '+(s.kr||'')).join('\n'); }
+  else { const lst=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]); exLines=lst.join('\n'); }
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
     <div class="mt">✏️ 단어 수정</div>
-    <div class="fg"><label>영단어</label><input id="epw-en" value="${w.en.replace(/"/g,'&quot;')}"></div>
-    <div class="fg"><label>뜻</label><input id="epw-kr" value="${w.kr.replace(/"/g,'&quot;')}"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="fg"><label>발음기호</label><input id="epw-ph" value="${(w.ph||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fg"><label>이모지</label><input id="epw-img" value="${(w.img||'📝').replace(/"/g,'&quot;')}"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <input id="epw-img" value="${esc(img)}" maxlength="4" style="width:54px;text-align:center;font-size:26px;padding:6px;border:1px solid #E5E7EB;border-radius:10px">
+      <input id="epw-en" value="${esc(w.en)}" style="flex:1;font-size:18px;font-weight:800;font-family:monospace;padding:8px 12px;border:1px solid #E5E7EB;border-radius:10px">
+      ${inDict?`<button class="btn bg" onclick="_epwFillDict('${packId}',${idx})" style="white-space:nowrap;font-size:12px;padding:8px 12px">📖 사전값</button>`:'<span style="font-size:11px;color:#DC2626;white-space:nowrap;font-weight:700">사전 미수록</span>'}
     </div>
-    <div class="fg"><label>예문 1</label><input id="epw-ex" value="${(w.ex||'').replace(/"/g,'&quot;')}"></div>
-    <div class="fg"><label>예문 2 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="epw-ex2" value="${((w.exList&&w.exList[1])||'').replace(/"/g,'&quot;')}"></div>
-    <div class="fg"><label>예문 3 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="epw-ex3" value="${((w.exList&&w.exList[2])||'').replace(/"/g,'&quot;')}"></div>
-    <div class="fg"><label>암기 팁</label><input id="epw-tip" value="${(w.tip||'').replace(/"/g,'&quot;')}"></div>
+    <div style="font-size:11px;color:#9CA3AF;margin-bottom:12px">${inDict?'기본값은 단어사전(Butterfly Dic)에서 불러온 내용입니다. 「📖 사전값」으로 다시 채울 수 있어요.':'이 단어는 사전에 없어 저장된 값만 표시됩니다.'}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg" style="margin:0 0 8px"><label>발음</label><input id="epw-ph" value="${esc(ph)}"></div>
+      <div class="fg" style="margin:0 0 8px"><label>품사</label><input id="epw-pos" value="${esc(pos)}"></div>
+    </div>
+    <div class="fg" style="margin:0 0 8px"><label>뜻</label><input id="epw-kr" value="${esc(kr)}"></div>
+    <div class="fg" style="margin:0 0 8px"><label>예문 <span style="font-size:10px;color:#9CA3AF">(영문 | 한글 · 줄당 1개 · 최대 5개)</span></label>
+      <textarea id="epw-ex" rows="6" style="width:100%;font-family:monospace;font-size:12px;line-height:1.5;padding:9px;border:1px solid #E5E7EB;border-radius:10px;resize:vertical">${esc(exLines)}</textarea></div>
+    <div class="fg" style="margin:0 0 12px"><label>암기 팁 <span style="font-size:10px;color:#9CA3AF">(선택)</span></label><input id="epw-tip" value="${esc(w.tip||'')}"></div>
     <div style="display:flex;gap:8px">
-      <button class="btn bb" onclick="saveEditPackWord('${packId}',${idx})" style="flex:1">저장</button>
-      <button class="btn bgr" onclick="showPackWords('${packId}')">취소</button>
+      <button class="btn bb" onclick="saveEditPackWord('${packId}',${idx})" style="flex:1">💾 저장 (Firebase 반영)</button>
+      <button class="btn bgr" onclick="showPackWords('${packId}');showPackWordTab('list')">취소</button>
     </div>
   </div></div>`;
 }
-
+function _epwFillDict(packId, idx){
+  const packs=window._adminPacks||[]; const p=packs.find(x=>x.id===packId); if(!p||!p.words)return;
+  const w=p.words[idx]; const en=String(w.en||'').toLowerCase().trim();
+  const D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(window.BWD_EX5||{});
+  const d=D[en], e5=E[en];
+  if(e5&&e5.img) document.getElementById('epw-img').value=e5.img;
+  if(P[en]) document.getElementById('epw-ph').value=P[en];
+  if(d&&d.pos) document.getElementById('epw-pos').value=d.pos;
+  if(d&&d.kr) document.getElementById('epw-kr').value=d.kr;
+  if(e5&&e5.ex5&&e5.ex5.length) document.getElementById('epw-ex').value=e5.ex5.map(s=>(s.en||'')+' | '+(s.kr||'')).join('\n');
+  toast('📖 사전 값을 불러왔습니다','ok');
+}
 async function saveEditPackWord(packId, idx) {
   const _packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   const p=_packs.find(x=>x.id===packId);
   if(!p||!p.words)return;
+  const lines=(document.getElementById('epw-ex').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const exList=lines.slice(0,5).map(l=>l.split('|')[0].trim()).filter(Boolean);
+  const kr=document.getElementById('epw-kr').value.trim();
   p.words[idx]={
     en:document.getElementById('epw-en').value.trim(),
-    kr:document.getElementById('epw-kr').value.trim(),
+    kr:kr,
     ph:document.getElementById('epw-ph').value.trim(),
-    ex:document.getElementById('epw-ex').value.trim(),exList:[document.getElementById('epw-ex').value.trim(),document.getElementById('epw-ex2').value.trim(),document.getElementById('epw-ex3').value.trim()].filter(Boolean),
+    pos:document.getElementById('epw-pos').value.trim(),
+    ex:exList[0]||'',
+    exList:exList,
     img:document.getElementById('epw-img').value.trim()||'📝',
     tip:document.getElementById('epw-tip').value.trim(),
-    meanings:[document.getElementById('epw-kr').value.trim()]
+    meanings:kr.split(';').map(s=>s.trim()).filter(Boolean).slice(0,6)
   };
-  toast('✅ 수정 완료','ok');
-  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
-  showPackWords(packId);
+  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); toast('✅ 저장됨 · Firebase 반영','ok'); } catch(e){ toast('저장 실패: '+e.message,'err'); }
+  showPackWords(packId); showPackWordTab('list');
 }
+
 
 async function removeInternalDups(packId) {
   const _packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);

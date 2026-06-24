@@ -325,7 +325,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>이용 분석</div>
       <div class="ss">콘텐츠</div>
       <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어 관리</div>
-      <div class="ni" onclick="T('dict')" id="ni-dict"><span class="ic">📖</span>단어사전 DIC</div>
+      <div class="ni" onclick="T('dict')" id="ni-dict"><span class="ic">📖</span>Butterfly Dic</div>
       <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
       <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
       <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
@@ -2407,7 +2407,7 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'ButterFly Word DIC',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
   ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
 }
@@ -3038,6 +3038,7 @@ async function rPK(){
         <button class="btn bg" onclick="showAddPack()">➕ 새 팩</button>
         <button class="btn bp" onclick="showManageCats()">📂 카테고리 관리</button>
         <button class="btn" onclick="activateAllPacks()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #BBF7D0;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">✅ 전체 활성화</button>
+        <button class="btn" onclick="showEnrichDict()" style="background:#FEF3C7;color:#B45309;border:1.5px solid #FDE68A;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">🦋 Butterfly Word Dic 교체</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
@@ -4215,6 +4216,152 @@ function doImportPack() {
   reader.readAsText(file,'UTF-8');
 }
 
+// ════════════════ 사전(dict/pron/ex5)으로 팩 단어 보강 ════════════════
+function _enrichWord(w, opts){
+  var en=String(w&&w.en||'').toLowerCase().trim();
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(typeof BWD_EX5!=='undefined')?BWD_EX5:(window.BWD_EX5||{});
+  var d=D[en], pr=P[en], e5=E[en];
+  if(!d&&!pr&&!e5) return null; // 사전 미수록 → 원본 유지
+  var nw=Object.assign({},w), changed=false;
+  if(opts.kr&&d&&d.kr){ if(nw.kr!==d.kr){nw.kr=d.kr;changed=true;} nw.meanings=d.kr.split(/[;]/).map(function(s){return s.trim();}).filter(Boolean).slice(0,6); }
+  if(opts.pos&&d&&d.pos&&nw.pos!==d.pos){ nw.pos=d.pos; changed=true; }
+  if(opts.ph&&pr&&nw.ph!==pr){ nw.ph=pr; changed=true; }
+  if(opts.img&&e5&&e5.img&&nw.img!==e5.img){ nw.img=e5.img; changed=true; }
+  if(opts.ex){
+    if(e5&&e5.ex5&&e5.ex5.length){ var lst=e5.ex5.map(function(s){return s.en;}); nw.exList=lst; nw.ex=lst[0]; changed=true; }
+    else if(d&&d.ex&&nw.ex!==d.ex){ nw.ex=d.ex; changed=true; }
+  }
+  return changed?nw:null;
+}
+function _isValidDictWord(en){ return !!(en && en.length>=1 && en.length<=32 && !/\s/.test(en) && /[a-z]/.test(en)); }
+function _enrichPack(pack, opts){
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(typeof BWD_EX5!=='undefined')?BWD_EX5:(window.BWD_EX5||{});
+  var dW=_bwdDict();
+  var words=pack.words||[], changed=0, samples=[], missing=[];
+  var newWords=words.map(function(w){
+    var en=String(w&&w.en||'').toLowerCase().trim();
+    var inDict=D[en]||dW[en]||P[en]||E[en];
+    if(!inDict){ if(_isValidDictWord(en)) missing.push(w); return w; } // 미수록 단어 수집(추가 대상)
+    var nw=_enrichWord(w,opts);
+    if(nw){ changed++; if(samples.length<6) samples.push((w.img||'·')+'→'+(nw.img||'·')+' '+w.en); return nw; }
+    return w;
+  });
+  return {newWords:newWords, total:words.length, changed:changed, samples:samples, missing:missing};
+}
+function _enrichOpts(){
+  return {kr:document.getElementById('en-kr')&&document.getElementById('en-kr').checked,
+    pos:document.getElementById('en-pos')&&document.getElementById('en-pos').checked,
+    ph:document.getElementById('en-ph')&&document.getElementById('en-ph').checked,
+    img:document.getElementById('en-img')&&document.getElementById('en-img').checked,
+    ex:document.getElementById('en-ex')&&document.getElementById('en-ex').checked};
+}
+function _enrichScope(){
+  var sel=document.getElementById('en-scope'); var v=sel?sel.value:'__all__';
+  var packs=window._adminPacks||[];
+  return v==='__all__'?packs:packs.filter(function(p){return p.id===v;});
+}
+function showEnrichDict(){
+  var packs=window._adminPacks||[];
+  var hasDict=(typeof BWD_DICT!=='undefined'), hasPron=(typeof BWD_PRON!=='undefined'), hasEx5=(typeof BWD_EX5!=='undefined'||window.BWD_EX5);
+  var opt='<option value="__all__">▶ 전체 팩 ('+packs.length+')</option>'+packs.map(function(p){return '<option value="'+p.id+'">'+esc(p.name||p.id)+' ('+((p.words||[]).length)+')</option>';}).join('');
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:580px">'
+    +'<div class="mt">🦋 Butterfly Word Dic 단어로 교체</div>'
+    +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#92400E;line-height:1.6">Butterfly Word Dic(dict·발음·예문)에 <b>있는 단어는 Dic 데이터로 교체</b>. Dic에 <b>없는 단어는 수집해 Dic 추가용으로 내보냅니다</b>(아래 "Dic 미수록 내보내기"). 적용 전 현재 데이터 백업이 자동 다운로드됩니다.<br><span style="color:#B45309">Dic 로드: dict '+(hasDict?'✅':'❌')+' / 발음 '+(hasPron?'✅':'❌')+' / 예문 '+(hasEx5?'✅':'❌')+'</span></div>'
+    +'<div class="fg"><label>대상 (먼저 한 팩으로 미리보기 권장)</label><select id="en-scope" style="width:100%;padding:8px;border-radius:8px;border:1px solid #E5E7EB">'+opt+'</select></div>'
+    +'<div class="fg"><label>교체할 필드</label><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:13px;padding:4px 0">'
+    +'<label><input type="checkbox" id="en-kr" checked> 뜻(kr)</label>'
+    +'<label><input type="checkbox" id="en-pos" checked> 품사</label>'
+    +'<label><input type="checkbox" id="en-ph" checked> 발음</label>'
+    +'<label><input type="checkbox" id="en-ex" checked> 예문(5개)</label>'
+    +'<label><input type="checkbox" id="en-img" checked> 이모지</label>'
+    +'</div></div>'
+    +'<div style="font-size:12px;color:#6B7280;margin:2px 0 8px"><label><input type="checkbox" id="en-wordsonly" checked> Dic 추가 내보내기는 단어만 (공백 있는 구문·문장 제외)</label></div>'
+    +'<div style="display:flex;gap:8px;margin-top:6px">'
+    +'<button class="btn bg" onclick="runEnrichPreview()" style="flex:1">🔍 미리보기</button>'
+    +'<button class="btn" onclick="runEnrichMissing()" style="flex:1;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA;border-radius:10px;padding:7px 14px;font-weight:700;cursor:pointer">📋 미수록 단어</button>'
+    +'<button class="btn bb" onclick="runEnrichCommit()" style="flex:1">💾 백업+적용</button>'
+    +'<button class="btn bgr" onclick="cm()">닫기</button>'
+    +'</div>'
+    +'<div id="en-result" style="margin-top:12px;font-size:13px"></div>'
+    +'</div></div>';
+}
+function runEnrichPreview(){
+  var opts=_enrichOpts(), scope=_enrichScope(), out=[], totChg=0, totW=0, missSet={};
+  scope.forEach(function(p){ var r=_enrichPack(p,opts); totChg+=r.changed; totW+=r.total;
+    r.missing.forEach(function(w){ missSet[String(w.en).toLowerCase().trim()]=1; });
+    out.push('<div style="padding:6px 0;border-bottom:1px solid #F3F4F6"><b>'+esc(p.name||p.id)+'</b>: <span style="color:#1E5FA5;font-weight:700">'+r.changed+'</span>/'+r.total+' 변경'+(r.missing.length?' <span style="color:#B45309">·신규 '+r.missing.length+'</span>':'')+(r.samples.length?' <span style="color:#9CA3AF;font-size:11px">('+r.samples.slice(0,4).map(esc).join(', ')+')</span>':'')+'</div>'); });
+  var missN=Object.keys(missSet).length;
+  document.getElementById('en-result').innerHTML='<div style="background:#EFF6FF;border-radius:8px;padding:10px;margin-bottom:8px;font-weight:700;color:#1E5FA5">미리보기: '+totChg.toLocaleString()+' / '+totW.toLocaleString()+' 단어 교체 예정'+(missN?' · 사전 신규등록 '+missN.toLocaleString()+'개':'')+' <span style="font-weight:400;color:#6B7280">(쓰기 안 함)</span></div><div style="max-height:240px;overflow:auto">'+out.join('')+'</div>';
+}
+function runEnrichMissing(){
+  var scope=_enrichScope();
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E=(typeof BWD_EX5!=='undefined')?BWD_EX5:(window.BWD_EX5||{});
+  var woEl=document.getElementById('en-wordsonly'); var wordsOnly=woEl?woEl.checked:true;
+  var seen=Object.create(null), full=[], out=[], totMiss=0, totW=0, skippedPhrase=0;
+  scope.forEach(function(p){
+    var miss=0, words=p.words||[];
+    words.forEach(function(w){
+      var en=String(w&&w.en||'').toLowerCase().trim();
+      if(!en||D[en]||P[en]||E[en]) return; // 이미 Dic에 있음
+      miss++;
+      if(wordsOnly && /\s/.test(en)){ skippedPhrase++; return; } // 구문 제외
+      if(seen[en]) return; seen[en]=1;
+      full.push({en:w.en, kr:w.kr||'', ex:w.ex||'', pos:w.pos||'', ph:w.ph||'', img:w.img||'', from:p.id});
+    });
+    totMiss+=miss; totW+=words.length;
+    out.push('<div style="padding:6px 0;border-bottom:1px solid #F3F4F6"><b>'+esc(p.name||p.id)+'</b>: 미수록 <span style="color:#DC2626;font-weight:700">'+miss+'</span>/'+words.length+'</div>');
+  });
+  window._enMissDump=full;
+  document.getElementById('en-result').innerHTML='<div style="background:#FEF2F2;border-radius:8px;padding:10px;margin-bottom:8px;font-weight:700;color:#DC2626">Dic 미수록: 총 '+totMiss.toLocaleString()+' / '+totW.toLocaleString()+'  →  Dic 추가용 고유 단어 <b>'+full.length.toLocaleString()+'</b>개'+(skippedPhrase?' <span style="font-size:11px;color:#9CA3AF">(구문 '+skippedPhrase.toLocaleString()+'개 제외)</span>':'')+'</div><div style="max-height:200px;overflow:auto">'+out.join('')+'</div>'+(full.length?'<button class="btn bg" style="margin-top:8px;width:100%" onclick="_downloadJSON(window._enMissDump,\'dic-missing-\'+Date.now()+\'.json\')">📤 Dic 추가용 내보내기 ('+full.length.toLocaleString()+'개, 뜻·발음·예문·이모지 포함)</button>':'');
+}
+function _downloadJSON(obj, name){
+  var blob=new Blob([JSON.stringify(obj)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(function(){a.remove();URL.revokeObjectURL(a.href);},1500);
+}
+async function runEnrichCommit(){
+  var opts=_enrichOpts(), scope=_enrichScope();
+  if(!scope.length){ toast('대상 없음','err'); return; }
+  var results=scope.map(function(p){ return {p:p, r:_enrichPack(p,opts)}; });
+  var plans=results.filter(function(x){return x.r.changed>0;});
+  var totChg=plans.reduce(function(a,x){return a+x.r.changed;},0);
+  // 미수록(신규등록) 단어 — 전체 scope에서 중복 제거
+  var allMissing={};
+  results.forEach(function(x){ x.r.missing.forEach(function(w){ var en=String(w.en).toLowerCase().trim(); if(!allMissing[en]) allMissing[en]=w; }); });
+  var missKeys=Object.keys(allMissing), missN=missKeys.length;
+  if(!totChg && !missN){ toast('변경/추가할 것 없음','err'); return; }
+  if(!confirm('단어 교체 '+totChg.toLocaleString()+'개 ('+plans.length+'팩)'+(missN?' + 사전 신규등록 '+missN.toLocaleString()+'개':'')+'\n적용 전 백업이 다운로드됩니다. 계속할까요?')) return;
+  if(plans.length) _downloadJSON(plans.map(function(x){return {id:x.p.id, name:x.p.name, words:x.p.words};}), 'packs-backup-'+Date.now()+'.json');
+  var res=document.getElementById('en-result'); res.innerHTML='<div style="color:#1E5FA5">⏳ 적용 중...</div>';
+  var done=0, fail=0, skipped=[];
+  for(var i=0;i<plans.length;i++){
+    var x=plans[i];
+    var json=JSON.stringify(x.r.newWords);
+    if(json.length>950000){ skipped.push(esc(x.p.name||x.p.id)+' ('+(json.length/1024|0)+'KB)'); continue; }
+    try{
+      await db.collection('packs').doc(x.p.id).update({words:x.r.newWords, updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+      x.p.words=x.r.newWords; done++;
+      res.innerHTML='<div style="color:#1E5FA5">⏳ '+done+'/'+plans.length+' 팩 적용 중...</div>';
+    }catch(e){ fail++; console.error('enrich write fail', x.p.id, e); }
+  }
+  // 미수록 단어를 Butterfly Dic 작업본에 추가 (팩 데이터 기반) — 내보내기 후 업로드 필요
+  var added=0;
+  if(missN){
+    var dW=_bwdDict();
+    missKeys.forEach(function(en){ var w=allMissing[en];
+      if(!dW[en]){ dW[en]={kr:(w.kr||''), ex:(w.ex||''), pos:(w.pos||'')}; added++; }
+      if(w.img && w.img!=='📝'){ if(!window.BWD_EX5) window.BWD_EX5={};
+        if(!window.BWD_EX5[en]){ var src=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]); window.BWD_EX5[en]={img:w.img, ex5:src.slice(0,5).map(function(s,i){return {t:i+1,en:String(s||''),kr:''};})}; } }
+    });
+  }
+  res.innerHTML='<div style="background:#F0FDF4;border-radius:8px;padding:10px;font-weight:700;color:#16A34A">✅ 완료: '+done+'팩 / '+totChg.toLocaleString()+'단어 교체'
+    +(added?'<div style="color:#B45309;margin-top:4px">📖 사전 신규등록 '+added.toLocaleString()+'개 — Butterfly Dic에서 <b>bwd-dict.js·bwd-ex5.js 내보내기</b> 후 js/에 업로드해야 반영됩니다</div>':'')
+    +(fail?'<div style="color:#DC2626">⚠️ 쓰기 실패 '+fail+'팩 (콘솔 확인)</div>':'')
+    +(skipped.length?'<div style="color:#B45309;font-size:12px;margin-top:4px">⚠️ 크기 초과로 건너뜀('+skipped.length+'): '+skipped.join(', ')+'</div>':'')
+    +'</div>';
+  toast('보강 완료: '+done+'팩 / '+totChg+'단어'+(added?' · 사전 +'+added:''),'ok');
+}
+
 // ── 레벨 관리 ──
 async function rLV(){
   const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🐌',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🪺',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'🫧',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#1565C0'},{id:'big',n:'큰 나비',e:'🌸',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'나비의 신',e:'🦚',desc:'God',basis:"GRE + Barron's 3500",c:'#B71C1C'}];
@@ -5194,7 +5341,7 @@ function rDICT(){
   var dcN=Object.keys(dict).length;
   mi.innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
-      '<h2 style="font-size:22px;font-weight:900">📖 ButterFly Word Dictionary</h2>'+
+      '<h2 style="font-size:22px;font-weight:900">📖 Butterfly Dic</h2>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
       '<button class="btn bg" onclick="bwdExport()">📥 bwd-dict.js 내보내기</button>'+
       '<button class="btn bg" onclick="bwdExportEx5()" style="background:#16A34A">🎨 bwd-ex5.js 내보내기</button>'+
@@ -5231,22 +5378,69 @@ function rDICT(){
 function bwdLookup(){
   var el=document.getElementById('dic-res'); if(!el)return;
   var q=(document.getElementById('dic-q').value||'').trim().toLowerCase();
+  window.__dicQ=q;
   if(!q){ el.innerHTML=''; return; }
   _bwdEnsureSet();
-  var d=_bwdDict(), ph=_bwdPron(q), entry=d[q], status,color,bg;
-  if(entry){status='검수됨 (뜻+예문)';color='#065F46';bg='#D1FAE5';}
+  el.innerHTML=_bwdLookupView(q,false);
+}
+function _bwdHesc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _bwdLookupView(q, edit){
+  var d=_bwdDict(), ph=_bwdPron(q), entry=d[q];
+  var E=window.BWD_EX5||{}, e5=E[q];
+  var inWL=window.__bwdSet&&window.__bwdSet.has(q);
+  var status,color,bg;
+  if(entry){status='검수됨';color='#065F46';bg='#D1FAE5';}
   else if(ph){status='발음만 있음';color='#1E40AF';bg='#DBEAFE';}
-  else if(window.__bwdSet&&window.__bwdSet.has(q)){status='추천 목록에만';color='#6B7280';bg='#F3F4F6';}
+  else if(inWL){status='추천 목록에만';color='#6B7280';bg='#F3F4F6';}
   else {status='미수록';color='#991B1B';bg='#FEE2E2';}
-  var html='<div style="border:1px solid #E5E7EB;border-radius:10px;padding:14px">';
-  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><strong style="font-family:monospace;font-size:18px">'+q+'</strong><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;color:'+color+';background:'+bg+'">'+status+'</span></div>';
-  html+='<div style="font-size:13px;line-height:1.9"><div>발음: <span style="font-family:monospace;color:#374151">'+(ph||'-')+'</span></div>';
-  html+='<div>뜻: '+((entry&&entry.kr)?entry.kr:'<span style="color:#D1D5DB">없음</span>')+'</div>';
-  html+='<div>예문: '+((entry&&entry.ex)?String(entry.ex).replace(/</g,'&lt;'):'<span style="color:#D1D5DB">없음</span>')+'</div></div>';
-  var sg=_bwdSearch(q,8).filter(function(x){return x!==q;});
-  if(sg.length){ html+='<div style="margin-top:10px;font-size:11px;color:#9CA3AF">관련 단어: '+sg.map(function(x){return '<a onclick="document.getElementById(\'dic-q\').value=\''+x+'\';bwdLookup()" style="cursor:pointer;color:#1E5FA5;text-decoration:underline;margin-right:8px">'+x+'</a>';}).join('')+'</div>'; }
-  html+='</div>';
-  el.innerHTML=html;
+  var img=(e5&&e5.img)||'', kr=(entry&&entry.kr)||'', pos=(entry&&entry.pos)||'';
+  var exArr=(e5&&e5.ex5&&e5.ex5.length)?e5.ex5:null;
+  if(!edit){
+    var html='<div style="border:1px solid #E5E7EB;border-radius:10px;padding:14px">';
+    html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="font-size:24px">'+(img||'·')+'</span><strong style="font-family:monospace;font-size:18px">'+_bwdHesc(q)+'</strong>'
+      +'<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;color:'+color+';background:'+bg+'">'+status+'</span>'
+      +'<button class="btn bg" style="margin-left:auto;font-size:12px;padding:5px 12px" onclick="bwdLookupEdit()">✏️ 수정</button></div>';
+    html+='<div style="font-size:13px;line-height:1.9">';
+    html+='<div>발음: <span style="font-family:monospace;color:#374151">'+(ph||'-')+'</span></div>';
+    html+='<div>품사: '+(pos?_bwdHesc(pos):'<span style="color:#D1D5DB">없음</span>')+'</div>';
+    html+='<div>뜻: '+(kr?_bwdHesc(kr):'<span style="color:#D1D5DB">없음</span>')+'</div>';
+    if(exArr){ html+='<div style="margin-top:4px">예문(5):</div><ol style="margin:4px 0 0 18px;padding:0;color:#374151">'+exArr.map(function(s){return '<li style="margin-bottom:2px">'+_bwdHesc(s.en)+(s.kr?' <span style="color:#9CA3AF">('+_bwdHesc(s.kr)+')</span>':'')+'</li>';}).join('')+'</ol>'; }
+    else { html+='<div>예문: '+((entry&&entry.ex)?_bwdHesc(entry.ex):'<span style="color:#D1D5DB">없음</span>')+'</div>'; }
+    html+='</div>';
+    var sg=_bwdSearch(q,8).filter(function(x){return x!==q;});
+    if(sg.length){ html+='<div style="margin-top:10px;font-size:11px;color:#9CA3AF">관련: '+sg.map(function(x){return '<a onclick="document.getElementById(\'dic-q\').value=\''+x+'\';bwdLookup()" style="cursor:pointer;color:#1E5FA5;text-decoration:underline;margin-right:8px">'+x+'</a>';}).join('')+'</div>'; }
+    html+='</div>';
+    return html;
+  }
+  var exLines = exArr ? exArr.map(function(s){return (s.en||'')+' | '+(s.kr||'');}).join('\n') : ((entry&&entry.ex)||'');
+  var f='<div style="border:1px solid #1E5FA5;border-radius:10px;padding:14px;background:#F8FAFC">';
+  f+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><strong style="font-family:monospace;font-size:16px">'+_bwdHesc(q)+'</strong> <span style="font-size:11px;color:#6B7280">수정 모드 · 발음: '+(ph||'-')+'</span></div>';
+  f+='<div style="display:grid;grid-template-columns:84px 1fr;gap:8px;align-items:center;font-size:13px">';
+  f+='<label>이모지</label><input id="ed-img" value="'+_bwdHesc(img)+'" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px;font-size:16px">';
+  f+='<label>품사</label><input id="ed-pos" value="'+_bwdHesc(pos)+'" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px">';
+  f+='<label>뜻</label><input id="ed-kr" value="'+_bwdHesc(kr)+'" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px">';
+  f+='<label style="align-self:start;padding-top:6px">예문<br><span style="font-size:10px;color:#9CA3AF">영문 | 한글<br>(줄당 1개, 최대5)</span></label><textarea id="ed-ex" rows="5" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px;font-family:monospace;font-size:12px;resize:vertical">'+_bwdHesc(exLines)+'</textarea>';
+  f+='</div>';
+  f+='<div style="display:flex;gap:8px;margin-top:10px"><button class="btn bb" onclick="bwdLookupSave()">💾 적용</button><button class="btn bgr" onclick="bwdLookup()">취소</button></div>';
+  f+='<div style="font-size:11px;color:#B45309;margin-top:6px">적용 후 <b>내보내기</b>(bwd-dict.js·bwd-ex5.js)해서 js/ 폴더에 올려야 앱에 반영됩니다.</div>';
+  f+='</div>';
+  return f;
+}
+function bwdLookupEdit(){ var el=document.getElementById('dic-res'); if(el&&window.__dicQ) el.innerHTML=_bwdLookupView(window.__dicQ,true); }
+function bwdLookupSave(){
+  var q=window.__dicQ; if(!q) return;
+  var img=(document.getElementById('ed-img').value||'').trim();
+  var pos=(document.getElementById('ed-pos').value||'').trim();
+  var kr=(document.getElementById('ed-kr').value||'').trim();
+  var exRaw=(document.getElementById('ed-ex').value||'').trim();
+  var lines=exRaw.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+  var ex5=lines.slice(0,5).map(function(s,i){ var p=s.split('|'); return {t:i+1, en:(p[0]||'').trim(), kr:(p[1]||'').trim()}; });
+  var firstEx=ex5.length?ex5[0].en:'';
+  var d=_bwdDict(); d[q]={kr:kr, ex:firstEx, pos:pos};
+  if(!window.BWD_EX5) window.BWD_EX5={};
+  if(img || ex5.length){ var prev=window.BWD_EX5[q]||{}; window.BWD_EX5[q]={img:img||prev.img||'', ex5: ex5.length?ex5:(prev.ex5||[])}; }
+  toast('"'+q+'" 적용됨 · 내보내기(bwd-dict.js·bwd-ex5.js) 후 업로드해야 앱 반영','ok');
+  var el=document.getElementById('dic-res'); if(el) el.innerHTML=_bwdLookupView(q,false);
 }
 
 function bwdRenderTable(filter){

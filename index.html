@@ -5709,7 +5709,7 @@ function _commitAndLeave(){
   try{ if(wasGame){ if(typeof savePartialGameScore==='function') savePartialGameScore(); if(typeof _accrueGameTime==='function') _accrueGameTime(); } }catch(e){}
   try{ if(typeof _endStudySession==='function') _endStudySession(); }catch(e){}
   try{ if(typeof _LT!=='undefined') _LT.stop(); }catch(e){}
-  window._studyActive=false; window._autoActive=false; window._spkActive=false; window._sdActive=false; window._autoLocked=false;
+  window._studyActive=false; window._autoActive=false; window._spkActive=false; window._sdActive=false; window._lsActive=false; window._autoLocked=false;
   try{ if(typeof S!=='undefined'){ S._sessTs=0; S._gameStartTs=null; S._gameRunning=false; if(wasGame) S.gDone=true; } }catch(e){}
   try{ var sc=document.getElementById('sess-clock-bar'); if(sc) sc.style.display='none'; }catch(e){}
   try{ var ov=document.getElementById('auto-lock-overlay'); if(ov) ov.remove(); }catch(e){}
@@ -9521,179 +9521,157 @@ function startMode(type) {
   else toast('준비 중이에요');
 }
 
-// ── 🎧 듣기 학습 모드 (문장/단어 듣고 뜻 떠올리기) ──
+// ── 🎧 듣기 학습 모드 (소리 듣고 뜻 떠올리기) — 다른 학습탭과 동일 틀 ──
 function showListenMode() {
-  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
-  if(!words || !words.length){ toast('현재 단어장에 단어가 없어요!'); return; }
-  const mr = document.getElementById('mr'); if(!mr) return;
+  const words0 = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!words0 || !words0.length){ toast('단어가 없어요!'); return; }
+  const mr=document.getElementById('mr');if(!mr)return;
 
-  // 설정 복원 (전역 + S 영속)
-  if(window._lsTarget==null) window._lsTarget = (S._lsTarget!=null ? S._lsTarget : 'all'); // all|word|sentence
-  if(window._lsMeanN==null)  window._lsMeanN  = (S._lsMeanN!=null  ? S._lsMeanN  : 0);     // 0=전체, 1/2/3=뜻 개수
-  window._lsWords = words;
-  window._lsIdx = 0;
-  window._lsReveal = false;
-  window._lsLogged = {};
+  if(window._lsSort==null)  window._lsSort=(S._lsSort!=null?S._lsSort:'default');
+  if(window._lsRange==null) window._lsRange=(S._lsRange!=null?S._lsRange:-1);
+  if(window._lsCount==null) window._lsCount=(S._lsCount!=null?S._lsCount:9999);
+  if(window._lsRate==null)  window._lsRate=(S._lsRate!=null?S._lsRate:0.8);
+  if(window._lsTarget==null) window._lsTarget=(S._lsTarget!=null?S._lsTarget:'all'); // all|word|sentence
+  if(window._lsMeanN==null)  window._lsMeanN=(S._lsMeanN!=null?S._lsMeanN:0);        // 0=전체, 1/2/3=뜻 개수
 
-  // 현재 단어의 예문/뜻/이모지 추출
-  window._lsData = function(){
-    const w = window._lsWords[window._lsIdx] || {};
-    const ex = (typeof _ex5List==='function') ? _ex5List(w.en) : null;
-    const ex0 = (ex && ex[0]) ? ex[0] : null;
-    let ms = (w.meanings && w.meanings.length) ? w.meanings.slice()
-           : (w.kr ? String(w.kr).split(';').map(function(s){return s.trim();}).filter(Boolean) : []);
-    const n = parseInt(window._lsMeanN||0);
-    if(n>0) ms = ms.slice(0, n);
-    const img = (((window.BWD_EX5||{})[String(w.en||'').toLowerCase()]||{}).img) || w.img || '';
-    return {w:w, ex0:ex0, ms:ms, img:img};
+  window._lsBuild=function(){
+    var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
+    var r=window._lsRange;
+    var arr=(r===0||r===1||r===2)?base.filter(function(w){return (getMark(w.en)||0)===r;}):base.slice();
+    if(arr.length===0) arr=base.slice();
+    var so=window._lsSort;
+    if(so==='alpha') arr.sort(function(a,b){return a.en.localeCompare(b.en);});
+    else if(so==='kr') arr.sort(function(a,b){return (a.kr||'').localeCompare(b.kr||'');});
+    else if(so==='shuffle') arr=shuf(arr);
+    else if(so==='mark') arr.sort(function(a,b){return (getMark(b.en)||0)-(getMark(a.en)||0);});
+    var c=window._lsCount; if(c&&c>0&&c<arr.length) arr=arr.slice(0,c);
+    try{S._lsSort=window._lsSort;S._lsRange=window._lsRange;S._lsCount=window._lsCount;if(typeof sv==='function')sv();}catch(e){}
+    window._lsWords=arr;
   };
+  window._lsIdx=0; window._lsReveal=false; window._lsLogged={}; window._lsActive=true;
+  window._lsBuild();
+  window._studyActive=true; if(typeof _startStudySession==='function') _startStudySession(); else if(typeof _LT!=='undefined') _LT.start();
 
-  // TTS 재생 (듣기 대상에 따라 단어/문장/순차)
-  window._lsPlay = function(slow){
+  window._lsData=function(){
+    var w=window._lsWords[window._lsIdx]||{};
+    var ex=(typeof _ex5List==='function')?_ex5List(w.en):null;
+    var ex0=(ex&&ex[0])?ex[0]:null;
+    var ms=(w.meanings&&w.meanings.length)?w.meanings.slice():(w.kr?String(w.kr).split(';').map(function(s){return s.trim();}).filter(Boolean):[]);
+    var n=parseInt(window._lsMeanN||0); if(n>0) ms=ms.slice(0,n);
+    var img=(((window.BWD_EX5||{})[String(w.en||'').toLowerCase()]||{}).img)||w.img||'';
+    return {w:w,ex0:ex0,ms:ms,img:img};
+  };
+  window._lsPlay=function(){
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
-    const d = window._lsData(); const w = d.w; if(!w || !w.en) return;
-    const tgt = window._lsTarget||'all';
-    const wRate = slow?0.6:0.95, sRate = slow?0.65:0.9;
-    const sent = d.ex0 ? d.ex0.en : null;
-    if(tgt==='word'){ speak(w.en,'en',wRate); }
-    else if(tgt==='sentence'){ speak(sent||w.en,'en',sRate); }
-    else { // all: 단어 → (잠시 후) 문장
-      speak(w.en,'en',wRate);
-      if(sent){ setTimeout(function(){ try{ speak(sent,'en',sRate); }catch(e){} }, slow?1700:1150); }
-    }
+    var d=window._lsData(), w=d.w; if(!w||!w.en) return;
+    var tgt=window._lsTarget||'all', rate=window._lsRate||0.8;
+    var sent=d.ex0?d.ex0.en:null;
+    if(tgt==='word'){ speak(w.en,'en',rate); }
+    else if(tgt==='sentence'){ speak(sent||w.en,'en',rate); }
+    else { speak(w.en,'en',rate); if(sent){ setTimeout(function(){ try{ speak(sent,'en',rate); }catch(e){} }, 1150); } }
   };
-
-  window._lsRevealNow = function(){
-    window._lsReveal = true;
-    try{ const en=(window._lsWords[window._lsIdx]||{}).en;
-      if(en && !window._lsLogged[en]){ window._lsLogged[en]=1; if(typeof logStudy==='function') logStudy('words', en); if(typeof _seenW==='function') _seenW(en); }
+  window._lsRevealNow=function(){
+    window._lsReveal=true;
+    try{ var en=(window._lsWords[window._lsIdx]||{}).en;
+      if(en&&!window._lsLogged[en]){ window._lsLogged[en]=1; if(typeof logStudy==='function') logStudy('words',en); if(typeof _seenW==='function') _seenW(en); }
     }catch(e){}
     window._lsRender();
   };
+  window._lsPrev=function(){ window._lsIdx=Math.max(0,window._lsIdx-1); window._lsReveal=false; window._lsRender(); setTimeout(window._lsPlay,300); };
+  window._lsNext=function(){ window._lsIdx++; window._lsReveal=false; window._lsRender(); if(window._lsIdx<window._lsWords.length) setTimeout(window._lsPlay,300); };
+  window._lsSkip=function(){ window._lsIdx=Math.min(window._lsWords.length-1,window._lsIdx+1); window._lsReveal=false; window._lsRender(); setTimeout(window._lsPlay,300); };
 
-  window._lsNext = function(){
-    window._lsIdx++;
-    window._lsReveal = false;
-    window._lsRender();
-    if(window._lsIdx < window._lsWords.length){ setTimeout(function(){ window._lsPlay(false); }, 350); }
-  };
-
-  window._lsSetTarget = function(v){
-    window._lsTarget=v; S._lsTarget=v; if(typeof sv==='function') sv();
-    window._lsRender(); setTimeout(function(){ window._lsPlay(false); }, 200);
-  };
-  window._lsSetMeanN = function(n){
-    window._lsMeanN=parseInt(n); S._lsMeanN=parseInt(n); if(typeof sv==='function') sv();
-    window._lsRender();
-  };
-  window._lsExit = function(){ try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){} cm(); };
-
-  // 세그먼트 버튼 빌더
-  function _seg(label, items, curVal, fn){
-    let h='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-        +'<span style="font-size:11px;color:rgba(255,255,255,.55);width:62px;flex-shrink:0">'+label+'</span>'
-        +'<div style="display:flex;gap:4px;flex:1;flex-wrap:wrap">';
-    items.forEach(function(it){
-      const on = String(it[1])===String(curVal);
-      h+='<button onclick="'+fn+'('+(typeof it[1]==='string'?("\'"+it[1]+"\'"):it[1])+')" style="padding:5px 12px;border-radius:16px;border:1.5px solid '+(on?'#EC4899':'rgba(255,255,255,.18)')+';background:'+(on?'#EC4899':'rgba(255,255,255,.06)')+';color:#fff;font-size:12px;font-weight:'+(on?700:500)+';cursor:pointer">'+it[0]+'</button>';
-    });
-    h+='</div></div>';
-    return h;
-  }
-
-  window._lsRender = function(){
-    const total = window._lsWords.length;
-    const idx = window._lsIdx;
-
-    // 완료
-    if(idx >= total){
-      mr.innerHTML = '<div style="position:fixed;inset:0;background:#0F172A;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px;text-align:center">'
-        +'<div style="font-size:56px;margin-bottom:16px">🎉</div>'
-        +'<div style="font-size:22px;font-weight:900;margin-bottom:8px">듣기 학습 완료!</div>'
-        +'<div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:24px">'+total+'개 단어를 들었어요</div>'
-        +'<div style="display:flex;gap:8px">'
-        +'<button onclick="window._lsIdx=0;window._lsReveal=false;window._lsRender();setTimeout(function(){window._lsPlay(false)},300)" style="background:#EC4899;border:none;border-radius:20px;padding:12px 24px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">다시 듣기</button>'
-        +'<button onclick="window._lsExit()" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:12px 24px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">닫기</button>'
-        +'</div></div>';
+  const _lsRender=function(){
+    const total=window._lsWords.length;
+    const idx=window._lsIdx;
+    if(idx>=total){
+      mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0F172A;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px">
+        <div style="font-size:52px">🎧</div>
+        <div style="font-size:22px;font-weight:900">듣기 학습 완료!</div>
+        <div style="font-size:14px;color:rgba(255,255,255,.6)">${total}개 단어 완료</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="window._lsIdx=0;window._lsReveal=false;window._lsRender();setTimeout(window._lsPlay,300)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:14px;padding:12px 20px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔄 다시</button>
+          <button onclick="cm()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:14px;padding:12px 20px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">✕ 닫기</button>
+        </div>
+      </div></div>`;
+      addXP&&addXP(xp&&xp('daily_first')||5);
       return;
     }
+    const d=window._lsData();
+    const w=d.w;
+    if(typeof _seenW==='function') _seenW(w.en);
+    const reveal=window._lsReveal;
+    const pct=Math.round(idx/total*100);
 
-    const d = window._lsData();
-    const reveal = window._lsReveal;
+    var _lsRows=
+        gsetRow('정렬',[['추가순',"window._lsSort='default';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='default'],['A-Z',"window._lsSort='alpha';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='alpha'],['가나다',"window._lsSort='kr';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='kr'],['마크순',"window._lsSort='mark';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='mark'],['랜덤',"window._lsSort='shuffle';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='shuffle']])
+      +gsetRow('학습범위',[['전체',"window._lsRange=-1;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===-1],['미암기',"window._lsRange=0;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===0],['암기',"window._lsRange=1;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===1],['헷갈림',"window._lsRange=2;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===2]])
+      +gsetRow('듣기 대상',[['전체',"window._lsTarget='all';S._lsTarget='all';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='all'],['단어',"window._lsTarget='word';S._lsTarget='word';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='word'],['문장',"window._lsTarget='sentence';S._lsTarget='sentence';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='sentence']])
+      +gsetRow('뜻 보기',[['전체',"window._lsMeanN=0;S._lsMeanN=0;sv();window._lsRender()",window._lsMeanN===0],['1개',"window._lsMeanN=1;S._lsMeanN=1;sv();window._lsRender()",window._lsMeanN===1],['2개',"window._lsMeanN=2;S._lsMeanN=2;sv();window._lsRender()",window._lsMeanN===2],['3개',"window._lsMeanN=3;S._lsMeanN=3;sv();window._lsRender()",window._lsMeanN===3]])
+      +gsetRow('보기',_viewItems("window._lsRender()"))
+      +gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
+      +gsetRow('속도',[['느림',"window._lsRate=0.5;S._lsRate=0.5;sv();window._lsRender()",window._lsRate===0.5],['보통',"window._lsRate=0.8;S._lsRate=0.8;sv();window._lsRender()",window._lsRate===0.8],['빠름',"window._lsRate=1.1;S._lsRate=1.1;sv();window._lsRender()",window._lsRate===1.1],['최대',"window._lsRate=1.5;S._lsRate=1.5;sv();window._lsRender()",window._lsRate===1.5]])
+      +'<div style="height:1px;background:rgba(255,255,255,.08);margin:6px 0"></div>'
+      +gsetRow('문제 수',[['10',"window._lsCount=10;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsCount===10],['30',"window._lsCount=30;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsCount===30],['50',"window._lsCount=50;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsCount===50],['전체',"window._lsCount=9999;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsCount===9999]]);
+    var _lsPanel=_lsetBar(_lsRows);
 
-    let body;
+    var card;
     if(!reveal){
-      body = '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center">'
-        +'<div style="font-size:72px;margin-bottom:18px;animation:lsPulse 1.6s ease-in-out infinite">🎧</div>'
-        +'<div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:8px">듣고 떠올려보세요</div>'
-        +'<div style="font-size:13px;color:rgba(255,255,255,.5)">소리를 듣고 단어와 뜻을 머릿속에 떠올린 뒤<br>정답을 확인하세요</div>'
-        +'</div>';
+      card=`<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:36px 28px;width:100%;max-width:340px;text-align:center">
+        <div style="font-size:64px;margin-bottom:14px;animation:lsPulse 1.6s ease-in-out infinite">🎧</div>
+        <div style="font-size:16px;font-weight:800;margin-bottom:6px">소리를 듣고 떠올려보세요</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.45)">단어와 뜻을 머릿속에 떠올린 뒤<br>정답을 확인하세요</div>
+      </div>`;
     } else {
-      const enFz = d.w.en && d.w.en.length>16?'30px':d.w.en && d.w.en.length>10?'38px':'48px';
-      let msHtml='';
-      if(d.ms && d.ms.length){
-        msHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px">'
-          + d.ms.map(function(m){return '<span style="background:rgba(255,255,255,.14);border-radius:14px;padding:4px 12px;font-size:13px;color:rgba(255,255,255,.92)">'+m+'</span>';}).join('')
-          + '</div>';
-      }
-      let exHtml='';
-      if(d.ex0){
-        exHtml = '<div style="margin-top:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;max-width:440px;width:100%">'
-          +'<div style="font-size:15px;color:#fff;line-height:1.5;margin-bottom:6px">'+d.ex0.en+'</div>'
-          +(d.ex0.kr?'<div style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.5">'+d.ex0.kr+'</div>':'')
-          +'</div>';
-      }
-      body = '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;overflow-y:auto">'
-        +(d.img?'<div style="font-size:48px;margin-bottom:8px">'+d.img+'</div>':'')
-        +'<div style="font-size:'+enFz+';font-weight:900;color:#fff;letter-spacing:-1px">'+(d.w.en||'')+'</div>'
-        +(d.w.ph?'<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:6px;font-family:monospace">'+d.w.ph+'</div>':'')
-        +msHtml
-        +exHtml
-        +'</div>';
+      var enFz=w.en&&w.en.length>16?'30px':(w.en&&w.en.length>10?'34px':'40px');
+      var msHtml=(S._vMean!==false&&d.ms&&d.ms.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0 2px">${d.ms.map(function(m){return '<span style="background:rgba(255,255,255,.14);border-radius:14px;padding:4px 12px;font-size:13px">'+m+'</span>';}).join('')}</div>`:'';
+      var exHtml=(S._vSent!==false&&d.ex0)?`<div style="margin-top:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 14px;text-align:left"><div style="font-size:14px;line-height:1.5">${d.ex0.en}</div>${d.ex0.kr?`<div style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.5;margin-top:4px">${d.ex0.kr}</div>`:''}</div>`:'';
+      card=`<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:28px 24px;width:100%;max-width:360px;text-align:center;max-height:46vh;overflow-y:auto">
+        ${(d.img&&S._vEmoji!==false)?`<div style="font-size:46px;margin-bottom:6px">${d.img}</div>`:''}
+        <div style="font-size:${enFz};font-weight:900;color:var(--theme)">${w.en||''}</div>
+        ${(w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;font-family:monospace">${w.ph}</div>`:''}
+        <button onclick="window._lsPlay()" style="margin-top:10px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);border-radius:10px;padding:6px 16px;color:#A78BFA;font-size:12px;font-weight:700;cursor:pointer">🔊 다시듣기</button>
+        ${msHtml}${exHtml}
+      </div>`;
     }
 
-    let controls;
+    var bottom;
     if(!reveal){
-      controls = '<div style="display:flex;gap:8px;padding:12px 16px 20px;flex-shrink:0">'
-        +'<button onclick="window._lsPlay(false)" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 다시듣기</button>'
-        +'<button onclick="window._lsPlay(true)" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🐢 느리게</button>'
-        +'<button onclick="window._lsRevealNow()" style="flex:1.4;background:#EC4899;border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">👁 정답 보기</button>'
-        +'</div>';
+      bottom=`<div style="padding:6px 16px;flex-shrink:0;display:flex;gap:8px">
+        <button onclick="window._lsPrev()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
+        <button onclick="window._lsRevealNow()" style="flex:2;background:var(--theme);border:none;border-radius:14px;padding:13px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">👁 정답 보기</button>
+        <button onclick="window._lsPlay()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:18px;cursor:pointer">🔊</button>
+      </div>`;
     } else {
-      controls = '<div style="display:flex;gap:8px;padding:12px 16px 20px;flex-shrink:0">'
-        +'<button onclick="window._lsPlay(false)" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 다시듣기</button>'
-        +'<button onclick="window._lsNext()" style="flex:1.6;background:#EC4899;border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">'+(idx+1>=total?'완료 →':'다음 →')+'</button>'
-        +'</div>';
+      bottom=`<div style="padding:6px 16px;flex-shrink:0;display:flex;gap:8px">
+        <button onclick="window._lsPrev()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
+        <button onclick="logStudy&&logStudy('words');addXP&&addXP(xp&&xp('speak_word')||5);window._lsNext()" style="flex:2;background:var(--theme);border:none;border-radius:14px;padding:13px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">✅ 다음</button>
+        <button onclick="window._lsSkip()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏭</button>
+      </div>`;
     }
 
-    mr.innerHTML = '<div style="position:fixed;inset:0;background:#0F172A;z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">'
-      // 헤더
-      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex-shrink:0">'
-        +'<div style="font-size:14px;font-weight:900">🎧 듣기 학습 <span style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600">'+(idx+1)+' / '+total+'</span></div>'
-        +'<button onclick="window._lsExit()" style="background:rgba(255,255,255,.1);border:none;border-radius:18px;width:34px;height:34px;color:#fff;font-size:16px;cursor:pointer">✕</button>'
-      +'</div>'
-      // 진행 바
-      +'<div style="height:3px;background:rgba(255,255,255,.1);flex-shrink:0"><div style="height:100%;background:#EC4899;width:'+Math.round((idx+1)/total*100)+'%;transition:width .3s"></div></div>'
-      // 설정 세그먼트
-      +'<div style="padding:12px 16px 4px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.08)">'
-        +_seg('듣기 대상', [['전체','all'],['단어','word'],['문장','sentence']], window._lsTarget, 'window._lsSetTarget')
-        +_seg('뜻 보기', [['전체',0],['1',1],['2',2],['3',3]], window._lsMeanN, 'window._lsSetMeanN')
-      +'</div>'
-      + body
-      + controls
-    +'</div>';
+    mr.innerHTML=`<div class="mbg"><div style="position:fixed;inset:0;background:#0F172A;display:flex;flex-direction:column;color:#fff">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;flex-shrink:0">
+        <div><div style="font-size:13px;color:rgba(255,255,255,.6)">${idx+1} / ${total}</div>${_learnHdrHTML(window._lsWords)}</div>
+        <div style="font-size:12px;color:var(--panel-text3,#9CA3AF)">${pct}%</div>
+        <span style="display:flex;align-items:center;gap:8px">${_LT.barHTML()}${exitBtnHTML()}</span>
+      </div>
+      <div style="padding:0 20px 8px;flex-shrink:0">
+        <div style="background:rgba(255,255,255,.15);border-radius:4px;height:3px"><div style="height:100%;background:var(--theme);border-radius:4px;width:${pct}%"></div></div>
+      </div>
+      <div style="text-align:center;padding:6px;flex-shrink:0">
+        <div style="font-size:12px;color:var(--theme);font-weight:700;background:var(--theme-tint);border-radius:20px;padding:5px 16px;display:inline-block">🎧 소리를 듣고 뜻을 떠올리세요</div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow:hidden">${card}</div>
+      ${bottom}
+      ${_lsPanel}
+    </div></div>`;
   };
 
-  // 펄스 애니메이션 (1회 주입)
-  if(!document.getElementById('ls-pulse-css')){
-    const st=document.createElement('style'); st.id='ls-pulse-css';
-    st.textContent='@keyframes lsPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}';
-    document.head.appendChild(st);
-  }
-
-  window._curRender = window._lsRender;
-  window._lsRender();
-  setTimeout(function(){ window._lsPlay(false); }, 400); // 진입 시 자동 재생
+  window._lsRender=_lsRender;
+  if(!document.getElementById('ls-pulse-css')){ var st=document.createElement('style'); st.id='ls-pulse-css'; st.textContent='@keyframes lsPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}'; document.head.appendChild(st); }
+  _lsRender();
+  setTimeout(window._lsPlay,400);
 }
 
 function showStreamMode() {
@@ -12554,7 +12532,7 @@ function _lsetBar(inner){
     +'<div class="'+(showAll?'':'lsetcollapsed')+'"'+((showAll&&collap)?' style="max-height:42vh;overflow-y:auto"':'')+'>'+inner+'</div>'
   +'</div>';
 }
-function _lsetRerender(){ if(window._autoActive&&typeof window._autoRender==='function')window._autoRender(); else if(typeof window._spkRender==='function'&&window._spkActive)window._spkRender(); else if(typeof window._sdRender==='function'&&window._sdActive)window._sdRender(); else if(typeof go==='function')go(); }
+function _lsetRerender(){ if(window._autoActive&&typeof window._autoRender==='function')window._autoRender(); else if(typeof window._spkRender==='function'&&window._spkActive)window._spkRender(); else if(typeof window._sdRender==='function'&&window._sdActive)window._sdRender(); else if(typeof window._lsRender==='function'&&window._lsActive)window._lsRender(); else if(typeof go==='function')go(); }
 function gsetBar(inner){
   inner=_rowDedup(inner);
   var rc=(inner.split('gap:8px;margin-bottom:').length-1);

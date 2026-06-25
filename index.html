@@ -9582,6 +9582,21 @@ function showListenMode() {
   window._lsPrev=function(){ window._lsIdx=Math.max(0,window._lsIdx-1); window._lsReveal=false; window._lsRender(); setTimeout(window._lsPlay,300); };
   window._lsNext=function(){ window._lsIdx++; window._lsReveal=false; window._lsRender(); if(window._lsIdx<window._lsWords.length) setTimeout(window._lsPlay,300); };
   window._lsSkip=function(){ window._lsIdx=Math.min(window._lsWords.length-1,window._lsIdx+1); window._lsReveal=false; window._lsRender(); setTimeout(window._lsPlay,300); };
+  // 외웠음 토글: 외움(1)↔미암기(0). 외움 처리 시 외웠음 보너스 XP + '오늘 외운 단어' 집계.
+  // 단어수(단어 학습)는 정답공개에서 1회만 세므로(_lsLogged) 여기서 중복 logStudy 안 함.
+  window._lsMemo=function(en){
+    try{
+      var prev=(typeof getMark==='function')?getMark(en):0;
+      if(prev===1){ if(typeof setMark==='function') setMark(en,0); }
+      else {
+        if(typeof setMark==='function') setMark(en,1);
+        try{ if(typeof addXP==='function'&&typeof xp==='function') addXP(xp('word_flip'),true); }catch(e){}
+        if(!window._lsLogged[en]){ window._lsLogged[en]=1; if(typeof logStudy==='function') logStudy('words',en); }
+        if(typeof _markTodayMemorized==='function') _markTodayMemorized();
+      }
+    }catch(e){}
+    window._lsRender();
+  };
 
   const _lsRender=function(){
     const total=window._lsWords.length;
@@ -9629,11 +9644,16 @@ function showListenMode() {
       var enFz=w.en&&w.en.length>16?'30px':(w.en&&w.en.length>10?'34px':'40px');
       var msHtml=(S._vMean!==false&&d.ms&&d.ms.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0 2px">${d.ms.map(function(m){return '<span style="background:rgba(255,255,255,.14);border-radius:14px;padding:4px 12px;font-size:13px">'+m+'</span>';}).join('')}</div>`:'';
       var exHtml=(S._vSent!==false&&d.ex0)?`<div style="margin-top:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 14px;text-align:left"><div style="font-size:14px;line-height:1.5">${d.ex0.en}</div>${d.ex0.kr?`<div style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.5;margin-top:4px">${d.ex0.kr}</div>`:''}</div>`:'';
+      var _mk=(typeof getMark==='function')?getMark(w.en):0; var _safe=String(w.en||'').replace(/'/g,"\\'"); var _isMemo=(_mk===1);
+      var markBtns=`<div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+        <button onclick="if(typeof setMark==='function')setMark('${_safe}',0);window._lsRender()" style="padding:9px 22px;border-radius:22px;border:none;font-size:13px;font-weight:800;cursor:pointer;background:${_isMemo?'rgba(255,255,255,.08)':'rgba(148,163,184,.3)'};color:${_isMemo?'rgba(255,255,255,.4)':'#CBD5E1'}">📝 미암기</button>
+        <button onclick="window._lsMemo('${_safe}')" style="padding:9px 22px;border-radius:22px;border:none;font-size:13px;font-weight:800;cursor:pointer;background:${_isMemo?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)'};color:${_isMemo?'#fff':'rgba(255,255,255,.6)'};box-shadow:${_isMemo?'0 3px 12px rgba(34,197,94,.4)':'none'}">✅ 외웠음</button>
+      </div>`;
       card=`<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:28px 24px;width:100%;max-width:360px;text-align:center;max-height:46vh;overflow-y:auto">
         ${(d.img&&S._vEmoji!==false)?`<div style="font-size:46px;margin-bottom:6px">${d.img}</div>`:''}
         <div style="font-size:${enFz};font-weight:900;color:var(--theme)">${w.en||''}</div>
         ${(w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;font-family:monospace">${w.ph}</div>`:''}
-        ${msHtml}${exHtml}
+        ${msHtml}${exHtml}${markBtns}
       </div>`;
     }
 
@@ -9673,7 +9693,7 @@ function showListenMode() {
     </div></div>`;
   };
 
-  window._lsRender=_lsRender;
+  window._lsRender=_lsRender; window._curRender=_lsRender;
   if(!document.getElementById('ls-pulse-css')){ var st=document.createElement('style'); st.id='ls-pulse-css'; st.textContent='@keyframes lsPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}'; document.head.appendChild(st); }
   _lsRender();
   setTimeout(window._lsPlay,400);

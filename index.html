@@ -4084,7 +4084,7 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
-  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsTarget','_lsMeanN'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -9548,14 +9548,16 @@ function showListenMode() {
     try{S._lsSort=window._lsSort;S._lsRange=window._lsRange;S._lsCount=window._lsCount;if(typeof sv==='function')sv();}catch(e){}
     window._lsWords=arr;
   };
-  window._lsIdx=0; window._lsReveal=false; window._lsLogged={}; window._lsActive=true;
+  window._lsIdx=0; window._lsReveal=false; window._lsLogged={}; window._lsExByIdx={}; window._lsActive=true;
   window._lsBuild();
   window._studyActive=true; if(typeof _startStudySession==='function') _startStudySession(); else if(typeof _LT!=='undefined') _LT.start();
 
   window._lsData=function(){
     var w=window._lsWords[window._lsIdx]||{};
-    var ex=(typeof _ex5List==='function')?_ex5List(w.en):null;
-    var ex0=(ex&&ex[0])?ex[0]:null;
+    if(!window._lsExByIdx) window._lsExByIdx={};
+    var idx=window._lsIdx;
+    if(!(idx in window._lsExByIdx)){ window._lsExByIdx[idx]=(typeof _ex5One==='function')?_ex5One(w.en):null; }
+    var ex0=window._lsExByIdx[idx]||null;
     var ms=(w.meanings&&w.meanings.length)?w.meanings.slice():(w.kr?String(w.kr).split(';').map(function(s){return s.trim();}).filter(Boolean):[]);
     var n=parseInt(window._lsMeanN||0); if(n>0) ms=ms.slice(0,n);
     var img=(((window.BWD_EX5||{})[String(w.en||'').toLowerCase()]||{}).img)||w.img||'';
@@ -9608,6 +9610,7 @@ function showListenMode() {
       +gsetRow('학습범위',[['전체',"window._lsRange=-1;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===-1],['미암기',"window._lsRange=0;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===0],['암기',"window._lsRange=1;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===1],['헷갈림',"window._lsRange=2;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===2]])
       +gsetRow('듣기 대상',[['전체',"window._lsTarget='all';S._lsTarget='all';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='all'],['단어',"window._lsTarget='word';S._lsTarget='word';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='word'],['문장',"window._lsTarget='sentence';S._lsTarget='sentence';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='sentence']])
       +gsetRow('뜻 보기',[['전체',"window._lsMeanN=0;S._lsMeanN=0;sv();window._lsRender()",window._lsMeanN===0],['1개',"window._lsMeanN=1;S._lsMeanN=1;sv();window._lsRender()",window._lsMeanN===1],['2개',"window._lsMeanN=2;S._lsMeanN=2;sv();window._lsRender()",window._lsMeanN===2],['3개',"window._lsMeanN=3;S._lsMeanN=3;sv();window._lsRender()",window._lsMeanN===3]])
+      +gsetRow('예문 형식',_exFormItems("window._lsExByIdx={};window._lsRender()"))
       +gsetRow('보기',_viewItems("window._lsRender()"))
       +gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
       +gsetRow('속도',[['느림',"window._lsRate=0.5;S._lsRate=0.5;sv();window._lsRender()",window._lsRate===0.5],['보통',"window._lsRate=0.8;S._lsRate=0.8;sv();window._lsRender()",window._lsRate===0.8],['빠름',"window._lsRate=1.1;S._lsRate=1.1;sv();window._lsRender()",window._lsRate===1.1],['최대',"window._lsRate=1.5;S._lsRate=1.5;sv();window._lsRender()",window._lsRate===1.5]])
@@ -9630,7 +9633,6 @@ function showListenMode() {
         ${(d.img&&S._vEmoji!==false)?`<div style="font-size:46px;margin-bottom:6px">${d.img}</div>`:''}
         <div style="font-size:${enFz};font-weight:900;color:var(--theme)">${w.en||''}</div>
         ${(w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;font-family:monospace">${w.ph}</div>`:''}
-        <button onclick="window._lsPlay()" style="margin-top:10px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);border-radius:10px;padding:6px 16px;color:#A78BFA;font-size:12px;font-weight:700;cursor:pointer">🔊 다시듣기</button>
         ${msHtml}${exHtml}
       </div>`;
     }
@@ -9643,9 +9645,12 @@ function showListenMode() {
         <button onclick="window._lsPlay()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:18px;cursor:pointer">🔊</button>
       </div>`;
     } else {
-      bottom=`<div style="padding:6px 16px;flex-shrink:0;display:flex;gap:8px">
-        <button onclick="window._lsPrev()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏮</button>
-        <button onclick="logStudy&&logStudy('words');addXP&&addXP(xp&&xp('speak_word')||5);window._lsNext()" style="flex:2;background:var(--theme);border:none;border-radius:14px;padding:13px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">✅ 다음</button>
+      bottom=`<div style="padding:4px 16px 0;flex-shrink:0">
+        <button onclick="window._lsPlay()" style="width:100%;background:linear-gradient(135deg,#A78BFA,#8B5CF6);border:none;border-radius:16px;padding:17px;color:#fff;font-size:17px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(139,92,246,.4)">🔊 다시 듣기</button>
+      </div>
+      <div style="padding:8px 16px;flex-shrink:0;display:flex;gap:8px">
+        <button onclick="window._lsPrev()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:15px;font-weight:700;cursor:pointer">⏮ 이전</button>
+        <button onclick="window._lsNext()" style="flex:2;background:var(--theme);border:none;border-radius:14px;padding:13px;color:#fff;font-size:15px;font-weight:800;cursor:pointer">✅ 다음</button>
         <button onclick="window._lsSkip()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:13px;color:#fff;font-size:20px;cursor:pointer">⏭</button>
       </div>`;
     }

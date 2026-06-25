@@ -4468,6 +4468,40 @@ function _aiGenParse(text){
 // 모델 자동 회전 + 한도 쿨다운 (429/503 시 다음 모델로 전환, 부드러운 페이싱)
 var _aiGenModels=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash'];
 var _aiCooldown={};
+// ── 다중 키 회전: 키마다 별도 프로젝트면 한도가 키 개수만큼 늘어남. 키×모델 조합별 쿨다운 ──
+function getGeminiKeys(){
+  try{ var raw=localStorage.getItem('gemini_api_keys'); if(raw){ var arr=JSON.parse(raw); if(Array.isArray(arr)){ arr=arr.map(function(s){return (s||'').trim();}).filter(Boolean); if(arr.length) return arr; } } }catch(e){}
+  var s=(window._geminiApiKey||localStorage.getItem('gemini_api_key')||'').trim();
+  return s?[s]:[];
+}
+var _aiComboCooldown={};
+function _aiAvailKeyModel(){
+  var keys=getGeminiKeys(); if(!keys.length) return {key:null};
+  var now=Date.now(), soonest=Infinity, sc=null;
+  for(var ki=0;ki<keys.length;ki++){ for(var mi=0;mi<_aiGenModels.length;mi++){
+    var id=ki+'|'+_aiGenModels[mi], cd=_aiComboCooldown[id]||0;
+    if(cd<=now) return {key:keys[ki], keyIdx:ki, model:_aiGenModels[mi], wait:0};
+    if(cd<soonest){ soonest=cd; sc={key:keys[ki],keyIdx:ki,model:_aiGenModels[mi]}; }
+  }}
+  return {key:sc.key, keyIdx:sc.keyIdx, model:sc.model, wait:soonest-now};
+}
+function showAiKeys(){
+  var keys=getGeminiKeys();
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:560px">'
+    +'<div class="mt">🔑 Gemini API 키 관리</div>'
+    +'<div style="font-size:12px;color:#6B7280;line-height:1.6;margin:8px 0 12px">한 줄에 키 하나씩 넣으세요. 여러 개면 한 키가 일일 한도(429)에 걸릴 때 <b>자동으로 다음 키로 전환</b>합니다. 키마다 <b>다른 Google 프로젝트</b>면 하루 한도가 키 개수만큼 늘어납니다.<br>※ 키는 이 브라우저에만 저장됩니다.</div>'
+    +'<textarea id="aik-list" rows="6" style="width:100%;font-family:monospace;font-size:12px;line-height:1.6;padding:11px;border:1px solid #E5E7EB;border-radius:10px;box-sizing:border-box" placeholder="AIzaSy...(키1)\nAIzaSy...(키2)\nAIzaSy...(키3)">'+keys.join('\n')+'</textarea>'
+    +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn bb" style="flex:1;padding:12px" onclick="saveAiKeys()">💾 저장</button><button class="btn bgr" style="padding:12px 20px" onclick="showAiGenEx5()">취소</button></div>'
+    +'</div></div>';
+}
+function saveAiKeys(){
+  var raw=(document.getElementById('aik-list').value||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
+  try{ localStorage.setItem('gemini_api_keys', JSON.stringify(raw)); }catch(e){}
+  if(raw.length){ try{ localStorage.setItem('gemini_api_key', raw[0]); }catch(e){} }
+  _aiComboCooldown={};
+  toast('🔑 키 '+raw.length+'개 저장됨'+(raw.length>1?' (자동 회전)':''),'ok');
+  showAiGenEx5();
+}
 function _aiSleep(ms){ return new Promise(function(r){setTimeout(r,ms);}); }
 function _aiAvailModel(){
   var now=Date.now(), soonest=Infinity, soonestM=_aiGenModels[0];
@@ -4477,16 +4511,18 @@ function _aiAvailModel(){
   return {model:soonestM, wait:soonest-now};
 }
 async function _aiGenCall(prompt, onStatus){
-  var key=getGeminiKey(); if(!key) throw new Error('키 없음');
-  for(var attempt=0; attempt<14; attempt++){
-    var pick=_aiAvailModel();
-    if(pick.wait>0){ var ws=Math.min(Math.ceil(pick.wait/1000),95); if(onStatus) onStatus('⏳ 전 모델 한도 — '+ws+'초 대기 후 재개'); await _aiSleep(Math.min(pick.wait+500,95000)); }
-    var model=pick.model; window._aiModel=model; _aiGenRender();
+  var keys=getGeminiKeys(); if(!keys.length) throw new Error('키 없음');
+  var maxAttempts=Math.max(14, keys.length*_aiGenModels.length+4);
+  for(var attempt=0; attempt<maxAttempts; attempt++){
+    var pick=_aiAvailKeyModel();
+    if(!pick.key) throw new Error('키 없음');
+    if(pick.wait>0){ var ws=Math.min(Math.ceil(pick.wait/1000),95); if(onStatus) onStatus('⏳ 전 키·모델 한도 — '+ws+'초 대기 후 재개'); await _aiSleep(Math.min(pick.wait+500,95000)); }
+    var model=pick.model, ckey=pick.key, comboId=pick.keyIdx+'|'+model; window._aiModel=model; _aiGenRender();
     try{
-      var r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+key,{
+      var r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+ckey,{
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({contents:[{parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:8192, temperature:0.7}})});
-      if(r.status===429||r.status===503||r.status===500){ _aiCooldown[model]=Date.now()+90000; if(onStatus) onStatus('⚠️ '+model+' 한도 → 다른 모델로 전환'); await _aiSleep(700); continue; }
+      if(r.status===429||r.status===503||r.status===500){ _aiComboCooldown[comboId]=Date.now()+90000; if(onStatus) onStatus('⚠️ 키'+(pick.keyIdx+1)+'·'+model+' 한도 → 다음으로 전환'); await _aiSleep(500); continue; }
       if(!r.ok){ await _aiSleep(1500); continue; }
       var j=await r.json();
       var txt=(j&&j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)? j.candidates[0].content.parts.map(function(p){return p.text||'';}).join('') : '';
@@ -4539,7 +4575,7 @@ function showAiGenEx5(){
     +'<div class="mt">🤖 AI 예문 자동생성 (ex5)</div>'
     +'<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#5B21B6;line-height:1.7">'
       +'사전(dict)에 있지만 <b>ex5 예문이 없는</b> 단어 <b>'+miss.length.toLocaleString()+'개</b>를 Gemini로 자동 생성합니다. 5문장 모두 단어 포함·이모지·한자혼입 등 <b>엄격 검증</b> 후 통과한 것만 저장하고, 실패는 자동 재시도(최대 '+_aiGen.retries+'회)합니다.<br>'
-      +'<span style="color:'+(key?'#16A34A':'#DC2626')+'">Gemini 키: '+(key?'✅ 설정됨':'❌ 없음 — 앱 설정에서 입력 필요')+'</span></div>'
+      +'<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:2px"><span style="color:'+(getGeminiKeys().length?'#16A34A':'#DC2626')+'">Gemini 키: '+(getGeminiKeys().length?('✅ '+getGeminiKeys().length+'개'+(getGeminiKeys().length>1?' (자동 회전)':' 설정됨')):'❌ 없음')+'</span><button class="btn bg" style="font-size:11px;padding:5px 11px;white-space:nowrap" onclick="showAiKeys()">🔑 키 관리</button></div></div>'
     +'<div class="fg" style="margin:0 0 8px"><label>시작 모델 (한도 시 자동으로 다른 모델로 회전)</label>'
       +'<select id="aig-model" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px">'
         +'<option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — 추천 (30 RPM, 최고 한도)</option>'
@@ -4572,11 +4608,11 @@ function showAiGenEx5(){
 }
 async function aiGenStart(){
   if(_aiGen.running){ toast('이미 실행 중','err'); return; }
-  if(!getGeminiKey()){ toast('Gemini 키가 없습니다','err'); return; }
+  if(!getGeminiKeys().length){ toast('Gemini 키가 없습니다','err'); return; }
   var msel=document.getElementById('aig-model');
   if(msel){ var _first=msel.value; window._aiModel=_first; try{localStorage.setItem('ai_model',_first);}catch(e){}
     var _pool=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash'];
-    _aiGenModels=[_first].concat(_pool.filter(function(m){return m!==_first;})); _aiCooldown={}; }
+    _aiGenModels=[_first].concat(_pool.filter(function(m){return m!==_first;})); _aiCooldown={}; _aiComboCooldown={}; }
   var miss=_aiGenMissing();
   var count=Math.max(1, parseInt(document.getElementById('aig-count').value)||100);
   _aiGen.batch=Math.max(1, Math.min(20, parseInt(document.getElementById('aig-batch').value)||8));

@@ -4084,7 +4084,7 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
-  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsTarget','_lsMeanN'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -4552,7 +4552,7 @@ window._autoRender = function() {
         // 헤더
         +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;flex-shrink:0">'
           +'<div><div style="font-size:14px;font-weight:900">⚡ 자동 학습</div>'
-          +_learnHdrHTML(window._autoWords)+'</div>'
+          +_autoHdrHTML()+'</div>'
           +'<div style="display:flex;gap:6px;align-items:center">'
           +(_LT&&_LT.barHTML?_LT.barHTML():'')
           +''  // 일시정지 버튼은 하단 컨트롤에만 표시
@@ -5946,6 +5946,11 @@ function rLearnTab() {
      badgeColor:'var(--theme)',
      sub: '원어민 발음을 듣고 따라 말하는 연습',
      fn:"startMode('shadow')", hot:false},
+    {id:'listen', ic:'🎧', nm:'듣기 학습 (문장 듣고 떠올리기)', dc:'듣고 뜻을 떠올리는 연습',
+     badge: 'NEW',
+     badgeColor:'#EC4899',
+     sub: '단어·문장을 듣고 뜻을 떠올려요',
+     fn:"startMode('listen')", hot:false},
   ];
   const recommend = 'auto';
 
@@ -9084,26 +9089,14 @@ function rHome() {
     </div>
   </div>`)
 
-  // ── XP 순위 (홈 하단) ──
-  parts.push(`<div style="background:var(--bg-card,#FFFFFF);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:800;color:var(--text1,#111)">🏆 XP 순위</div>
-      <div style="display:flex;gap:4px">
-        ${[['day','오늘','var(--theme)'],['week','주간','#16A34A'],['month','월간','var(--theme)'],['total','누적','#E65100']].map(([m,lb,c])=>`<button onclick="window._homeRankMode='${m}';renderHomeRank()" id="hr-${m}" style="padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;border:1.5px solid ${m==='day'?c:'#E5E7EB'};background:${m==='day'?c:'#fff'};color:${m==='day'?'#fff':'#9CA3AF'};cursor:pointer">${lb}</button>`).join('')}
-      </div>
-    </div>
-    <div id="home-rank-body" style="min-height:60px">
-      <div style="text-align:center;padding:16px;color:#9CA3AF;font-size:12px">⏳ 로딩 중...</div>
-    </div>
-    <div id="home-my-rank" style="margin-top:8px;padding:8px 12px;background:var(--theme-tint);border-radius:10px;border:1.5px solid var(--theme-soft);display:none"></div>
-  </div>`);
+  // ── XP 순위(리더보드) 제거됨 — 개인 XP/레벨은 유지 ──
+
 
   // ── 공지사항 섹션 (홈 하단) ──
   parts.push('<div id="home-notice-section"></div>');
 
   parts.push('</div>');
   setTimeout(()=>{
-    renderHomeRank();
     if(typeof renderHomeNotice === 'function') renderHomeNotice();
   }, 300);
   return parts.join('');
@@ -9523,8 +9516,184 @@ function startMode(type) {
   if(type==='auto' || type==='stream' || type==='audio') showAutoMode();
   else if(type==='shadow') showShadowMode();
   else if(type==='speak') showSpeakMode();
+  else if(type==='listen') showListenMode();
   else if(type==='flash'){ S._flashShuffled=null; S._flipWords=null; S.idx=0; S.flip=false; S.stab='learn'; go('mybooks','learn'); } // [수정] 플래시카드 진입 복구
   else toast('준비 중이에요');
+}
+
+// ── 🎧 듣기 학습 모드 (문장/단어 듣고 뜻 떠올리기) ──
+function showListenMode() {
+  const words = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  if(!words || !words.length){ toast('현재 단어장에 단어가 없어요!'); return; }
+  const mr = document.getElementById('mr'); if(!mr) return;
+
+  // 설정 복원 (전역 + S 영속)
+  if(window._lsTarget==null) window._lsTarget = (S._lsTarget!=null ? S._lsTarget : 'all'); // all|word|sentence
+  if(window._lsMeanN==null)  window._lsMeanN  = (S._lsMeanN!=null  ? S._lsMeanN  : 0);     // 0=전체, 1/2/3=뜻 개수
+  window._lsWords = words;
+  window._lsIdx = 0;
+  window._lsReveal = false;
+  window._lsLogged = {};
+
+  // 현재 단어의 예문/뜻/이모지 추출
+  window._lsData = function(){
+    const w = window._lsWords[window._lsIdx] || {};
+    const ex = (typeof _ex5List==='function') ? _ex5List(w.en) : null;
+    const ex0 = (ex && ex[0]) ? ex[0] : null;
+    let ms = (w.meanings && w.meanings.length) ? w.meanings.slice()
+           : (w.kr ? String(w.kr).split(';').map(function(s){return s.trim();}).filter(Boolean) : []);
+    const n = parseInt(window._lsMeanN||0);
+    if(n>0) ms = ms.slice(0, n);
+    const img = (((window.BWD_EX5||{})[String(w.en||'').toLowerCase()]||{}).img) || w.img || '';
+    return {w:w, ex0:ex0, ms:ms, img:img};
+  };
+
+  // TTS 재생 (듣기 대상에 따라 단어/문장/순차)
+  window._lsPlay = function(slow){
+    try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+    const d = window._lsData(); const w = d.w; if(!w || !w.en) return;
+    const tgt = window._lsTarget||'all';
+    const wRate = slow?0.6:0.95, sRate = slow?0.65:0.9;
+    const sent = d.ex0 ? d.ex0.en : null;
+    if(tgt==='word'){ speak(w.en,'en',wRate); }
+    else if(tgt==='sentence'){ speak(sent||w.en,'en',sRate); }
+    else { // all: 단어 → (잠시 후) 문장
+      speak(w.en,'en',wRate);
+      if(sent){ setTimeout(function(){ try{ speak(sent,'en',sRate); }catch(e){} }, slow?1700:1150); }
+    }
+  };
+
+  window._lsRevealNow = function(){
+    window._lsReveal = true;
+    try{ const en=(window._lsWords[window._lsIdx]||{}).en;
+      if(en && !window._lsLogged[en]){ window._lsLogged[en]=1; if(typeof logStudy==='function') logStudy('words', en); if(typeof _seenW==='function') _seenW(en); }
+    }catch(e){}
+    window._lsRender();
+  };
+
+  window._lsNext = function(){
+    window._lsIdx++;
+    window._lsReveal = false;
+    window._lsRender();
+    if(window._lsIdx < window._lsWords.length){ setTimeout(function(){ window._lsPlay(false); }, 350); }
+  };
+
+  window._lsSetTarget = function(v){
+    window._lsTarget=v; S._lsTarget=v; if(typeof sv==='function') sv();
+    window._lsRender(); setTimeout(function(){ window._lsPlay(false); }, 200);
+  };
+  window._lsSetMeanN = function(n){
+    window._lsMeanN=parseInt(n); S._lsMeanN=parseInt(n); if(typeof sv==='function') sv();
+    window._lsRender();
+  };
+  window._lsExit = function(){ try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){} cm(); };
+
+  // 세그먼트 버튼 빌더
+  function _seg(label, items, curVal, fn){
+    let h='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+        +'<span style="font-size:11px;color:rgba(255,255,255,.55);width:62px;flex-shrink:0">'+label+'</span>'
+        +'<div style="display:flex;gap:4px;flex:1;flex-wrap:wrap">';
+    items.forEach(function(it){
+      const on = String(it[1])===String(curVal);
+      h+='<button onclick="'+fn+'('+(typeof it[1]==='string'?("\'"+it[1]+"\'"):it[1])+')" style="padding:5px 12px;border-radius:16px;border:1.5px solid '+(on?'#EC4899':'rgba(255,255,255,.18)')+';background:'+(on?'#EC4899':'rgba(255,255,255,.06)')+';color:#fff;font-size:12px;font-weight:'+(on?700:500)+';cursor:pointer">'+it[0]+'</button>';
+    });
+    h+='</div></div>';
+    return h;
+  }
+
+  window._lsRender = function(){
+    const total = window._lsWords.length;
+    const idx = window._lsIdx;
+
+    // 완료
+    if(idx >= total){
+      mr.innerHTML = '<div style="position:fixed;inset:0;background:#0F172A;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px;text-align:center">'
+        +'<div style="font-size:56px;margin-bottom:16px">🎉</div>'
+        +'<div style="font-size:22px;font-weight:900;margin-bottom:8px">듣기 학습 완료!</div>'
+        +'<div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:24px">'+total+'개 단어를 들었어요</div>'
+        +'<div style="display:flex;gap:8px">'
+        +'<button onclick="window._lsIdx=0;window._lsReveal=false;window._lsRender();setTimeout(function(){window._lsPlay(false)},300)" style="background:#EC4899;border:none;border-radius:20px;padding:12px 24px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">다시 듣기</button>'
+        +'<button onclick="window._lsExit()" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:12px 24px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">닫기</button>'
+        +'</div></div>';
+      return;
+    }
+
+    const d = window._lsData();
+    const reveal = window._lsReveal;
+
+    let body;
+    if(!reveal){
+      body = '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center">'
+        +'<div style="font-size:72px;margin-bottom:18px;animation:lsPulse 1.6s ease-in-out infinite">🎧</div>'
+        +'<div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:8px">듣고 떠올려보세요</div>'
+        +'<div style="font-size:13px;color:rgba(255,255,255,.5)">소리를 듣고 단어와 뜻을 머릿속에 떠올린 뒤<br>정답을 확인하세요</div>'
+        +'</div>';
+    } else {
+      const enFz = d.w.en && d.w.en.length>16?'30px':d.w.en && d.w.en.length>10?'38px':'48px';
+      let msHtml='';
+      if(d.ms && d.ms.length){
+        msHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px">'
+          + d.ms.map(function(m){return '<span style="background:rgba(255,255,255,.14);border-radius:14px;padding:4px 12px;font-size:13px;color:rgba(255,255,255,.92)">'+m+'</span>';}).join('')
+          + '</div>';
+      }
+      let exHtml='';
+      if(d.ex0){
+        exHtml = '<div style="margin-top:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;max-width:440px;width:100%">'
+          +'<div style="font-size:15px;color:#fff;line-height:1.5;margin-bottom:6px">'+d.ex0.en+'</div>'
+          +(d.ex0.kr?'<div style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.5">'+d.ex0.kr+'</div>':'')
+          +'</div>';
+      }
+      body = '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;overflow-y:auto">'
+        +(d.img?'<div style="font-size:48px;margin-bottom:8px">'+d.img+'</div>':'')
+        +'<div style="font-size:'+enFz+';font-weight:900;color:#fff;letter-spacing:-1px">'+(d.w.en||'')+'</div>'
+        +(d.w.ph?'<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:6px;font-family:monospace">'+d.w.ph+'</div>':'')
+        +msHtml
+        +exHtml
+        +'</div>';
+    }
+
+    let controls;
+    if(!reveal){
+      controls = '<div style="display:flex;gap:8px;padding:12px 16px 20px;flex-shrink:0">'
+        +'<button onclick="window._lsPlay(false)" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 다시듣기</button>'
+        +'<button onclick="window._lsPlay(true)" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🐢 느리게</button>'
+        +'<button onclick="window._lsRevealNow()" style="flex:1.4;background:#EC4899;border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">👁 정답 보기</button>'
+        +'</div>';
+    } else {
+      controls = '<div style="display:flex;gap:8px;padding:12px 16px 20px;flex-shrink:0">'
+        +'<button onclick="window._lsPlay(false)" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔊 다시듣기</button>'
+        +'<button onclick="window._lsNext()" style="flex:1.6;background:#EC4899;border:none;border-radius:14px;padding:14px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">'+(idx+1>=total?'완료 →':'다음 →')+'</button>'
+        +'</div>';
+    }
+
+    mr.innerHTML = '<div style="position:fixed;inset:0;background:#0F172A;z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">'
+      // 헤더
+      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex-shrink:0">'
+        +'<div style="font-size:14px;font-weight:900">🎧 듣기 학습 <span style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600">'+(idx+1)+' / '+total+'</span></div>'
+        +'<button onclick="window._lsExit()" style="background:rgba(255,255,255,.1);border:none;border-radius:18px;width:34px;height:34px;color:#fff;font-size:16px;cursor:pointer">✕</button>'
+      +'</div>'
+      // 진행 바
+      +'<div style="height:3px;background:rgba(255,255,255,.1);flex-shrink:0"><div style="height:100%;background:#EC4899;width:'+Math.round((idx+1)/total*100)+'%;transition:width .3s"></div></div>'
+      // 설정 세그먼트
+      +'<div style="padding:12px 16px 4px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.08)">'
+        +_seg('듣기 대상', [['전체','all'],['단어','word'],['문장','sentence']], window._lsTarget, 'window._lsSetTarget')
+        +_seg('뜻 보기', [['전체',0],['1',1],['2',2],['3',3]], window._lsMeanN, 'window._lsSetMeanN')
+      +'</div>'
+      + body
+      + controls
+    +'</div>';
+  };
+
+  // 펄스 애니메이션 (1회 주입)
+  if(!document.getElementById('ls-pulse-css')){
+    const st=document.createElement('style'); st.id='ls-pulse-css';
+    st.textContent='@keyframes lsPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}';
+    document.head.appendChild(st);
+  }
+
+  window._curRender = window._lsRender;
+  window._lsRender();
+  setTimeout(function(){ window._lsPlay(false); }, 400); // 진입 시 자동 재생
 }
 
 function showStreamMode() {
@@ -10851,7 +11020,7 @@ window._doMark = function(v) {
 function rLearn() {
   if(typeof _startStudySession==='function') _startStudySession();
   const sort = S.flashSort||'default';
-  const filter = S.listMarkFilter??-1;
+  const filter = S.flashRange??-1;
   let baseWords = typeof getCurrentBookWords==='function' ? [...getCurrentBookWords()] : [...S.words];
   if(sort==='alpha') baseWords.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sort==='alpha_kr') baseWords.sort((a,b)=>a.kr.localeCompare(b.kr));
@@ -10872,7 +11041,7 @@ function rLearn() {
     h+='<div style="font-size:48px;margin-bottom:12px">🦋</div>';
     h+='<div style="font-size:16px;font-weight:700;color:#1A3A2A;margin-bottom:6px">단어가 없어요</div>';
     h+='<div style="font-size:13px;color:#9CA3AF;margin-bottom:16px">'+(filter===0?'미암기 단어가 없어요':filter===1?'외웠음 표시 단어가 없어요':filter===2?'복습 표시 단어가 없어요':'단어장에 단어를 추가해주세요')+'</div>';
-    h+='<button onclick="S.listMarkFilter=-1;go()" style="background:#1A3A2A;color:#fff;border:none;border-radius:12px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer">전체 보기</button></div>';
+    h+='<button onclick="S.flashRange=-1;go()" style="background:#1A3A2A;color:#fff;border:none;border-radius:12px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer">전체 보기</button></div>';
     return h;
   }
 
@@ -10884,7 +11053,7 @@ function rLearn() {
   let filterHtml='';
   [[-1,'전체',allFw.length],[0,'미암기',allFw.filter(x=>getMark(x.en)===0).length],[1,'암기',allFw.filter(x=>getMark(x.en)===1).length],[2,'헷갈림',allFw.filter(x=>getMark(x.en)===2).length]].forEach(function(item){
     var v=item[0],lb=item[1],cnt=item[2],active=filter===v;
-    filterHtml+='<button onclick="S.listMarkFilter='+v+';S.idx=0;S.flip=false;S._flipWords=null;go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'var(--border,#E5E7EB)')+';background:'+(active?'var(--theme)':'var(--bg-card,#fff)')+';color:'+(active?'#fff':'var(--text2,#6B7280)')+';font-size:11px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s">'+lb+' <span style="opacity:.6;font-size:10px">'+cnt+'</span></button>';
+    filterHtml+='<button onclick="S.flashRange='+v+';S.idx=0;S.flip=false;S._flipWords=null;sv();go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'var(--border,#E5E7EB)')+';background:'+(active?'var(--theme)':'var(--bg-card,#fff)')+';color:'+(active?'#fff':'var(--text2,#6B7280)')+';font-size:11px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s">'+lb+' <span style="opacity:.6;font-size:10px">'+cnt+'</span></button>';
   });
 
   var enFz=w.en.length>30?'16px':w.en.length>22?'20px':w.en.length>14?'26px':w.en.length>10?'32px':w.en.length>6?'40px':'48px';
@@ -10927,7 +11096,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   var fBtns = [[-1,'전체',allFw.length],[0,'미암기',allFw.filter(x=>getMark(x.en)===0).length],[1,'암기',allFw.filter(x=>getMark(x.en)===1).length],[2,'헷갈림',allFw.filter(x=>getMark(x.en)===2).length]]
     .map(function(item){
       var v=item[0],lb=item[1],cnt=item[2],active=filter===v;
-      return '<button onclick="S.listMarkFilter='+v+';S.idx=0;S.flip=false;S._flipWords=null;go()" style="background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:6px 12px;font-size:12px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+';white-space:nowrap">'+lb+' '+cnt+'</button>';
+      return '<button onclick="S.flashRange='+v+';S.idx=0;S.flip=false;S._flipWords=null;sv();go()" style="background:'+(active?'rgba(96,165,250,.4)':'rgba(255,255,255,.08)')+';border:none;border-radius:8px;padding:6px 12px;font-size:12px;color:#fff;cursor:pointer;font-weight:'+(active?700:400)+';white-space:nowrap">'+lb+' '+cnt+'</button>';
     }).join('');
 
   // 정렬 버튼
@@ -11025,10 +11194,10 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   html += '</div>';
 
   // ── 하단 설정 패널 (자동학습과 동일 메뉴로 통일) ──
-  var _ff=(S.listMarkFilter==null?-1:S.listMarkFilter), _fs=(S.flashSort||'default'), _fc=(S.flashCount||9999), _frt=(S._flashRate||0.8);
+  var _ff=(S.flashRange==null?-1:S.flashRange), _fs=(S.flashSort||'default'), _fc=(S.flashCount||9999), _frt=(S._flashRate||0.8);
   var _flashRows =
       gsetRow('정렬',[['추가순',"S.flashSort='default';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='default'],['A-Z',"S.flashSort='alpha';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='alpha'],['가나다',"S.flashSort='alpha_kr';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='alpha_kr'],['마크순',"S.flashSort='mark';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='mark'],['랜덤',"S.flashSort='random';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='random']])
-    + gsetRow('학습범위',[['전체',"S.listMarkFilter=-1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===-1],['미암기',"S.listMarkFilter=0;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===0],['암기',"S.listMarkFilter=1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===1],['헷갈림',"S.listMarkFilter=2;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===2]])
+    + gsetRow('학습범위',[['전체',"S.flashRange=-1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===-1],['미암기',"S.flashRange=0;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===0],['암기',"S.flashRange=1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===1],['헷갈림',"S.flashRange=2;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===2]])
     + gsetRow('보기',_viewItems("go()"))
     + gsetRow('예문 형식',_exFormItems("S._flipWords=null;go()"))
     + gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
@@ -12333,6 +12502,8 @@ function _gameQuit(){
   go(S._prevTab||'game');
 }
 function _learnHdrHTML(list){ var arr=list||[]; var n=arr.length, m=0; for(var i=0;i<n;i++){ try{ if((getMark(arr[i].en)||0)===1) m++; }catch(e){} } return '<div style="font-size:10px;color:var(--panel-text3,#9CA3AF)">외울 단어 '+(n-m)+'개 · 외운 단어 '+m+'개</div>'; }
+// 자동모드 전용 헤더: '외웠음' 누르면 단어가 _autoWords에서 제거되므로, 외운 단어=전체-남은으로 계산
+function _autoHdrHTML(){ var rem=(window._autoWords||[]).length; var tot=window._autoTotalCount||rem; var memo=Math.max(0,tot-rem); return '<div style="font-size:10px;color:var(--panel-text3,#9CA3AF)">외울 단어 '+rem+'개 · 외운 단어 '+memo+'개</div>'; }
 function gsetRow(label, items){
   var btns=items.map(function(it){
     var ac=it[2];

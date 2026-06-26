@@ -801,6 +801,8 @@ const S = {_sysWords:[],lid:'egg',streak:0,xp:0,nick:'',
   tab:'home', stab:'books',
   words:[], learned:new Set(), markMap:{},
   idx:0, flip:false, streak:1, lastDate:'',
+  // 다국어 학습: 학습언어 × 모국어 (기본 영어 학습 / 한국어 모국어 = 기존 동작)
+  learnLang:'en', nativeLang:'ko',
   // 단어장 여러 개
   books:[], currentBook:'내 단어장',
   // 게임 설정
@@ -1000,6 +1002,73 @@ function _ex5List(en){ try{ var d=(window.BWD_EX5||{})[String(en||'').toLowerCas
 function _exFormVal(){ try{ var f=(typeof S!=='undefined'&&S.exForm!=null)?S.exForm:0; if(f==='random'||f==='r') return 0; var n=parseInt(f); return (n>=1&&n<=5)?n:0; }catch(e){ return 0; } }
 // 선택된 형식에 맞는 단일 예문 {en,kr} 반환 (없으면 null)
 function _ex5One(en){ var a=_ex5List(en); if(!a) return null; var f=_exFormVal(); var i=(f===0)?Math.floor(Math.random()*a.length):Math.min(f-1,a.length-1); var s=a[i]||a[0]; return {en:(s.en||''),kr:(s.kr||'')}; }
+// ═══════════ 다국어 학습 코어 (개념 중심 · 학습언어×모국어) ═══════════
+window.BWD_JA = window.BWD_JA || {};
+window.BWD_DE = window.BWD_DE || {};
+window._MLANG = { en:{name:'영어',tts:'en-US',flag:'🇬🇧'}, ko:{name:'한국어',tts:'ko-KR',flag:'🇰🇷'}, ja:{name:'일본어',tts:'ja-JP',flag:'🇯🇵'}, de:{name:'독일어',tts:'de-DE',flag:'🇩🇪'} };
+// 데이터가 존재하는 언어 목록(en/ko 항상, ja/de는 데이터 있으면)
+function _mAvailLangs(){ var o=['en','ko']; if(window.BWD_JA&&Object.keys(window.BWD_JA).length)o.push('ja'); if(window.BWD_DE&&Object.keys(window.BWD_DE).length)o.push('de'); return o; }
+// 한 개념(en)에 대해 특정 언어 블록 표준화 → {label,sub,ph,ex:[{t,s}],audioLang} (없으면 null)
+function _mBlock(en, lang){
+  en=String(en||'').toLowerCase().trim();
+  var E=window.BWD_EX5||{}, e5=E[en];
+  if(lang==='en'){ var P=(typeof BWD_PRON!=='undefined')?BWD_PRON:null;
+    return {label:en, sub:'', ph:(P&&P[en])?P[en]:'', ex:(e5&&e5.ex5)?e5.ex5.map(function(s){return {t:s.t,s:s.en};}):[], audioLang:'en-US'}; }
+  if(lang==='ko'){ var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:null, d=D?D[en]:null;
+    return {label:(d&&d.kr)?d.kr.split(';')[0].trim():'', sub:'', ph:'', ex:(e5&&e5.ex5)?e5.ex5.map(function(s){return {t:s.t,s:s.kr};}):[], audioLang:'ko-KR'}; }
+  if(lang==='ja'){ var j=(window.BWD_JA||{})[en]; if(!j) return null;
+    return {label:j.label||'', sub:[(j.kanji||''),(j.roma||'')].filter(Boolean).join(' · '), ph:'', ex:(j.ex5||[]).map(function(s){return {t:s.t,s:s.s};}), audioLang:'ja-JP'}; }
+  if(lang==='de'){ var g=(window.BWD_DE||{})[en]; if(!g) return null;
+    var sub=[(g.gender||''),(g.plural&&g.plural!=='\u2014'?'pl. '+g.plural:'')].filter(Boolean).join(' · ');
+    return {label:g.label||'', sub:sub, ph:'', ex:(g.ex5||[]).map(function(s){return {t:s.t,s:s.s};}), audioLang:'de-DE'}; }
+  return null;
+}
+// 통합 카드: 학습언어(q) vs 모국어(a). step=1~5 고정 또는 0/null=랜덤
+function getMultiCard(en, learn, native, step){
+  learn=learn||(typeof S!=='undefined'&&S.learnLang)||'en';
+  native=native||(typeof S!=='undefined'&&S.nativeLang)||'ko';
+  var E=window.BWD_EX5||{}, e5=E[String(en||'').toLowerCase().trim()];
+  var q=_mBlock(en,learn), a=_mBlock(en,native);
+  function pick(ex){ if(!ex||!ex.length)return ''; var i=(step==null||step===0)?Math.floor(Math.random()*ex.length):Math.min(step-1,ex.length-1); return (ex[i]||ex[0]).s||''; }
+  return { en:String(en||'').toLowerCase().trim(), emoji:(e5&&e5.img)||'',
+    q: q?{lang:learn,label:q.label,sub:q.sub,ph:q.ph,ex:pick(q.ex),audioLang:q.audioLang}:null,
+    a: a?{lang:native,label:a.label,sub:a.sub,ph:a.ph,ex:pick(a.ex),audioLang:a.audioLang}:null };
+}
+window.getMultiCard=getMultiCard; window._mBlock=_mBlock; window._mAvailLangs=_mAvailLangs;
+// 현재 학습/모국어가 데이터 없는 언어면 안전하게 폴백
+function _mNormSettings(){ try{ var av=_mAvailLangs();
+  if(typeof S!=='undefined'){ if(av.indexOf(S.learnLang)<0)S.learnLang='en'; if(av.indexOf(S.nativeLang)<0)S.nativeLang='ko'; if(S.learnLang===S.nativeLang){ S.nativeLang=(S.learnLang==='ko')?'en':'ko'; } } }catch(e){} }
+window._mNormSettings=_mNormSettings;
+// 학습언어→모국어 라벨
+function _langPairLabel(){ var L=window._MLANG||{}, l=(typeof S!=='undefined'&&S.learnLang)||'en', n=(typeof S!=='undefined'&&S.nativeLang)||'ko'; return ((L[l]&&L[l].flag)||'')+' '+((L[l]&&L[l].name)||l)+'  →  '+((L[n]&&L[n].flag)||'')+' '+((L[n]&&L[n].name)||n); }
+function _langCoverageHint(){ var ja=(window.BWD_JA?Object.keys(window.BWD_JA).length:0), de=(window.BWD_DE?Object.keys(window.BWD_DE).length:0); var parts=[]; if(_mAvailLangs().indexOf('ja')>=0)parts.push('일본어 '+ja.toLocaleString()+'개'); if(_mAvailLangs().indexOf('de')>=0)parts.push('독일어 '+de.toLocaleString()+'개'); return parts.length?('※ 외국어 데이터: '+parts.join(' · ')+' (채워지는 중)'):''; }
+function showLangPicker(){
+  var mr=document.getElementById('mr'); if(!mr) return;
+  _mNormSettings();
+  var av=_mAvailLangs(), L=window._MLANG||{};
+  function opts(cur, kind){ return av.map(function(c){ var sel=(c===cur);
+    return '<button onclick="_setLang(\''+kind+'\',\''+c+'\')" style="flex:1;min-width:62px;background:'+(sel?'var(--theme)':'var(--panel-muted,rgba(0,0,0,.05))')+';color:'+(sel?'#fff':'var(--text,#333)')+';border:1px solid '+(sel?'var(--theme)':'var(--border,rgba(0,0,0,.12))')+';border-radius:12px;padding:10px 8px;font-size:13px;font-weight:700;cursor:pointer">'+((L[c]&&L[c].flag)||'')+' '+((L[c]&&L[c].name)||c)+'</button>'; }).join(''); }
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:430px">'
+    +'<div style="font-size:17px;font-weight:900;margin-bottom:4px">🌏 학습 언어 설정</div>'
+    +'<div style="font-size:12px;color:var(--text3,#9CA3AF);line-height:1.6;margin-bottom:14px">배우려는 언어와 모국어(뜻·풀이에 쓰는 언어)를 고르세요. 같은 단어를 방향만 바꿔 학습합니다.</div>'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">📚 학습 언어 <span style="color:var(--text3,#9CA3AF);font-weight:500">(문제로 나옴)</span></div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+opts((typeof S!=='undefined'&&S.learnLang)||'en','learn')+'</div>'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">🗣 모국어 <span style="color:var(--text3,#9CA3AF);font-weight:500">(뜻·풀이로 나옴)</span></div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+opts((typeof S!=='undefined'&&S.nativeLang)||'ko','native')+'</div>'
+    +'<div style="font-size:11px;color:var(--text3,#9CA3AF);min-height:15px;margin-bottom:12px">'+_langCoverageHint()+'</div>'
+    +'<button onclick="cm()" class="btn bb" style="width:100%">확인</button>'
+    +'</div></div>';
+}
+function _setLang(kind, code){
+  if(typeof S==='undefined') return;
+  if(kind==='learn'){ if(code===S.nativeLang) S.nativeLang=(code==='ko')?'en':'ko'; S.learnLang=code; }
+  else { if(code===S.learnLang) S.learnLang=(code==='ko')?'en':'ko'; S.nativeLang=code; }
+  _mNormSettings();
+  try{ if(typeof sv==='function') sv(); }catch(e){}
+  showLangPicker();
+  var lab=document.getElementById('lang-pair-label'); if(lab) lab.textContent=_langPairLabel();
+}
+window.showLangPicker=showLangPicker; window._setLang=_setLang; window._langPairLabel=_langPairLabel;
 // 표시용 예문 배열: cnt개의 {en,kr}. 형식 고정이면 그 번호부터 순환, 랜덤이면 섞어서.
 function _ex5Pick(en, cnt){ cnt=cnt||1; var a=_ex5List(en); if(!a) return null; var f=_exFormVal(); var out=[];
   if(f===0){ var sh=a.slice(); for(var i=sh.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=sh[i];sh[i]=sh[j];sh[j]=t;} for(var k=0;k<Math.min(cnt,sh.length);k++) out.push({en:sh[k].en||'',kr:sh[k].kr||''}); }
@@ -4084,7 +4153,7 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
-  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  var _mset={}; ['learnLang','nativeLang','autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -6010,6 +6079,18 @@ function rLearnTab() {
 
   <!-- 학습 목표 -->
   <div style="padding:14px 14px 0">${renderGoalLearnBlock()}</div>
+
+  <!-- 학습 언어 -->
+  <div style="padding:14px 14px 0">
+    <div onclick="showLangPicker()" style="display:flex;align-items:center;gap:10px;background:var(--panel-muted,rgba(0,0,0,.04));border:1px solid var(--border,rgba(0,0,0,.08));border-radius:14px;padding:11px 14px;cursor:pointer">
+      <span style="font-size:18px">🌏</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;color:var(--text3,#9CA3AF);font-weight:700">학습 언어 · 모국어</div>
+        <div style="font-size:14px;font-weight:800;color:var(--text,#111)" id="lang-pair-label">${_langPairLabel()}</div>
+      </div>
+      <span style="color:var(--text3,#9CA3AF);font-size:13px;white-space:nowrap">변경 ›</span>
+    </div>
+  </div>
 
   <!-- 학습 모드 -->
   <div style="padding:14px 14px 0">
@@ -15590,7 +15671,7 @@ auth.onAuthStateChanged(async user => {
 <script src="js/bwd-suggest.js"></script>
   <script src="js/bwd-fix.js?v=2"></script>
   <script src="js/bwd-dict-ui.js?v=7ex5"></script>
-  <script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=false;document.head.appendChild(s);});window.__bwdEx5Loaded=true;})();</script>
+  <script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=false;document.head.appendChild(s);});window.__bwdEx5Loaded=true;})();</script>
 
 <script>
 /* Worddy AI fix (2026-06-13): model 2.5-flash + thinkingBudget0 + fallback + 난이도 모달 체크박스 */

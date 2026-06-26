@@ -4084,7 +4084,7 @@ function sv() {
   localStorage.setItem('wd-bks',JSON.stringify(_booksToSave));
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
-  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  var _mset={}; ['autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -5710,6 +5710,7 @@ function _commitAndLeave(){
   try{ if(typeof _endStudySession==='function') _endStudySession(); }catch(e){}
   try{ if(typeof _LT!=='undefined') _LT.stop(); }catch(e){}
   window._studyActive=false; window._autoActive=false; window._spkActive=false; window._sdActive=false; window._lsActive=false; window._autoLocked=false;
+  try{ if(window._lsAutoTimer){ clearTimeout(window._lsAutoTimer); window._lsAutoTimer=null; } }catch(e){}
   try{ if(typeof S!=='undefined'){ S._sessTs=0; S._gameStartTs=null; S._gameRunning=false; if(wasGame) S.gDone=true; } }catch(e){}
   try{ var sc=document.getElementById('sess-clock-bar'); if(sc) sc.style.display='none'; }catch(e){}
   try{ var ov=document.getElementById('auto-lock-overlay'); if(ov) ov.remove(); }catch(e){}
@@ -9533,6 +9534,8 @@ function showListenMode() {
   if(window._lsRate==null)  window._lsRate=(S._lsRate!=null?S._lsRate:0.8);
   if(window._lsTarget==null) window._lsTarget=(S._lsTarget!=null?S._lsTarget:'all'); // all|word|sentence
   if(window._lsMeanN==null)  window._lsMeanN=(S._lsMeanN!=null?S._lsMeanN:0);        // 0=전체, 1/2/3=뜻 개수
+  if(window._lsAuto==null)   window._lsAuto=(S._lsAuto!=null?S._lsAuto:false);       // 자동 재생 on/off
+  if(window._lsAutoSec==null)window._lsAutoSec=(S._lsAutoSec!=null?S._lsAutoSec:5);  // 자동 대기(초) 5/10/20
 
   window._lsBuild=function(){
     var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
@@ -9597,6 +9600,26 @@ function showListenMode() {
     }catch(e){}
     window._lsRender();
   };
+  // ── 자동 재생: 비공개 N초→정답공개, 공개 N초→다음 단어 (반복) ──
+  window._lsClearAuto=function(){ if(window._lsAutoTimer){ clearTimeout(window._lsAutoTimer); window._lsAutoTimer=null; } };
+  window._lsAutoStep=function(){
+    window._lsClearAuto();
+    if(!window._lsAuto || !window._lsActive) return;
+    if(window._lsIdx>=window._lsWords.length) return; // 완료화면
+    var ms=(window._lsAutoSec||5)*1000;
+    if(!window._lsReveal){
+      window._lsAutoTimer=setTimeout(function(){
+        if(!window._lsAuto||!window._lsActive) return;
+        window._lsRevealNow(); // 공개(_lsRender가 다음 스텝 재스케줄)
+      }, ms);
+    } else {
+      window._lsAutoTimer=setTimeout(function(){
+        if(!window._lsAuto||!window._lsActive) return;
+        if(window._lsIdx>=window._lsWords.length-1){ window._lsIdx=window._lsWords.length; window._lsClearAuto(); window._lsRender(); return; }
+        window._lsNext(); // 다음(_lsRender가 다음 스텝 재스케줄)
+      }, ms);
+    }
+  };
 
   const _lsRender=function(){
     const total=window._lsWords.length;
@@ -9623,6 +9646,8 @@ function showListenMode() {
     var _lsRows=
         gsetRow('정렬',[['추가순',"window._lsSort='default';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='default'],['A-Z',"window._lsSort='alpha';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='alpha'],['가나다',"window._lsSort='kr';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='kr'],['마크순',"window._lsSort='mark';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='mark'],['랜덤',"window._lsSort='shuffle';window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsSort==='shuffle']])
       +gsetRow('학습범위',[['전체',"window._lsRange=-1;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===-1],['미암기',"window._lsRange=0;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===0],['암기',"window._lsRange=1;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===1],['헷갈림',"window._lsRange=2;window._lsBuild();window._lsIdx=0;window._lsReveal=false;window._lsRender()",window._lsRange===2]])
+      +gsetRow('자동 재생',[['끔',"window._lsAuto=false;S._lsAuto=false;sv();window._lsClearAuto();window._lsRender()",!window._lsAuto],['켬',"window._lsAuto=true;S._lsAuto=true;sv();window._lsRender()",!!window._lsAuto]])
+      +(window._lsAuto?gsetRow('대기 시간',[['5초',"window._lsAutoSec=5;S._lsAutoSec=5;sv();window._lsRender()",window._lsAutoSec===5],['10초',"window._lsAutoSec=10;S._lsAutoSec=10;sv();window._lsRender()",window._lsAutoSec===10],['20초',"window._lsAutoSec=20;S._lsAutoSec=20;sv();window._lsRender()",window._lsAutoSec===20]]):'')
       +gsetRow('듣기 대상',[['전체',"window._lsTarget='all';S._lsTarget='all';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='all'],['단어',"window._lsTarget='word';S._lsTarget='word';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='word'],['문장',"window._lsTarget='sentence';S._lsTarget='sentence';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='sentence']])
       +gsetRow('뜻 보기',[['전체',"window._lsMeanN=0;S._lsMeanN=0;sv();window._lsRender()",window._lsMeanN===0],['1개',"window._lsMeanN=1;S._lsMeanN=1;sv();window._lsRender()",window._lsMeanN===1],['2개',"window._lsMeanN=2;S._lsMeanN=2;sv();window._lsRender()",window._lsMeanN===2],['3개',"window._lsMeanN=3;S._lsMeanN=3;sv();window._lsRender()",window._lsMeanN===3]])
       +gsetRow('예문 형식',_exFormItems("window._lsExByIdx={};window._lsRender()"))
@@ -9690,12 +9715,13 @@ function showListenMode() {
         <div style="background:rgba(255,255,255,.15);border-radius:4px;height:3px"><div style="height:100%;background:var(--theme);border-radius:4px;width:${pct}%"></div></div>
       </div>
       <div style="text-align:center;padding:6px;flex-shrink:0">
-        <div style="font-size:12px;color:var(--theme);font-weight:700;background:var(--theme-tint);border-radius:20px;padding:5px 16px;display:inline-block">🎧 소리를 듣고 뜻을 떠올리세요</div>
+        <div style="font-size:12px;color:var(--theme);font-weight:700;background:var(--theme-tint);border-radius:20px;padding:5px 16px;display:inline-block">${window._lsAuto?('🔄 자동 재생 중 · '+(window._lsAutoSec||5)+'초'):'🎧 소리를 듣고 뜻을 떠올리세요'}</div>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow:hidden">${card}</div>
       ${bottom}
       ${_lsPanel}
     </div></div>`;
+    if(window._lsAuto && window._lsActive && window._lsIdx<window._lsWords.length) window._lsAutoStep(); else window._lsClearAuto();
   };
 
   window._lsRender=_lsRender; window._curRender=_lsRender;

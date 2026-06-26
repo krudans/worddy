@@ -13,7 +13,7 @@
 <script src="js/bwd-wordlist.js?v=1"></script>
 <script src="js/bwd-pron.js?v=1"></script>
 <script src="js/bwd-dict.js?v=1"></script>
-<script>document.write('<scr'+'ipt src="js/bwd-ex5.js?cb='+Date.now()+'"></scr'+'ipt>');</script>
+<script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js'].forEach(function(src){document.write('<scr'+'ipt src="'+src+'?cb='+cb+'"></scr'+'ipt>');});})();</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
 
@@ -4578,7 +4578,7 @@ function showAiGenEx5(){
       +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="aig-throttle" type="number" value="3" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
       +'<div class="fg" style="margin:0"><label>자동저장 간격(개)</label><input id="aig-ckpt" type="number" value="2000" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
     +'</div>'
-    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ <b>자동 모델 회전</b>: 한 모델이 한도(429)에 걸리면 즉시 다음 모델로 전환하고, 그 모델은 90초 쿨다운 후 재사용합니다. 전 모델이 동시에 걸리면 잠깐 대기 후 재개. 창은 닫지 말고 켜두세요. 자동저장 간격마다 bwd-ex5.js가 다운로드됩니다(업로드하면 다음에 이어서).</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ <b>자동 모델 회전</b>: 한 모델이 한도(429)에 걸리면 즉시 다음 모델로 전환하고, 그 모델은 90초 쿨다운 후 재사용합니다. 전 모델이 동시에 걸리면 잠깐 대기 후 재개. 창은 닫지 말고 켜두세요. 자동저장 간격마다 bwd-ex5-1.js·bwd-ex5-2.js 2개 파일이 다운로드됩니다(둘 다 js/에 업로드하면 다음에 이어서). 브라우저가 다중 다운로드를 허용해야 합니다.</div>'
     +'<div style="display:flex;gap:8px">'
       +'<button class="btn" id="aig-start" onclick="aiGenStart()" style="flex:1;background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:9px;font-weight:700;cursor:pointer">▶ 시작</button>'
       +'<button class="btn bgr" onclick="aiGenStop()">⏹ 정지</button>'
@@ -5954,19 +5954,29 @@ function bwdExport(){
   window.bwdExportEx5=function(){
     var X=window.BWD_EX5||{};
     var keys=Object.keys(X).sort();
-    var lines=keys.map(function(k){
+    function emit(k){
       var e=X[k]||{};
       var ex5=(e.ex5||[]).map(function(s){return '{t:'+s.t+',en:'+JSON.stringify(s.en||'')+',kr:'+JSON.stringify(s.kr||'')+'}';}).join(',');
       return '  '+JSON.stringify(k)+': {img:'+JSON.stringify(e.img||'')+', ex5:['+ex5+']},';
-    });
-    if(lines.length)lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
-    var content='/* Butterfly Word \u2014 \ub2e8\uc5b4\uc0ac\uc804 \uc774\ubaa8\uc9c0 + 5\ud615\uc2dd \uc608\ubb38 \uc624\ubc84\ub808\uc774 (bwd-ex5.js) */\n'+
-      'window.BWD_EX5 = Object.assign(window.BWD_EX5||{}, {\n'+lines.join('\n')+'\n});\n';
-    var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');a.href=url;a.download='bwd-ex5.js';document.body.appendChild(a);a.click();a.remove();
-    setTimeout(function(){URL.revokeObjectURL(url);},2000);
-    toast('bwd-ex5.js \ub0b4\ubcf4\ub0b4\uae30 \uc644\ub8cc ('+keys.length+'\uac1c) \u2014 js/ \ud3f4\ub354\uc5d0 \uc62c\ub9ac\uc138\uc694','ok');
+    }
+    var PARTS=2;                              // 25MB 한도 회피용 분할(앱 로더와 동일하게 bwd-ex5-1·2.js)
+    var per=Math.ceil(keys.length/PARTS);
+    for(var p=0;p<PARTS;p++){
+      (function(idx){
+        var slice=keys.slice(idx*per,(idx+1)*per);
+        var lines=slice.map(emit);
+        if(lines.length)lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
+        var content='/* Butterfly Word \u2014 \ub2e8\uc5b4\uc0ac\uc804 (bwd-ex5-'+(idx+1)+'.js \u00b7 \ubd84\ud560 '+(idx+1)+'/'+PARTS+') */\n'+
+          'window.BWD_EX5 = Object.assign(window.BWD_EX5||{}, {\n'+lines.join('\n')+'\n});\n';
+        var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
+        var url=URL.createObjectURL(blob);
+        setTimeout(function(){
+          var a=document.createElement('a');a.href=url;a.download='bwd-ex5-'+(idx+1)+'.js';document.body.appendChild(a);a.click();a.remove();
+          setTimeout(function(){URL.revokeObjectURL(url);},3000);
+        }, idx*700);                         // 순차 다운로드(브라우저 다중 다운로드 허용 필요)
+      })(p);
+    }
+    toast('bwd-ex5 \ub0b4\ubcf4\ub0b4\uae30 \uc644\ub8cc ('+keys.length+'\uac1c \u2192 '+PARTS+'\ud30c\uc77c) \u2014 bwd-ex5-1.js\u00b7bwd-ex5-2.js \ub458 \ub2e4 js/\uc5d0 \uc62c\ub9ac\uc138\uc694','ok');
   };
   window.bwdExport=function(){
     var d=_bwdDict();var keys=Object.keys(d).sort();

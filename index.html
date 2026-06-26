@@ -1041,6 +1041,15 @@ window.getMultiCard=getMultiCard; window._mBlock=_mBlock; window._mAvailLangs=_m
 function _mNormSettings(){ try{ var av=_mAvailLangs();
   if(typeof S!=='undefined'){ if(av.indexOf(S.learnLang)<0)S.learnLang='en'; if(av.indexOf(S.nativeLang)<0)S.nativeLang='ko'; if(S.learnLang===S.nativeLang){ S.nativeLang=(S.learnLang==='ko')?'en':'ko'; } } }catch(e){} }
 window._mNormSettings=_mNormSettings;
+// 학습언어 데이터가 있는 단어만 남김(영어로 대체하지 않고 제외). en/ko는 전체.
+function _mStudyFilter(arr){ try{
+  if(!Array.isArray(arr)) return arr;
+  var ll=(typeof S!=='undefined'&&S.learnLang)||'en';
+  if(ll==='ja'&&window.BWD_JA) return arr.filter(function(w){ return w&&w.en&&window.BWD_JA[w.en]; });
+  if(ll==='de'&&window.BWD_DE) return arr.filter(function(w){ return w&&w.en&&window.BWD_DE[w.en]; });
+  return arr;
+}catch(e){ return arr; } }
+window._mStudyFilter=_mStudyFilter;
 // 학습언어→모국어 라벨
 function _langPairLabel(){ var L=window._MLANG||{}, l=(typeof S!=='undefined'&&S.learnLang)||'en', n=(typeof S!=='undefined'&&S.nativeLang)||'ko'; return ((L[l]&&L[l].flag)||'')+' '+((L[l]&&L[l].name)||l)+'  →  '+((L[n]&&L[n].flag)||'')+' '+((L[n]&&L[n].name)||n); }
 function _langCoverageHint(){ var ja=(window.BWD_JA?Object.keys(window.BWD_JA).length:0), de=(window.BWD_DE?Object.keys(window.BWD_DE).length:0); var parts=[]; if(_mAvailLangs().indexOf('ja')>=0)parts.push('일본어 '+ja.toLocaleString()+'개'); if(_mAvailLangs().indexOf('de')>=0)parts.push('독일어 '+de.toLocaleString()+'개'); return parts.length?('※ 외국어 데이터: '+parts.join(' · ')+' (채워지는 중)'):''; }
@@ -3229,7 +3238,7 @@ function showSpeakMode() {
   if(window._spkAutoRead==null) window._spkAutoRead=(S._spkAutoRead!=null?S._spkAutoRead:false);
   if(window._spkRate==null) window._spkRate=(S._spkRate!=null?S._spkRate:0.8); // TTS 속도(통일 설정)
   window._spkBuild=function(){
-    var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
+    var base=_mStudyFilter((typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[]);
     var r=window._spkRange;
     var arr=(r===0||r===1||r===2)?base.filter(function(w){return (getMark(w.en)||0)===r;}):base.slice();
     if(arr.length===0) arr=base.slice();
@@ -3267,7 +3276,13 @@ function showSpeakMode() {
     const w=words[idx];
     if(typeof _seenW==='function') _seenW(w.en);
     const pct=Math.round(idx/words.length*100);
-    if(show && window._spkAutoRead && window._spkSpokeIdx!==idx){ window._spkSpokeIdx=idx; try{window.speechSynthesis.cancel();var _u=new SpeechSynthesisUtterance(w.en);_u.lang='en-US';_u.rate=(window._spkRate||0.8);window.speechSynthesis.speak(_u);}catch(e){} }
+    var _ml=(typeof getMultiCard==='function' && ((S.learnLang&&S.learnLang!=='en')||(S.nativeLang&&S.nativeLang!=='ko'))) ? getMultiCard(w.en,S.learnLang,S.nativeLang,(typeof _exFormVal==='function'?_exFormVal():0)) : null;
+    var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
+    var _qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
+    var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
+    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+    var _qAudio=(_ml&&_ml.q)?_ml.q.lang:'en';
+    if(show && window._spkAutoRead && window._spkSpokeIdx!==idx){ window._spkSpokeIdx=idx; try{ if(window.speechSynthesis)window.speechSynthesis.cancel(); speak(_qLabel,_qAudio,(window._spkRate||0.8)); }catch(e){} }
     var _spkRows=
         gsetRow('정렬',[['추가순',"window._spkSort='default';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='default'],['A-Z',"window._spkSort='alpha';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='alpha'],['가나다',"window._spkSort='kr';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='kr'],['마크순',"window._spkSort='mark';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='mark'],['랜덤',"window._spkSort='shuffle';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='shuffle']])
       +gsetRow('학습범위',[['전체',"window._spkRange=-1;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===-1],['미암기',"window._spkRange=0;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===0],['암기',"window._spkRange=1;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===1],['헷갈림',"window._spkRange=2;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===2]])
@@ -3294,19 +3309,20 @@ function showSpeakMode() {
       </div>
       <!-- 안내 -->
       <div style="text-align:center;padding:6px;flex-shrink:0">
-        <div style="font-size:12px;color:var(--theme);font-weight:700;background:var(--theme-tint);border-radius:20px;padding:5px 16px;display:inline-block">🗣️ 뜻을 보고 영어로 말하세요</div>
+        <div style="font-size:12px;color:var(--theme);font-weight:700;background:var(--theme-tint);border-radius:20px;padding:5px 16px;display:inline-block">🗣️ 뜻을 보고 ${_ml?((window._MLANG&&window._MLANG[S.learnLang]&&window._MLANG[S.learnLang].name)||'외국어'):'영어'}로 말하세요</div>
       </div>
       <!-- 카드 -->
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;height:300px;overflow:hidden">
         <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:32px 28px;width:100%;max-width:340px;text-align:center">
           <!-- 한국어 뜻 (항상 표시) -->
-          ${S._vMean!==false?`<div style="font-size:28px;font-weight:900;margin-bottom:16px">${w.kr}</div>`:''}
-          ${(w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:10px">${w.ph}</div>`:''}
+          ${S._vMean!==false?`<div style="font-size:28px;font-weight:900;margin-bottom:16px">${_aLabel}</div>`:''}
+          ${(_qPh&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:10px">${_qPh}</div>`:''}
           <!-- 영어 (탭해서 확인) -->
           ${show
             ? `<div style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;margin-top:4px">
-                <div style="font-size:${w.en.length>12?'24px':w.en.length>8?'30px':'36px'};font-weight:900;color:var(--theme)">${w.en}</div>
-                <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${w.en.replace(/'/g,"\'")}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="margin-top:10px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);border-radius:10px;padding:6px 16px;color:#A78BFA;font-size:12px;font-weight:700;cursor:pointer">🔊 발음 확인</button>
+                <div style="font-size:${_qLabel.length>12?'24px':_qLabel.length>8?'30px':'36px'};font-weight:900;color:var(--theme)">${_qLabel}</div>
+                ${_qSub?`<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px">${_qSub}</div>`:''}
+                <button onclick="speak('${_qLabel.replace(/'/g,"\\'")}','${_qAudio}',0.85)" style="margin-top:10px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);border-radius:10px;padding:6px 16px;color:#A78BFA;font-size:12px;font-weight:700;cursor:pointer">🔊 발음 확인</button>
                </div>`
             : `<button onclick="window._spkShow=true;_spkRender()" style="margin-top:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:10px 20px;color:rgba(255,255,255,.7);font-size:13px;font-weight:700;cursor:pointer">탭해서 확인</button>`}
         </div>
@@ -4281,17 +4297,24 @@ function _autoSpeak(text, lang='en-US', rateOverride) {
 }
 async function _autoReadWord(w) {
   const m = window._auto.read || 'en+kr';
+  const _en=String(w.en||'').toLowerCase().trim();
+  const _q=(typeof _mBlock==='function' && typeof S!=='undefined' && S.learnLang && S.learnLang!=='en')?_mBlock(_en,S.learnLang):null;
+  const _a=(typeof _mBlock==='function' && typeof S!=='undefined' && S.nativeLang && S.nativeLang!=='ko')?_mBlock(_en,S.nativeLang):null;
+  const _qWord=_q?(_q.label||w.en):w.en;
+  const _qLang=_q?(_q.audioLang||'en-US'):'en-US';
+  const _aWord=_a?(_a.label||w.kr):w.kr;
+  const _aLang=_a?(_a.audioLang||'ko-KR'):'ko-KR';
   const exCount = parseInt(window._auto?.exCount||0);
   const ws = window._autoWords || [];
   const sentenceBook = _isSentenceBook(ws);
   const isPhrase = /\s/.test((w.en||'').trim());
-  const exList = w.exList && w.exList.length ? w.exList : (w.ex ? [w.ex] : []);
+  const exList = (_q && _q.ex && _q.ex.length) ? _q.ex.slice(0,3).map(function(x){return x.s;}) : (w.exList && w.exList.length ? w.exList : (w.ex ? [w.ex] : []));
   const exToRead = sentenceBook ? [] : exList.slice(0, exCount);
 
   const speakExamples = async () => {
     for(const ex of exToRead) {
       await new Promise(r=>setTimeout(r,250));
-      await _autoSpeak(ex, 'en-US');
+      await _autoSpeak(ex, _qLang);
     }
   };
 
@@ -4299,47 +4322,47 @@ async function _autoReadWord(w) {
   const effMode = (m === 'spell' && isPhrase) ? 'en+kr' : m;
 
   if(effMode === 'spell') {
-    await _autoSpeak(w.en, 'en-US');
+    await _autoSpeak(_qWord, _qLang);
     await new Promise(r=>setTimeout(r,350));
     const letters = (w.en||'').split('');
     for(const ch of letters) {
       const say = /[a-zA-Z]/.test(ch) ? ch.toUpperCase() : ch;
-      if(!/\s/.test(ch)) await _autoSpeak(say, 'en-US', 1.6);
+      if(!_q && !/\s/.test(ch)) await _autoSpeak(say, 'en-US', 1.6);
       await new Promise(r=>setTimeout(r,60));
     }
     await speakExamples();
   } else if(effMode === 'en') {
-    await _autoSpeak(w.en, 'en-US');
+    await _autoSpeak(_qWord, _qLang);
     await speakExamples();
   } else if(effMode === 'kr') {
-    await _autoSpeak(w.kr, 'ko-KR');
+    await _autoSpeak(_aWord, _aLang);
     await speakExamples();
   } else if(effMode === 'ex') {
-    if(exToRead.length) { for(const ex of exToRead) await _autoSpeak(ex, 'en-US'); }
-    else { await _autoSpeak(w.en, 'en-US'); await new Promise(r=>setTimeout(r,250)); await _autoSpeak(w.kr, 'ko-KR'); }
+    if(exToRead.length) { for(const ex of exToRead) await _autoSpeak(ex, _qLang); }
+    else { await _autoSpeak(_qWord, _qLang); await new Promise(r=>setTimeout(r,250)); await _autoSpeak(_aWord, _aLang); }
   } else if(effMode === 'kr_first') {
-    await _autoSpeak(w.kr, 'ko-KR');
+    await _autoSpeak(_aWord, _aLang);
     const delay = (window._auto.krFirstDelay||3) * 1000;
     await new Promise(r=>setTimeout(r,delay));
     const cardReveal = document.getElementById('auto-kr-reveal');
     if(cardReveal) cardReveal.style.display='block';
     const krOnly = document.getElementById('auto-kr-only');
     if(krOnly) krOnly.style.display='none';
-    await _autoSpeak(w.en, 'en-US');
+    await _autoSpeak(_qWord, _qLang);
     await speakExamples();
   } else if(effMode === 'en+kr') {
-    await _autoSpeak(w.en, 'en-US');
+    await _autoSpeak(_qWord, _qLang);
     await new Promise(r=>setTimeout(r,300));
-    await _autoSpeak(w.kr, 'ko-KR');
+    await _autoSpeak(_aWord, _aLang);
     await speakExamples();
   } else if(effMode === 'en+ex') {
-    await _autoSpeak(w.en, 'en-US');
+    await _autoSpeak(_qWord, _qLang);
     await new Promise(r=>setTimeout(r,300));
     await speakExamples();
   } else if(effMode === 'all') {
-    await _autoSpeak(w.en, 'en-US');
+    await _autoSpeak(_qWord, _qLang);
     await new Promise(r=>setTimeout(r,250));
-    await _autoSpeak(w.kr, 'ko-KR');
+    await _autoSpeak(_aWord, _aLang);
     await speakExamples();
   }
 }
@@ -4351,7 +4374,7 @@ function _arSetRange(v){if(window._auto)window._auto.range=v;S.autoRange=v;if(ty
 
 // 학습범위/단위 변경 시 _autoWords 재필터링
 function _autoRefilter() {
-  const rawWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const rawWords = _mStudyFilter(getCurrentBookWords ? getCurrentBookWords() : S.words);
   if(!rawWords||!rawWords.length) return;
   const A = window._auto||{};
   let words = [...rawWords];
@@ -4466,7 +4489,7 @@ window._toggleAutoLock = function() {
 }
 
 function showAutoMode() {
-  const rawWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
+  const rawWords = _mStudyFilter(getCurrentBookWords ? getCurrentBookWords() : S.words);
   if(!rawWords || !rawWords.length) { toast('단어가 없어요!'); return; }
 
   // _auto 초기화 (없을 때만)
@@ -4558,11 +4581,19 @@ window._autoRender = function() {
     var w = window._autoWords[window._autoIdx];
     if(w && typeof _seenW==='function') _seenW(w.en);
     if(!w) return;
+    var _ml=(typeof getMultiCard==='function' && ((S.learnLang&&S.learnLang!=='en')||(S.nativeLang&&S.nativeLang!=='ko'))) ? getMultiCard(w.en,S.learnLang,S.nativeLang,(typeof _exFormVal==='function'?_exFormVal():0)) : null;
+    var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
+    var _qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
+    var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
+    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+    var _qPrompt=(_ml&&window._MLANG&&window._MLANG[S.learnLang]&&window._MLANG[S.learnLang].name)?window._MLANG[S.learnLang].name:'영어';
     var total = window._autoWords.length;
     var A = window._auto;
     var pct = Math.round((window._autoIdx+1)/total*100);
 
     var exList = (typeof _ex5Strings==='function')?_ex5Strings(w,3):((w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]));
+    if(_ml){ var _qb=(typeof _mBlock==='function')?_mBlock(w.en,S.learnLang):null, _ab=(typeof _mBlock==='function')?_mBlock(w.en,S.nativeLang):null;
+      if(_qb&&_qb.ex&&_qb.ex.length){ exList=_qb.ex.slice(0,3).map(function(ss,ii){ var tr=(_ab&&_ab.ex&&_ab.ex[ii])?_ab.ex[ii].s:''; return ss.s+(tr?'  <span style="color:rgba(255,255,255,.45)">'+tr+'</span>':''); }); } }
     var exCount = parseInt(A.exCount||0);
     var exHtml = '';
     if(exCount>0&&exList.length>0&&S._vSent!==false){
@@ -4635,8 +4666,8 @@ window._autoRender = function() {
         +'<div style="padding:0 16px 4px;flex-shrink:0">'        +'<div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:#60A5FA;width:'+pct+'%"></div></div>'        +'</div>'
         // 단어 카드 (kr_first 모드 분기)
         +(A.read==='kr_first'
-          ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 영어 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+w.kr+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 영어가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none">'+((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:8px">'+w.img+'</div>':'')+'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'+(w.ph&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')+(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>':'')+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
-          : '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:10px">'+w.img+'</div>':'')              +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+w.en+'</div>'              +(w.ph&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+w.ph+'</div>':'')              +(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+w.kr+'</div>':'')              +exHtml              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>')
+          ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 '+_qPrompt+' 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+_aLabel+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 '+_qPrompt+'가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none">'+((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:8px">'+w.img+'</div>':'')+'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+_qLabel+'</div>'+(_qSub?'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px">'+_qSub+'</div>':'')+(_qPh&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+_qPh+'</div>':'')+(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+_aLabel+'</div>':'')+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
+          : '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:10px">'+w.img+'</div>':'')              +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+_qLabel+'</div>'+(_qSub?'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px">'+_qSub+'</div>':'')              +(_qPh&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+_qPh+'</div>':'')              +(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+_aLabel+'</div>':'')              +exHtml              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>')
         // 컨트롤 버튼
         +'<div style="padding:6px 16px;display:flex;gap:6px;flex-shrink:0">'
           +'<button onclick="window._autoIdx=Math.max(0,window._autoIdx-1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">◀ 이전</button>'
@@ -9637,7 +9668,7 @@ function showListenMode() {
   if(window._lsAutoSec==null)window._lsAutoSec=(S._lsAutoSec!=null?S._lsAutoSec:5);  // 자동 대기(초) 5/10/20
 
   window._lsBuild=function(){
-    var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
+    var base=_mStudyFilter((typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[]);
     var r=window._lsRange;
     var arr=(r===0||r===1||r===2)?base.filter(function(w){return (getMark(w.en)||0)===r;}):base.slice();
     if(arr.length===0) arr=base.slice();
@@ -10088,7 +10119,7 @@ function showShadowMode() {
   if(window._sdGap==null) window._sdGap=(S._sdGap!=null?S._sdGap:3); // 따라말하기 공백 (초)
   if(window._sdRate==null) window._sdRate=(S._sdRate!=null?S._sdRate:0.8);
   window._sdBuild=function(){
-    var base=(typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[];
+    var base=_mStudyFilter((typeof getCurrentBookWords==='function'?getCurrentBookWords():S.words)||[]);
     var r=window._sdRange;
     var arr=(r===0||r===1||r===2)?base.filter(function(w){return (getMark(w.en)||0)===r;}):base.slice();
     if(arr.length===0) arr=base.slice();
@@ -10123,6 +10154,12 @@ function showShadowMode() {
     const gap=window._sdGap;
     const rate=window._sdRate;
     const pct=Math.round(idx/words.length*100);
+    var _ml=(typeof getMultiCard==='function' && ((S.learnLang&&S.learnLang!=='en')||(S.nativeLang&&S.nativeLang!=='ko'))) ? getMultiCard(w.en,S.learnLang,S.nativeLang,(typeof _exFormVal==='function'?_exFormVal():0)) : null;
+    var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
+    var _qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
+    var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
+    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+    var _qEx=(_ml&&_ml.q&&_ml.q.ex)?_ml.q.ex:(w.ex||'');
     var _sdRows=
         gsetRow('정렬',[['추가순',"window._sdSort='default';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='default'],['A-Z',"window._sdSort='alpha';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='alpha'],['가나다',"window._sdSort='kr';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='kr'],['마크순',"window._sdSort='mark';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='mark'],['랜덤',"window._sdSort='shuffle';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='shuffle']])
       +gsetRow('학습범위',[['전체',"window._sdRange=-1;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===-1],['미암기',"window._sdRange=0;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===0],['암기',"window._sdRange=1;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===1],['헷갈림',"window._sdRange=2;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===2]])
@@ -10154,10 +10191,11 @@ function showShadowMode() {
       <!-- 단어 카드 -->
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px">
         <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:32px 28px;width:100%;max-width:340px;text-align:center">
-          <div style="font-size:${w.en.length>12?'26px':w.en.length>8?'32px':'40px'};font-weight:900;margin-bottom:12px">${w.en}</div>
-          ${(w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:var(--panel-text3,#9CA3AF);margin-bottom:14px">${w.ph}</div>`:''}
-          ${S._vMean!==false?`<div style="font-size:20px;color:rgba(255,255,255,.8);font-weight:700;margin-bottom:8px">${w.kr}</div>`:''}
-          ${(w.ex&&S._vSent!==false)?`<div style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.6">"${w.ex}"</div>`:''}
+          <div style="font-size:${_qLabel.length>12?'26px':_qLabel.length>8?'32px':'40px'};font-weight:900;margin-bottom:12px">${_qLabel}</div>
+          ${_qSub?`<div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:8px">${_qSub}</div>`:''}
+          ${(_qPh&&S._vPh!==false)?`<div style="font-size:13px;color:var(--panel-text3,#9CA3AF);margin-bottom:14px">${_qPh}</div>`:''}
+          ${S._vMean!==false?`<div style="font-size:20px;color:rgba(255,255,255,.8);font-weight:700;margin-bottom:8px">${_aLabel}</div>`:''}
+          ${(_qEx&&S._vSent!==false)?`<div style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.6">"${_qEx}"</div>`:''}
         </div>
         <!-- 상태 -->
         <div id="sd-status" style="margin-top:18px;font-size:14px;font-weight:700;color:#EC4899;text-align:center;min-height:20px">🔊 [듣기]를 누르세요</div>
@@ -10250,7 +10288,10 @@ function showShadowMode() {
     window._sdStop();
     var st=_sdEl('sd-status'); if(st){ st.textContent='🔊 듣는 중...'; st.style.color='#63B3ED'; }
     try{
-      var u=new SpeechSynthesisUtterance(w.en); u.lang='en-US'; u.rate=window._sdRate||0.8;
+      var _en=String(w.en||'').toLowerCase().trim();
+      var _q=(typeof _mBlock==='function' && S.learnLang && S.learnLang!=='en')?_mBlock(_en,S.learnLang):null;
+      var _spk=_q?(_q.label||w.en):w.en, _alng=_q?(_q.audioLang||'en-US'):'en-US';
+      var u=new SpeechSynthesisUtterance(_spk); u.lang=_alng; u.rate=window._sdRate||0.8;
       u.onend=function(){ if(!window._sdActive) return; if(!window._sdPaused && thenListen===true){ window._sdListen(); } else { var s2=_sdEl('sd-status'); if(s2){ s2.textContent='🎤 [말하기]를 누르고 따라 읽으세요'; s2.style.color='#EC4899'; } } };
       u.onerror=u.onend;
       window.speechSynthesis.speak(u);
@@ -10277,6 +10318,9 @@ function showShadowMode() {
 
   window._sdStartRec = function(w){
     var SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
+    var _en=String(w.en||'').toLowerCase().trim();
+    var _q=(typeof _mBlock==='function' && S.learnLang && S.learnLang!=='en')?_mBlock(_en,S.learnLang):null;
+    var _spk=_q?(_q.label||w.en):w.en, _alng=_q?(_q.audioLang||'en-US'):'en-US';
     var st=_sdEl('sd-status');
     if(st){ st.textContent='🎤 지금 말하세요!'; st.style.color='#EC4899'; }
     var he=_sdEl('sd-heard'); if(he) he.textContent='';
@@ -10299,12 +10343,12 @@ function showShadowMode() {
       }
     }catch(e){}
     try{
-      var rec=new SR(); window._sdRec=rec; rec.lang='en-US'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=5;
+      var rec=new SR(); window._sdRec=rec; rec.lang=_alng; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=5;
       var best=0;
       rec.onresult=function(ev){
         var txt=''; for(var i=ev.resultIndex;i<ev.results.length;i++){ txt+=ev.results[i][0].transcript; }
         var sim=0;
-        try{ for(var i=0;i<ev.results.length;i++){ for(var k=0;k<ev.results[i].length;k++){ sim=Math.max(sim,_sdSim(ev.results[i][k].transcript, w.en)); } } }catch(e){ sim=_sdSim(txt,w.en); }
+        try{ for(var i=0;i<ev.results.length;i++){ for(var k=0;k<ev.results[i].length;k++){ sim=Math.max(sim,_sdSim(ev.results[i][k].transcript, _spk)); } } }catch(e){ sim=_sdSim(txt,_spk); }
         if(sim>best) best=sim;
         var pct=Math.round(best*100);
         var bar=_sdEl('sd-match-bar'), pe=_sdEl('sd-match-pct'), he2=_sdEl('sd-heard');
@@ -11165,7 +11209,7 @@ function rLearn() {
   if(typeof _startStudySession==='function') _startStudySession();
   const sort = S.flashSort||'default';
   const filter = S.flashRange??-1;
-  let baseWords = typeof getCurrentBookWords==='function' ? [...getCurrentBookWords()] : [...S.words];
+  let baseWords = _mStudyFilter(typeof getCurrentBookWords==='function' ? [...getCurrentBookWords()] : [...S.words]);
   if(sort==='alpha') baseWords.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sort==='alpha_kr') baseWords.sort((a,b)=>a.kr.localeCompare(b.kr));
   else if(sort==='mark') baseWords.sort((a,b)=>getMark(b.en)-getMark(a.en));

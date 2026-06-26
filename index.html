@@ -1050,6 +1050,10 @@ function _mStudyFilter(arr){ try{
   return arr;
 }catch(e){ return arr; } }
 window._mStudyFilter=_mStudyFilter;
+// 책 객체 → 학습언어 데이터 보유 단어/개수(드롭다운·현황·목표 공용)
+function _bookWordsL(b){ try{ var w=(typeof getBookWords==='function')?getBookWords(b):((b&&b.words)||[]); return _mStudyFilter(w||[]); }catch(e){ return (b&&b.words)||[]; } }
+function _bookCntL(b){ try{ return _bookWordsL(b).length; }catch(e){ return ((b&&b.words)||[]).length; } }
+window._bookWordsL=_bookWordsL; window._bookCntL=_bookCntL;
 // 학습언어→모국어 라벨
 function _langPairLabel(){ var L=window._MLANG||{}, l=(typeof S!=='undefined'&&S.learnLang)||'en', n=(typeof S!=='undefined'&&S.nativeLang)||'ko'; return ((L[l]&&L[l].flag)||'')+' '+((L[l]&&L[l].name)||l)+'  →  '+((L[n]&&L[n].flag)||'')+' '+((L[n]&&L[n].name)||n); }
 function _langCoverageHint(){ var ja=(window.BWD_JA?Object.keys(window.BWD_JA).length:0), de=(window.BWD_DE?Object.keys(window.BWD_DE).length:0); var parts=[]; if(_mAvailLangs().indexOf('ja')>=0)parts.push('일본어 '+ja.toLocaleString()+'개'); if(_mAvailLangs().indexOf('de')>=0)parts.push('독일어 '+de.toLocaleString()+'개'); return parts.length?('※ 외국어 데이터: '+parts.join(' · ')+' (채워지는 중)'):''; }
@@ -1078,6 +1082,7 @@ function _setLang(kind, code){
   try{ if(typeof sv==='function') sv(); }catch(e){}
   showLangPicker();
   var lab=document.getElementById('lang-pair-label'); if(lab) lab.textContent=_langPairLabel();
+  try{ if(typeof go==='function') go(); }catch(e){}
 }
 window.showLangPicker=showLangPicker; window._setLang=_setLang; window._langPairLabel=_langPairLabel;
 // 표시용 예문 배열: cnt개의 {en,kr}. 형식 고정이면 그 번호부터 순환, 랜덤이면 섞어서.
@@ -3882,7 +3887,7 @@ function _memorizedAcrossBooks(){
   //       → 책은 S.books 기준(현재 책은 최신 S.markMap), 내 단어장은 wd-w/wd-mk(현재면 live)로 따로.
   const set = Object.create(null);
   for(const b of (S.books||[])){
-    const bw = (typeof getBookWords==='function') ? getBookWords(b) : (b.words||[]);
+    const bw = _mStudyFilter((typeof getBookWords==='function') ? getBookWords(b) : (b.words||[]));
     const mm = (b.markMap||{}); // [수정] 단일 소스: 책별 markMap만 사용 (전역 S.markMap 누수 제거)
     for(const w of bw){ if(mm[w.en]===1) set[w.en]=1; }
   }
@@ -3892,7 +3897,7 @@ function _memorizedAcrossBooks(){
     try{ myWords=JSON.parse(localStorage.getItem('wd-w')||'[]'); }catch(e){ myWords=[]; }
     try{ myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}'); }catch(e){ myMM={}; }
   }
-  for(const w of (myWords||[])){ if((myMM||{})[w.en]===1) set[w.en]=1; }
+  for(const w of _mStudyFilter(myWords||[])){ if((myMM||{})[w.en]===1) set[w.en]=1; }
   return {sum:Object.keys(set).length, set};
 }
 function countMemorized(period){
@@ -4071,10 +4076,10 @@ function getBookWords(book) {
 function _bookSummaryLine(bookName) {
   const bn = bookName || S.currentBook || '내 단어장';
   let words, mm;
-  if (bn === '내 단어장') { words = S.words || []; mm = S.markMap || {}; }
+  if (bn === '내 단어장') { words = _mStudyFilter(S.words || []); mm = S.markMap || {}; }
   else {
     const b = (S.books || []).find(x => x.name === bn);
-    words = (typeof getBookWords === 'function' ? getBookWords(b) : (b && b.words) || []) || [];
+    words = _mStudyFilter((typeof getBookWords === 'function' ? getBookWords(b) : (b && b.words) || []) || []);
     mm = (b && b.markMap) || {};
   }
   const total = words.length;
@@ -6022,7 +6027,7 @@ function rLearnTab() {
     ...(S.books||[]).map(b=>({name:b.name, words:getBookWords(b), markMap:b.markMap||{}}))];
   const bookName = S.currentBook||'내 단어장';
   const curBook = allBooks.find(b=>b.name===bookName)||allBooks[0];
-  const words = curBook?.words||[];
+  const words = _mStudyFilter(curBook?.words||[]);
   const mm = curBook?.markMap||{};
   const marked = words.filter(w=>(mm[w.en]||0)===1).length;
   const pct = words.length ? Math.round(marked/words.length*100) : 0;
@@ -6079,7 +6084,7 @@ function rLearnTab() {
   <div style="padding:14px 14px 0;background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#E2E8F0)">
     <div style="position:relative;margin-bottom:12px">
       <select onchange="_selectBook(this.value);go('learn')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
+        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${_bookCntL(b)}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
@@ -6112,18 +6117,6 @@ function rLearnTab() {
 
   <!-- 학습 목표 -->
   <div style="padding:14px 14px 0">${renderGoalLearnBlock()}</div>
-
-  <!-- 학습 언어 -->
-  <div style="padding:14px 14px 0">
-    <div onclick="showLangPicker()" style="display:flex;align-items:center;gap:10px;background:var(--panel-muted,rgba(0,0,0,.04));border:1px solid var(--border,rgba(0,0,0,.08));border-radius:14px;padding:11px 14px;cursor:pointer">
-      <span style="font-size:18px">🌏</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:11px;color:var(--text3,#9CA3AF);font-weight:700">학습 언어 · 모국어</div>
-        <div style="font-size:14px;font-weight:800;color:var(--text,#111)" id="lang-pair-label">${_langPairLabel()}</div>
-      </div>
-      <span style="color:var(--text3,#9CA3AF);font-size:13px;white-space:nowrap">변경 ›</span>
-    </div>
-  </div>
 
   <!-- 학습 모드 -->
   <div style="padding:14px 14px 0">
@@ -6607,7 +6600,7 @@ function rGameOnlyTab() {
     <!-- 단어장 선택 -->
     <div style="position:relative;margin-bottom:10px">
       <select onchange="_selectBook(this.value);go('game')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:13px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}
+        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${_bookCntL(b)}개)</option>`).join('')}
       </select>
       <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
     </div>
@@ -8616,12 +8609,15 @@ function _planScopeData(){
   var myWords, myMM;
   if(S.currentBook==='내 단어장' || !S.currentBook){ myWords=S.words||[]; myMM=S.markMap||{}; }
   else { try{myWords=JSON.parse(localStorage.getItem('wd-w')||'[]');}catch(e){myWords=[];} try{myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}');}catch(e){myMM={};} }
+  myWords=_mStudyFilter(myWords||[]);
   var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===2;}).length, ens:(myWords||[]).map(function(w){return w.en;})}];
-  (S.books||[]).forEach(function(b){ var w=(typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]; var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length, weak:w.filter(function(x){return mm[x.en]===2;}).length, ens:w.map(function(x){return x.en;})}); });
+  (S.books||[]).forEach(function(b){ var w=_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]); var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length, weak:w.filter(function(x){return mm[x.en]===2;}).length, ens:w.map(function(x){return x.en;})}); });
   var memoAll=0, totalAll=0, weak=0;
   books.forEach(function(b){ memoAll+=b.memo; totalAll+=b.total; weak+=b.weak; });
   // [수정] 전체 외움은 정본(_memorizedAcrossBooks: 책별 markMap 기준 중복제거)과 동일하게 — 단어장 헤더와 일치
   var _allMemo=(typeof _memorizedAcrossBooks==='function')?_memorizedAcrossBooks().sum:memoAll;
+  // 학습언어 필터로 전체합이 줄면 외움이 총수를 넘지 않게 보정(pct>100 방지)
+  if(_allMemo>totalAll) _allMemo=memoAll;
   var scopes={ '__all__':{label:'전체', memo:_allMemo, total:totalAll, ens:null} };
   books.forEach(function(b){ if(b.total>0) scopes[b.name]={label:b.name, memo:b.memo, total:b.total, ens:b.ens}; });
   var act=[]; var now=new Date(); for(var i=29;i>=0;i--){var k=_planKstKey(new Date(now.getTime()-i*86400000)); act.push(((S.studyLog||{})[k]||{}).words||0);}
@@ -8987,7 +8983,7 @@ function rHome() {
   const t = today();
   if(!S.studyLog) S.studyLog={};
   const todayLog = (S.studyLog[t])||{words:0,quiz:0};
-  const marked2 = (S.words||[]).filter(w=>(S.markMap||{})[w.en]===2).length;
+  const marked2 = _mStudyFilter(S.words||[]).filter(w=>(S.markMap||{})[w.en]===2).length;
   // 오늘의 미션 '단어 10개 외우기' = 오늘 외운 단어(전체 단어장 합산). 매일 리셋.
   const _hScopeKey = (typeof _planScopeSel==='function')?_planScopeSel():'__all__';
   const _hCtx = (typeof _planScopeData==='function')?_planScopeData():null;
@@ -9041,7 +9037,7 @@ function rHome() {
   // ── 단어장 드롭다운 (캐릭터 카드 아래) ──
   const _allBooksHome = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const _bookNameHome = S.currentBook||'내 단어장';
-  parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_orderBooks(_allBooksHome).map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${getBookWords(b).length}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>${_bookSummaryLine(_bookNameHome)}</div>`);
+  parts.push(`<div style="margin:0"><div style="position:relative"><select onchange="_selectBook(this.value);go()" style="width:100%;padding:10px 32px 10px 14px;border:2px solid #E5E7EB;border-radius:12px;font-size:14px;font-weight:700;background:#fff;appearance:none;cursor:pointer;color:#111;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.06)">${_orderBooks(_allBooksHome).map(b=>`<option value="${b.name}" ${b.name===_bookNameHome?'selected':''}>${b.name} (${_bookCntL(b)}개)</option>`).join('')}</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>${_bookSummaryLine(_bookNameHome)}</div>`);
 
   parts.push(renderGoalSummary());
   // 스트릭 위기 배너 제거됨
@@ -10750,7 +10746,7 @@ function rStudyBooks() {
   const _curName = S.currentBook||'내 단어장';
   html += '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:14px;padding:12px 13px">'
     +'<div style="position:relative"><select onchange="_selectBook(this.value);go(\'mybooks\',\'books\')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;background:var(--bg-card,#fff);appearance:none;cursor:pointer;color:var(--text1,#111);font-family:inherit;outline:none">'
-    + _orderBooks(_allBooksTab).map(function(b){ return '<option value="'+String(b.name).replace(/"/g,'&quot;')+'" '+(b.name===_curName?'selected':'')+'>'+b.name+' ('+((typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length))+'개)</option>'; }).join('')
+    + _orderBooks(_allBooksTab).map(function(b){ return '<option value="'+String(b.name).replace(/"/g,'&quot;')+'" '+(b.name===_curName?'selected':'')+'>'+b.name+' ('+((_bookCntL(b)))+'개)</option>'; }).join('')
     +'</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>'
     + (typeof _bookSummaryLine==='function'?_bookSummaryLine(_curName):'')
   +'</div>';
@@ -11029,7 +11025,7 @@ function showGameSettings(gameId, tab) {
 
       <div>
         <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:6px">단어장</div>
-        <select onchange="_selectBook(this.value);showGameSettings('${gameId}')" style="width:100%;padding:11px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;outline:none">${_orderBooks(allBooksForGame).map(b=>`<option value="${b.name}" ${b.name===bookName4Game?"selected":""}>${b.name} (${(typeof getBookWords==='function'?getBookWords(b).length:(b.words||[]).length)}개)</option>`).join("")}</select>
+        <select onchange="_selectBook(this.value);showGameSettings('${gameId}')" style="width:100%;padding:11px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;outline:none">${_orderBooks(allBooksForGame).map(b=>`<option value="${b.name}" ${b.name===bookName4Game?"selected":""}>${b.name} (${(_bookCntL(b))}개)</option>`).join("")}</select>
       </div>
 
       <div>
@@ -11166,7 +11162,8 @@ function startGameWithSettings(gameId) {
 }
 
 // 현재 선택된 단어장 단어 반환
-function getCurrentBookWords() {
+function getCurrentBookWords() { return _mStudyFilter(_gcbwRaw()||[]); }
+function _gcbwRaw() {
   if(!S.currentBook || S.currentBook==='내 단어장') return S.words;
   // 일반 단어장 + 마켓 단어장 모두 검색
   const bk = (S.books||[]).find(b=>b.name===S.currentBook);
@@ -11279,7 +11276,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   });
 
   var allBks=[{name:'내 단어장',words:S.words},...(S.books||[])], curBk=S.currentBook||'내 단어장';
-  var bookOpts='';_orderBooks(allBks).forEach(function(b){bookOpts+='<option value="'+b.name+'" '+(b.name===curBk?'selected':'')+'>'+b.name+' ('+(b.words||[]).length+')</option>';});
+  var bookOpts='';_orderBooks(allBks).forEach(function(b){bookOpts+='<option value="'+b.name+'" '+(b.name===curBk?'selected':'')+'>'+b.name+' ('+_bookCntL(b)+')</option>';});
 
   // ── 전체화면 플래시카드 ──
   var cardGrad = flip
@@ -11529,7 +11526,7 @@ function startSGame(id){startGameW(id,S.words.length>=2?S.words:(DEFAULT_WORDS[S
 function rAdd() {
   const allBooks = [
     {name:'내 단어장', cnt:S.words.length},
-    ...(S.books||[]).filter(b=>!b.packId).map(b=>({name:b.name, cnt:getBookWords(b).length}))
+    ...(S.books||[]).filter(b=>!b.packId).map(b=>({name:b.name, cnt:_bookCntL(b)}))
   ];
   const curBook = S.currentBook||'내 단어장';
   const addTab = S._addTab||'text';
@@ -14158,6 +14155,19 @@ function rProfile(){
 
   // ── 상단: 캐릭터 배너 (성장단계 포함) ──
   parts.push(renderCharBanner({nick:true,stats:true}));
+
+  // ── 학습 언어 설정 (프로필로 이동 · 눈에 띄게) ──
+  parts.push(`<div onclick="showLangPicker()" style="background:linear-gradient(135deg,#7C3AED,#4F46E5);border-radius:18px;padding:16px;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(79,70,229,.28);position:relative;overflow:hidden">
+    <div style="position:absolute;right:-10px;top:-10px;font-size:84px;opacity:.13">🌏</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;position:relative">
+      <div style="min-width:0">
+        <div style="font-size:12px;font-weight:800;color:rgba(255,255,255,.85);letter-spacing:.3px;margin-bottom:5px">🌏 학습 언어 설정</div>
+        <div style="font-size:18px;font-weight:900;color:#fff;line-height:1.3" id="lang-pair-label">${_langPairLabel()}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:5px">${_langCoverageHint()||'배우는 언어와 모국어를 바꿔서 학습해요'}</div>
+      </div>
+      <div style="flex-shrink:0;margin-left:10px;background:rgba(255,255,255,.22);border-radius:12px;padding:9px 13px;font-size:13px;font-weight:800;color:#fff;white-space:nowrap">변경 ›</div>
+    </div>
+  </div>`);
 
   // ── 내 벌거지 색상 선택 (프로필로 이동) ──
   {

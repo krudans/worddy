@@ -13,7 +13,7 @@
 <script src="js/bwd-wordlist.js?v=1"></script>
 <script src="js/bwd-pron.js?v=1"></script>
 <script src="js/bwd-dict.js?v=1"></script>
-<script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js'].forEach(function(src){document.write('<scr'+'ipt src="'+src+'?cb='+cb+'"></scr'+'ipt>');});})();</script>
+<script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js'].forEach(function(src){document.write('<scr'+'ipt src="'+src+'?cb='+cb+'"></scr'+'ipt>');});})();</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
 
@@ -4634,6 +4634,200 @@ async function _aiGenLoop(){
   toast('자동생성 종료 · 생성 '+_aiGen.ok+'개 / 보류 '+_aiGen.flagged.length+'개 · bwd-ex5.js 업로드하세요','ok');
 }
 
+/* ════════════════ 외국어(일본어·독일어) 동시 생성 ════════════════
+ * 한 번의 Gemini 호출로 한 개념의 ja + de 블록을 함께 생성한다.
+ * 영어 개념(BWD_EX5 키)을 대상으로, 이미 일·독이 채워진 개념은 건너뛴다.
+ * 결과는 window.BWD_JA / window.BWD_DE 에 쌓고 bwd-ja.js / bwd-de.js 로 내보낸다.
+ * 다중 키·모델 회전 엔진(_aiGenCall)·파서(_aiGenParse)를 그대로 재사용. */
+window.BWD_JA = window.BWD_JA || {};
+window.BWD_DE = window.BWD_DE || {};
+var _flGen = { running:false, stop:false, total:0, done:0, ok:0, skip:0, fail:0, flagged:[], queue:[], batch:10, throttle:3000, retries:2, autoCkpt:1000, sinceCkpt:0, started:0, curMsg:'' };
+
+function _flMissing(){
+  var E=window.BWD_EX5||{};
+  return Object.keys(E).filter(function(k){ return !(window.BWD_JA[k] && window.BWD_DE[k]); });
+}
+function _flPrompt(batch){
+  var E=window.BWD_EX5||{};
+  var list=batch.map(function(w){
+    var exs=((E[w]&&E[w].ex5)||[]).map(function(s){return s.en;}).filter(Boolean).slice(0,3).join(' / ');
+    return '- '+w+(exs?'  [영어 예문 참고: '+exs+']':'');
+  }).join('\n');
+  return '너는 일본어·독일어 학습 사전 제작 전문가야. 아래 영어 개념 각각에 대해 일본어(ja)와 독일어(de) 데이터를 한 번에 만들어줘.\n'
+    +'각 개념마다 두 언어 모두:\n'
+    +' ja: label(통상 표기), kanji(한자 표기, 없으면 \"\"), roma(헵번식 로마자), ex5(일본어 예문 5개)\n'
+    +' de: label(표제어), gender(명사면 der/die/das, 명사가 아니면 \"\"), plural(복수형, 없으면 \"—\"), ex5(독일어 예문 5개)\n'
+    +'예문 규칙(엄수):\n'
+    +' - 각 언어 예문 5개는 그 언어로 자연스럽게 쓰고, 그 언어 표제어(label)를 실제로 포함.\n'
+    +' - 영어 예문의 의미를 참고하되 강제 직역 금지 — 그 언어다운 자연스러운 문장.\n'
+    +' - 학생 사전 수준, 짧고 일상적. 깨진 문자·다른 언어 혼입 금지.\n'
+    +' - 고유명사·욕설·약어 등 학생 사전에 부적합하면 그 개념은 {\"skip\":true} 로만.\n'
+    +'대상 개념:\n'+list+'\n\n'
+    +'반드시 아래 JSON \"한 개\"만 출력(설명·마크다운·코드펜스 금지):\n'
+    +'{\"apple\":{\"ja\":{\"label\":\"りんご\",\"kanji\":\"林檎\",\"roma\":\"ringo\",\"ex5\":[{\"t\":1,\"s\":\"…\"},{\"t\":2,\"s\":\"…\"},{\"t\":3,\"s\":\"…\"},{\"t\":4,\"s\":\"…\"},{\"t\":5,\"s\":\"…\"}]},\"de\":{\"label\":\"Apfel\",\"gender\":\"der\",\"plural\":\"Äpfel\",\"ex5\":[{\"t\":1,\"s\":\"…\"},{\"t\":2,\"s\":\"…\"},{\"t\":3,\"s\":\"…\"},{\"t\":4,\"s\":\"…\"},{\"t\":5,\"s\":\"…\"}]}}, ...}';
+}
+function _flVerifyLang(block, lang){
+  if(!block || typeof block!=='object') return '구조';
+  if(!block.label || /\ufffd/.test(block.label)) return 'label';
+  if(!Array.isArray(block.ex5) || block.ex5.length!==5) return '문장수';
+  for(var i=0;i<5;i++){ var s=block.ex5[i];
+    if(!s || !s.s) return 't'+(i+1)+'누락';
+    var t=String(s.s);
+    if(/\ufffd/.test(t)) return '깨진문자';
+    if(t.length<2 || t.length>180) return '길이';
+    if(lang==='ja'){ if(!/[\u3040-\u30ff\u4e00-\u9fff]/.test(t)) return 'ja아님'; if(/[\uac00-\ud7a3]/.test(t)) return 'ko혼입'; }
+    if(lang==='de'){ if(!/[A-Za-zÄÖÜäöüß]/.test(t)) return 'de아님'; if(/[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7a3]/.test(t)) return 'CJK혼입'; }
+  }
+  return null;
+}
+async function _flProcessBatch(batch, onStatus){
+  var raw;
+  try{ raw=await _aiGenCall(_flPrompt(batch), onStatus); }catch(e){ return {okJa:{},okDe:{},skip:[],fail:batch.slice(),err:e.message}; }
+  var obj=_aiGenParse(raw);
+  var okJa={}, okDe={}, skip=[], fail=[];
+  var norm={}; if(obj) Object.keys(obj).forEach(function(k){ norm[k.toLowerCase().trim()]=obj[k]; });
+  function fix(blk){ if(blk&&Array.isArray(blk.ex5)) blk.ex5=blk.ex5.slice(0,5).map(function(s,idx){ return {t:idx+1, s:(s&&(s.s||s.en||s.ja||s.de||s.text))||''}; }); return blk; }
+  batch.forEach(function(w){
+    var e=norm[w.toLowerCase().trim()];
+    if(!e){ fail.push(w); return; }
+    if(e.skip===true){ skip.push(w); return; }
+    var ja=fix(e.ja), de=fix(e.de);
+    var bj=_flVerifyLang(ja,'ja'), bd=_flVerifyLang(de,'de');
+    if(bj||bd){ fail.push(w); return; }
+    okJa[w]={label:ja.label, kanji:ja.kanji||'', roma:ja.roma||'', ex5:ja.ex5};
+    okDe[w]={label:de.label, gender:de.gender||'', plural:de.plural||'—', ex5:de.ex5};
+  });
+  return {okJa:okJa, okDe:okDe, skip:skip, fail:fail};
+}
+function _flGenRender(){
+  var el=document.getElementById('flgen-status'); if(!el) return;
+  var pct=_flGen.total?Math.round(_flGen.done/_flGen.total*100):0;
+  var elapsed=_flGen.started?Math.round((Date.now()-_flGen.started)/1000):0;
+  var rate=elapsed?(_flGen.done/elapsed):0;
+  var remain=rate>0?Math.round((_flGen.total-_flGen.done)/rate):0;
+  var fmt=function(s){ if(s<=0)return '-'; var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; return (h?h+'시간 ':'')+(m?m+'분 ':'')+(h?'':ss+'초'); };
+  el.innerHTML='<div style="background:#ECFEFF;border:1px solid #A5F3FC;border-radius:10px;padding:12px">'
+    +'<div style="height:12px;background:#CFFAFE;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+pct+'%;background:#0891B2;transition:width .3s"></div></div>'
+    +'<div style="font-size:15px;font-weight:800;color:#155E75">진행 '+_flGen.done.toLocaleString()+' / '+_flGen.total.toLocaleString()+' ('+pct+'%)</div>'
+    +'<div style="font-size:12px;color:#0E7490;margin-top:4px">✅ 생성 '+_flGen.ok.toLocaleString()+' · ⏭ 스킵 '+_flGen.skip.toLocaleString()+' · ⚠️ 보류 '+_flGen.flagged.length.toLocaleString()+(remain?' · 남은 시간 ~'+fmt(remain):'')+'</div>'
+    +(_flGen.curMsg?'<div style="font-size:11px;color:#6B7280;margin-top:4px">'+_flGen.curMsg+'</div>':'')
+    +'<div style="font-size:11px;color:#9CA3AF;margin-top:4px">보유: 🇯🇵 일본어 '+Object.keys(window.BWD_JA).length.toLocaleString()+' · 🇩🇪 독일어 '+Object.keys(window.BWD_DE).length.toLocaleString()+'</div>'
+    +'</div>';
+}
+function _flEmit(store, k){
+  var e=store[k]||{};
+  var ex5=(e.ex5||[]).map(function(s){return '{t:'+s.t+',s:'+JSON.stringify(s.s||'')+'}';}).join(',');
+  var f='label:'+JSON.stringify(e.label||'');
+  if('kanji' in e) f+=',kanji:'+JSON.stringify(e.kanji||'');
+  if('roma' in e) f+=',roma:'+JSON.stringify(e.roma||'');
+  if('gender' in e) f+=',gender:'+JSON.stringify(e.gender||'');
+  if('plural' in e) f+=',plural:'+JSON.stringify(e.plural||'');
+  return '  '+JSON.stringify(k)+': {'+f+', ex5:['+ex5+']},';
+}
+function _flDownloadOne(store, varName, fileName){
+  var keys=Object.keys(store).sort(); if(!keys.length) return 0;
+  var lines=keys.map(function(k){ return _flEmit(store,k); });
+  if(lines.length) lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
+  var content='/* Butterfly Word — '+fileName+' (개념별 '+varName+' 블록 · 자동생성) */\n'
+    +'window.'+varName+' = Object.assign(window.'+varName+'||{}, {\n'+lines.join('\n')+'\n});\n';
+  var mb=content.length/1048576;
+  var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download=fileName;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},3000);
+  return mb;
+}
+function bwdExportFL(){
+  var mj=_flDownloadOne(window.BWD_JA,'BWD_JA','bwd-ja.js');
+  setTimeout(function(){
+    var md=_flDownloadOne(window.BWD_DE,'BWD_DE','bwd-de.js');
+    var warn=(mj>20||md>20)?' ⚠️ 20MB 근접 — 분할 필요(알려주세요)':'';
+    toast('외국어 내보내기 · 🇯🇵'+Object.keys(window.BWD_JA).length+'개('+mj.toFixed(1)+'MB) · 🇩🇪'+Object.keys(window.BWD_DE).length+'개('+md.toFixed(1)+'MB) — js/에 올리세요'+warn,'ok');
+  }, 700);
+}
+function showFlGen(){
+  if(!window.BWD_EX5){ toast('영어 사전(bwd-ex5) 미로드','err'); return; }
+  var miss=_flMissing();
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:600px">'
+    +'<div class="mt">🌏 외국어(일본어·독일어) 동시 생성</div>'
+    +'<div style="background:#ECFEFF;border:1px solid #A5F3FC;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#155E75;line-height:1.7">'
+      +'영어 개념 '+Object.keys(window.BWD_EX5||{}).length.toLocaleString()+'개 중 <b>일·독이 아직 없는 '+miss.length.toLocaleString()+'개</b>를 대상으로, <b>한 호출에 일본어+독일어를 함께</b> 생성합니다. 구조·언어·깨진문자 검증 후 통과한 것만 저장하고, 실패는 자동 재시도('+_flGen.retries+'회), 부적격어는 자동 스킵합니다.<br>'
+      +'<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:2px"><span style="color:'+(getGeminiKeys().length?'#16A34A':'#DC2626')+'">Gemini 키: '+(getGeminiKeys().length?('✅ '+getGeminiKeys().length+'개'+(getGeminiKeys().length>1?' (자동 회전)':'')):'❌ 없음')+'</span><button class="btn bg" style="font-size:11px;padding:5px 11px" onclick="showAiKeys()">🔑 키 관리</button></div></div>'
+    +'<div class="fg" style="margin:0 0 8px"><label>시작 모델 (한도 시 자동 회전)</label>'
+      +'<select id="flg-model" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px">'
+        +'<option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — 추천(최고 한도)</option>'
+        +'<option value="gemini-2.5-flash">gemini-2.5-flash — 품질 높음</option>'
+        +'<option value="gemini-flash-latest">gemini-flash-latest</option>'
+        +'<option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>'
+        +'<option value="gemini-2.0-flash">gemini-2.0-flash</option>'
+      +'</select></div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;font-size:12px"><span style="color:#6B7280">빠른 설정:</span>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'flg-count\').value=100">100개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'flg-count\').value=500">500개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'flg-count\').value=2000">2000개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'flg-count\').value='+miss.length+'">전체('+miss.length.toLocaleString()+')</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:6px">'
+      +'<div class="fg" style="margin:0"><label>이번에 생성할 개수</label><input id="flg-count" type="number" value="100" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>묶음당 개념 수</label><input id="flg-batch" type="number" value="10" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="flg-throttle" type="number" value="3" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>자동저장 간격(개)</label><input id="flg-ckpt" type="number" value="1000" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ 한 호출에 일본어+독일어를 함께 만들어 호출 수를 절반으로 줄입니다. 자동저장 간격마다 <b>bwd-ja.js·bwd-de.js 2개 파일</b>이 다운로드됩니다(둘 다 js/에 올리면 다음에 이어서). 일본어는 한자/가나/로마자, 독일어는 성(der/die/das)·복수형까지 받습니다.</div>'
+    +'<div style="display:flex;gap:8px">'
+      +'<button class="btn" id="flg-start" onclick="flGenStart()" style="flex:1;background:#0891B2;color:#fff;border:none;border-radius:10px;padding:9px;font-weight:700;cursor:pointer">▶ 시작</button>'
+      +'<button class="btn bgr" onclick="flGenStop()">⏹ 정지</button>'
+      +'<button class="btn bg" onclick="bwdExportFL()">📥 내보내기</button>'
+    +'</div>'
+    +'<div id="flgen-status" style="margin-top:12px"></div>'
+    +'</div></div>';
+  _flGenRender();
+}
+async function flGenStart(){
+  if(_flGen.running){ toast('이미 실행 중','err'); return; }
+  if(!getGeminiKeys().length){ toast('Gemini 키가 없습니다','err'); return; }
+  var msel=document.getElementById('flg-model');
+  if(msel){ var _first=msel.value; window._aiModel=_first; try{localStorage.setItem('ai_model',_first);}catch(e){}
+    var _pool=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash'];
+    _aiGenModels=[_first].concat(_pool.filter(function(m){return m!==_first;})); _aiCooldown={}; _aiComboCooldown={}; }
+  var miss=_flMissing();
+  var count=Math.max(1, parseInt(document.getElementById('flg-count').value)||100);
+  _flGen.batch=Math.max(1, Math.min(16, parseInt(document.getElementById('flg-batch').value)||10));
+  _flGen.throttle=Math.max(0, (parseInt(document.getElementById('flg-throttle').value)||3))*1000;
+  _flGen.autoCkpt=Math.max(0, parseInt(document.getElementById('flg-ckpt').value)||1000);
+  _flGen.queue=miss.slice(0, count);
+  _flGen.total=_flGen.queue.length; _flGen.done=0; _flGen.ok=0; _flGen.skip=0; _flGen.fail=0; _flGen.flagged=[]; _flGen.sinceCkpt=0;
+  _flGen.running=true; _flGen.stop=false; _flGen.started=Date.now();
+  var sb=document.getElementById('flg-start'); if(sb){ sb.textContent='⏳ 실행 중...'; sb.disabled=true; }
+  await _flGenLoop();
+}
+function flGenStop(){ _flGen.stop=true; toast('정지 요청 — 현재 묶음 후 멈춥니다','ok'); }
+async function _flGenLoop(){
+  var onStatus=function(msg){ _flGen.curMsg=msg; _flGenRender(); };
+  while(_flGen.queue.length && !_flGen.stop){
+    var batch=_flGen.queue.splice(0, _flGen.batch);
+    _flGen.curMsg='⚙️ 생성 중: '+batch.slice(0,5).join(', ')+(batch.length>5?' 외 '+(batch.length-5)+'개':''); _flGenRender();
+    var pending=batch.slice(), attempt=0;
+    while(pending.length && attempt<=_flGen.retries && !_flGen.stop){
+      var r=await _flProcessBatch(pending, onStatus);
+      Object.keys(r.okJa).forEach(function(w){ window.BWD_JA[w]=r.okJa[w]; window.BWD_DE[w]=r.okDe[w]; _flGen.ok++; _flGen.done++; _flGen.sinceCkpt++; });
+      (r.skip||[]).forEach(function(w){ _flGen.skip++; _flGen.done++; });
+      pending=r.fail;
+      attempt++;
+      if(pending.length && attempt<=_flGen.retries){ await _aiSleep(_flGen.throttle); }
+    }
+    pending.forEach(function(w){ _flGen.fail++; _flGen.done++; _flGen.flagged.push(w); });
+    _flGenRender();
+    if(_flGen.autoCkpt && _flGen.sinceCkpt>=_flGen.autoCkpt){ _flGen.sinceCkpt=0; try{ bwdExportFL(); }catch(e){} }
+    if(_flGen.queue.length && !_flGen.stop){ await _aiSleep(_flGen.throttle); }
+  }
+  _flGen.running=false;
+  var sb=document.getElementById('flg-start'); if(sb){ sb.textContent='▶ 시작'; sb.disabled=false; }
+  _flGenRender();
+  if(_flGen.ok>0){ try{ bwdExportFL(); }catch(e){} }
+  toast('외국어 생성 종료 · 생성 '+_flGen.ok+' / 스킵 '+_flGen.skip+' / 보류 '+_flGen.flagged.length+' · bwd-ja.js·bwd-de.js 업로드하세요','ok');
+}
+
 
 // ── 레벨 관리 ──
 async function rLV(){
@@ -5617,6 +5811,7 @@ function rDICT(){
       '<h2 style="font-size:22px;font-weight:900">📖 Butterfly Dic</h2>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
       '<button class="btn bg" onclick="showAiGenEx5()" style="background:#7C3AED">🤖 AI 예문 자동생성</button>'+
+      '<button class="btn bg" onclick="showFlGen()" style="background:#0891B2">🌏 외국어(일·독) 생성</button>'+
       '<button class="btn bg" onclick="bwdExport()">📥 bwd-dict.js 내보내기</button>'+
       '<button class="btn bg" onclick="bwdExportEx5()" style="background:#16A34A">🎨 bwd-ex5.js 내보내기</button>'+
       '</div>'+

@@ -1054,6 +1054,11 @@ window._mStudyFilter=_mStudyFilter;
 function _bookWordsL(b){ try{ var w=(typeof getBookWords==='function')?getBookWords(b):((b&&b.words)||[]); return _mStudyFilter(w||[]); }catch(e){ return (b&&b.words)||[]; } }
 function _bookCntL(b){ try{ return _bookWordsL(b).length; }catch(e){ return ((b&&b.words)||[]).length; } }
 window._bookWordsL=_bookWordsL; window._bookCntL=_bookCntL;
+// 학습언어별 마크(외웠음/헷갈림) 키 — en은 기존 키 그대로(데이터 보존·회귀0), ja/de는 접두사로 분리.
+var _MK_SEP='\u0001';
+function _mk(en){ var ll=(typeof S!=='undefined'&&S.learnLang)||'en'; return (ll==='en')? en : (ll+_MK_SEP+en); }
+function _mkMine(key){ try{ var ll=(typeof S!=='undefined'&&S.learnLang)||'en'; if(ll==='en') return String(key).indexOf(_MK_SEP)<0; return String(key).indexOf(ll+_MK_SEP)===0; }catch(e){ return true; } }
+window._mk=_mk; window._mkMine=_mkMine;
 // 학습언어→모국어 라벨
 function _langPairLabel(){ var L=window._MLANG||{}, l=(typeof S!=='undefined'&&S.learnLang)||'en', n=(typeof S!=='undefined'&&S.nativeLang)||'ko'; return ((L[l]&&L[l].flag)||'')+' '+((L[l]&&L[l].name)||l)+'  →  '+((L[n]&&L[n].flag)||'')+' '+((L[n]&&L[n].name)||n); }
 function _langCoverageHint(){ var ja=(window.BWD_JA?Object.keys(window.BWD_JA).length:0), de=(window.BWD_DE?Object.keys(window.BWD_DE).length:0); var parts=[]; if(_mAvailLangs().indexOf('ja')>=0)parts.push('일본어 '+ja.toLocaleString()+'개'); if(_mAvailLangs().indexOf('de')>=0)parts.push('독일어 '+de.toLocaleString()+'개'); return parts.length?('※ 외국어 데이터: '+parts.join(' · ')+' (채워지는 중)'):''; }
@@ -3821,7 +3826,7 @@ const CONV_DEFAULT = [
 ];
 function getMark(en) {
   const mm = (typeof getCurrentBookMarkMap==='function') ? getCurrentBookMarkMap() : S.markMap;
-  return mm[en]||0;
+  return mm[_mk(en)]||0;
 }
 function toggleFav(en) {
   if(!Array.isArray(S.favorites)) S.favorites = S.favorites ? [...S.favorites] : [];
@@ -3846,12 +3851,12 @@ function setMark(en, val) {
     const bk = (S.books||[]).find(b=>b.name===S.currentBook);
     if(bk) {
       if(!bk.markMap) bk.markMap = {};
-      bk.markMap[en] = val; S.markMap[en] = val;
+      bk.markMap[_mk(en)] = val; S.markMap[_mk(en)] = val;
     } else {
-      S.markMap[en] = val;
+      S.markMap[_mk(en)] = val;
     }
   } else {
-    S.markMap[en] = val;
+    S.markMap[_mk(en)] = val;
   }
   // 외운 단어 → learned에도 추가
   if(typeof _seenW==='function') _seenW(en); // 마크한 단어는 오늘 화면에 나온 단어
@@ -3889,7 +3894,7 @@ function _memorizedAcrossBooks(){
   for(const b of (S.books||[])){
     const bw = _mStudyFilter((typeof getBookWords==='function') ? getBookWords(b) : (b.words||[]));
     const mm = (b.markMap||{}); // [수정] 단일 소스: 책별 markMap만 사용 (전역 S.markMap 누수 제거)
-    for(const w of bw){ if(mm[w.en]===1) set[w.en]=1; }
+    for(const w of bw){ if(mm[_mk(w.en)]===1) set[w.en]=1; }
   }
   let myWords, myMM;
   if(S.currentBook==='내 단어장'){ myWords=S.words||[]; myMM=S.markMap||{}; }
@@ -3897,7 +3902,7 @@ function _memorizedAcrossBooks(){
     try{ myWords=JSON.parse(localStorage.getItem('wd-w')||'[]'); }catch(e){ myWords=[]; }
     try{ myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}'); }catch(e){ myMM={}; }
   }
-  for(const w of _mStudyFilter(myWords||[])){ if((myMM||{})[w.en]===1) set[w.en]=1; }
+  for(const w of _mStudyFilter(myWords||[])){ if((myMM||{})[_mk(w.en)]===1) set[w.en]=1; }
   return {sum:Object.keys(set).length, set};
 }
 function countMemorized(period){
@@ -4083,7 +4088,7 @@ function _bookSummaryLine(bookName) {
     mm = (b && b.markMap) || {};
   }
   const total = words.length;
-  const done = words.filter(w => mm[w.en] === 1).length;
+  const done = words.filter(w => mm[_mk(w.en)] === 1).length;
   const remain = total - done;
   const pct = total ? Math.round(done / total * 100) : 0;
   return `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:7px;font-size:11px;color:var(--text3,#9CA3AF);font-weight:600">
@@ -6029,7 +6034,7 @@ function rLearnTab() {
   const curBook = allBooks.find(b=>b.name===bookName)||allBooks[0];
   const words = _mStudyFilter(curBook?.words||[]);
   const mm = curBook?.markMap||{};
-  const marked = words.filter(w=>(mm[w.en]||0)===1).length;
+  const marked = words.filter(w=>(mm[_mk(w.en)]||0)===1).length;
   const pct = words.length ? Math.round(marked/words.length*100) : 0;
   const t = new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   const todayLog = (S.studyLog||{})[t]||{words:0,min:0};
@@ -8610,8 +8615,8 @@ function _planScopeData(){
   if(S.currentBook==='내 단어장' || !S.currentBook){ myWords=S.words||[]; myMM=S.markMap||{}; }
   else { try{myWords=JSON.parse(localStorage.getItem('wd-w')||'[]');}catch(e){myWords=[];} try{myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}');}catch(e){myMM={};} }
   myWords=_mStudyFilter(myWords||[]);
-  var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[w.en]===2;}).length, ens:(myWords||[]).map(function(w){return w.en;})}];
-  (S.books||[]).forEach(function(b){ var w=_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]); var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[x.en]===1;}).length, weak:w.filter(function(x){return mm[x.en]===2;}).length, ens:w.map(function(x){return x.en;})}); });
+  var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[_mk(w.en)]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[_mk(w.en)]===2;}).length, ens:(myWords||[]).map(function(w){return w.en;})}];
+  (S.books||[]).forEach(function(b){ var w=_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]); var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[_mk(x.en)]===1;}).length, weak:w.filter(function(x){return mm[_mk(x.en)]===2;}).length, ens:w.map(function(x){return x.en;})}); });
   var memoAll=0, totalAll=0, weak=0;
   books.forEach(function(b){ memoAll+=b.memo; totalAll+=b.total; weak+=b.weak; });
   // [수정] 전체 외움은 정본(_memorizedAcrossBooks: 책별 markMap 기준 중복제거)과 동일하게 — 단어장 헤더와 일치
@@ -8983,7 +8988,7 @@ function rHome() {
   const t = today();
   if(!S.studyLog) S.studyLog={};
   const todayLog = (S.studyLog[t])||{words:0,quiz:0};
-  const marked2 = _mStudyFilter(S.words||[]).filter(w=>(S.markMap||{})[w.en]===2).length;
+  const marked2 = _mStudyFilter(S.words||[]).filter(w=>(S.markMap||{})[_mk(w.en)]===2).length;
   // 오늘의 미션 '단어 10개 외우기' = 오늘 외운 단어(전체 단어장 합산). 매일 리셋.
   const _hScopeKey = (typeof _planScopeSel==='function')?_planScopeSel():'__all__';
   const _hCtx = (typeof _planScopeData==='function')?_planScopeData():null;
@@ -9110,7 +9115,7 @@ function rHome() {
   const _hbWords = (typeof getCurrentBookWords==='function') ? (getCurrentBookWords()||[]) : (S.words||[]);
   const _hbMark = (typeof getCurrentBookMarkMap==='function') ? (getCurrentBookMarkMap()||{}) : (S.markMap||{});
   const totalWordsCount = _hbWords.length;
-  const bookMemo = _hbWords.filter(w=>_hbMark[w.en]===1).length;
+  const bookMemo = _hbWords.filter(w=>_hbMark[_mk(w.en)]===1).length;
   const bookPct = totalWordsCount ? Math.round(bookMemo/totalWordsCount*100) : 0;
   parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -10558,8 +10563,8 @@ function _renderBookWordList(mr, bookName, searchQ) {
   }) : words;
 
   const total = words.length;
-  const marked1 = words.filter(function(w){return (bkMark[w.en]||0)===1;}).length;
-  const marked2 = words.filter(function(w){return (bkMark[w.en]||0)===2;}).length;
+  const marked1 = words.filter(function(w){return (bkMark[_mk(w.en)]||0)===1;}).length;
+  const marked2 = words.filter(function(w){return (bkMark[_mk(w.en)]||0)===2;}).length;
   const pct = total > 0 ? Math.round(marked1/total*100) : 0;
 
   var html = '<div class="mbg" onclick="cm()" style="align-items:flex-start;padding-top:0">';
@@ -10591,7 +10596,7 @@ function _renderBookWordList(mr, bookName, searchQ) {
     html += '<div style="text-align:center;padding:32px;color:#9CA3AF">검색 결과가 없어요</div>';
   } else {
     filtered.forEach(function(w) {
-      var mark = bkMark[w.en] || 0;
+      var mark = bkMark[_mk(w.en)] || 0;
       var markColor = mark===1?'#22C55E':mark===2?'#A78BFA':'#D1D5DB';
       var markBg = mark===1?'#F0FDF4':mark===2?'#F5F3FF':'#F9FAFB';
       var exList = (w.exList&&w.exList.length) ? w.exList : (w.ex?[w.ex]:[]);
@@ -10658,12 +10663,12 @@ function rStudyBooks() {
     try{ _myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}'); }catch(e){ _myMM={}; }
   }
   const myCount = (_myWords||[]).length;
-  const m1 = (_myWords||[]).filter(w => (_myMM||{})[w.en] === 1).length;
+  const m1 = (_myWords||[]).filter(w => (_myMM||{})[_mk(w.en)] === 1).length;
   const pct1 = myCount ? Math.min(100, Math.round(m1/myCount*100)) : 0;
   const totalAllWords = myCount + (S.books||[]).reduce((s,b)=>s+((getBookWords(b)||[]).length),0);
   const totalMemorized = (typeof countMemorized==='function')
     ? countMemorized('all')
-    : (m1 + (S.books||[]).reduce((s,b)=>s+(getBookWords(b).filter(w=>(b.markMap||{})[w.en]===1).length),0));
+    : (m1 + (S.books||[]).reduce((s,b)=>s+(getBookWords(b).filter(w=>(b.markMap||{})[_mk(w.en)]===1).length),0));
 
   function _card(o){
     const _cb=o.isCur?'var(--theme-tint,#F1F5F9)':'var(--bg-card,#fff)';
@@ -10687,7 +10692,7 @@ function rStudyBooks() {
 
   function _bookOpts(bk){
     const bw=getBookWords(bk)||[];
-    const bm=bw.filter(w=>(bk.markMap||{})[w.en]===1).length;
+    const bm=bw.filter(w=>(bk.markMap||{})[_mk(w.en)]===1).length;
     const bp=bw.length?Math.min(100,Math.round(bm/bw.length*100)):0;
     const sn=bk.name.replace(/'/g,"\\'");
     const lp=bk.packId?(S._marketPacks||[]).find(p=>p.id===bk.packId):null;
@@ -10784,7 +10789,7 @@ function rStudyMode() {
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const cnt = curWords.length;
   const mm = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
-  const marked1 = cnt ? curWords.filter(w=>(mm[w.en]||0)===1).length : 0;
+  const marked1 = cnt ? curWords.filter(w=>(mm[_mk(w.en)]||0)===1).length : 0;
   const pct = cnt ? Math.round(marked1/cnt*100) : 0;
   const t = today();
   const todayLog = S.studyLog[t]||{words:0,quiz:0,min:0};
@@ -10890,7 +10895,7 @@ function _resetBookMarks(name){
     // 내 단어장 정본 = wd-mk
     try{
       var mm=JSON.parse(localStorage.getItem('wd-mk')||'{}');
-      Object.keys(mm).forEach(function(en){ if(mm[en]===1){ delete mm[en]; cleared.push(en); } });
+      Object.keys(mm).forEach(function(en){ if(mm[en]===1 && _mkMine(en)){ delete mm[en]; cleared.push(en); } });
       localStorage.setItem('wd-mk', JSON.stringify(mm));
     }catch(e){}
     // 현재 열려 있으면 작업사본(S.markMap)도
@@ -10901,7 +10906,7 @@ function _resetBookMarks(name){
     bk.markMap=bk.markMap||{};
     var bw=(typeof getBookWords==='function')?(getBookWords(bk)||[]):(bk.words||[]);
     var bws={}; bw.forEach(function(w){ bws[w.en]=1; });
-    Object.keys(bk.markMap).forEach(function(en){ if(bk.markMap[en]===1){ delete bk.markMap[en]; cleared.push(en); } });
+    Object.keys(bk.markMap).forEach(function(en){ if(bk.markMap[en]===1 && _mkMine(en)){ delete bk.markMap[en]; cleared.push(en); } });
     // 이 책 단어에 한해 전역 작업사본도 함께 제거(분열/누수 방지)
     if(S.markMap){ cleared.forEach(function(en){ if(S.markMap[en]===1) delete S.markMap[en]; }); }
   }
@@ -11001,8 +11006,8 @@ function showGameSettings(gameId, tab) {
   const bookName4Game=S.currentBook||'내 단어장';
   const gameName={flip:'깜빡이',quiz:'뜻 고르기 퀴즈',listenq:'발음 듣고 뜻 고르기',typing:'발음 듣고 받아쓰기',fill:'예문 빈칸 채우기',match:'빠르게 짝 맞추기',wordle:'워들',chain:'문장 이어가기',sentence:'한글문장 영작하기',listen:'듣고 완성',ssort:'문장 단어 순서 맞추기',wordfind:'격자에서 단어 찾기',wc:'철자로 단어 완성하기',scramble:'뒤섞인 철자 맞추기'}[gameId]||gameId;
   const curMM = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
-  const marked1=curWords.filter(w=>(curMM[w.en]||0)===1).length;
-  const marked2=curWords.filter(w=>(curMM[w.en]||0)===2).length;
+  const marked1=curWords.filter(w=>(curMM[_mk(w.en)]||0)===1).length;
+  const marked2=curWords.filter(w=>(curMM[_mk(w.en)]||0)===2).length;
   const unmarked=curWords.length-marked1-marked2;
   if(!S.gameSettings) S.gameSettings={count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false,autoNextSec:1.0,timeLimit:false,timeSec:10,showMood:true,quizItem:'meaning',voiceItem:'word',autoRead:false};
   const gs=S.gameSettings;
@@ -11149,9 +11154,9 @@ function startGameWithSettings(gameId) {
   const _mm = getCurrentBookMarkMap ? getCurrentBookMarkMap() : (S.markMap||{});
   let src = allWords;
   if(gs.markFilter === -2) {
-    src = allWords.filter(w=>(_mm[w.en]||0) !== 1); // 외운단어 제외
+    src = allWords.filter(w=>(_mm[_mk(w.en)]||0) !== 1); // 외운단어 제외
   } else if(gs.markFilter>=0) {
-    src = allWords.filter(w=>(_mm[w.en]||0) === gs.markFilter);
+    src = allWords.filter(w=>(_mm[_mk(w.en)]||0) === gs.markFilter);
   }
   if(!src.length) src = allWords;
   // ── 콘텐츠 게이트: 단어장이 이 게임에 맞지 않으면 안내 후 중단 ──
@@ -12461,7 +12466,7 @@ function startGameW(id, ws) {
   // ws가 지정되지 않으면 현재 단어장 단어 사용
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   let src = ws || (curWords.length>=2 ? curWords : (DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
-  if(!ws && gs.markFilter>=0){ var _mm=(typeof getCurrentBookMarkMap==='function')?getCurrentBookMarkMap():(S.markMap||{}); var _rf=src.filter(function(w){return (_mm[w.en]||0)===gs.markFilter;}); if(_rf.length>=2) src=_rf; }
+  if(!ws && gs.markFilter>=0){ var _mm=(typeof getCurrentBookMarkMap==='function')?getCurrentBookMarkMap():(S.markMap||{}); var _rf=src.filter(function(w){return (_mm[_mk(w.en)]||0)===gs.markFilter;}); if(_rf.length>=2) src=_rf; }
   S._prevTab=(S.tab==='game')?'game':(S.tab==='butterfly')?'butterfly':(S.tab||'home'); S.gameId=id; S.gDone=false; S._gameScoreSaved=false; S._gameRunning=true; S.gScore=0; S.gIdx=0; S.gAns=false; S.gRes=null; S.gInput=''; S._combo=0; S._maxCombo=0; S.wfFound=new Set(); S.wfGrid=null; S.wfWords=null; S._lqPlayedIdx=-1; S.scLetters=null; S.scBuilt=null; S._scIdx=-1; S._wcAdv=false; S._ssPlayedIdx=-1; S._gtDeadline=null;
   S.gResultMap={};
   // ws가 이미 지정됐으면 그대로, 아니면 count 적용
@@ -14140,8 +14145,8 @@ function rProfile(){
   // 단어 현황은 내 단어장 기준으로 계산 (markMap은 전체 단어장 포함이라 음수 방지)
   const _curWords=((typeof getCurrentBookWords==="function"&&getCurrentBookWords())||S.words)||[];
   const _mm=((typeof getCurrentBookMarkMap==="function"&&getCurrentBookMarkMap())||S.markMap)||{};
-  const marked1=_curWords.filter(w=>(_mm[w.en]||0)===1).length;
-  const marked2=_curWords.filter(w=>(_mm[w.en]||0)===2).length;
+  const marked1=_curWords.filter(w=>(_mm[_mk(w.en)]||0)===1).length;
+  const marked2=_curWords.filter(w=>(_mm[_mk(w.en)]||0)===2).length;
   const myB=getMyButterflies();
   const curLvIdx=LEVELS.findIndex(lx=>lx.id===S.lid);
   const nextLv=LEVELS[Math.min(curLvIdx+1,LEVELS.length-1)];

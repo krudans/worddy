@@ -9656,21 +9656,30 @@ function showListenMode() {
     var w=window._lsWords[window._lsIdx]||{};
     if(!window._lsExByIdx) window._lsExByIdx={};
     var idx=window._lsIdx;
-    if(!(idx in window._lsExByIdx)){ window._lsExByIdx[idx]=(typeof _ex5One==='function')?_ex5One(w.en):null; }
-    var ex0=window._lsExByIdx[idx]||null;
+    var en=String(w.en||'').toLowerCase().trim();
+    // 다국어: 기본(영어/한국어) 외 언어면 엔진으로 라벨·음성·예문·뜻 전환
+    var _ml=(typeof getMultiCard==='function' && ((S.learnLang&&S.learnLang!=='en')||(S.nativeLang&&S.nativeLang!=='ko'))) ? getMultiCard(en,S.learnLang,S.nativeLang,(typeof _exFormVal==='function'?_exFormVal():0)) : null;
+    var ex0;
+    if(_ml){ ex0={en:(_ml.q?_ml.q.ex:'')||'', kr:(_ml.a?_ml.a.ex:'')||''}; }
+    else { if(!(idx in window._lsExByIdx)){ window._lsExByIdx[idx]=(typeof _ex5One==='function')?_ex5One(w.en):null; } ex0=window._lsExByIdx[idx]||null; }
     var ms=(w.meanings&&w.meanings.length)?w.meanings.slice():(w.kr?String(w.kr).split(';').map(function(s){return s.trim();}).filter(Boolean):[]);
     var n=parseInt(window._lsMeanN||0); if(n>0) ms=ms.slice(0,n);
-    var img=(((window.BWD_EX5||{})[String(w.en||'').toLowerCase()]||{}).img)||w.img||'';
-    return {w:w,ex0:ex0,ms:ms,img:img};
+    var img=(((window.BWD_EX5||{})[en]||{}).img)||w.img||'';
+    var qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
+    var qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
+    var qAudio=(_ml&&_ml.q)?_ml.q.lang:'en';
+    if(_ml){ var aLab=(_ml.a&&_ml.a.label)?_ml.a.label:''; ms=aLab?[aLab]:ms; if(n>0)ms=ms.slice(0,n); }
+    return {w:w,ex0:ex0,ms:ms,img:img,qLabel:qLabel,qSub:qSub,qAudio:qAudio,ml:_ml};
   };
   window._lsPlay=function(){
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
     var d=window._lsData(), w=d.w; if(!w||!w.en) return;
     var tgt=window._lsTarget||'all', rate=window._lsRate||0.8;
+    var lab=d.qLabel||w.en, alang=d.qAudio||'en';
     var sent=d.ex0?d.ex0.en:null;
-    if(tgt==='word'){ speak(w.en,'en',rate); }
-    else if(tgt==='sentence'){ speak(sent||w.en,'en',rate); }
-    else { speak(w.en,'en',rate); if(sent){ setTimeout(function(){ try{ speak(sent,'en',rate); }catch(e){} }, 1150); } }
+    if(tgt==='word'){ speak(lab,alang,rate); }
+    else if(tgt==='sentence'){ speak(sent||lab,alang,rate); }
+    else { speak(lab,alang,rate); if(sent){ setTimeout(function(){ try{ speak(sent,alang,rate); }catch(e){} }, 1150); } }
   };
   window._lsRevealNow=function(){
     window._lsReveal=true;
@@ -9763,7 +9772,8 @@ function showListenMode() {
         <div style="font-size:12px;color:rgba(255,255,255,.45)">단어와 뜻을 머릿속에 떠올린 뒤<br>정답을 확인하세요</div>
       </div>`;
     } else {
-      var enFz=w.en&&w.en.length>16?'30px':(w.en&&w.en.length>10?'34px':'40px');
+      var _llab=d.qLabel||w.en||'';
+      var enFz=_llab.length>16?'30px':(_llab.length>10?'34px':'40px');
       var msHtml=(S._vMean!==false&&d.ms&&d.ms.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0 2px">${d.ms.map(function(m){return '<span style="background:rgba(255,255,255,.14);border-radius:14px;padding:4px 12px;font-size:13px">'+m+'</span>';}).join('')}</div>`:'';
       var exHtml=(S._vSent!==false&&d.ex0)?`<div style="margin-top:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 14px;text-align:left"><div style="font-size:14px;line-height:1.5">${d.ex0.en}</div>${d.ex0.kr?`<div style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.5;margin-top:4px">${d.ex0.kr}</div>`:''}</div>`:'';
       var _mk=(typeof getMark==='function')?getMark(w.en):0; var _safe=String(w.en||'').replace(/'/g,"\\'"); var _isMemo=(_mk===1);
@@ -9773,8 +9783,9 @@ function showListenMode() {
       </div>`;
       card=`<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:28px 24px;width:100%;max-width:360px;text-align:center;max-height:46vh;overflow-y:auto">
         ${(d.img&&S._vEmoji!==false)?`<div style="font-size:46px;margin-bottom:6px">${d.img}</div>`:''}
-        <div style="font-size:${enFz};font-weight:900;color:var(--theme)">${w.en||''}</div>
-        ${(w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;font-family:monospace">${w.ph}</div>`:''}
+        <div style="font-size:${enFz};font-weight:900;color:var(--theme)">${_llab}</div>
+        ${d.qSub?`<div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:4px">${d.qSub}</div>`:''}
+        ${(!d.ml&&w.ph&&S._vPh!==false)?`<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;font-family:monospace">${w.ph}</div>`:''}
         ${msHtml}${exHtml}${markBtns}
       </div>`;
     }

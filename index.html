@@ -4843,23 +4843,39 @@ function recalcStreak() {
   }
 }
 
+function _streakFromLog(){
+  try{
+    var sl=S.studyLog||{};
+    var studied=function(d){ var e=sl[d]; return !!(e&&((e.words||0)>0||(e.quiz||0)>0||(e.min||0)>0)); };
+    var td=today();
+    var yd=new Date(Date.now()+9*3600000-86400000).toISOString().slice(0,10);
+    var cur=studied(td)?td:(studied(yd)?yd:null);
+    if(!cur) return 0;
+    var n=0;
+    while(studied(cur)){ n++; cur=new Date(new Date(cur).getTime()-86400000).toISOString().slice(0,10); }
+    return n;
+  }catch(e){ return 0; }
+}
+
 function updStreak() {
   const td=today(); if(S.lastDate===td) return;
   // 매일 배부름/기분 감소
   S._petFull = Math.max(0, (S._petFull||0)-1);
   S._petHappy = Math.max(0, (S._petHappy||0)-1);
-  // KST 기준 어제 날짜 계산
-  const ydDate = new Date(Date.now() + 9*60*60*1000 - 86400000);
-  const yd = ydDate.toISOString().slice(0,10);
-  if(S.lastDate===yd) {
-    S.streak++;
-    if(S.streak===7) { 
-      setTimeout(()=>{
-        toast('🔥 7일 연속! XP x1.5 보너스!'); vib([100,50,200]);
-      },500);
+  // KST 기준 어제 날짜
+  const yd = new Date(Date.now() + 9*60*60*1000 - 86400000).toISOString().slice(0,10);
+  // ★기록(studyLog)이 진실★ — 단일 lastDate 값이 어긋나도 어제 학습 기록이 있으면 연속 유지(거짓 끊김 방지)
+  const sl = S.studyLog||{};
+  const studied = function(d){ var e=sl[d]; return !!(e&&((e.words||0)>0||(e.quiz||0)>0||(e.min||0)>0)); };
+  const continued = (S.lastDate===yd) || studied(yd);
+  if(continued) {
+    // 기록 기준 정확한 연속일로 설정(이전 stale 값에 휘둘리지 않음)
+    const fromLog=_streakFromLog();
+    S.streak = fromLog>0 ? fromLog : (S.streak||0)+1;
+    if(S.streak===7) {
+      setTimeout(()=>{ toast('🔥 7일 연속! XP x1.5 보너스!'); vib([100,50,200]); },500);
     }
     if(S.streak===30) {
-      // 30일 달성 시 나비 뽑기 보너스 1회
       setTimeout(()=>{
         if(confirm('🎉 30일 연속 달성! 나비 뽑기 보너스 1회! 지금 뽑을까요?')) {
           const bf=rollButterfly();
@@ -4868,9 +4884,9 @@ function updStreak() {
         }
       }, 1000);
     }
-    else if(S.streak===30) { setTimeout(()=>{toast('👑 30일 연속! XP x2.0 보너스!'); vib([100,50,100,50,300]);},500); }
     else if(S.streak===3) { setTimeout(()=>{toast('⭐ 3일 연속! XP x1.2 보너스!'); vib(100);},500); }
   } else {
+    // 기록상 어제도 학습이 없을 때만 진짜 끊김
     const prevStreak2 = S.streak||0;
     S.streak=1;
     S._lvNotified=false;

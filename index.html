@@ -11180,6 +11180,16 @@ function rLearn() {
   if(typeof _seenW==='function') _seenW(w.en);
   const curMark=getMark(w.en)||0, isFav=(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0;
   const exList=(typeof _ex5Strings==='function')?_ex5Strings(w,3):((w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]));
+  // ── 다국어: 기본(영어 학습/한국어 모국어) 외 언어를 고르면 엔진으로 라벨·발음·예문·음성 전환 ──
+  var _ml=(typeof getMultiCard==='function' && ((S.learnLang&&S.learnLang!=='en')||(S.nativeLang&&S.nativeLang!=='ko'))) ? getMultiCard(w.en,S.learnLang,S.nativeLang,(typeof _exFormVal==='function'?_exFormVal():0)) : null;
+  var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
+  var _qSub=(_ml&&_ml.q&&_ml.q.sub)?_ml.q.sub:'';
+  var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
+  var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+  var _qAudio=(_ml&&_ml.q)?_ml.q.lang:'en';
+  var _exShow=exList;
+  if(_ml){ var _qb=(typeof _mBlock==='function')?_mBlock(w.en,S.learnLang):null, _ab=(typeof _mBlock==='function')?_mBlock(w.en,S.nativeLang):null;
+    if(_qb&&_qb.ex&&_qb.ex.length){ _exShow=_qb.ex.slice(0,3).map(function(s,i){ var tr=(_ab&&_ab.ex&&_ab.ex[i])?_ab.ex[i].s:''; return s.s+(tr?'  <span style="color:rgba(255,255,255,.5)">'+tr+'</span>':''); }); } }
 
   let filterHtml='';
   [[-1,'전체',allFw.length],[0,'미암기',allFw.filter(x=>getMark(x.en)===0).length],[1,'암기',allFw.filter(x=>getMark(x.en)===1).length],[2,'헷갈림',allFw.filter(x=>getMark(x.en)===2).length]].forEach(function(item){
@@ -11187,22 +11197,23 @@ function rLearn() {
     filterHtml+='<button onclick="S.flashRange='+v+';S.idx=0;S.flip=false;S._flipWords=null;sv();go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'var(--border,#E5E7EB)')+';background:'+(active?'var(--theme)':'var(--bg-card,#fff)')+';color:'+(active?'#fff':'var(--text2,#6B7280)')+';font-size:11px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s">'+lb+' <span style="opacity:.6;font-size:10px">'+cnt+'</span></button>';
   });
 
-  var enFz=w.en.length>30?'16px':w.en.length>22?'20px':w.en.length>14?'26px':w.en.length>10?'32px':w.en.length>6?'40px':'48px';
+  var enFz=_qLabel.length>30?'16px':_qLabel.length>22?'20px':_qLabel.length>14?'26px':_qLabel.length>10?'32px':_qLabel.length>6?'40px':'48px';
   var frontContent='';
   if(w.img&&S._vEmoji!==false) frontContent+='<div style="font-size:36px;margin-bottom:8px">'+w.img+'</div>';
-  frontContent+='<div style="font-size:'+enFz+';font-weight:900;color:#fff;letter-spacing:-1px;text-shadow:0 2px 8px rgba(0,0,0,.3)">'+w.en+'</div>';
-  if(w.ph&&S._vPh!==false) frontContent+='<div style="font-size:14px;color:rgba(255,255,255,.7);margin:6px 0;font-family:monospace">'+w.ph+'</div>';
-  if(w.pos) frontContent+='<div style="background:rgba(255,255,255,.15);border-radius:10px;padding:2px 10px;font-size:11px;color:rgba(255,255,255,.8);display:inline-block;margin-bottom:6px">'+w.pos+'</div>';
+  frontContent+='<div style="font-size:'+enFz+';font-weight:900;color:#fff;letter-spacing:-1px;text-shadow:0 2px 8px rgba(0,0,0,.3)">'+_qLabel+'</div>';
+  if(_qSub) frontContent+='<div style="font-size:13px;color:rgba(255,255,255,.75);margin:4px 0">'+_qSub+'</div>';
+  if(_qPh&&S._vPh!==false) frontContent+='<div style="font-size:14px;color:rgba(255,255,255,.7);margin:6px 0;font-family:monospace">'+_qPh+'</div>';
+  if(!_ml&&w.pos) frontContent+='<div style="background:rgba(255,255,255,.15);border-radius:10px;padding:2px 10px;font-size:11px;color:rgba(255,255,255,.8);display:inline-block;margin-bottom:6px">'+w.pos+'</div>';
   frontContent+='<div style="font-size:11px;color:var(--panel-text3,#9CA3AF);margin-top:8px">탭하면 뜻 보기 👆</div>';
 frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margin-top:4px">← 복습 &nbsp;&nbsp; 외웠음 →</div>';
 
   var backContent='';
   if(w.img&&S._vEmoji!==false) backContent+='<div style="font-size:28px;margin-bottom:6px">'+w.img+'</div>';
-  if(S._vMean!==false) backContent+='<div style="font-size:26px;font-weight:900;color:#fff;margin-bottom:6px">'+w.kr+'</div>';
-  if(w.meanings&&w.meanings.length>1){backContent+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">';w.meanings.slice(0,4).forEach(function(m){backContent+='<span style="background:rgba(255,255,255,.15);border-radius:8px;padding:2px 8px;font-size:11px;color:rgba(255,255,255,.9)">'+m+'</span>';});backContent+='</div>';}
-  if(exList.length>0&&S._vSent!==false){exList.slice(0,3).forEach(function(ex){backContent+='<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;margin-bottom:4px;font-size:12px;color:rgba(255,255,255,.85);font-style:italic;line-height:1.5;text-align:left">'+ex+'</div>';});}
+  if(S._vMean!==false) backContent+='<div style="font-size:26px;font-weight:900;color:#fff;margin-bottom:6px">'+_aLabel+'</div>';
+  if(!_ml&&w.meanings&&w.meanings.length>1){backContent+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">';w.meanings.slice(0,4).forEach(function(m){backContent+='<span style="background:rgba(255,255,255,.15);border-radius:8px;padding:2px 8px;font-size:11px;color:rgba(255,255,255,.9)">'+m+'</span>';});backContent+='</div>';}
+  if(_exShow.length>0&&S._vSent!==false){_exShow.slice(0,3).forEach(function(ex){backContent+='<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;margin-bottom:4px;font-size:12px;color:rgba(255,255,255,.85);font-style:italic;line-height:1.5;text-align:left">'+ex+'</div>';});}
   if(w.tip) backContent+='<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:6px;background:rgba(255,255,255,.08);border-radius:8px;padding:6px 10px">💡 '+w.tip+'</div>';
-  backContent+='<div style="font-size:20px;font-weight:700;color:rgba(255,255,255,.4);margin-top:10px">'+w.en+'</div>';
+  backContent+='<div style="font-size:20px;font-weight:700;color:rgba(255,255,255,.4);margin-top:10px">'+_qLabel+'</div>';
 
   var markHtml='';
   [[0,'📝','미암기'],[1,'✅','외웠음'],[2,'🦋','헷갈림']].forEach(function(item){
@@ -11266,7 +11277,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
   html += '<button onclick="event.stopPropagation();toggleFav(\''+w.en.replace(/'/g,"\\'")+'\')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:0">'+(isFav?'⭐':'☆')+'</button>';
-  html += '<button onclick="event.stopPropagation();speak(\''+w.en.replace(/'/g,"\\'")+'\',\'en\',(S._flashRate||0.8))" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;cursor:pointer">🔊</button>';
+  html += '<button onclick="event.stopPropagation();speak(\''+String(_qLabel).replace(/'/g,"\\'")+'\',\''+_qAudio+'\',(S._flashRate||0.8))" style="background:rgba(255,255,255,.12);border:none;border-radius:20px;padding:6px 12px;color:#fff;font-size:13px;cursor:pointer">🔊</button>';
   html += (_LT&&_LT.barHTML?_LT.barHTML():'');
   html += exitBtnHTML();
   html += '</div>';
@@ -11283,26 +11294,27 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
     // 뒷면
     html += '<div style="font-size:11px;color:rgba(255,255,255,.35);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px">뜻</div>';
     if(w.img && S._vEmoji!==false) html += '<div style="font-size:40px;margin-bottom:10px">'+w.img+'</div>';
-    if(S._vMean!==false) html += '<div style="font-size:36px;font-weight:900;color:#fff;margin-bottom:10px;line-height:1.2">'+w.kr+'</div>';
-    if(w.meanings&&w.meanings.length>1){
+    if(S._vMean!==false) html += '<div style="font-size:36px;font-weight:900;color:#fff;margin-bottom:10px;line-height:1.2">'+_aLabel+'</div>';
+    if(!_ml&&w.meanings&&w.meanings.length>1){
       html += '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:12px">';
       w.meanings.slice(0,4).forEach(function(m){html+='<span style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:20px;padding:4px 12px;font-size:12px;color:rgba(255,255,255,.9)">'+m+'</span>';});
       html += '</div>';
     }
-    if(exList.length>0 && S._vSent!==false){
-      exList.slice(0,2).forEach(function(ex){
+    if(_exShow.length>0 && S._vSent!==false){
+      _exShow.slice(0,2).forEach(function(ex){
         html+='<div style="background:rgba(255,255,255,.07);border-left:2px solid rgba(74,222,128,.6);border-radius:0 12px 12px 0;padding:10px 14px;margin:4px 0;font-size:13px;color:rgba(255,255,255,.8);font-style:italic;line-height:1.5;text-align:left;max-width:360px">'+ex+'</div>';
       });
     }
     if(w.tip) html+='<div style="margin-top:10px;font-size:11px;color:rgba(255,255,255,.45);background:rgba(255,255,255,.06);border-radius:10px;padding:8px 12px;max-width:320px">💡 '+w.tip+'</div>';
-    html += '<div style="margin-top:16px;font-size:20px;font-weight:600;color:rgba(255,255,255,.2);letter-spacing:1px">'+w.en+'</div>';
+    html += '<div style="margin-top:16px;font-size:20px;font-weight:600;color:rgba(255,255,255,.2);letter-spacing:1px">'+_qLabel+'</div>';
   } else {
     // 앞면
-    html += '<div style="font-size:11px;color:rgba(255,255,255,.35);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px">영단어</div>';
+    html += '<div style="font-size:11px;color:rgba(255,255,255,.35);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px">'+(_ml&&window._MLANG&&window._MLANG[_qAudio]?window._MLANG[_qAudio].name:'영단어')+'</div>';
     if(w.img && S._vEmoji!==false) html += '<div style="font-size:44px;margin-bottom:10px">'+w.img+'</div>';
-    html += '<div style="font-size:'+enFz+';font-weight:900;color:#fff;letter-spacing:-1px;line-height:1;margin-bottom:12px">'+w.en+'</div>';
-    if(w.ph && S._vPh!==false) html += '<div style="font-size:15px;color:rgba(96,165,250,.9);font-family:monospace;margin-bottom:10px">'+w.ph+'</div>';
-    if(w.pos) html += '<div style="display:inline-block;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.35);border-radius:20px;padding:4px 14px;font-size:12px;color:rgba(74,222,128,.9)">'+w.pos+'</div>';
+    html += '<div style="font-size:'+enFz+';font-weight:900;color:#fff;letter-spacing:-1px;line-height:1;margin-bottom:12px">'+_qLabel+'</div>';
+    if(_qSub) html += '<div style="font-size:14px;color:rgba(255,255,255,.8);margin-bottom:8px">'+_qSub+'</div>';
+    if(_qPh && S._vPh!==false) html += '<div style="font-size:15px;color:rgba(96,165,250,.9);font-family:monospace;margin-bottom:10px">'+_qPh+'</div>';
+    if(!_ml&&w.pos) html += '<div style="display:inline-block;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.35);border-radius:20px;padding:4px 14px;font-size:12px;color:rgba(74,222,128,.9)">'+w.pos+'</div>';
     html += '<div style="margin-top:20px;display:flex;justify-content:center;gap:24px">';
     html += '<span style="font-size:11px;color:rgba(255,255,255,.25)">← 복습</span>';
     html += '<span style="font-size:11px;color:rgba(255,255,255,.3)">탭하면 뜻 보기</span>';

@@ -13743,29 +13743,67 @@ function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)retur
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
 function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[?？]$/.test(t))return true;return /(까요|ㄹ까요|을까요|나요|은가요|는가요|습니까|ㅂ니까|읍니까)[.\u2026]?$/.test(t);}
-function speak(text, force, rate){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var isKo=force==='ko'||(force!=='en'&&/[\uAC00-\uD7A3]/.test(text));var t=text.trim();var spoken;if(isKo){if(_isKoQuestion(t)){spoken=/[?？]$/.test(t)?t:t.replace(/[.\u2026]+$/,'')+'?';}else{spoken=/[.!?\u2026]$/.test(t)?t:t+'.';}}else{spoken=text;}var u=new SpeechSynthesisUtterance(spoken);u.lang=isKo?'ko-KR':'en-US';u.rate=(rate||(isKo?0.92:0.85));u.pitch=1.0;var v=_bestVoice(isKo);if(v)u.voice=v;window.speechSynthesis.speak(u);}catch(e){}}
-/* ===== 음성 강제 적용 (모든 발화 경로 통합 수정) ===== */
+function speak(text, lang, rate){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var code=(window._normLang?window._normLang(lang,text):((lang==='ko'||/[\uAC00-\uD7A3]/.test(text))?'ko-KR':'en-US'));var isKo=code.toLowerCase().indexOf('ko')===0;var isEn=code.toLowerCase().indexOf('en')===0;var t=text.trim();var spoken;if(isKo){if(_isKoQuestion(t)){spoken=/[?？]$/.test(t)?t:t.replace(/[.\u2026]+$/,'')+'?';}else{spoken=/[.!?\u2026]$/.test(t)?t:t+'.';}}else{spoken=text;}var u=new SpeechSynthesisUtterance(spoken);u.lang=code;u.rate=(rate||(isKo?0.92:(isEn?0.85:0.9)));u.pitch=1.0;var v=(window._bestVoiceFor?window._bestVoiceFor(code):(window._bestVoice?window._bestVoice(isKo):null));if(v)u.voice=v;window.speechSynthesis.speak(u);}catch(e){}}
+/* ===== 음성 엔진: 언어별 최적 성우 선택 (다국어 대응) ===== */
 (function(){
   if(!('speechSynthesis' in window)) return;
   var _vcache=[];
   function _loadV(){ try{ _vcache=window.speechSynthesis.getVoices()||[]; }catch(e){} }
   _loadV();
   try{ window.speechSynthesis.addEventListener('voiceschanged', _loadV); }catch(e){ try{ window.speechSynthesis.onvoiceschanged=_loadV; }catch(e2){} }
-  window._bestVoice=function(isKo){
-    var vs=_vcache.length?_vcache:(window.speechSynthesis.getVoices()||[]);
-    if(!vs.length) return null;
-    if(isKo) return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;
-    return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;
+
+  // 텍스트가 어떤 언어인지 추정(언어 코드 미지정 시): 한글→ko, 가나→ja, 그 외→en
+  window._detectLang=function(text){
+    var t=String(text==null?'':text);
+    if(/[\uAC00-\uD7A3]/.test(t)) return 'ko-KR';
+    if(/[\u3040-\u30FF]/.test(t)) return 'ja-JP';
+    return 'en-US';
   };
+  // 짧은 코드/별칭 → 표준 BCP-47 코드
+  window._normLang=function(lang, text){
+    var L=String(lang==null?'':lang).toLowerCase();
+    var map={en:'en-US',ko:'ko-KR',ja:'ja-JP',de:'de-DE',zh:'zh-CN',es:'es-ES',fr:'fr-FR',it:'it-IT'};
+    if(map[L]) return map[L];
+    if(/^[a-z]{2}(-[a-z0-9]{2,})?$/i.test(lang||'')) return lang; // 이미 코드면 그대로
+    return window._detectLang(text);
+  };
+  // 해당 언어에서 가장 자연스러운(품질 높은) 음성 선택
+  function _score(v, prefix){
+    var l=(v.lang||'').toLowerCase().replace('_','-');
+    if(l.indexOf(prefix)!==0) return -1;        // 언어 불일치 → 제외
+    var n=(v.name||'').toLowerCase(); var s=2;
+    if(/google/.test(n)) s+=50;                 // 구글 음성 우선(자연스러움)
+    if(/natural|neural/.test(n)) s+=48;         // MS Natural/Neural
+    if(/premium|enhanced|wavenet|siri/.test(n)) s+=30;
+    if(/microsoft/.test(n)) s+=18;
+    if(v.localService===false) s+=8;            // 네트워크 음성 가산
+    if(/compact|espeak|vocalizer compact/.test(n)) s-=45; // 저품질 회피
+    return s;
+  }
+  window._bestVoiceFor=function(code){
+    try{
+      var vs=_vcache.length?_vcache:(window.speechSynthesis.getVoices()||[]);
+      if(!vs.length) return null;
+      var prefix=String(code||'en').toLowerCase().replace('_','-').split('-')[0];
+      var best=null,bestS=-1;
+      for(var i=0;i<vs.length;i++){ var sc=_score(vs[i],prefix); if(sc>bestS){bestS=sc;best=vs[i];} }
+      return bestS>=0?best:null;
+    }catch(e){ return null; }
+  };
+  // 하위호환: 기존 _bestVoice(isKo) 호출 유지
+  window._bestVoice=function(isKo){ return window._bestVoiceFor(isKo?'ko':'en'); };
+  // 해당 언어 음성 보유 여부(설정 화면 안내용)
+  window._hasVoiceFor=function(code){ return !!window._bestVoiceFor(code); };
+
+  // 모든 발화 경로 공통 보정: 발화의 언어 코드에 맞는 성우를 자동 지정
   if(window.speechSynthesis.speak && !window.speechSynthesis.__wrapped){
     var _orig=window.speechSynthesis.speak.bind(window.speechSynthesis);
     window.speechSynthesis.speak=function(u){
       try{
         if(u){
-          var hangul=/[\uAC00-\uD7A3]/.test(u.text||'');
-          var isKo=(u.lang&&u.lang.toLowerCase().indexOf('ko')===0)||hangul;
-          if(isKo && (!u.lang || u.lang.toLowerCase().indexOf('ko')!==0)) u.lang='ko-KR';
-          if(!u.voice){ var v=window._bestVoice(isKo); if(v) u.voice=v; }
+          var code=(u.lang||'').toLowerCase().replace('_','-');
+          if(!code){ code=window._detectLang(u.text||'').toLowerCase(); u.lang=code; }
+          if(!u.voice){ var v=window._bestVoiceFor(code); if(v) u.voice=v; }
         }
       }catch(e){}
       return _orig(u);

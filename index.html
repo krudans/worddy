@@ -10616,23 +10616,16 @@ function rStudyBooks() {
     ? countMemorized('all')
     : (m1 + (S.books||[]).reduce((s,b)=>s+(getBookWords(b).filter(w=>(b.markMap||{})[_mk(w.en)]===1).length),0));
 
-  function _card(o){
-    const _cb=o.isCur?'var(--theme-tint,#F1F5F9)':'var(--bg-card,#fff)';
-    const _cbd=o.isCur?'var(--theme-soft,#CBD5E1)':'#ECEEF1';
-    return '<div style="background:'+_cb+';border:1px solid '+_cbd+';border-radius:14px;overflow:hidden">'
-      +'<div style="padding:12px 13px;cursor:pointer" onclick="'+o.openFn+'">'
-        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">'+o.icon
-          +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text1,#1F2937)">'+o.name+(o.isCur?' <span style="font-size:10px;background:var(--theme,#475569);color:#fff;padding:1px 7px;border-radius:10px;font-weight:700;vertical-align:1px">현재</span>':'')+'</div>'
-          +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">'+o.count+'개 단어 · 외운 '+o.mem+'</div></div>'
-          +'<div style="font-size:16px;font-weight:800;color:var(--theme,#475569)">'+o.pct+'%</div>'
-        +'</div>'
-        +'<div style="background:var(--bg-sub,#F1F3F5);border-radius:6px;height:6px;overflow:hidden"><div style="height:100%;background:var(--theme,#475569);border-radius:6px;width:'+Math.max(o.pct,o.pct>0?2:0)+'%;transition:width .4s"></div></div>'
-      +'</div>'
-      +'<div style="display:flex;border-top:1px solid #ECEEF1">'
-        +'<button onclick="'+o.learnFn+'" style="flex:3;padding:11px 8px;background:none;border:none;color:var(--theme,#475569);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">▶ 학습 시작</button>'
-        +(o.addFn?'<button onclick="'+o.addFn+'" style="flex:2;padding:11px 8px;background:none;border:none;border-left:1px solid #ECEEF1;color:#6B7280;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">＋ 추가</button>':'')
-        +'<button onclick="'+o.menuFn+'" style="flex:1;padding:11px 8px;background:none;border:none;border-left:1px solid #ECEEF1;color:#9CA3AF;font-size:18px;cursor:pointer">···</button>'
-      +'</div>'
+  // 작은 아이콘 + 원형% 행 (행 클릭 = 학습, ⋯ = 메뉴)
+  function _row(o, first){
+    const _p=o.pct||0;
+    const ring='<div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(var(--theme,#475569) '+(_p*3.6)+'deg, var(--bg-sub,#EDE7D6) 0);display:flex;align-items:center;justify-content:center;flex-shrink:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-card,#fff);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--text1,#1F2937)">'+_p+'%</div></div>';
+    return '<div onclick="'+o.learnFn+'" style="display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer;'+(first?'':'border-top:1px solid var(--border,#ECEEF1)')+'">'
+      +o.iconSm
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text1,#1F2937);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+o.name+(o.isCur?' <span style="font-size:9px;font-weight:700;color:var(--theme,#475569)">· 현재</span>':'')+'</div>'
+      +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">'+o.count+'단어 · 외운 '+o.mem+'</div></div>'
+      +ring
+      +'<span onclick="event.stopPropagation();'+o.menuFn+'" style="font-size:16px;color:#B8AE96;padding:4px 2px 4px 4px;cursor:pointer;flex-shrink:0">⋯</span>'
     +'</div>';
   }
 
@@ -10644,46 +10637,56 @@ function rStudyBooks() {
     const lp=bk.packId?(S._marketPacks||[]).find(p=>p.id===bk.packId):null;
     const img=lp?(lp.imageUrl||''):'';
     const emo=lp?(lp.emoji||'📖'):(bk.packId?'📦':(bk.emoji||'📖'));
-    const icon=img
-      ? '<img src="'+img+'" style="width:40px;height:40px;border-radius:12px;object-fit:cover;flex-shrink:0">'
-      : '<div style="width:40px;height:40px;background:var(--theme,#475569);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+emo+'</div>';
+    const iconSm=img
+      ? '<img src="'+img+'" style="width:30px;height:30px;border-radius:9px;object-fit:cover;flex-shrink:0">'
+      : '<div style="width:30px;height:30px;background:var(--theme,#475569);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+emo+'</div>';
     return {
-      name:bk.name, icon:icon, count:bw.length, mem:bm, pct:bp, isCur:(bk.name===S.currentBook),
-      openFn:"showBookWordList('"+sn+"')",
+      name:bk.name, iconSm:iconSm, count:bw.length, mem:bm, pct:bp, isCur:(bk.name===S.currentBook),
       learnFn:"selectBookAndLearn&&selectBookAndLearn('"+sn+"')",
-      addFn: bk.packId ? null : ("_selectBook&&_selectBook('"+sn+"');S.stab='add';go('mybooks','add')"),
       menuFn:"showBookMenu&&showBookMenu('"+sn+"','extra')"
     };
   }
 
-  const myIcon='<div style="width:40px;height:40px;background:var(--theme,#475569);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📚</div>';
-  const myOpts={ name:'내 단어장', icon:myIcon, count:myCount, mem:m1, pct:pct1, isCur:((S.currentBook||'내 단어장')==='내 단어장'),
-    openFn:"showBookWordList('내 단어장')",
+  const myIconSm='<div style="width:30px;height:30px;background:var(--theme,#475569);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📚</div>';
+  const myOpts={ name:'내 단어장', iconSm:myIconSm, count:myCount, mem:m1, pct:pct1, isCur:((S.currentBook||'내 단어장')==='내 단어장'),
     learnFn:"S.currentBook='내 단어장';go('learn')",
-    addFn:"S.currentBook='내 단어장';S.stab='add';go('mybooks','add')",
     menuFn:"showBookMenu&&showBookMenu('내 단어장','default')" };
 
-  const grpBooks = _orderBooks(books.filter(b=>DEFGRP.includes(b.packId)));
-  const otherBooks = books.filter(b=>!DEFGRP.includes(b.packId));
+  // 출처별 3그룹 분류
+  const grpBooks    = _orderBooks(books.filter(b=>DEFGRP.includes(b.packId)));
+  const otherBooks  = books.filter(b=>!DEFGRP.includes(b.packId));
+  const marketBooks = _orderBooks(otherBooks.filter(b=>b.fromMarket));
+  const myMadeBooks = _orderBooks(otherBooks.filter(b=>!b.fromMarket));
 
-  let grpHtml='';
+  function _groupCard(headEmoji, headName, badge, rowsHtml, extra){
+    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 8px">'
+      +'<div style="display:flex;align-items:center;gap:7px;padding:11px 2px 4px"><span style="font-size:14px">'+headEmoji+'</span><span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937)">'+headName+'</span>'+(badge?'<span style="font-size:9px;font-weight:700;color:var(--text3,#9CA3AF);background:var(--bg-sub,#F3EFE2);border-radius:6px;padding:1px 6px">'+badge+'</span>':'')+'</div>'
+      +rowsHtml+(extra||'')+'</div>';
+  }
+  function _addRow(fn, txt, hasBorder){
+    return '<div onclick="'+fn+'" style="display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer;'+(hasBorder?'border-top:1px solid var(--border,#ECEEF1)':'')+'"><span style="font-size:18px;width:30px;text-align:center;color:var(--theme,#475569);flex-shrink:0">＋</span><div style="flex:1;font-size:13px;font-weight:700;color:var(--theme,#475569)">'+txt+'</div><span style="color:#B8AE96;flex-shrink:0">›</span></div>';
+  }
+  function _emptyNote(t){ return '<div style="font-size:11.5px;color:#9CA3AF;text-align:center;padding:12px 2px">'+t+'</div>'; }
+
+  // ① 기본 제공
+  let g1;
   if(grpBooks.length){
-    grpHtml='<div style="border:1px solid #C7D0DB;border-radius:16px;padding:11px;background:#E2E8F0">'
-      +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">'
-        +'<span style="font-size:15px">🦋</span>'
-        +'<span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937);flex:1;line-height:1.3">Butterfly Word 기본 암기 단어</span>'
-        +'<span style="font-size:10px;background:var(--theme-tint,#F1F5F9);color:var(--theme,#475569);padding:2px 8px;border-radius:8px;font-weight:700;white-space:nowrap">기본 제공</span>'
-      +'</div>'
-      +'<div style="font-size:11px;color:#9CA3AF;line-height:1.55;margin-bottom:10px">이 단어 그룹은 Butterfly Word에서 기본으로 제공하는 단어장입니다. 언제든지 삭제, 재등록이 가능합니다.</div>'
-      +'<div style="display:flex;flex-direction:column;gap:8px">'+grpBooks.map(bk=>_card(_bookOpts(bk))).join('')+'</div>'
-      +'<div style="display:flex;justify-content:flex-end;margin-top:9px"><button onclick="_deleteDefaultGroup&&_deleteDefaultGroup()" style="font-size:11px;color:#EF8B8B;background:none;border:1px solid #EEF0F2;border-radius:8px;padding:4px 10px;cursor:pointer">🗑 그룹 전체 삭제</button></div>'
-    +'</div>';
+    g1=_groupCard('🦋','기본 제공','기본', grpBooks.map((bk,i)=>_row(_bookOpts(bk),i===0)).join(''),
+      '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button onclick="_deleteDefaultGroup&&_deleteDefaultGroup()" style="font-size:11px;color:#EF8B8B;background:none;border:1px solid #EEF0F2;border-radius:8px;padding:4px 10px;cursor:pointer">🗑 그룹 삭제</button></div>');
   } else {
-    grpHtml='<div style="border:1px dashed #D9DCE0;border-radius:16px;padding:13px;text-align:center">'
-      +'<div style="font-size:13px;font-weight:700;color:var(--text1,#1F2937);margin-bottom:3px">Butterfly Word 기본 암기 단어</div>'
-      +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">기본 제공 단어 그룹이 삭제되었어요</div>'
-      +'<button onclick="_reRegisterDefaultGroup&&_reRegisterDefaultGroup()" style="width:100%;background:var(--theme,#475569);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">🔄 기본 단어 그룹 다시 등록</button>'
-    +'</div>';
+    g1=_groupCard('🦋','기본 제공','', _emptyNote('기본 제공 단어 그룹이 삭제되었어요'),
+      '<button onclick="_reRegisterDefaultGroup&&_reRegisterDefaultGroup()" style="width:100%;background:var(--theme,#475569);color:#fff;border:none;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;margin-top:2px">🔄 기본 단어 그룹 다시 등록</button>');
+  }
+  // ② 내 단어장 (내 단어장 + 사용자 제작) + 새 단어장
+  const myRows=[_row(myOpts,true)].concat(myMadeBooks.map(bk=>_row(_bookOpts(bk),false))).join('');
+  const g2=_groupCard('📝','내 단어장','', myRows, _addRow("showBooksModal&&showBooksModal()", '새 단어장 만들기', true));
+  // ③ 마켓 단어장 + 마켓에서 가져오기
+  let g3;
+  const mktAdd=_addRow("S.stab='market';go('mybooks','market')", '마켓에서 가져오기', marketBooks.length>0);
+  if(marketBooks.length){
+    g3=_groupCard('🛒','마켓 단어장','', marketBooks.map((bk,i)=>_row(_bookOpts(bk),i===0)).join(''), mktAdd);
+  } else {
+    g3=_groupCard('🛒','마켓 단어장','', _emptyNote('아직 가져온 마켓 단어장이 없어요'), mktAdd);
   }
 
   let html = '<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA)">';
@@ -10701,19 +10704,7 @@ function rStudyBooks() {
     +'</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>'
     + (typeof _bookSummaryLine==='function'?_bookSummaryLine(_curName):'')
   +'</div>';
-  html += grpHtml;
-  const _nonGroup = _orderBooks([{name:'내 단어장', __my:true}].concat(otherBooks));
-  html += _nonGroup.map(function(b){ return b.__my ? _card(myOpts) : _card(_bookOpts(b)); }).join('');
-
-  if(books.length < 10) {
-    html += '<div onclick="S.stab=\'market\';go(\'mybooks\',\'market\')" style="background:var(--bg-card,#fff);border-radius:14px;padding:13px;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px dashed var(--border,#E5E7EB)">'
-      +'<div style="width:40px;height:40px;background:var(--bg-sub,#F3F4F6);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🛒</div>'
-      +'<div style="flex:1"><div style="font-size:14px;font-weight:700;color:var(--text2,#374151)">마켓에서 가져오기</div>'
-      +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">수능 · 토익 · 드라마 단어팩</div></div>'
-      +'<span style="color:#9CA3AF;font-size:20px">›</span>'
-    +'</div>';
-  }
-
+  html += g1 + g2 + g3;
   html += '</div></div>';
   return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }

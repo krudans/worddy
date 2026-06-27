@@ -1037,6 +1037,26 @@ function getMultiCard(en, learn, native, step){
     a: a?{lang:native,label:a.label,sub:a.sub,ph:a.ph,ex:pick(a.ex),audioLang:a.audioLang}:null };
 }
 window.getMultiCard=getMultiCard; window._mBlock=_mBlock; window._mAvailLangs=_mAvailLangs;
+// ── 게임 공용: 다국어 모드 판정 + 라벨/음성 추출 (en/ko면 기존 영어자산 그대로 = 회귀0) ──
+function _gIsMulti(){ try{ return (typeof getMultiCard==='function') && ((S.learnLang&&S.learnLang!=='en')||(S.nativeLang&&S.nativeLang!=='ko')); }catch(e){ return false; } }
+function _gmCard(en){ try{ return getMultiCard(en,S.learnLang,S.nativeLang,(typeof _exFormVal==='function'?_exFormVal():0)); }catch(e){ return null; } }
+// 학습언어 라벨(문제어·음성용). 다국어 아니거나 데이터 없으면 w.en.
+function _gmQ(w){ if(_gIsMulti()){ var m=_gmCard(w.en); if(m&&m.q&&m.q.label) return m.q.label; } return w.en; }
+// 모국어 라벨(뜻·보기용). 다국어 아니거나 데이터 없으면 w.kr.
+function _gmA(w){ if(_gIsMulti()){ var m=_gmCard(w.en); if(m&&m.a&&m.a.label!=null&&m.a.label!=='') return m.a.label; } return w.kr||''; }
+// 학습언어 발음기호. 다국어면 학습언어 ph(ja/de는 ''), 아니면 w.ph.
+function _gmPh(w){ if(_gIsMulti()){ var m=_gmCard(w.en); return (m&&m.q)?(m.q.ph||''):''; } return w.ph||''; }
+// 학습언어 예문 1개(현재 step). 다국어 아니면 영어 예문.
+function _gmEx(w){ if(_gIsMulti()){ var m=_gmCard(w.en); return (m&&m.q)?(m.q.ex||''):''; } var ex=(w.exList&&w.exList.length)?w.exList[0]:(w.ex||''); return ex||''; }
+// 모국어 예문 1개(현재 step). 다국어 아니면 ''.
+function _gmExA(w){ if(_gIsMulti()){ var m=_gmCard(w.en); return (m&&m.a)?(m.a.ex||''):''; } return ''; }
+// 학습언어 음성 코드(speak 2번째 인자). 다국어 아니면 'en'.
+function _gmAudio(){ return (_gIsMulti()&&S.learnLang&&S.learnLang!=='en')?S.learnLang:'en'; }
+window._gIsMulti=_gIsMulti; window._gmQ=_gmQ; window._gmA=_gmA; window._gmPh=_gmPh; window._gmEx=_gmEx; window._gmExA=_gmExA; window._gmAudio=_gmAudio;
+// 철자분해형(영문 알파벳 전제) 게임 — 학습언어가 en이 아니면 사용 불가(일/독/한 등은 철자분해 불가)
+function _spellGame(gameId){ return ['scramble','wc','typing','wordfind','wordle'].indexOf(gameId)>=0; }
+function _gameLangBlocked(gameId){ try{ return _spellGame(gameId) && (typeof S!=='undefined') && S.learnLang && S.learnLang!=='en'; }catch(e){ return false; } }
+window._spellGame=_spellGame; window._gameLangBlocked=_gameLangBlocked;
 // 현재 학습/모국어가 데이터 없는 언어면 안전하게 폴백
 function _mNormSettings(){ try{ var av=_mAvailLangs();
   if(typeof S!=='undefined'){ if(av.indexOf(S.learnLang)<0)S.learnLang='en'; if(av.indexOf(S.nativeLang)<0)S.nativeLang='ko'; if(S.learnLang===S.nativeLang){ S.nativeLang=(S.learnLang==='ko')?'en':'ko'; } } }catch(e){} }
@@ -1294,6 +1314,35 @@ const MARK_INFO = [
 ];
 
 function buildSentenceFromWords(wordList) {
+  // ── 다국어: 학습언어 예문으로 문장 게임 구성. 실패 시 영어로 대체하지 않음(1순위 규칙) ──
+  if((typeof _gIsMulti==='function')&&_gIsMulti() && (S.gameId==='ssort'||S.gameId==='sentence')){
+    try{
+      var _ll=S.learnLang, _nl=S.nativeLang;
+      var _mbook=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=2)?getCurrentBookWords():(wordList||S.gWords||S.words||[]);
+      var _mcand=_mbook.filter(function(w){ var b=(typeof _mBlock==='function')?_mBlock(w.en,_ll):null; return b&&b.ex&&b.ex.length; });
+      var _mlv=(S.gameSettings&&S.gameSettings.sentLevel), _mbk=function(n){return n<=5?1:(n<=8?2:3);};
+      var _mlast=S._sbLastEn||'';
+      for(var _mt=0;_mt<24 && _mcand.length;_mt++){
+        var _mw=_mcand[Math.floor(Math.random()*_mcand.length)];
+        var _qb=_mBlock(_mw.en,_ll); if(!_qb||!_qb.ex||!_qb.ex.length) continue;
+        var _exObj=_qb.ex[Math.floor(Math.random()*_qb.ex.length)];
+        var _msent=String(_exObj.s||'').replace(/[.,!?;:"'\u3002\u3001\uff01\uff1f]/g,'').trim();
+        var _mwords=_msent.split(/\s+/).filter(function(x){return x.length>0;});
+        if(_mwords.length<3||_mwords.length>14) continue;   // 공백분해 불가(일본어 등) 자동 제외
+        if((_mlv===1||_mlv===2||_mlv===3) && _mbk(_mwords.length)!==_mlv) continue;
+        if(_msent===_mlast) continue;
+        var _ab=_mBlock(_mw.en,_nl), _mkr='';
+        if(_ab&&_ab.ex&&_ab.ex.length){ var _amatch=_ab.ex.filter(function(x){return x.t===_exObj.t;})[0]; _mkr=_amatch?_amatch.s:_ab.ex[0].s; }
+        var _mpile=[]; for(var _md=0;_md<8;_md++){ var _mo=_mcand[Math.floor(Math.random()*_mcand.length)]; var _ob=_mBlock(_mo.en,_ll); if(_ob&&_ob.ex&&_ob.ex.length){ var _oe=_ob.ex[Math.floor(Math.random()*_ob.ex.length)]; _mpile=_mpile.concat(String(_oe.s||'').replace(/[.,!?;:"'\u3002\u3001\uff01\uff1f]/g,'').split(/\s+/)); } }
+        var _mlw=_mwords.map(function(y){return y.toLowerCase();});
+        var _mwrong=shuf(_mpile.filter(function(x){return x&&_mlw.indexOf(x.toLowerCase())<0;})).slice(0,2);
+        S.sbS={kr:_mkr||_mw.kr||'',en:_msent,words:_mwords,_lang:_ll};
+        S.sbP=shuf(_mwords.concat(_mwrong));
+        S.sbC=[];S.sbAns=false;S.sbOk=false;S._sbLastEn=_msent;return;
+      }
+    }catch(e){}
+    S.sbS=null; S.sbP=[]; S.sbC=[]; S.sbAns=false; S.sbOk=false; return;
+  }
   // [ex5 사전 연동] 모든 단어가 예문 5개를 가지므로, 형식(1~5/랜덤) 선택을 반영해 문장 생성.
   //   문장형 게임(문장 순서/한글 영작) 공통. 미수록 단어장은 아래 기존 로직으로 폴백.
   try{
@@ -6591,6 +6640,7 @@ function rGameOnlyTab() {
       ]
     },
   ];
+  categories.forEach(function(c){ c.games=c.games.filter(function(g){return !_gameLangBlocked(g.id);}); });
 
   const diffBar = n => Array.from({length:5},(_,i)=>`<div style="width:6px;height:6px;border-radius:2px;background:${i<n?'currentColor':'var(--border,#D9DEE5)'}"></div>`).join('');
   const _totalGames = categories.reduce((s,c)=>s+c.games.length,0);
@@ -6615,7 +6665,7 @@ function rGameOnlyTab() {
 
     <!-- 카테고리별 게임 (컬러 패널) -->
   <div style="padding:14px 16px 26px;display:flex;flex-direction:column;gap:14px">
-    ${categories.map(cat=>`
+    ${categories.filter(cat=>cat.games.length).map(cat=>`
     <div style="background:${cat.color}14;border:1.5px solid ${cat.color}2E;border-radius:20px;padding:14px">
       <!-- 카테고리 헤더 -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
@@ -11092,6 +11142,9 @@ function filterPlayable(gameId, words){ var p=gamePlayablePred(gameId); return (
 function gameContentGate(gameId, words){
   words=words||[];
   if(gameId==='flip') return { ok:true };
+  if((typeof _gameLangBlocked==='function')&&_gameLangBlocked(gameId)){
+    return { ok:false, langBlock:true, total:words.length, playable:0, need:0 };
+  }
   var singles=words.filter(_isSingleWord).length;
   if(words.length>=5 && (singles/words.length)<0.5){
     return { ok:false, playable:singles, total:words.length, need:3, bookBlock:true };
@@ -11116,6 +11169,7 @@ function showGameGate(gameId, gate){
   var recNames={ flip:'플래시카드', quiz:'뜻 고르기 퀴즈', match:'빠르게 짝 맞추기', typing:'발음 듣고 받아쓰기', listen:'듣고 완성', sentence:'한글문장 영작하기', ssort:'문장 단어 순서 맞추기' };
   var m=meta[gameId]||{ nm:'이 게임', why:'2단어 이상(구·문장)으로 된 단어장은 이 게임에 사용할 수 없어요.' };
   if(gate&&gate.bookBlock){ m={ nm:(m.nm||'게임'), why:'이 단어장은 문장·구 위주라 게임을 이용할 수 없어요. 플래시카드나 자동 재생 학습으로 학습해 주세요.' }; }
+  if(gate&&gate.langBlock){ m={ nm:(m.nm||'이 게임'), why:'철자를 분해하는 게임이라 현재 학습 언어에서는 이용할 수 없어요. 영어 학습에서만 이용할 수 있어요.' }; }
   var mr=document.getElementById('mr'); if(!mr) return;
   var _cw=(typeof getCurrentBookWords==='function')?getCurrentBookWords():[];
   var _cand=['quiz','typing','match','listen','wordle','fill'];
@@ -12389,14 +12443,14 @@ function rGameCenter(){
     {id:'flip',ic:'⚡',nm:'깜빡이',dc:'단어를 빠르게 반복 노출',bg:'var(--theme)'},
     {id:'quiz',ic:'🎯',nm:'뜻 고르기 퀴즈',dc:'4지선다로 뜻을 맞춰요',bg:'#16A34A'},
     {id:'typing',ic:'✏️',nm:'발음 듣고 받아쓰기',dc:'단어를 직접 입력해요',bg:'#E65100'},
-  ];
+  ].filter(function(g){return !_gameLangBlocked(g.id);});
 
   // 더보기 게임
   const moreGames=[
     {id:'fill',ic:'📝',nm:'예문 빈칸 채우기'},{id:'match',ic:'⚡',nm:'빠르게 짝 맞추기'},
     {id:'sentence',ic:'🔤',nm:'한글문장 영작하기'},
     {id:'ssort',ic:'🔀',nm:'문장 단어 순서 맞추기'},{id:'wordfind',ic:'🔍',nm:'격자에서 단어 찾기'},
-  ];
+  ].filter(function(g){return !_gameLangBlocked(g.id);});
 
   const parts=[];
   parts.push('<div class="pad">');
@@ -12996,7 +13050,7 @@ function rQ4(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
   const gs=S.gameSettings||{};
-  var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():S.words; const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():((typeof _mStudyFilter==='function')?_mStudyFilter(S.words):S.words); const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:((typeof _mStudyFilter==='function')?_mStudyFilter(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg):(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg)));
   const otherPool=src.filter(x=>x.en!==w.en);
   const choiceCount=(gs.choiceCount===6?6:4);
   const needCount=Math.min(choiceCount-1,otherPool.length);
@@ -13008,7 +13062,7 @@ function rQ4(){
   const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;
   const acc=gameAccent(S.gameId||'quiz');
 
-  if(!dir && !answered && gs.voiceMode==='question' && S._q4Spoke!==S.gIdx){ S._q4Spoke=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(w.en,'en');},150); }
+  if(!dir && !answered && gs.voiceMode==='question' && S._q4Spoke!==S.gIdx){ S._q4Spoke=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(_gmQ(w),_gmAudio());},150); }
 
   var H='<div style="position:fixed;inset:0;background:'+gameBg(S.gameId||'quiz')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
   H+=ghdrDark('🎯 뜻 고르기 퀴즈',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
@@ -13016,17 +13070,17 @@ function rQ4(){
 
   // ── 본문(가변 영역). 단어/발음/품사/이모지는 설정값에만 의존 → 정답여부와 무관하게 높이 고정 ──
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
-  var dir=(S.gameSettings&&S.gameSettings.quizDir===1)?1:0; var _qt=dir?w.kr:w.en;
+  var dir=(S.gameSettings&&S.gameSettings.quizDir===1)?1:0; var _qt=dir?_gmA(w):_gmQ(w);
   H+='<div style="font-size:11px;color:'+acc+';font-weight:700;background:'+acc+'22;border-radius:20px;padding:5px 16px;margin-bottom:16px">'+(dir?'\uc774 \ub73b\uc758 \ub2e8\uc5b4\ub294?':'\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?')+'</div>';
   if(w.img && gs.showEmoji!==false) H+='<div style="font-size:34px;margin-bottom:8px">'+w.img+'</div>';
   var enFz=_qt.length>30?'20px':_qt.length>20?'26px':_qt.length>12?'34px':_qt.length>8?'40px':'44px';
   H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+_qt+'</div>';
-  if(!dir && w.ph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+w.ph+'</div>';
+  if(!dir){ var _qph=_gmPh(w); if(_qph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+_qph+'</div>'; }
   if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px">'+w.pos+'</div>';
-  if(gs.showEx && exList.length) H+='<div style="font-size:12px;color:rgba(255,255,255,.45);font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+exList[0]+'</div>';
+  if(gs.showEx){ var _qex=_gIsMulti()?_gmEx(w):(exList.length?exList[0]:''); if(_qex) H+='<div style="font-size:12px;color:rgba(255,255,255,.45);font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+_qex+'</div>'; }
   // 결과 한 줄(높이 항상 예약 → 정답 시 화면 안 움직임)
   var fbTxt='', fbCol='#fff';
-  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+w.kr;fbCol='#FCA5A5';} }
+  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+(_gIsMulti()?(dir?_gmQ(w):_gmA(w)):w.kr);fbCol='#FCA5A5';} }
   H+='<div style="min-height:26px;margin-top:12px;font-size:16px;font-weight:800;color:'+fbCol+';display:flex;align-items:center;justify-content:center">'+fbTxt+'</div>';
   H+='</div>';
 
@@ -13049,7 +13103,7 @@ function rQ4(){
     else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
     else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
     var oc=answered?'':'pickQ4('+_ci+')';
-    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+(dir?ch.en:ch.kr)+'</button>';
+    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+(dir?_gmQ(ch):_gmA(ch))+'</button>';
   });
   H+='</div>';
 
@@ -13070,7 +13124,7 @@ function rQ4(){
   );
   H+='</div>';
   if(answered){ _clearQTimer(); } else { _armQTimer(); }
-  if(answered && isCorrect && gs.voiceMode==='answer' && S._q4SpokeA!==S.gIdx){ S._q4SpokeA=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(w.en,'en');},100); }
+  if(answered && isCorrect && gs.voiceMode==='answer' && S._q4SpokeA!==S.gIdx){ S._q4SpokeA=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(_gmQ(w),_gmAudio());},100); }
   return H;
 }
 
@@ -13084,18 +13138,19 @@ function hintQ4(){
 }
 function _playPron(en, times){ _playPronSeq(en, times, ''); }
 // 단어를 times번 읽고, exText가 있으면 이어서 예문도 읽음
-function _playPronSeq(en, times, exText, rate0){
+function _playPronSeq(en, times, exText, rate0, lang){
   try{
     times=Math.max(1,times||1);
     window.speechSynthesis.cancel();
+    var code=(window._normLang?window._normLang(lang||'en', en):'en-US');
     var seq=[]; var _r0=rate0||0.85; for(var i=0;i<times;i++) seq.push({t:en,rate:_r0});
     if(exText) seq.push({t:exText,rate:0.82});
     var idx=0;
     (function speakNext(){
       if(idx>=seq.length) return;
       var it=seq[idx];
-      var u=new SpeechSynthesisUtterance(it.t); u.lang='en-US'; u.rate=it.rate;
-      try{ var v=(typeof _bestVoice==='function')?_bestVoice(false):null; if(v)u.voice=v; }catch(e){}
+      var u=new SpeechSynthesisUtterance(it.t); u.lang=code; u.rate=it.rate;
+      try{ var v=(window._bestVoiceFor?window._bestVoiceFor(code):((typeof _bestVoice==='function')?_bestVoice(false):null)); if(v)u.voice=v; }catch(e){}
       u.onend=function(){ idx++; setTimeout(speakNext, 280); };
       window.speechSynthesis.speak(u);
     })();
@@ -13105,15 +13160,16 @@ function _playPronSeq(en, times, exText, rate0){
 function _lqPlay(){
   var w=S.gWords[S.gIdx]; if(!w)return;
   var t=(S.gameSettings&&S.gameSettings.listenTimes)||1;
-  var exL=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
-  var ex=(S.gameSettings&&S.gameSettings.listenEx&&exL.length)?exL[0]:'';
-  _playPronSeq(w.en, t, ex, (S.gameSettings&&S.gameSettings.listenRate)||0.85);
+  var word=(typeof _gmQ==='function')?_gmQ(w):w.en;
+  var ex=(S.gameSettings&&S.gameSettings.listenEx)?((typeof _gmEx==='function')?_gmEx(w):''):'';
+  var lang=(typeof _gmAudio==='function')?_gmAudio():'en';
+  _playPronSeq(word, t, ex, (S.gameSettings&&S.gameSettings.listenRate)||0.85, lang);
 }
 function rListenQ(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
   const gs=S.gameSettings||{};
-  var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():S.words; const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():((typeof _mStudyFilter==='function')?_mStudyFilter(S.words):S.words); const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:((typeof _mStudyFilter==='function')?_mStudyFilter(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg):(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg)));
   const otherPool=src.filter(x=>x.en!==w.en);
   const choiceCount=(gs.choiceCount===6?6:4);
   const needCount=Math.min(choiceCount-1,otherPool.length);
@@ -13141,14 +13197,14 @@ function rListenQ(){
     if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px">'+w.pos+'</div>';
     H+='<div style="min-height:26px;margin-top:12px"></div>';
   } else {
-    var enFz=w.en.length>20?'24px':w.en.length>12?'30px':'40px';
+    var _qlab=_gmQ(w); var enFz=_qlab.length>20?'24px':_qlab.length>12?'30px':'40px';
     if(w.img && gs.showEmoji!==false) H+='<div style="font-size:30px;margin-bottom:6px">'+w.img+'</div>';
-    H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+w.en+'</div>';
-    if(w.ph && gs.showPh!==false) H+='<div style="font-size:13px;color:'+acc+';font-family:monospace;margin-top:6px">'+w.ph+'</div>';
+    H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+_qlab+'</div>';
+    var _qph=_gmPh(w); if(_qph && gs.showPh!==false) H+='<div style="font-size:13px;color:'+acc+';font-family:monospace;margin-top:6px">'+_qph+'</div>';
     if(w.pos && gs.showPos!==false) H+='<div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:5px">'+w.pos+'</div>';
-    var fb=isCorrect?'#22C55E':'#FCA5A5';
-    H+='<div style="min-height:26px;margin-top:12px;font-size:17px;font-weight:800;color:'+fb+'">'+(isCorrect?'\u2705 \uc815\ub2f5! \u00b7 '+w.kr:'\u274c \uc815\ub2f5: '+w.kr)+'</div>';
-    if(gs.showEx && exList.length) H+='<div style="background:rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:12px;color:rgba(255,255,255,.7);font-style:italic;max-width:320px;line-height:1.5">'+exList[0]+'</div>';
+    var fb=isCorrect?'#22C55E':'#FCA5A5'; var _alab=_gmA(w);
+    H+='<div style="min-height:26px;margin-top:12px;font-size:17px;font-weight:800;color:'+fb+'">'+(isCorrect?'\u2705 \uc815\ub2f5! \u00b7 '+_alab:'\u274c \uc815\ub2f5: '+_alab)+'</div>';
+    var _qex=_gmEx(w); if(gs.showEx && _qex) H+='<div style="background:rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:12px;color:rgba(255,255,255,.7);font-style:italic;max-width:320px;line-height:1.5">'+_qex+'</div>';
   }
   H+='</div>';
 
@@ -13169,7 +13225,7 @@ function rListenQ(){
     else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
     else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
     var oc=answered?'':'pickQ4('+_ci+')';
-    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+ch.kr+'</button>';
+    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+_gmA(ch)+'</button>';
   });
   H+='</div>';
 
@@ -13225,16 +13281,28 @@ function rFill(){
   const w=S.gWords[S.gIdx];
   if(!w){S.gDone=true;return rGame();}
   const gs=S.gameSettings||{};
+  const _multi=(typeof _gIsMulti==='function')&&_gIsMulti();
+  const _qw=_multi?_gmQ(w):w.en;
+  const _aw=_multi?_gmA(w):(w.kr||'');
   const exList=(w.exList&&w.exList.length)?w.exList:(w.ex?[w.ex]:[]);
-  const ex=exList[0]||'';
+  const ex=_multi?_gmEx(w):(exList[0]||'');
   const acc=gameAccent('fill');
-  const _exJunk=(!ex)||(/^this is about/i.test(ex))||(ex.trim().split(' ').filter(Boolean).length<3)||(ex.indexOf(';')>=0)||(ex.indexOf('；')>=0);
-  const _reB=ex?new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','i'):null;
-  const useEx=!!(ex && !_exJunk && _reB && _reB.test(ex));
   const _BLANK='<span style="color:'+acc+';font-weight:900">_____</span>';
-  const blanked=useEx?ex.replace(new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','gi'),_BLANK):_BLANK;
-  const filled=useEx?ex.replace(new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','gi'),'<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>'):('<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>')
-  var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():S.words; const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg));
+  var useEx, blanked, filled;
+  if(_multi){
+    useEx=!!(ex && _qw && ex.indexOf(_qw)>=0);
+    if(useEx){
+      blanked=ex.split(_qw).join(_BLANK);
+      filled=ex.split(_qw).join('<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+_qw+'</span>');
+    } else { blanked=_BLANK; filled='<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+_qw+'</span>'; }
+  } else {
+    const _exJunk=(!ex)||(/^this is about/i.test(ex))||(ex.trim().split(' ').filter(Boolean).length<3)||(ex.indexOf(';')>=0)||(ex.indexOf('；')>=0);
+    const _reB=ex?new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','i'):null;
+    useEx=!!(ex && !_exJunk && _reB && _reB.test(ex));
+    blanked=useEx?ex.replace(new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','gi'),_BLANK):_BLANK;
+    filled=useEx?ex.replace(new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','gi'),'<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>'):('<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>');
+  }
+  var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():((typeof _mStudyFilter==='function')?_mStudyFilter(S.words):S.words); const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:((typeof _mStudyFilter==='function')?_mStudyFilter(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg):(DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg)));
   const otherPool=src.filter(x=>x.en!==w.en);
   const choiceCount=(gs.choiceCount===6?6:4);
   const needCount=Math.min(choiceCount-1,otherPool.length);
@@ -13253,13 +13321,13 @@ function rFill(){
   if(w.img && gs.showEmoji===true) H+='<div style="font-size:30px;margin-bottom:10px">'+w.img+'</div>';
   if(useEx){
     H+='<div style="font-size:20px;line-height:1.7;font-style:italic;max-width:340px">'+(answered?filled:blanked)+'</div>';
-    if(w.kr && gs.showKr!==false) H+='<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:12px">뜻: '+w.kr+'</div>';
+    if(_aw && gs.showKr!==false) H+='<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:12px">뜻: '+_aw+'</div>';
   } else {
-    H+='<div style="font-size:34px;font-weight:900;letter-spacing:4px;color:'+acc+'">'+(answered?w.en:'_ _ _ _')+'</div>';
-    if(w.kr) H+='<div style="font-size:18px;color:#fff;font-weight:700;margin-top:14px">'+w.kr+'</div>';
+    H+='<div style="font-size:34px;font-weight:900;letter-spacing:4px;color:'+acc+'">'+(answered?_qw:'_ _ _ _')+'</div>';
+    if(_aw) H+='<div style="font-size:18px;color:#fff;font-weight:700;margin-top:14px">'+_aw+'</div>';
   }
   var fbTxt='', fbCol='#fff';
-  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+w.en;fbCol='#FCA5A5';} if(w.ph && gs.showPh!==false) fbTxt+='  '+w.ph; }
+  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+_qw;fbCol='#FCA5A5';} var _fph=_gmPh(w); if(_fph && gs.showPh!==false) fbTxt+='  '+_fph; }
   H+='<div style="min-height:26px;margin-top:14px;font-size:16px;font-weight:800;color:'+fbCol+'">'+fbTxt+'</div>';
   H+='</div>';
 
@@ -13280,7 +13348,7 @@ function rFill(){
     else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
     else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
     var oc=answered?'':'pickQ4('+_ci+')';
-    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+ch.en+'</button>';
+    H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+(_multi?_gmQ(ch):ch.en)+'</button>';
   });
   H+='</div>';
 
@@ -13300,8 +13368,8 @@ function rFill(){
   H+='</div>';
   if(answered){ _clearQTimer(); } else { _armQTimer(); }
   if(answered && S._fillSpoke!==S.gIdx && typeof speak==='function'){
-    if(gs.voiceMode==='answer'){ S._fillSpoke=S.gIdx; setTimeout(function(){speak(w.en,'en');},120); }
-    else if(gs.voiceMode==='sentence' && ex){ S._fillSpoke=S.gIdx; setTimeout(function(){speak(ex,'en');},120); }
+    if(gs.voiceMode==='answer'){ S._fillSpoke=S.gIdx; setTimeout(function(){speak(_qw,_gmAudio());},120); }
+    else if(gs.voiceMode==='sentence' && ex){ S._fillSpoke=S.gIdx; setTimeout(function(){speak(ex,_gmAudio());},120); }
   }
   return H;
 }
@@ -13550,6 +13618,7 @@ function guessWC(letter){
 function rMatch(){
   const gs=S.gameSettings||{};
   const acc=gameAccent('match');
+  const _multi=(typeof _gIsMulti==='function')&&_gIsMulti();
   const pairsN=Math.max(4,Math.min(6,gs.matchPairs||5));
   if(!S.mPairs||!S.mPairs.length){
     var initPairs=S.gWords.slice(0,Math.min(pairsN,S.gWords.length));
@@ -13584,7 +13653,8 @@ function rMatch(){
     else if(sel){bg=acc;bd=acc;col='#fff';}
     else{bg='rgba(255,255,255,.06)';bd='rgba(255,255,255,.14)';col='#fff';}
     var emo=(gs.matchEmoji!==false && ww&&ww.img)?ww.img+' ':'';
-    return '<button onclick="selM(\'en\',\''+en+'\')" style="padding:14px 8px;border:1.5px solid '+bd+';border-radius:14px;background:'+bg+';color:'+col+';font-size:14px;font-weight:700;cursor:pointer;width:100%;min-height:52px;display:flex;align-items:center;justify-content:center'+(d?';text-decoration:line-through':'')+'">'+emo+en+'</button>';
+    var _enLab=(_multi&&ww)?_gmQ(ww):en;
+    return '<button onclick="selM(\'en\',\''+en+'\')" style="padding:14px 8px;border:1.5px solid '+bd+';border-radius:14px;background:'+bg+';color:'+col+';font-size:14px;font-weight:700;cursor:pointer;width:100%;min-height:52px;display:flex;align-items:center;justify-content:center'+(d?';text-decoration:line-through':'')+'">'+emo+_enLab+'</button>';
   }).join('');
   var krCol=S.mKr.map(function(kr,ki){
     var d=S.mMatched.has('kr_'+ki),sel=S.mKr0===ki,wrong=S.mWrongKr===ki;
@@ -13593,7 +13663,9 @@ function rMatch(){
     else if(wrong){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#FCA5A5';}
     else if(sel){bg=acc;bd=acc;col='#fff';}
     else{bg='rgba(255,255,255,.06)';bd='rgba(255,255,255,.14)';col='#fff';}
-    return '<button onclick="selM(\'kr\','+ki+')" style="padding:14px 8px;border:1.5px solid '+bd+';border-radius:14px;background:'+bg+';color:'+col+';font-size:14px;font-weight:700;cursor:pointer;width:100%;min-height:52px;display:flex;align-items:center;justify-content:center'+(d?';text-decoration:line-through':'')+'">'+kr+'</button>';
+    var _kw=(_multi)?S.mPairs.find(function(x){return x.kr===kr;}):null;
+    var _krLab=(_multi&&_kw)?_gmA(_kw):kr;
+    return '<button onclick="selM(\'kr\','+ki+')" style="padding:14px 8px;border:1.5px solid '+bd+';border-radius:14px;background:'+bg+';color:'+col+';font-size:14px;font-weight:700;cursor:pointer;width:100%;min-height:52px;display:flex;align-items:center;justify-content:center'+(d?';text-decoration:line-through':'')+'">'+_krLab+'</button>';
   }).join('');
 
   var H='<div style="position:fixed;inset:0;background:'+gameBg('match')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
@@ -13662,8 +13734,8 @@ function rSentence(){
   H+='<div style="background:'+acc+';border-radius:18px;padding:18px 16px;text-align:center;margin-bottom:12px">';
   H+='<div style="font-size:11px;font-weight:800;opacity:.85;letter-spacing:1px;margin-bottom:7px">🇰🇷 이 한글 문장을 영어로 만들어 보세요</div>';
   H+='<div style="font-size:17px;font-weight:800;line-height:1.45">'+s.kr+'</div>';
-  window._sbSpeak=s.en;
-  H+='<button onclick="window.speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(window._sbSpeak||\'\');u.lang=\'en-US\';u.rate=0.8;window.speechSynthesis.speak(u)" style="margin-top:10px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:12px;padding:7px 18px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">🔊 들어보기</button></div>';
+  window._sbSpeak=s.en; var _sbLang=(s&&s._lang)?s._lang:'en';
+  H+='<button onclick="speak(window._sbSpeak||\'\',\''+_sbLang+'\',0.8)" style="margin-top:10px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:12px;padding:7px 18px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">🔊 들어보기</button></div>';
   var slotBd=ans?(ok2?'#86EFAC':'#FCA5A5'):'rgba(255,255,255,.25)';
   H+='<div style="min-height:60px;background:rgba(255,255,255,.05);border-radius:14px;border:2px dashed '+slotBd+';padding:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">';
   if(S.sbC.length){
@@ -13982,10 +14054,10 @@ function speak(text, lang, rate){try{if(!('speechSynthesis'in window))return;tex
 
 const SORT_SENTENCES=[{en:'I study hard every day',kr:'나는 매일 열심히 공부한다',words:['I','study','hard','every','day']},{en:'She has a beautiful smile',kr:'그녀는 아름다운 미소를 가지고 있다',words:['She','has','a','beautiful','smile']},{en:'We learn new words together',kr:'우리는 함께 새 단어를 배운다',words:['We','learn','new','words','together']}];
 function rSSorting(){
-  if(!S.sbS||!S.sbS.words){ buildSentenceFromWords&&buildSentenceFromWords(S.gWords); if(!S.sbS||!S.sbS.words){ const st=rnd(SORT_SENTENCES); S.sbS=st; S.sbP=shuf([...st.words]); S.sbC=[]; S.sbAns=false; S.sbOk=false; } }
+  if(!S.sbS||!S.sbS.words){ buildSentenceFromWords&&buildSentenceFromWords(S.gWords); if(!S.sbS||!S.sbS.words){ if((typeof _gIsMulti==='function')&&_gIsMulti()){ S.gDone=true; return rGame(); } const st=rnd(SORT_SENTENCES); S.sbS=st; S.sbP=shuf([...st.words]); S.sbC=[]; S.sbAns=false; S.sbOk=false; } }
   var gs=S.gameSettings||{};
   var times=gs.ssortListen||1;
-  if(!S.sbAns && S._ssPlayedIdx!==S.gIdx){ S._ssPlayedIdx=S.gIdx; setTimeout(function(){ try{ if(S.gameId==='ssort'&&!S.sbAns&&S.sbS&&S.sbS.en) _playPronSeq(S.sbS.en,times,''); }catch(e){} },350); }
+  if(!S.sbAns && S._ssPlayedIdx!==S.gIdx){ S._ssPlayedIdx=S.gIdx; setTimeout(function(){ try{ if(S.gameId==='ssort'&&!S.sbAns&&S.sbS&&S.sbS.en) _playPronSeq(S.sbS.en,times,'',0,(S.sbS._lang||'en')); }catch(e){} },350); }
   var s=S.sbS, ans=S.sbAns, ok2=S.sbOk;
   var acc=gameAccent('ssort');
   var krHint=(gs.ssortKrHint!==false);
@@ -13996,7 +14068,7 @@ function rSSorting(){
   H+='<div style="background:'+acc+';border-radius:18px;padding:16px;text-align:center;margin-bottom:12px">';
   H+='<div style="font-size:11px;font-weight:800;opacity:.85;letter-spacing:1px;margin-bottom:6px">🔊 들은 문장을 순서대로</div>';
   if(krHint) H+='<div style="font-size:13px;opacity:.9;margin-bottom:10px">힌트: '+s.kr+'</div>';
-  H+='<button onclick="_playPronSeq(\''+String(s.en).replace(/'/g,"\\'")+'\','+times+',\'\')" style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.4);border-radius:12px;padding:10px 22px;font-size:14px;font-weight:800;cursor:pointer">🔊 다시 듣기</button></div>';
+  H+='<button onclick="_playPronSeq(\''+String(s.en).replace(/'/g,"\\'")+'\','+times+',\'\',0,\''+((s&&s._lang)||'en')+'\')" style="background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.4);border-radius:12px;padding:10px 22px;font-size:14px;font-weight:800;cursor:pointer">🔊 다시 듣기</button></div>';
   var slotBd=ans?(ok2?'#86EFAC':'#FCA5A5'):'rgba(255,255,255,.25)';
   H+='<div style="min-height:60px;background:rgba(255,255,255,.05);border-radius:14px;border:2px dashed '+slotBd+';padding:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">';
   if(S.sbC.length){

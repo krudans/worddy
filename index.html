@@ -8978,43 +8978,35 @@ function renderCharBanner(opts){
   var curIdx=stages.findIndex(function(x){return x.id===lid;});
   function ic(id,sz){ try{ return charSVG(id,sz); }catch(e){ return '•'; } }
   function icA(id,sz){ try{ return charSVGAnimated(id,sz,mood); }catch(e){ return ic(id,sz); } }
-  // 레벨업 버튼 (한 줄, 누르기 쉽게)
-  var lvLabel=isFinal?'🥚 다시':canLvUp?'⬆️ 레벨업':'🔒 '+nf(xpTarget);
-  var lvBtn='<div onclick="event.stopPropagation();doLevelUpBtn('+xpTarget+','+(isFinal?1:0)+')" style="flex:none;'+(canLvUp?'background:#FFD700;color:#1A1A1A':'background:rgba(255,255,255,.2);color:#fff')+';border-radius:11px;padding:9px 15px;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18)">'+lvLabel+'</div>';
-  // 성장단계 스트립 (8단계 전부, 현재 크게, 간격 넓게)
-  var row='';
+  var _dk=(typeof S!=='undefined'&&S.theme==='dark');
+  var YEL='#FFC107';
+  var _cBg=_dk?'rgba(255,255,255,.055)':'var(--bg-card,#FFFEF8)';
+  var _cBd=_dk?'rgba(255,255,255,.16)':'var(--border,#F0E6C8)';
+  var _track=_dk?'rgba(255,255,255,.12)':'var(--bg,#F1EFE8)';
+  var _dim=_dk?'rgba(255,255,255,.22)':'#E5E1D8';
+  // 레벨 배지 (캐릭터 아래)
+  var badge='<span style="font-size:10px;font-weight:800;color:'+(_dk?'#FFD86B':'#9A6B00')+';background:rgba(255,193,7,'+(_dk?'.16':'.18')+');padding:3px 9px;border-radius:99px;white-space:nowrap">'+(l.name||'')+' · LV.'+(curIdx+1)+'</span>';
+  // 미니 진화 스트립 (8단계, 현재 약간 크게, 지나온 연결선 노랑)
+  var strip='';
   for(var i=0;i<stages.length;i++){
-    var isCur=i===curIdx, future=i>curIdx;
-    if(isCur){
-      row+='<div onclick="addToCollectionConfirm()" style="flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;margin:0 6px;cursor:pointer">'+
-        '<div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;box-shadow:0 0 0 3px #FFC107,0 6px 16px rgba(0,0,0,.4);animation:float-happy 1.8s ease-in-out infinite;position:relative">'+icA(lid,60)+(acc?'<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:22px">'+acc+'</div>':'')+'</div>'+
-      '</div>';
-    } else {
-      row+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;gap:2px">'+
-        '<div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.18)"><span style="display:flex;'+(future?'opacity:.38;filter:grayscale(1)':'')+'">'+ic(stages[i].id,20)+'</span></div>'+
-        '<span style="font-size:6.5px;color:#fff;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px">'+(stages[i].name||'')+'</span>'+
-      '</div>';
-    }
+    var cur=i===curIdx, fut=i>curIdx;
+    strip+='<div style="flex:none;width:'+(cur?23:18)+'px;height:'+(cur?23:18)+'px;display:flex;align-items:center;justify-content:center;'+(fut?'opacity:.36':'')+'">'+ic(stages[i].id,cur?23:18)+'</div>';
+    if(i<stages.length-1) strip+='<div style="flex:1;height:2px;background:'+(i<curIdx?YEL:_dim)+';max-width:14px"></div>';
   }
-  // 닉네임+현재단계 라벨: 큰 캐릭터 반대편(위쪽 빈 공간)에 배치
-  // 캐릭터가 왼쪽 단계면 오른쪽에, 오른쪽 단계면 왼쪽에 자동 배치
-  var nameSide=(curIdx<=(stages.length-1)/2)?'right':'left';
-  var nameBlock='<div style="position:absolute;top:9px;'+nameSide+':12px;display:flex;flex-direction:row;align-items:center;gap:7px;pointer-events:none;max-width:60%;z-index:2">'+
-      (nick?'<span style="font-weight:900;font-size:15px;color:#fff;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.38)">'+nick+'</span>':'')+
-      '<span style="font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.20);padding:3px 9px;border-radius:99px;white-space:nowrap;flex:none;text-shadow:0 1px 2px rgba(0,0,0,.25)">'+(l.name||'')+'</span>'+
-    '</div>';
-  // 하단 한 줄: [XP바+숫자] · 레벨업버튼
-  var oneRow='<div style="display:flex;align-items:center;gap:9px;margin-top:11px">'+
-      '<div style="flex:1;min-width:30px;position:relative;height:22px;display:flex;align-items:center">'+
-        '<div style="width:100%;height:22px;background:rgba(0,0,0,.22);border-radius:99px;overflow:hidden"><div style="height:100%;width:'+xpPct+'%;background:#FFC107;border-radius:99px;transition:width .6s"></div></div>'+
-        '<span style="position:absolute;left:10px;font-size:11px;font-weight:800;color:#1A1A1A;white-space:nowrap">⚡'+nf(xp)+'</span>'+
-      '</div>'+
-      lvBtn+
-    '</div>';
-  return '<div style="background:var(--theme);border-radius:16px;padding:11px 13px 12px;color:#fff;position:relative;overflow:hidden">'+
-    '<div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:1px;background:rgba(0,0,0,.13);border-radius:10px;padding:9px 8px 8px">'+row+nameBlock+'</div>'+
-    oneRow+
-  '</div>';
+  // 레벨업 버튼
+  var lvLabel=isFinal?'🥚 다시':canLvUp?'⬆️ 레벨업':'🔒 '+nf(xpTarget);
+  var lvBg=canLvUp?YEL:(_dk?'rgba(255,255,255,.12)':'var(--bg,#F1EFE8)');
+  var lvCol=canLvUp?'#3a2c00':(_dk?'rgba(255,255,255,.7)':'var(--text2,#6B665C)');
+  var lvBtn='<div onclick="event.stopPropagation();doLevelUpBtn('+xpTarget+','+(isFinal?1:0)+')" style="flex:none;background:'+lvBg+';color:'+lvCol+';border-radius:11px;padding:8px 13px;font-size:13px;font-weight:900;white-space:nowrap;cursor:pointer">'+lvLabel+'</div>';
+  // 큰 현재 캐릭터(좌)
+  var bigChar='<div onclick="addToCollectionConfirm()" style="flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer"><div style="width:78px;height:78px;border-radius:50%;background:rgba(255,193,7,.13);border:2px solid '+YEL+';display:flex;align-items:center;justify-content:center;position:relative;animation:float-happy 1.8s ease-in-out infinite">'+icA(lid,56)+(acc?'<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-size:20px">'+acc+'</div>':'')+'</div>'+badge+'</div>';
+  return '<div style="background:'+_cBg+';border:1.5px solid '+_cBd+';border-radius:16px;padding:15px 16px;display:flex;gap:15px;align-items:center">'
+    +bigChar
+    +'<div style="flex:1;min-width:0">'
+     +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px">'+(nick?'<span style="font-size:17px;font-weight:900;color:var(--text1,#111);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nick+'</span>':'<span></span>')+'<span style="font-size:12px;font-weight:800;color:var(--text2,#6B665C);white-space:nowrap">⚡'+nf(xp)+'</span></div>'
+     +'<div style="display:flex;align-items:center;gap:1px;margin-bottom:10px">'+strip+'</div>'
+     +'<div style="display:flex;align-items:center;gap:9px"><div style="flex:1;min-width:20px;height:9px;background:'+_track+';border-radius:99px;overflow:hidden"><div style="height:100%;width:'+xpPct+'%;background:'+YEL+';border-radius:99px;transition:width .6s"></div></div>'+lvBtn+'</div>'
+    +'</div></div>';
 }
 
 function rHome() {

@@ -407,6 +407,12 @@ window.addEventListener('storage', e => {
       console.log('[앱] XP 설정 갱신됨');
     }).catch(()=>{});
   }
+  if(e.key === 'levelConfigUpdated') {
+    loadLevelConfig().then(()=>{
+      console.log('[앱] 레벨업 XP 설정 갱신됨');
+      try{ if(typeof go==='function' && !document.getElementById('splash-screen') && document.getElementById('nav')) go(); }catch(_){}
+    }).catch(()=>{});
+  }
 });
 window.addEventListener('unhandledrejection',e=>{
   console.error('[Promise에러]',e.reason);
@@ -1741,6 +1747,17 @@ async function loadXPConfig() {
   GAME_XP.wc       = {base: x.game_wc_base,       perfect: x.game_wc_perfect};
   GAME_XP.ssort    = {base: x.game_ssort_base,    perfect: x.game_ssort_perfect};
 }
+// ── 레벨업 XP 설정 (관리자 settings/levelConfig 로 관리) ──
+async function loadLevelConfig() {
+  try {
+    if(typeof db === 'undefined') return;
+    const doc = await db.collection('settings').doc('levelConfig').get();
+    if(doc.exists) {
+      const data = doc.data()||{};
+      LEVELS.forEach(l=>{ if(data[l.id]!=null && data[l.id]>0) l.xp = data[l.id]; });
+    }
+  } catch(e) {}
+}
 function xp(key) { const v = window._XPC[key]; return Math.round((v!=null ? v : (XP_DEFAULT[key]||0)) * (window._XPC.xpMultiplier||1)); }
 
 function savePartialGameScore() {
@@ -1833,7 +1850,7 @@ function showGameIntro(force=false) {
       char: 'egg', mood: 'happy',
       title: 'Butterfly Word에 오신 걸 환영해요!',
       sub: '단어를 외울수록 나비가 자라는 앱이에요 🦋',
-      desc: '영어 단어를 학습하고 테스트를 통과하면\n경험치(XP)를 얻을 수 있어요.',
+      desc: '단어를 학습하고 테스트를 통과하면\n경험치(XP)를 얻을 수 있어요.',
       btn: '다음 →'
     },
     {
@@ -2531,25 +2548,33 @@ function changeNickname() {
 function showXpGuide() {
   const mr=document.getElementById('mr');
   if(!mr)return;
+  const X=window._XPC||{}; const M=(X.xpMultiplier!=null?X.xpMultiplier:1);
+  const rd=v=>Math.round((v||0)*M);
+  const pd=(X.streak_per_day!=null?X.streak_per_day:0.02);
+  const curLv=(typeof lv==='function'?lv(S.lid):null);
+  const curName=curLv?curLv.name:'';
+  const curXp=curLv?(curLv.xp||100):100;
+  const isFinal=curLv?!!curLv.isFinal:false;
+  const sumItems=[['📖','단어 학습',X.word_learn],['🌅','첫 학습 보너스',X.daily_first],['✅','퀴즈 정답',X.quiz_correct],['💯','테스트 100%',X.test_100],['🔥','3연속 콤보',X.combo_3],['🎮','게임 완료',X.game_quiz_base]];
+  const days=[1,3,7,14,30,100];
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:90vh;overflow-y:auto">
-    <div style="background:var(--theme);padding:20px;text-align:center;color:#fff">
-      <div style="font-size:36px;margin-bottom:8px">⚡</div>
-      <div style="font-size:18px;font-weight:900">경험치(XP) 안내</div>
+    <div style="padding:13px 16px;border-bottom:1px solid var(--border,#F0E6C8);display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-size:15px;font-weight:800;color:var(--text1,#1B1A16)">경험치(XP) 안내</div>
+      <div style="font-size:11px;color:var(--text3,#9A8F76);margin-top:2px">관리자 셋팅 실시간 · 배율 ×${M} 적용</div></div>
+      <span onclick="cm()" style="font-size:15px;color:var(--text3,#9A8F76);cursor:pointer">✕</span>
     </div>
-    <div style="padding:16px">
-      <div style="font-size:13px;font-weight:800;color:var(--theme);margin-bottom:10px">📥 XP 획득 방법</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-${[['📖','단어 1개 학습','+5 XP'],['🎯','테스트 100% 정답','+120 XP'],['🎯','테스트 90% 정답','+80 XP'],['🎯','테스트 80% 정답','+50 XP'],['🎮','게임 완료','+20~50 XP'],].map(([ic,lb,xp])=>` <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F9FAFB;border-radius:10px"> <span style="font-size:18px">${ic}</span> <span style="flex:1;font-size:13px;color:#374151">${lb}</span> <span style="font-size:12px;font-weight:700;color:var(--theme)">${xp}</span> </div>`).join('')}
+    <div style="padding:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3,#9A8F76);padding:0 2px 2px">획득 XP (배율 적용 실지급)</div>
+      ${sumItems.map((it,i)=>`<div style="display:flex;align-items:center;gap:11px;padding:11px 2px;${i===0?'':'border-top:1px solid var(--border,#F0E6C8)'}"><span style="font-size:15px;width:20px;text-align:center;flex:none">${it[0]}</span><div style="flex:1;font-size:13px;color:var(--text1,#1B1A16)">${it[1]}</div><span style="font-size:12px;font-weight:700;color:var(--theme)">⚡${rd(it[2])}</span></div>`).join('')}
+      <div style="font-size:11px;font-weight:700;color:var(--text3,#9A8F76);padding:14px 2px 2px;margin-top:6px;border-top:1px solid var(--border,#F0E6C8)">🔥 연속 학습 보너스</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+        ${days.map(d=>{const b=1+d*pd;const pct=Math.round((b-1)*100);return `<div style="background:var(--bg-sub,#F7F2E6);border-radius:10px;padding:8px;text-align:center"><div style="font-size:11px;color:var(--text2,#5A5446);font-weight:700">${d}일</div><div style="font-size:14px;font-weight:900;color:var(--theme)">×${b.toFixed(2)}</div><div style="font-size:9px;color:var(--text3,#9A8F76)">+${pct}%</div></div>`;}).join('')}
       </div>
-      <div style="background:#FFF8E1;border-radius:12px;padding:10px;margin-bottom:16px">
-        <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:4px">🔥 스트릭 보너스</div>
-        ${[['3일 연속','×1.2'],['7일 연속','×1.5'],['30일 연속','×2.0']].map(([lb,b])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:2px 0"><span>${lb}</span><span style="font-weight:700;color:#E65100">${b}</span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 2px 2px;margin-top:12px;border-top:1px solid var(--border,#F0E6C8)">
+        <span style="font-size:13px;color:var(--text1,#1B1A16)">⬆ 레벨업 ${isFinal?'(최종 단계)':'('+curName+' → 다음 진화)'}</span>
+        <span style="font-size:12px;font-weight:700;color:var(--theme)">${isFinal?'MAX':curXp+' XP'}</span>
       </div>
-      <div style="font-size:13px;font-weight:800;color:#16A34A;margin-bottom:10px">📤 XP 사용 방법</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-${[['⬆️','레벨업','100 XP','다음 단계로 진화!'],].map(([ic,lb,cost,dc])=>` <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F0FDF4;border-radius:10px"> <span style="font-size:18px">${ic}</span> <div style="flex:1"><div style="font-size:13px;font-weight:700;color:#111">${lb}</div><div style="font-size:11px;color:#6B7280">${dc}</div></div> <span style="font-size:12px;font-weight:700;color:#16A34A">${cost}</span> </div>`).join('')}
-      </div>
-      <button onclick="cm()" class="btn bb">확인</button>
+      <button onclick="cm()" class="btn bb" style="margin-top:14px">확인</button>
     </div>
   </div></div>`;
 }
@@ -3686,45 +3711,20 @@ const _LT = {
 // 타이머 설정 모달
 function showTimerSettings() {
   const mr=document.getElementById('mr');if(!mr)return;
-  const goals=[
-    [0,'무제한','∞'],
-    [10*60,'10분','🔥'],
-    [20*60,'20분','⚡'],
-    [30*60,'30분','💪'],
-    [60*60,'1시간','🏆'],
-  ];
+  const g=_LT.goal;
+  const presets=[[0,'무제한'],[1800,'30분'],[3600,'60분']];
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden">
-    <div style="background:var(--theme-d);padding:16px 20px">
-      <div style="font-size:16px;font-weight:900;color:#fff">⏱ 학습 타이머</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">오늘 공부 목표 시간을 설정하세요</div>
+    <div style="padding:13px 16px;border-bottom:1px solid var(--border,#F0E6C8);display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-size:15px;font-weight:800;color:var(--text1,#1B1A16)">학습 타이머</div>
+      <div style="font-size:11px;color:var(--text3,#9A8F76);margin-top:2px">오늘 공부할 시간</div></div>
+      <span onclick="cm()" style="font-size:15px;color:var(--text3,#9A8F76);cursor:pointer">✕</span>
     </div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
-      <!-- 현재 상태 -->
-      <div style="background:#F8FAFC;border-radius:12px;padding:12px;display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div style="font-size:11px;color:var(--text3,#9CA3AF);font-weight:600">경과 시간</div>
-          <div style="font-size:24px;font-weight:900;font-family:monospace;color:var(--theme-d)">${_LT.fmt(_LT.elapsed)}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--text3,#9CA3AF);font-weight:600">목표</div>
-          <div style="font-size:18px;font-weight:800;color:var(--theme)">${_LT.goal>0?_LT.fmt(_LT.goal):'무제한'}</div>
-        </div>
+    <div style="padding:14px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+        ${presets.map(([s,lb])=>`<button onclick="_LT.goal=${s};document.getElementById('timer-custom').value='';_LT._updateUI&&_LT._updateUI();sv();showTimerSettings()" style="flex:1;padding:10px 2px;border-radius:10px;border:1.5px solid ${g===s?'var(--theme)':'var(--border,#F0E6C8)'};background:${g===s?'var(--theme-tint)':'transparent'};font-size:13px;font-weight:${g===s?700:500};color:${g===s?'var(--theme)':'var(--text2,#5A5446)'};cursor:pointer">${lb}</button>`).join('')}
+        <input type="number" id="timer-custom" placeholder="분" min="1" max="300" style="width:50px;padding:10px 2px;border:1.5px solid var(--border,#F0E6C8);border-radius:10px;text-align:center;font-size:13px;font-weight:700;color:var(--text1,#1B1A16);background:var(--bg-input,#fff)">
       </div>
-      <!-- 목표 선택 -->
-      <div style="font-size:12px;font-weight:700;color:#374151">목표 시간 선택</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-${goals.map(([s,lb,ic])=>` <button onclick="_LT.goal=${s};_LT._updateUI();sv();cm();toast('목표: ${lb} 설정!')" style="background:${_LT.goal===s?'var(--theme)':'#F8FAFC'};color:${_LT.goal===s?'#fff':'#374151'};border:1.5px solid ${_LT.goal===s?'var(--theme)':'#E5E7EB'};border-radius:12px;padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer"> <div style="font-size:20px;margin-bottom:4px">${ic}</div>${lb} </button> `).join('')}
-      </div>
-      <!-- 직접 입력 -->
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="number" id="timer-custom" placeholder="직접 입력 (분)" min="1" max="300" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #E5E7EB;font-size:13px;text-align:center">
-        <button onclick="const v=parseInt(document.getElementById('timer-custom').value);if(v>0){_LT.goal=v*60;_LT._updateUI();sv();cm();toast('목표: '+v+'분 설정!');}" class="btn bb" style="flex-shrink:0">설정</button>
-      </div>
-      <!-- 컨트롤 -->
-      <div style="display:flex;gap:8px">
-        <button onclick="_LT.reset();cm();toast('타이머 초기화')" style="flex:1;background:#F1F5F9;color:#374151;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">🔄 초기화</button>
-        <button onclick="window._studyActive=false;${_LT.running?'_LT.stop()':'_LT.start()'};cm()" class="btn bb" style="flex:1">${_LT.running?'⏸ 일시정지':'▶ 시작'}</button>
-      </div>
+      <button onclick="var v=parseInt(document.getElementById('timer-custom').value);if(v>0){_LT.goal=v*60;}window._studyActive=false;${_LT.running?'_LT.stop()':'_LT.start()'};_LT._updateUI&&_LT._updateUI();sv();cm()" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--theme);color:#fff;font-size:14px;font-weight:700;cursor:pointer">${_LT.running?'⏸ 일시정지':'▶ 학습 시작'}</button>
     </div>
   </div></div>`;
 }
@@ -14206,8 +14206,6 @@ function rProfile(){
   parts.push(`<div style="background:var(--bg-card,#FFFEF8);border-radius:18px;border:1.5px solid var(--border,#F0E6C8);padding:4px 14px 8px">
     ${_secTitle('정보 · 더보기')}
     ${_setRow('showGeminiKeyModal()','🤖','Gemini AI 키',_gkRight)}
-    ${_setRow('showAchievementsModal()','🏆','도전 과제')}
-    ${_setRow('showAppGuide()','📖','앱 사용법')}
     ${_setRow('showGameIntro(true)','🎬','첫 화면 다시보기')}
     ${_setRow('showXpGuide()','⚡','XP 안내')}
     ${_setRow('showTestIntro(true)','📝','레벨 재테스트')}
@@ -15280,6 +15278,7 @@ auth.onAuthStateChanged(async user => {
     if(_hasLocalData) {
       setSplash(60, '거의 다 됐어요!', 'XP 설정 로드 중');
       await loadXPConfig();
+      await loadLevelConfig();
       await loadPopupConfig();
       setSplash(90, '시작합니다! 🦋', '앱 시작 중');
       startApp();
@@ -15453,6 +15452,7 @@ auth.onAuthStateChanged(async user => {
     // ── 첫 로그인 or localStorage 없음: Firebase에서 직접 로드 (타임아웃 5초) ──
     setSplash(40, '계정 데이터 로드 중...', 'Firebase 연결 중');
     await loadXPConfig();
+    await loadLevelConfig();
     await loadPopupConfig();
     setSplash(60, '계정 데이터 로드 중...', '사용자 데이터 받아오는 중');
 

@@ -4832,6 +4832,10 @@ async function _flGenLoop(){
 // ── 레벨 관리 ──
 async function rLV(){
   const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🐌',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🪺',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'🫧',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#1565C0'},{id:'big',n:'큰 나비',e:'🌸',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'나비의 신',e:'🦚',desc:'God',basis:"GRE + Barron's 3500",c:'#B71C1C'}];
+  const LV_XP_DEFAULT={egg:150,baby:300,crown:450,coco:600,shine:750,small:900,big:1050,god:9999};
+  let lvCfg={};
+  try{const d=await db.collection('settings').doc('levelConfig').get();if(d.exists)lvCfg=d.data()||{};}catch(e){}
+  const lvXp=id=>(lvCfg[id]!=null?lvCfg[id]:LV_XP_DEFAULT[id]);
   document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
       <h2 style="font-size:22px;font-weight:900">🦋 레벨 관리</h2>
@@ -4860,8 +4864,31 @@ async function rLV(){
           <td><button class="btn bb" style="font-size:11px;padding:5px 12px" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)">단어 관리 →</button></td>
         </tr>`).join('')}
       </table></div>
+    </div>
+    <div class="card">
+      <div class="ct">⚡ 레벨업 경험치(XP) 설정</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:14px">각 단계에서 <b>다음 단계로 진화</b>하는 데 필요한 XP입니다. 앱의 'XP 안내'와 레벨업 판정에 실시간 반영됩니다. (나비의 신은 최종 단계)</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+        ${lvs.map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px">
+          <span style="font-size:20px;flex:none">${l.e}</span>
+          <span style="flex:1;font-size:13px;font-weight:700;color:${l.c}">${l.n}</span>
+          <input type="number" id="lvxp-${l.id}" value="${lvXp(l.id)}" min="1" ${l.id==='god'?'disabled style="width:90px;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;text-align:center;font-weight:700;background:#F1F5F9;color:#9CA3AF"':'style="width:90px;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;text-align:center;font-weight:700"'}>
+          <span style="font-size:11px;color:#9CA3AF;flex:none">XP</span>
+        </div>`).join('')}
+      </div>
+      <button class="btn bb" onclick="saveLevelConfig()" style="margin-top:16px">💾 레벨업 XP 저장</button>
     </div>`;
   lvs.forEach(async l=>{try{const snap=await db.collection('system_words').where('level','==',l.id).get();const e=document.getElementById('lc-'+l.id);if(e){e.textContent=snap.size;e.style.color=snap.size>0?l.c:'#9CA3AF';}}catch(e){}});
+}
+async function saveLevelConfig(){
+  const ids=['egg','baby','crown','coco','shine','small','big','god'];
+  const cfg={};
+  ids.forEach(id=>{const el=document.getElementById('lvxp-'+id);if(!el)return;const v=parseInt(el.value);if(v>0)cfg[id]=v;});
+  try{
+    await db.collection('settings').doc('levelConfig').set({...cfg, updatedAt: firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    try{ localStorage.setItem('levelConfigUpdated', Date.now().toString()); }catch(e){}
+    toast('레벨업 XP 저장됨 · 앱에 실시간 반영');
+  }catch(e){ toast('저장 실패','err'); }
 }
 
 // ── 공지사항 ──

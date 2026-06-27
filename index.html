@@ -1055,8 +1055,10 @@ function _gmAudio(){ return (_gIsMulti()&&S.learnLang&&S.learnLang!=='en')?S.lea
 window._gIsMulti=_gIsMulti; window._gmQ=_gmQ; window._gmA=_gmA; window._gmPh=_gmPh; window._gmEx=_gmEx; window._gmExA=_gmExA; window._gmAudio=_gmAudio;
 // 철자분해형(영문 알파벳 전제) 게임 — 학습언어가 en이 아니면 사용 불가(일/독/한 등은 철자분해 불가)
 function _spellGame(gameId){ return ['scramble','wc','typing','wordfind','wordle'].indexOf(gameId)>=0; }
-function _gameLangBlocked(gameId){ try{ return _spellGame(gameId) && (typeof S!=='undefined') && S.learnLang && S.learnLang!=='en'; }catch(e){ return false; } }
-window._spellGame=_spellGame; window._gameLangBlocked=_gameLangBlocked;
+// 단어 사이 공백이 없어 토큰 분해가 불가능한 언어(일본어·중국어 등) — 문장형 게임 불가
+function _noSpaceLang(ll){ return ['ja','zh'].indexOf(ll)>=0; }
+function _gameLangBlocked(gameId){ try{ var ll=(typeof S!=='undefined')&&S.learnLang; if(!ll||ll==='en') return false; if(_spellGame(gameId)) return true; if((gameId==='sentence'||gameId==='ssort') && _noSpaceLang(ll)) return true; return false; }catch(e){ return false; } }
+window._spellGame=_spellGame; window._noSpaceLang=_noSpaceLang; window._gameLangBlocked=_gameLangBlocked;
 // 현재 학습/모국어가 데이터 없는 언어면 안전하게 폴백
 function _mNormSettings(){ try{ var av=_mAvailLangs();
   if(typeof S!=='undefined'){ if(av.indexOf(S.learnLang)<0)S.learnLang='en'; if(av.indexOf(S.nativeLang)<0)S.nativeLang='ko'; if(S.learnLang===S.nativeLang){ S.nativeLang=(S.learnLang==='ko')?'en':'ko'; } } }catch(e){} }
@@ -13727,12 +13729,17 @@ function rSentence(){
   var gs=S.gameSettings||{};
   var ans=S.sbAns, ok2=S.sbOk;
   var acc=gameAccent('sentence');
+  var _ml2=_gIsMulti();
+  var _tgtNm=(_ml2 && window._MLANG && _MLANG[S.learnLang])?_MLANG[S.learnLang].name:'영어';
+  var _natFlag=(_ml2 && window._MLANG && _MLANG[S.nativeLang] && _MLANG[S.nativeLang].flag)?_MLANG[S.nativeLang].flag:'🇰🇷';
+  var _hdrT=_ml2?('🔤 '+_tgtNm+'문장 작문하기'):'🔤 한글문장 영작하기';
+  var _guide=_ml2?(_natFlag+' 이 문장을 '+_tgtNm+'로 만들어 보세요'):'🇰🇷 이 한글 문장을 영어로 만들어 보세요';
   var H='<div style="position:fixed;inset:0;background:'+gameBg('sentence')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
-  H+=ghdrDark('🔤 한글문장 영작하기',(S.gIdx+1)+'/'+S.gWords.length+' 문장');
+  H+=ghdrDark(_hdrT,(S.gIdx+1)+'/'+S.gWords.length+' 문장');
   H+=_itBar(gs.sentTimeSec);
   H+='<div style="flex:1;overflow-y:auto;padding:10px 16px;min-height:0">';
   H+='<div style="background:'+acc+';border-radius:18px;padding:18px 16px;text-align:center;margin-bottom:12px">';
-  H+='<div style="font-size:11px;font-weight:800;opacity:.85;letter-spacing:1px;margin-bottom:7px">🇰🇷 이 한글 문장을 영어로 만들어 보세요</div>';
+  H+='<div style="font-size:11px;font-weight:800;opacity:.85;letter-spacing:1px;margin-bottom:7px">'+_guide+'</div>';
   H+='<div style="font-size:17px;font-weight:800;line-height:1.45">'+s.kr+'</div>';
   window._sbSpeak=s.en; var _sbLang=(s&&s._lang)?s._lang:'en';
   H+='<button onclick="speak(window._sbSpeak||\'\',\''+_sbLang+'\',0.8)" style="margin-top:10px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:12px;padding:7px 18px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">🔊 들어보기</button></div>';

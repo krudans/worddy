@@ -1,5 +1,5 @@
-// sw.js v9 - HTML/스크립트는 항상 최신(네트워크) + Noto 이모지 이미지만 영구 캐시(cache-first) + prefetch 지원
-const CACHE = 'butterfly-word-v9';
+// sw.js v10 - HTML/스크립트는 항상 최신(네트워크) + Noto 이모지 이미지만 영구 캐시(cache-first) + prefetch 지원
+const CACHE = 'butterfly-word-v10';
 const EMOJI_CACHE = 'noto-emoji-v1';   // 이모지 이미지 영구 캐시(버전 갱신 시에도 보존)
 
 function isEmojiReq(url){

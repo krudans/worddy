@@ -1009,6 +1009,33 @@ function _exFormVal(){ try{ var f=(typeof S!=='undefined'&&S.exForm!=null)?S.exF
 // 한국어 뜻을 세미콜론(;) 기준 별개의 뜻으로 보고 앞 n개만 반환. n<=0 또는 미지정이면 전체.
 function _topMean(kr, n){ try{ if(kr==null) return ''; n=parseInt(n); if(!(n>0)) return String(kr); var parts=String(kr).split(';').map(function(s){return s.trim();}).filter(Boolean); if(parts.length<=n) return String(kr); return parts.slice(0,n).join('; '); }catch(e){ return kr==null?'':String(kr); } }
 function _meanNDef(){ try{ return (typeof S!=='undefined'&&S._meanN!=null)?parseInt(S._meanN):2; }catch(e){ return 2; } } // 뜻 보기 개수 (기본 2)
+// ── 다국어 표시(언어별 스피커) ──
+// 정확한 TTS 언어코드로 발음 (영어 en-US / 한국어 ko-KR / 일본어 ja-JP / 독일어 de-DE)
+window._sayLang = function(text, code){ try{ if(!text||!('speechSynthesis'in window)) return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(text)); u.lang=code||'en-US'; u.rate=(code&&code.toLowerCase().indexOf('ko')===0?0.92:0.85); var v=(window._bestVoiceFor?window._bestVoiceFor(code):null); if(v)u.voice=v; window.speechSynthesis.speak(u); }catch(e){} };
+// 현재 표시할 언어 목록 (S._showLangs, 미설정이면 가용 전체)
+function _showLangList(){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(typeof S!=='undefined'&&S._showLangs&&S._showLangs.length)?S._showLangs:av; return av.filter(function(l){return sel.indexOf(l)>=0;}); }catch(e){ return ['en','ko']; } }
+// 한 개념(en)에 대해 선택한 언어들을 [명칭][단어][🔊] 행으로 표시
+function _multiLangPanel(en){ try{
+  en=String(en||'').toLowerCase().trim(); if(!en) return '';
+  var ML=window._MLANG||{}, langs=_showLangList(), rows='';
+  langs.forEach(function(lang){
+    var b=(typeof _mBlock==='function')?_mBlock(en,lang):null; if(!b||!b.label) return;
+    var nm=(ML[lang]&&ML[lang].name)||lang, tts=(ML[lang]&&ML[lang].tts)||'en-US';
+    var sub=b.sub?(' <span style="font-size:11px;color:rgba(255,255,255,.45);font-weight:400">'+b.sub+'</span>'):'';
+    var enc=encodeURIComponent(b.label).replace(/'/g,'%27');
+    rows+='<div style="display:flex;align-items:center;gap:9px;padding:5px 0">'
+      +'<span style="font-size:10px;color:rgba(255,255,255,.5);min-width:46px;font-weight:700;flex:none">'+nm+'</span>'
+      +'<span style="flex:1;font-size:16px;font-weight:700;color:#fff;text-align:left">'+b.label+sub+'</span>'
+      +'<button onclick="event.stopPropagation();window._sayLang(decodeURIComponent(\''+enc+'\'),\''+tts+'\')" aria-label="발음" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:14px;cursor:pointer;flex:none">🔊</button>'
+      +'</div>';
+  });
+  if(!rows) return '';
+  return '<div style="margin-top:14px;width:100%;max-width:340px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:4px 14px;box-sizing:border-box">'+rows+'</div>';
+}catch(e){ return ''; } }
+// 다국어 표시 설정행(다중선택: 영어/한국어/일본어/독일어). 최소 1개 유지.
+function _toggleShowLang(lang, rr){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs&&S._showLangs.length)?S._showLangs.slice():av.slice(); var i=sel.indexOf(lang); if(i>=0){ if(sel.length>1) sel.splice(i,1); } else { sel.push(lang); } S._showLangs=av.filter(function(l){return sel.indexOf(l)>=0;}); if(typeof sv==='function') sv(); }catch(e){} }
+window._toggleShowLang=_toggleShowLang;
+function _multiLangItems(rr){ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var ML=window._MLANG||{}; var sel=_showLangList(); return av.map(function(lang){ var nm=(ML[lang]&&ML[lang].name)||lang; return [nm, "_toggleShowLang('"+lang+"');"+rr, sel.indexOf(lang)>=0]; }); }
 // 선택된 형식에 맞는 단일 예문 {en,kr} 반환 (없으면 null)
 function _ex5One(en){ var a=_ex5List(en); if(!a) return null; var f=_exFormVal(); var i=(f===0)?Math.floor(Math.random()*a.length):Math.min(f-1,a.length-1); var s=a[i]||a[0]; return {en:(s.en||''),kr:(s.kr||'')}; }
 // ═══════════ 다국어 학습 코어 (개념 중심 · 학습언어×모국어) ═══════════
@@ -4233,7 +4260,7 @@ function sv() {
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
   var _mset={}; try{_mset=JSON.parse(localStorage.getItem('wd-mset')||'{}');}catch(e){_mset={};} // [설정 유실 방지] 기존 저장값에서 시작→병합: 아직 복원 안 된(undefined) 필드를 지우지 않음
-  ['learnLang','nativeLang','autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_meanN','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  ['learnLang','nativeLang','autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_meanN','_showLangs','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -4741,7 +4768,7 @@ window._autoRender = function() {
         // 단어 카드 (kr_first 모드 분기)
         +(A.read==='kr_first'
           ? '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +'<div id="auto-kr-only"><div style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px">🤔 '+_qPrompt+' 단어는?</div><div style="font-size:32px;font-weight:900;color:rgba(255,255,255,.95);margin-bottom:10px">'+_aLabel+'</div><div style="font-size:11px;color:rgba(96,165,250,.7);margin-top:4px">잠시 후 '+_qPrompt+'가 나와요 ('+((A.krFirstDelay||3))+'초)</div></div>'              +'<div id="auto-kr-reveal" style="display:none">'+((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:8px">'+w.img+'</div>':'')+'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+_qLabel+'</div>'+(_qSub?'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px">'+_qSub+'</div>':'')+(_qPh&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+_qPh+'</div>':'')+(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+_aLabel+'</div>':'')+exHtml+'</div>'              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>'
-          : '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:10px">'+w.img+'</div>':'')              +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+_qLabel+'</div>'+(_qSub?'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px">'+_qSub+'</div>':'')              +(_qPh&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+_qPh+'</div>':'')              +(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+_aLabel+'</div>':'')              +exHtml              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>')
+          : '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;min-height:0;text-align:center'+(window._autoLocked?";padding-top:60px":"")+'">'              +((w.img&&S._vEmoji!==false)?'<div style="font-size:44px;line-height:1;margin-bottom:10px">'+w.img+'</div>':'')              +'<div style="font-size:42px;font-weight:900;letter-spacing:0.5px">'+_qLabel+'</div>'+(_qSub?'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px">'+_qSub+'</div>':'')              +(_qPh&&S._vPh!==false?'<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:6px">'+_qPh+'</div>':'')              +(S._vMean!==false?'<div style="font-size:22px;color:rgba(255,255,255,.85);font-weight:700;margin-top:10px">'+_aLabel+'</div>':'')              +exHtml+_multiLangPanel(w.en)              +'<div style="margin-top:12px">'+(_markBtn?_markBtn(w.en||''):'')+'</div>'            +'</div>')
         // 컨트롤 버튼
         +'<div style="padding:6px 16px;display:flex;gap:6px;flex-shrink:0">'
           +'<button onclick="window._autoIdx=Math.max(0,window._autoIdx-1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">◀ 이전</button>'
@@ -4749,7 +4776,7 @@ window._autoRender = function() {
           +'<button onclick="window._autoIdx=Math.min(window._autoWords.length-1,window._autoIdx+1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">다음 ▶</button>'
         +'</div>'
         // 설정 패널
-        +_lsetBar(iopt('정렬', sortItems)+iopt('학습범위', rangeItems)+iopt('보기', _viewItems("window._autoRender&&window._autoRender()"))+iopt('뜻 개수', _meanNItems("window._autoRender&&window._autoRender()"))+iopt('예문 단계', _exFormItems("window._autoRender&&window._autoRender()"))+iopt('발음', readItems)+(A.read==='kr_first'?iopt('지연', krDelayItems):'')+iopt('속도', speedItems)+iopt('옵션', optItems))
+        +_lsetBar(iopt('정렬', sortItems)+iopt('학습범위', rangeItems)+iopt('보기', _viewItems("window._autoRender&&window._autoRender()"))+iopt('뜻 개수', _meanNItems("window._autoRender&&window._autoRender()"))+iopt('다국어', _multiLangItems("window._autoRender&&window._autoRender()"))+iopt('예문 단계', _exFormItems("window._autoRender&&window._autoRender()"))+iopt('발음', readItems)+(A.read==='kr_first'?iopt('지연', krDelayItems):'')+iopt('속도', speedItems)+iopt('옵션', optItems))
       +'</div>';
 };;;
   

@@ -1006,6 +1006,9 @@ function _fmtClock(sec){ sec=Math.max(0,sec|0); var m=Math.floor(sec/60), x=sec%
 // ───────────────────────────────────────────────────────────────────
 function _ex5List(en){ try{ var d=(window.BWD_EX5||{})[String(en||'').toLowerCase().trim()]; return (d&&Array.isArray(d.ex5)&&d.ex5.length)?d.ex5:null; }catch(e){ return null; } }
 function _exFormVal(){ try{ var f=(typeof S!=='undefined'&&S.exForm!=null)?S.exForm:0; if(f==='random'||f==='r') return 0; var n=parseInt(f); return (n>=1&&n<=5)?n:0; }catch(e){ return 0; } }
+// 한국어 뜻을 세미콜론(;) 기준 별개의 뜻으로 보고 앞 n개만 반환. n<=0 또는 미지정이면 전체.
+function _topMean(kr, n){ try{ if(kr==null) return ''; n=parseInt(n); if(!(n>0)) return String(kr); var parts=String(kr).split(';').map(function(s){return s.trim();}).filter(Boolean); if(parts.length<=n) return String(kr); return parts.slice(0,n).join('; '); }catch(e){ return kr==null?'':String(kr); } }
+function _meanNDef(){ try{ return (typeof S!=='undefined'&&S._meanN!=null)?parseInt(S._meanN):2; }catch(e){ return 2; } } // 뜻 보기 개수 (기본 2)
 // 선택된 형식에 맞는 단일 예문 {en,kr} 반환 (없으면 null)
 function _ex5One(en){ var a=_ex5List(en); if(!a) return null; var f=_exFormVal(); var i=(f===0)?Math.floor(Math.random()*a.length):Math.min(f-1,a.length-1); var s=a[i]||a[0]; return {en:(s.en||''),kr:(s.kr||'')}; }
 // ═══════════ 다국어 학습 코어 (개념 중심 · 학습언어×모국어) ═══════════
@@ -3362,13 +3365,14 @@ function showSpeakMode() {
     var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
     var _qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
     var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
-    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr; _aLabel=_topMean(_aLabel,_meanNDef());
     var _qAudio=(_ml&&_ml.q)?_ml.q.lang:'en';
     if(show && window._spkAutoRead && window._spkSpokeIdx!==idx){ window._spkSpokeIdx=idx; try{ if(window.speechSynthesis)window.speechSynthesis.cancel(); speak(_qLabel,_qAudio,(window._spkRate||0.8)); }catch(e){} }
     var _spkRows=
         gsetRow('정렬',[['추가순',"window._spkSort='default';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='default'],['A-Z',"window._spkSort='alpha';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='alpha'],['가나다',"window._spkSort='kr';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='kr'],['마크순',"window._spkSort='mark';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='mark'],['랜덤',"window._spkSort='shuffle';window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkSort==='shuffle']])
       +gsetRow('학습범위',[['전체',"window._spkRange=-1;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===-1],['미암기',"window._spkRange=0;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===0],['암기',"window._spkRange=1;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===1],['헷갈림',"window._spkRange=2;window._spkBuild();window._spkIdx=0;window._spkShow=false;_spkRender()",window._spkRange===2]])
       +gsetRow('보기',_viewItems("_spkRender()"))
+      +gsetRow('뜻 개수',_meanNItems("_spkRender()"))
       +gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
       +gsetRow('속도',[['느림',"window._spkRate=0.5;S._spkRate=0.5;sv();_spkRender()",window._spkRate===0.5],['보통',"window._spkRate=0.8;S._spkRate=0.8;sv();_spkRender()",window._spkRate===0.8],['빠름',"window._spkRate=1.1;S._spkRate=1.1;sv();_spkRender()",window._spkRate===1.1],['최대',"window._spkRate=1.5;S._spkRate=1.5;sv();_spkRender()",window._spkRate===1.5]])
       +gsetRow('옵션',[['예문 읽기','','dis'],['반복','','dis'],['발음 듣고 따라 말하기','','dis']])
@@ -4229,7 +4233,7 @@ function sv() {
   localStorage.setItem('wd-cbk',S.currentBook);
   localStorage.setItem('wd-gs',JSON.stringify(S.gameSettings));
   var _mset={}; try{_mset=JSON.parse(localStorage.getItem('wd-mset')||'{}');}catch(e){_mset={};} // [설정 유실 방지] 기존 저장값에서 시작→병합: 아직 복원 안 된(undefined) 필드를 지우지 않음
-  ['learnLang','nativeLang','autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
+  ['learnLang','nativeLang','autoSort','autoRange','autoUnit','_spkSort','_spkRange','_spkCount','_spkAutoRead','_spkRate','_sdSort','_sdRange','_sdCount','_sdGap','_sdRate','flashCount','flashSort','flashRange','_flashRate','listMarkFilter','_vMean','_vPh','_vEmoji','_vSent','exForm','_meanN','_lsSort','_lsRange','_lsCount','_lsRate','_lsTarget','_lsMeanN','_lsAuto','_lsAutoSec'].forEach(function(_k){ if(S[_k]!=null) _mset[_k]=S[_k]; });
   localStorage.setItem('wd-mset', JSON.stringify(_mset)); // 학습모드 설정 영속화
   try{ localStorage.setItem('wd-auto', JSON.stringify(window._auto||{})); }catch(e){} // 자동재생 옵션(예문/발음/속도/반복/따라말하기/지연) 영속화
   localStorage.setItem('wd-als',JSON.stringify(S.alStudy));
@@ -4360,7 +4364,7 @@ async function _autoReadWord(w) {
   const _a=(typeof _mBlock==='function' && typeof S!=='undefined' && S.nativeLang && S.nativeLang!=='ko')?_mBlock(_en,S.nativeLang):null;
   const _qWord=_q?(_q.label||w.en):w.en;
   const _qLang=_q?(_q.audioLang||'en-US'):'en-US';
-  const _aWord=_a?(_a.label||w.kr):w.kr;
+  const _aWord=_topMean(_a?(_a.label||w.kr):w.kr,_meanNDef());
   const _aLang=_a?(_a.audioLang||'ko-KR'):'ko-KR';
   const exCount = parseInt(window._auto?.exCount||0);
   const ws = window._autoWords || [];
@@ -4655,7 +4659,7 @@ window._autoRender = function() {
     var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
     var _qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
     var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
-    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr; _aLabel=_topMean(_aLabel,_meanNDef());
     var _qPrompt=(_ml&&window._MLANG&&window._MLANG[S.learnLang]&&window._MLANG[S.learnLang].name)?window._MLANG[S.learnLang].name:'영어';
     var total = window._autoWords.length;
     var A = window._auto;
@@ -4745,7 +4749,7 @@ window._autoRender = function() {
           +'<button onclick="window._autoIdx=Math.min(window._autoWords.length-1,window._autoIdx+1);window._autoRender();window._autoSpeakNow&&window._autoSpeakNow()" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">다음 ▶</button>'
         +'</div>'
         // 설정 패널
-        +_lsetBar(iopt('정렬', sortItems)+iopt('학습범위', rangeItems)+iopt('보기', _viewItems("window._autoRender&&window._autoRender()"))+iopt('예문 단계', _exFormItems("window._autoRender&&window._autoRender()"))+iopt('발음', readItems)+(A.read==='kr_first'?iopt('지연', krDelayItems):'')+iopt('속도', speedItems)+iopt('옵션', optItems))
+        +_lsetBar(iopt('정렬', sortItems)+iopt('학습범위', rangeItems)+iopt('보기', _viewItems("window._autoRender&&window._autoRender()"))+iopt('뜻 개수', _meanNItems("window._autoRender&&window._autoRender()"))+iopt('예문 단계', _exFormItems("window._autoRender&&window._autoRender()"))+iopt('발음', readItems)+(A.read==='kr_first'?iopt('지연', krDelayItems):'')+iopt('속도', speedItems)+iopt('옵션', optItems))
       +'</div>';
 };;;
   
@@ -9617,7 +9621,7 @@ function showListenMode() {
     if(_ml){ ex0={en:(_ml.q?_ml.q.ex:'')||'', kr:(_ml.a?_ml.a.ex:'')||''}; }
     else { if(!(idx in window._lsExByIdx)){ window._lsExByIdx[idx]=(typeof _ex5One==='function')?_ex5One(w.en):null; } ex0=window._lsExByIdx[idx]||null; }
     var ms=(w.meanings&&w.meanings.length)?w.meanings.slice():(w.kr?String(w.kr).split(';').map(function(s){return s.trim();}).filter(Boolean):[]);
-    var n=parseInt(window._lsMeanN||0); if(n>0) ms=ms.slice(0,n);
+    var n=_meanNDef(); if(n>0) ms=ms.slice(0,n);
     var img=(((window.BWD_EX5||{})[en]||{}).img)||w.img||'';
     var qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
     var qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
@@ -9709,7 +9713,7 @@ function showListenMode() {
       +gsetRow('자동 재생',[['끔',"window._lsAuto=false;S._lsAuto=false;sv();window._lsClearAuto();window._lsRender()",!window._lsAuto],['켬',"window._lsAuto=true;S._lsAuto=true;sv();window._lsRender()",!!window._lsAuto]])
       +(window._lsAuto?gsetRow('대기 시간',[['5초',"window._lsAutoSec=5;S._lsAutoSec=5;sv();window._lsRender()",window._lsAutoSec===5],['10초',"window._lsAutoSec=10;S._lsAutoSec=10;sv();window._lsRender()",window._lsAutoSec===10],['20초',"window._lsAutoSec=20;S._lsAutoSec=20;sv();window._lsRender()",window._lsAutoSec===20]]):'')
       +gsetRow('듣기 대상',[['전체',"window._lsTarget='all';S._lsTarget='all';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='all'],['단어',"window._lsTarget='word';S._lsTarget='word';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='word'],['문장',"window._lsTarget='sentence';S._lsTarget='sentence';sv();window._lsRender();setTimeout(window._lsPlay,200)",window._lsTarget==='sentence']])
-      +gsetRow('뜻 보기',[['전체',"window._lsMeanN=0;S._lsMeanN=0;sv();window._lsRender()",window._lsMeanN===0],['1개',"window._lsMeanN=1;S._lsMeanN=1;sv();window._lsRender()",window._lsMeanN===1],['2개',"window._lsMeanN=2;S._lsMeanN=2;sv();window._lsRender()",window._lsMeanN===2],['3개',"window._lsMeanN=3;S._lsMeanN=3;sv();window._lsRender()",window._lsMeanN===3]])
+      +gsetRow('뜻 개수',_meanNItems("window._lsRender()"))
       +gsetRow('예문 단계',_exFormItems("window._lsExByIdx={};window._lsRender()"))
       +gsetRow('보기',_viewItems("window._lsRender()"))
       +gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
@@ -10079,12 +10083,13 @@ function showShadowMode() {
     var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
     var _qSub=(_ml&&_ml.q)?(_ml.q.sub||''):'';
     var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
-    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
+    var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr; _aLabel=_topMean(_aLabel,_meanNDef());
     var _qEx=(_ml&&_ml.q&&_ml.q.ex)?_ml.q.ex:(w.ex||'');
     var _sdRows=
         gsetRow('정렬',[['추가순',"window._sdSort='default';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='default'],['A-Z',"window._sdSort='alpha';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='alpha'],['가나다',"window._sdSort='kr';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='kr'],['마크순',"window._sdSort='mark';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='mark'],['랜덤',"window._sdSort='shuffle';window._sdBuild();window._sdIdx=0;_sdRender()",window._sdSort==='shuffle']])
       +gsetRow('학습범위',[['전체',"window._sdRange=-1;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===-1],['미암기',"window._sdRange=0;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===0],['암기',"window._sdRange=1;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===1],['헷갈림',"window._sdRange=2;window._sdBuild();window._sdIdx=0;_sdRender()",window._sdRange===2]])
       +gsetRow('보기',_viewItems("_sdRender()"))
+      +gsetRow('뜻 개수',_meanNItems("_sdRender()"))
       +gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
       +gsetRow('속도',[['느림',"window._sdRate=0.5;S._sdRate=0.5;sv();_sdRender()",window._sdRate===0.5],['보통',"window._sdRate=0.8;S._sdRate=0.8;sv();_sdRender()",window._sdRate===0.8],['빠름',"window._sdRate=1.1;S._sdRate=1.1;sv();_sdRender()",window._sdRate===1.1],['최대',"window._sdRate=1.5;S._sdRate=1.5;sv();_sdRender()",window._sdRate===1.5]])
       +gsetRow('옵션',[['예문 읽기','','dis'],['반복','','dis'],['발음 듣고 따라 말하기','','dis']])
@@ -11154,8 +11159,7 @@ function rLearn() {
   var _qLabel=(_ml&&_ml.q&&_ml.q.label)?_ml.q.label:w.en;
   var _qSub=(_ml&&_ml.q&&_ml.q.sub)?_ml.q.sub:'';
   var _qPh=(_ml&&_ml.q)?(_ml.q.ph||''):(w.ph||'');
-  var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr;
-  var _qAudio=(_ml&&_ml.q)?_ml.q.lang:'en';
+  var _aLabel=(_ml&&_ml.a&&_ml.a.label!=null&&_ml.a.label!=='')?_ml.a.label:w.kr; _aLabel=_topMean(_aLabel,_meanNDef());  var _qAudio=(_ml&&_ml.q)?_ml.q.lang:'en';
   var _exShow=exList;
   if(_ml){ var _qb=(typeof _mBlock==='function')?_mBlock(w.en,S.learnLang):null, _ab=(typeof _mBlock==='function')?_mBlock(w.en,S.nativeLang):null;
     if(_qb&&_qb.ex&&_qb.ex.length){ _exShow=_qb.ex.slice(0,3).map(function(s,i){ var tr=(_ab&&_ab.ex&&_ab.ex[i])?_ab.ex[i].s:''; return s.s+(tr?'  <span style="color:rgba(255,255,255,.5)">'+tr+'</span>':''); }); } }
@@ -11311,6 +11315,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
       gsetRow('정렬',[['추가순',"S.flashSort='default';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='default'],['A-Z',"S.flashSort='alpha';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='alpha'],['가나다',"S.flashSort='alpha_kr';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='alpha_kr'],['마크순',"S.flashSort='mark';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='mark'],['랜덤',"S.flashSort='random';S._flashShuffled=null;S._flipWords=null;S.idx=0;S.flip=false;sv();go()",_fs==='random']])
     + gsetRow('학습범위',[['전체',"S.flashRange=-1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===-1],['미암기',"S.flashRange=0;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===0],['암기',"S.flashRange=1;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===1],['헷갈림',"S.flashRange=2;S.idx=0;S.flip=false;S._flipWords=null;sv();go()",_ff===2]])
     + gsetRow('보기',_viewItems("go()"))
+    + gsetRow('뜻 개수',_meanNItems("go()"))
     + gsetRow('예문 단계',_exFormItems("S._flipWords=null;go()"))
     + gsetRow('발음',[['영어','','dis'],['한글먼저','','dis'],['영+한','','dis'],['한글','','dis'],['스펠링','','dis'],['전체','','dis']])
     + gsetRow('속도',[['느림',"S._flashRate=0.5;sv();go()",_frt===0.5],['보통',"S._flashRate=0.8;sv();go()",_frt===0.8],['빠름',"S._flashRate=1.1;sv();go()",_frt===1.1],['최대',"S._flashRate=1.5;sv();go()",_frt===1.5]])
@@ -12628,6 +12633,7 @@ function gsetRow(label, items){
 function _viewItems(rr){return [['뜻',"S._vMean=(S._vMean===false);sv();"+rr,S._vMean!==false],['발음',"S._vPh=(S._vPh===false);sv();"+rr,S._vPh!==false],['이모지',"S._vEmoji=(S._vEmoji===false);sv();"+rr,S._vEmoji!==false],['예문',"S._vSent=(S._vSent===false);sv();"+rr,S._vSent!==false]];}
 // 예문 단계(1~5번 예문 고정 / 랜덤) 선택 항목 — 학습·게임 공통
 function _exFormItems(rr){ var f=(typeof _exFormVal==='function')?_exFormVal():0; var mk=function(lb,v){return [lb,"S.exForm="+v+";sv();"+rr,f===v];}; return [mk('랜덤',0),mk('1',1),mk('2',2),mk('3',3),mk('4',4),mk('5',5)]; }
+function _meanNItems(rr){ var v=_meanNDef(); var mk=function(lb,n){return [lb,"S._meanN="+n+";sv();"+rr,v===n];}; return [mk('전체',0),mk('1개',1),mk('2개',2),mk('3개',3),mk('4개',4)]; } // 뜻 보기 개수(공통)
 var _LSETORD={'정렬':0,'학습범위':1,'보기':1.5,'옵션':2,'발음':3,'속도':4};
 var _GSETORD={'출제범위':0,'문제 수':1,'음향':2,'제한시간':3,'넘기기':4,'부가정보':5,'선택지':6};
 function _rowDedup(inner){

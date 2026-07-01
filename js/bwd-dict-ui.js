@@ -171,6 +171,7 @@
     s.onerror = function () { _dictLoading = false; toastMsg('사전 데이터를 불러오지 못했어요'); };
     document.head.appendChild(s);
     if(!window.__bwdEx5Loaded){ window.__bwdEx5Loaded=true; var s2=document.createElement('script'); s2.src='js/bwd-ex5.js?cb='+Date.now(); s2.async=true; document.head.appendChild(s2); }
+    if(!window.__bwdMetaLoaded){ window.__bwdMetaLoaded=true; ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){ var s3=document.createElement('script'); s3.src=src+'?cb='+Date.now(); s3.async=true; document.head.appendChild(s3); }); }
   }
   function onDictReady() {
     try {
@@ -286,7 +287,12 @@
       '.bwdui-mlflag{font-size:11px;font-weight:800;color:#64748B;min-width:58px;flex:none;}',
       '.bwdui-mllabel{flex:1;font-size:17px;font-weight:800;color:' + INK + ';}',
       '.bwdui-mlsub{font-size:12px;font-weight:500;color:#94A3B8;margin-left:5px;}',
-      '.bwdui-mlau{flex:none;width:32px;height:32px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:' + BLUE + ';font-size:14px;cursor:pointer;}'
+      '.bwdui-mlau{flex:none;width:32px;height:32px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:' + BLUE + ';font-size:14px;cursor:pointer;}',
+      '.bwdui-metainfo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;}',
+      '.bwdui-cefr{font-size:12px;font-weight:800;color:#fff;background:#7C3AED;border-radius:7px;padding:3px 9px;flex:none;}',
+      '.bwdui-origin{font-size:13px;color:#64748B;line-height:1.5;}',
+      '.bwdui-chip-syn{background:#ECFDF5;border-color:#A7F3D0;color:#047857;}',
+      '.bwdui-chip-ant{background:#FEF2F2;border-color:#FECACA;color:#B91C1C;}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -543,6 +549,27 @@
         html += '<div class="bwdui-mlrow"><span class="bwdui-mlflag">🇩🇪 독일어</span>' +
           '<span class="bwdui-mllabel">' + esc(deW.label) + (deSub ? '<span class="bwdui-mlsub">' + esc(deSub) + '</span>' : '') + '</span>' +
           '<button class="bwdui-mlau" data-mlsay="' + esc(deW.label) + '" data-mllang="de-DE" aria-label="독일어 발음">🔊</button></div>';
+      }
+    }
+
+    // 난이도(CEFR)·어원·유의어·반의어 (BWD_META)
+    var meta = (window.BWD_META && window.BWD_META[word]) || null;
+    if (meta) {
+      if (meta.cefr || meta.origin) {
+        html += '<div class="bwdui-mlb">난이도 · 어원</div><div class="bwdui-metainfo">';
+        if (meta.cefr) html += '<span class="bwdui-cefr">' + esc(meta.cefr) + '</span>';
+        if (meta.origin) html += '<span class="bwdui-origin">' + esc(meta.origin) + '</span>';
+        html += '</div>';
+      }
+      if (meta.syn && meta.syn.length) {
+        html += '<div class="bwdui-mlb">유의어</div><div class="bwdui-chips">';
+        for (var syi = 0; syi < meta.syn.length; syi++) html += '<span class="bwdui-chip bwdui-chip-syn" data-rel="' + esc(meta.syn[syi]) + '">' + esc(meta.syn[syi]) + '</span>';
+        html += '</div>';
+      }
+      if (meta.ant && meta.ant.length) {
+        html += '<div class="bwdui-mlb">반의어</div><div class="bwdui-chips">';
+        for (var ati = 0; ati < meta.ant.length; ati++) html += '<span class="bwdui-chip bwdui-chip-ant" data-rel="' + esc(meta.ant[ati]) + '">' + esc(meta.ant[ati]) + '</span>';
+        html += '</div>';
       }
     }
 

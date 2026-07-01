@@ -289,6 +289,15 @@
       '.bwdui-chip:active{background:#E1EFFB;}',
       '.bwdui-empty{text-align:center;color:#94A3B8;font-size:14px;padding:34px 16px;line-height:1.6;}',
       '.bwdui-empty .big{font-size:34px;display:block;margin-bottom:8px;}',
+      '.bwdui-feat{padding:6px 14px 22px;}',
+      '.bwdui-feat-h{text-align:center;font-size:15px;font-weight:800;color:' + INK + ';margin:8px 0 16px;line-height:1.5;}',
+      '.bwdui-feat-h b{color:' + BLUE + ';}',
+      '.bwdui-feat-row{display:flex;align-items:center;gap:12px;padding:11px 13px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:14px;margin-bottom:9px;}',
+      '.bwdui-feat-ic{font-size:22px;flex:none;width:30px;text-align:center;}',
+      '.bwdui-feat-tx{display:flex;flex-direction:column;gap:2px;min-width:0;}',
+      '.bwdui-feat-tx b{font-size:14px;font-weight:800;color:' + INK + ';}',
+      '.bwdui-feat-tx span{font-size:12px;color:#94A3B8;line-height:1.4;}',
+      '.bwdui-feat-cta{text-align:center;font-size:13px;font-weight:700;color:' + BLUE + ';margin-top:14px;}',
       '.bwdui-mlrow{margin-top:8px;background:#F6F9FC;border:1px solid #EBF1F7;border-radius:13px;padding:10px 13px;display:flex;align-items:center;gap:10px;}',
       '.bwdui-mlflag{font-size:11px;font-weight:800;color:#64748B;min-width:58px;flex:none;}',
       '.bwdui-mllabel{flex:1;font-size:17px;font-weight:800;color:' + INK + ';}',
@@ -451,13 +460,34 @@
     return e && e.kr ? e.kr : '';
   }
 
+  function _bwduiFeatures() {
+    var cnt = 0; try { var d = D(); cnt = d ? Object.keys(d).length : 0; } catch (e) {}
+    if (!cnt) { try { cnt = window.BWD_EX5 ? Object.keys(window.BWD_EX5).length : 0; } catch (e) {} }
+    var cntTxt = cnt ? cnt.toLocaleString() + '개' : '4만+';
+    var rows = [
+      ['📚', '단어 ' + cntTxt + ' 수록', '직접 검수한 뜻·예문 코어 사전'],
+      ['🌏', '4개 언어 · 발음', '영어 · 한국어 · 일본어 · 독일어를 한눈에'],
+      ['🔗', '유의어 · 반의어', '뜻이 통하는 단어, 반대되는 단어까지'],
+      ['🌱', '어원 · 난이도', '단어의 뿌리(어원)와 CEFR(A1~C2) 표시'],
+      ['📝', '5단계 문장', '1~5형식 예문으로 문장 감각까지']
+    ];
+    var h = '<div class="bwdui-feat"><div class="bwdui-feat-h">🦋 <b>Butterfly Word Dictionary</b><br>한 단어를 검색하면, 이 모든 걸 한 번에</div>';
+    for (var i = 0; i < rows.length; i++) {
+      h += '<div class="bwdui-feat-row"><span class="bwdui-feat-ic">' + rows[i][0] + '</span>' +
+        '<div class="bwdui-feat-tx"><b>' + rows[i][1] + '</b><span>' + rows[i][2] + '</span></div></div>';
+    }
+    h += '<div class="bwdui-feat-cta">↑ 찾고 싶은 영어 단어를 입력해 보세요</div></div>';
+    return h;
+  }
   function renderSuggestions(list) {
     if (!results) return;
     if (!list || !list.length) {
       var typed = input.value.trim();
-      results.innerHTML = '<div class="bwdui-empty"><span class="big">' + (typed ? '🔎' : '📖') + '</span>' +
-        (typed ? '“' + esc(typed) + '” 검색 결과가 없어요.<br>철자를 확인하거나 다른 단어를 입력해 보세요.'
-               : '찾고 싶은 영어 단어를 입력해 보세요.<br>뜻 · 발음 · 예문을 한 번에 보여드려요.') + '</div>';
+      if (typed) {
+        results.innerHTML = '<div class="bwdui-empty"><span class="big">🔎</span>“' + esc(typed) + '” 검색 결과가 없어요.<br>철자를 확인하거나 다른 단어를 입력해 보세요.</div>';
+      } else {
+        results.innerHTML = _bwduiFeatures();
+      }
       return;
     }
     var html = '';

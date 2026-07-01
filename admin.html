@@ -13,7 +13,7 @@
 <script src="js/bwd-wordlist.js?v=1"></script>
 <script src="js/bwd-pron.js?v=1"></script>
 <script src="js/bwd-dict.js?v=1"></script>
-<script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js'].forEach(function(src){document.write('<scr'+'ipt src="'+src+'?cb='+cb+'"></scr'+'ipt>');});})();</script>
+<script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js','js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){document.write('<scr'+'ipt src="'+src+'?cb='+cb+'"></scr'+'ipt>');});})();</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
 
@@ -4829,6 +4829,188 @@ async function _flGenLoop(){
 }
 
 
+/* ════════════════ 메타(동의어·반의어·어원·CEFR) 생성 ════════════════
+ * BWD_EX5 개념 중 BWD_META 없는 것을 대상으로 단어당 {cefr,origin,syn,ant} 생성.
+ * 결과는 window.BWD_META 에 쌓고 bwd-meta-1.js / bwd-meta-2.js 로 분할 내보낸다. */
+window.BWD_META = window.BWD_META || {};
+var _mgGen = { running:false, stop:false, total:0, done:0, ok:0, skip:0, fail:0, flagged:[], queue:[], batch:10, throttle:3000, retries:2, autoCkpt:1000, sinceCkpt:0, started:0, curMsg:'' };
+function _mgMissing(){
+  var E=window.BWD_EX5||{};
+  return Object.keys(E).filter(function(k){ return !window.BWD_META[k]; });
+}
+function _mgPrompt(batch){
+  var E=window.BWD_EX5||{};
+  var list=batch.map(function(w){
+    var exs=((E[w]&&E[w].ex5)||[]).map(function(s){return s.en;}).filter(Boolean).slice(0,2).join(' / ');
+    return '- '+w+(exs?'  [영어 예문 참고: '+exs+']':'');
+  }).join('\n');
+  return '너는 영어 어휘 사전 제작 전문가야. 아래 영어 단어 각각에 대해 4가지를 만들어줘.\n'
+    +' cefr: 유럽언어기준 A1/A2/B1/B2/C1/C2 중 난이도 하나(정확히 이 표기 그대로)\n'
+    +' origin: 어원·어근을 한국어로 짧게(예: "라틴어 portare(나르다)에서"). 불확실하면 ""\n'
+    +' syn: 동의어(영어 소문자) 2~4개 배열, 없으면 []\n'
+    +' ant: 반의어(영어 소문자) 1~3개 배열, 없으면 []\n'
+    +'규칙(엄수):\n'
+    +' - syn/ant 항목은 영어 단어만. origin만 한국어.\n'
+    +' - 제시된 단어의 그 뜻(예문 참고)에 맞는 동의어/반의어만.\n'
+    +' - 고유명사·약어·부적합어는 그 단어를 {"skip":true} 로만.\n'
+    +'대상 단어:\n'+list+'\n\n'
+    +'반드시 아래 JSON "한 개"만 출력(설명·마크다운·코드펜스 금지):\n'
+    +'{"apple":{"cefr":"A1","origin":"고대영어 æppel에서","syn":["fruit"],"ant":[]}, ...}';
+}
+function _mgVerify(e){
+  if(!e||typeof e!=='object') return '구조';
+  if(!/^(A1|A2|B1|B2|C1|C2)$/.test(e.cefr||'')) return 'cefr';
+  if(!Array.isArray(e.syn)) return 'syn';
+  if(!Array.isArray(e.ant)) return 'ant';
+  if(e.origin!=null && /\ufffd/.test(String(e.origin))) return '깨진문자';
+  return null;
+}
+async function _mgProcessBatch(batch, onStatus){
+  var raw;
+  try{ raw=await _aiGenCall(_mgPrompt(batch), onStatus); }catch(e){ return {ok:{},skip:[],fail:batch.slice(),err:e.message}; }
+  var obj=_aiGenParse(raw);
+  var ok={}, skip=[], fail=[];
+  var norm={}; if(obj) Object.keys(obj).forEach(function(k){ norm[k.toLowerCase().trim()]=obj[k]; });
+  var clean=function(arr){ return (Array.isArray(arr)?arr:[]).map(function(x){return String(x||'').trim();}).filter(Boolean).slice(0,6); };
+  batch.forEach(function(w){
+    var e=norm[w.toLowerCase().trim()];
+    if(!e){ fail.push(w); return; }
+    if(e.skip===true){ skip.push(w); return; }
+    var bad=_mgVerify(e); if(bad){ fail.push(w); return; }
+    ok[w]={cefr:e.cefr, origin:String(e.origin||''), syn:clean(e.syn), ant:clean(e.ant)};
+  });
+  return {ok:ok, skip:skip, fail:fail};
+}
+function _mgEmit(k){
+  var e=window.BWD_META[k]||{};
+  var f=[];
+  if(e.cefr) f.push('cefr:'+JSON.stringify(e.cefr));
+  if(e.origin) f.push('origin:'+JSON.stringify(e.origin));
+  f.push('syn:'+JSON.stringify(e.syn||[]));
+  f.push('ant:'+JSON.stringify(e.ant||[]));
+  return '  '+JSON.stringify(k)+': {'+f.join(',')+'},';
+}
+function bwdExportMG(){
+  var keys=Object.keys(window.BWD_META).sort();
+  if(!keys.length){ toast('내보낼 메타 데이터가 없어요','err'); return; }
+  var PARTS=2;
+  var per=Math.ceil(keys.length/PARTS);
+  for(var p=0;p<PARTS;p++){
+    (function(idx){
+      var slice=keys.slice(idx*per,(idx+1)*per);
+      var lines=slice.map(_mgEmit);
+      if(lines.length) lines[lines.length-1]=lines[lines.length-1].replace(/,\s*$/,'');
+      var content='/* Butterfly Word — bwd-meta-'+(idx+1)+'.js (개념별 BWD_META: cefr/origin/syn/ant · 분할 '+(idx+1)+'/'+PARTS+' · 자동생성) */\n'
+        +'window.BWD_META = Object.assign(window.BWD_META||{}, {\n'+lines.join('\n')+'\n});\n';
+      var blob=new Blob([content],{type:'text/javascript;charset=utf-8'});
+      var url=URL.createObjectURL(blob);
+      setTimeout(function(){
+        var a=document.createElement('a');a.href=url;a.download='bwd-meta-'+(idx+1)+'.js';document.body.appendChild(a);a.click();a.remove();
+        setTimeout(function(){URL.revokeObjectURL(url);},3000);
+      }, idx*700);
+    })(p);
+  }
+  toast('메타 내보내기 ('+keys.length+'개 → '+PARTS+'파일) — bwd-meta-1.js·bwd-meta-2.js 둘 다 js/에 올리세요','ok');
+}
+function showMgGen(){
+  if(!window.BWD_EX5){ toast('영어 사전(bwd-ex5) 미로드','err'); return; }
+  var miss=_mgMissing();
+  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:600px">'
+    +'<div class="mt">🔗 동의어·반의어·어원·CEFR 생성</div>'
+    +'<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#5B21B6;line-height:1.7">'
+      +'영어 개념 '+Object.keys(window.BWD_EX5||{}).length.toLocaleString()+'개 중 <b>메타가 아직 없는 '+miss.length.toLocaleString()+'개</b>를 대상으로, <b>단어당 동의어·반의어·어원·CEFR</b>를 생성합니다. 구조·CEFR 검증 후 통과분만 저장, 실패는 자동 재시도('+_mgGen.retries+'회), 부적격어는 자동 스킵합니다.<br>'
+      +'<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:2px"><span style="color:'+(getGeminiKeys().length?'#16A34A':'#DC2626')+'">Gemini 키: '+(getGeminiKeys().length?('✅ '+getGeminiKeys().length+'개'+(getGeminiKeys().length>1?' (자동 회전)':'')):'❌ 없음')+'</span><button class="btn bg" style="font-size:11px;padding:5px 11px" onclick="showAiKeys()">🔑 키 관리</button></div></div>'
+    +'<div class="fg" style="margin:0 0 8px"><label>시작 모델 (한도 시 자동 회전)</label>'
+      +'<select id="mgg-model" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px">'
+        +'<option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — 추천(최고 한도)</option>'
+        +'<option value="gemini-2.5-flash">gemini-2.5-flash — 품질 높음</option>'
+        +'<option value="gemini-flash-latest">gemini-flash-latest</option>'
+        +'<option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>'
+        +'<option value="gemini-2.0-flash">gemini-2.0-flash</option>'
+      +'</select></div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;font-size:12px"><span style="color:#6B7280">빠른 설정:</span>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'mgg-count\').value=100">100개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'mgg-count\').value=500">500개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'mgg-count\').value=2000">2000개</button>'
+      +'<button class="btn bg" style="padding:4px 10px;font-size:12px" onclick="document.getElementById(\'mgg-count\').value='+miss.length+'">전체('+miss.length.toLocaleString()+')</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:6px">'
+      +'<div class="fg" style="margin:0"><label>이번에 생성할 개수</label><input id="mgg-count" type="number" value="100" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>묶음당 개념 수</label><input id="mgg-batch" type="number" value="10" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>요청 간격(초)</label><input id="mgg-throttle" type="number" value="3" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+      +'<div class="fg" style="margin:0"><label>자동저장 간격(개)</label><input id="mgg-ckpt" type="number" value="1000" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:8px"></div>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">※ 자동저장 간격마다 <b>bwd-meta-1.js·bwd-meta-2.js 2개 파일</b>이 다운로드됩니다(둘 다 js/에 올리면 다음에 이어서). 동의어·반의어는 영어, 어원은 한국어로 저장됩니다.</div>'
+    +'<div style="display:flex;gap:8px">'
+      +'<button class="btn" id="mgg-start" onclick="mgGenStart()" style="flex:1;background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:9px;font-weight:700;cursor:pointer">▶ 시작</button>'
+      +'<button class="btn bgr" onclick="mgGenStop()">⏹ 정지</button>'
+      +'<button class="btn bg" onclick="bwdExportMG()">📥 내보내기</button>'
+    +'</div>'
+    +'<div id="mggen-status" style="margin-top:12px"></div>'
+    +'</div></div>';
+  _mgGenRender();
+}
+async function mgGenStart(){
+  if(_mgGen.running){ toast('이미 실행 중','err'); return; }
+  if(!getGeminiKeys().length){ toast('Gemini 키가 없습니다','err'); return; }
+  var msel=document.getElementById('mgg-model');
+  if(msel){ var _first=msel.value; window._aiModel=_first; try{localStorage.setItem('ai_model',_first);}catch(e){}
+    var _pool=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash'];
+    _aiGenModels=[_first].concat(_pool.filter(function(m){return m!==_first;})); _aiCooldown={}; _aiComboCooldown={}; }
+  var miss=_mgMissing();
+  var count=Math.max(1, parseInt(document.getElementById('mgg-count').value)||100);
+  _mgGen.batch=Math.max(1, Math.min(16, parseInt(document.getElementById('mgg-batch').value)||10));
+  _mgGen.throttle=Math.max(0, (parseInt(document.getElementById('mgg-throttle').value)||3))*1000;
+  _mgGen.autoCkpt=Math.max(0, parseInt(document.getElementById('mgg-ckpt').value)||1000);
+  _mgGen.queue=miss.slice(0, count);
+  _mgGen.total=_mgGen.queue.length; _mgGen.done=0; _mgGen.ok=0; _mgGen.skip=0; _mgGen.fail=0; _mgGen.flagged=[]; _mgGen.sinceCkpt=0;
+  _mgGen.running=true; _mgGen.stop=false; _mgGen.started=Date.now();
+  var sb=document.getElementById('mgg-start'); if(sb){ sb.textContent='⏳ 실행 중...'; sb.disabled=true; }
+  await _mgGenLoop();
+}
+function mgGenStop(){ _mgGen.stop=true; toast('정지 요청 — 현재 묶음 후 멈춥니다','ok'); }
+async function _mgGenLoop(){
+  var onStatus=function(msg){ _mgGen.curMsg=msg; _mgGenRender(); };
+  while(_mgGen.queue.length && !_mgGen.stop){
+    var batch=_mgGen.queue.splice(0, _mgGen.batch);
+    _mgGen.curMsg='⚙️ 생성 중: '+batch.slice(0,5).join(', ')+(batch.length>5?' 외 '+(batch.length-5)+'개':''); _mgGenRender();
+    var pending=batch.slice(), attempt=0;
+    while(pending.length && attempt<=_mgGen.retries && !_mgGen.stop){
+      var r=await _mgProcessBatch(pending, onStatus);
+      Object.keys(r.ok).forEach(function(w){ window.BWD_META[w]=r.ok[w]; _mgGen.ok++; _mgGen.done++; _mgGen.sinceCkpt++; });
+      (r.skip||[]).forEach(function(w){ _mgGen.skip++; _mgGen.done++; });
+      pending=r.fail;
+      attempt++;
+      if(pending.length && attempt<=_mgGen.retries){ await _aiSleep(_mgGen.throttle); }
+    }
+    pending.forEach(function(w){ _mgGen.fail++; _mgGen.done++; _mgGen.flagged.push(w); });
+    _mgGenRender();
+    if(_mgGen.autoCkpt && _mgGen.sinceCkpt>=_mgGen.autoCkpt){ _mgGen.sinceCkpt=0; try{ bwdExportMG(); }catch(e){} }
+    if(_mgGen.queue.length && !_mgGen.stop){ await _aiSleep(_mgGen.throttle); }
+  }
+  _mgGen.running=false;
+  var sb=document.getElementById('mgg-start'); if(sb){ sb.textContent='▶ 시작'; sb.disabled=false; }
+  _mgGenRender();
+  if(_mgGen.ok>0){ try{ bwdExportMG(); }catch(e){} }
+  toast('메타 생성 종료 · 생성 '+_mgGen.ok+' / 스킵 '+_mgGen.skip+' / 보류 '+_mgGen.flagged.length+' · bwd-meta-1.js·bwd-meta-2.js 업로드하세요','ok');
+}
+function _mgGenRender(){
+  var el=document.getElementById('mggen-status'); if(!el) return;
+  var pct=_mgGen.total?Math.round(_mgGen.done/_mgGen.total*100):0;
+  var elapsed=_mgGen.started?Math.round((Date.now()-_mgGen.started)/1000):0;
+  var rate=elapsed?(_mgGen.done/elapsed):0;
+  var remain=rate>0?Math.round((_mgGen.total-_mgGen.done)/rate):0;
+  var fmt=function(s){ if(s<=0)return '-'; var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; return (h?h+'시간 ':'')+(m?m+'분 ':'')+(h?'':ss+'초'); };
+  el.innerHTML='<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px">'
+    +'<div style="height:12px;background:#EDE9FE;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+pct+'%;background:#7C3AED;transition:width .3s"></div></div>'
+    +'<div style="font-size:15px;font-weight:800;color:#5B21B6">진행 '+_mgGen.done.toLocaleString()+' / '+_mgGen.total.toLocaleString()+' ('+pct+'%)</div>'
+    +'<div style="font-size:12px;color:#6D28D9;margin-top:4px">✅ 생성 '+_mgGen.ok.toLocaleString()+' · ⏭ 스킵 '+_mgGen.skip.toLocaleString()+' · ⚠️ 보류 '+_mgGen.flagged.length.toLocaleString()+(remain?' · 남은 시간 ~'+fmt(remain):'')+'</div>'
+    +(_mgGen.curMsg?'<div style="font-size:11px;color:#6B7280;margin-top:4px">'+_mgGen.curMsg+'</div>':'')
+    +'<div style="font-size:11px;color:#9CA3AF;margin-top:4px">보유: 🔗 메타 '+Object.keys(window.BWD_META).length.toLocaleString()+'개</div>'
+    +'</div>';
+}
+
+
 // ── 레벨 관리 ──
 async function rLV(){
   const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🐌',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🪺',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'🫧',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#1565C0'},{id:'big',n:'큰 나비',e:'🌸',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'나비의 신',e:'🦚',desc:'God',basis:"GRE + Barron's 3500",c:'#B71C1C'}];
@@ -5839,6 +6021,7 @@ function rDICT(){
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
       '<button class="btn bg" onclick="showAiGenEx5()" style="background:#7C3AED">🤖 AI 예문 자동생성</button>'+
       '<button class="btn bg" onclick="showFlGen()" style="background:#0891B2">🌏 외국어(일·독) 생성</button>'+
+      '<button class="btn bg" onclick="showMgGen()" style="background:#7C3AED">🔗 동의어·어원·CEFR 생성</button>'+
       '<button class="btn bg" onclick="bwdExport()">📥 bwd-dict.js 내보내기</button>'+
       '<button class="btn bg" onclick="bwdExportEx5()" style="background:#16A34A">🎨 bwd-ex5.js 내보내기</button>'+
       '</div>'+

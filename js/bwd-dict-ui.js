@@ -67,6 +67,21 @@
       if (typeof speak === 'function') speak(word, 'en');
     } catch (e) {}
   }
+  // 언어별 발음 (일본어/독일어 등)
+  function sayLang(text, lang) {
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(String(text || ''));
+        u.lang = lang || 'en-US'; u.rate = 0.9; u.pitch = 1;
+        var pre = (lang || 'en').slice(0, 2).toLowerCase();
+        var vs = window.speechSynthesis.getVoices() || [];
+        var v = vs.filter(function (x) { return x.lang && x.lang.toLowerCase().indexOf(pre) === 0; })[0];
+        if (v) u.voice = v;
+        window.speechSynthesis.speak(u);
+      }
+    } catch (e) {}
+  }
   // 한 글자씩 스펠링 → 끝에 전체 단어 1회
   function spellOut(word) {
     try {
@@ -266,7 +281,12 @@
       '.bwdui-chip{font-size:13px;font-weight:700;color:' + BLUE + ';background:#F1F7FD;border:1px solid #DCEAF8;border-radius:99px;padding:6px 13px;cursor:pointer;font-family:ui-monospace,Menlo,monospace;}',
       '.bwdui-chip:active{background:#E1EFFB;}',
       '.bwdui-empty{text-align:center;color:#94A3B8;font-size:14px;padding:34px 16px;line-height:1.6;}',
-      '.bwdui-empty .big{font-size:34px;display:block;margin-bottom:8px;}'
+      '.bwdui-empty .big{font-size:34px;display:block;margin-bottom:8px;}',
+      '.bwdui-mlrow{margin-top:8px;background:#F6F9FC;border:1px solid #EBF1F7;border-radius:13px;padding:10px 13px;display:flex;align-items:center;gap:10px;}',
+      '.bwdui-mlflag{font-size:11px;font-weight:800;color:#64748B;min-width:58px;flex:none;}',
+      '.bwdui-mllabel{flex:1;font-size:17px;font-weight:800;color:' + INK + ';}',
+      '.bwdui-mlsub{font-size:12px;font-weight:500;color:#94A3B8;margin-left:5px;}',
+      '.bwdui-mlau{flex:none;width:32px;height:32px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:' + BLUE + ';font-size:14px;cursor:pointer;}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -507,6 +527,25 @@
       html += '<div class="bwdui-exwrap"><div class="bwdui-ex">이 단어는 사전에 뜻이 아직 없어요. 발음과 단어장 추가는 가능해요.</div></div>';
     }
 
+    // 다른 언어 (일본어/독일어)
+    var jaW = (window.BWD_JA && window.BWD_JA[word]) || null;
+    var deW = (window.BWD_DE && window.BWD_DE[word]) || null;
+    if (jaW || deW) {
+      html += '<div class="bwdui-mlb">다른 언어</div>';
+      if (jaW && jaW.label) {
+        var jaSub = [jaW.kanji, jaW.roma].filter(Boolean).join(' · ');
+        html += '<div class="bwdui-mlrow"><span class="bwdui-mlflag">🇯🇵 일본어</span>' +
+          '<span class="bwdui-mllabel">' + esc(jaW.label) + (jaSub ? '<span class="bwdui-mlsub">' + esc(jaSub) + '</span>' : '') + '</span>' +
+          '<button class="bwdui-mlau" data-mlsay="' + esc(jaW.label) + '" data-mllang="ja-JP" aria-label="일본어 발음">🔊</button></div>';
+      }
+      if (deW && deW.label) {
+        var deSub = [deW.gender, deW.plural ? ('복수 ' + deW.plural) : ''].filter(Boolean).join(' · ');
+        html += '<div class="bwdui-mlrow"><span class="bwdui-mlflag">🇩🇪 독일어</span>' +
+          '<span class="bwdui-mllabel">' + esc(deW.label) + (deSub ? '<span class="bwdui-mlsub">' + esc(deSub) + '</span>' : '') + '</span>' +
+          '<button class="bwdui-mlau" data-mlsay="' + esc(deW.label) + '" data-mllang="de-DE" aria-label="독일어 발음">🔊</button></div>';
+      }
+    }
+
     if (x5 && x5.ex5 && x5.ex5.length) {
       var FCOL = ['#3B82F6','#10B981','#8B5CF6','#F97316','#EC4899'];
       html += '<div class="bwdui-mlb">문장 5형식</div>';
@@ -548,6 +587,8 @@
     if (exb) exb.addEventListener('click', function () { say(e.ex, 0.9); });
     var exsayBtns = card.querySelectorAll('[data-exsay]');
     for (var xi = 0; xi < exsayBtns.length; xi++) { (function (b) { b.addEventListener('click', function () { say(b.getAttribute('data-exsay'), 0.9); }); })(exsayBtns[xi]); }
+    var mlBtns = card.querySelectorAll('[data-mlsay]');
+    for (var mli = 0; mli < mlBtns.length; mli++) { (function (b) { b.addEventListener('click', function () { sayLang(b.getAttribute('data-mlsay'), b.getAttribute('data-mllang')); }); })(mlBtns[mli]); }
     card.querySelector('[data-act="add"]').addEventListener('click', function () { addToBook(word); });
     card.querySelector('[data-act="copy"]').addEventListener('click', function () {
       var txt = word + (e && e.kr ? ' — ' + e.kr : '');

@@ -171,7 +171,13 @@
     s.onerror = function () { _dictLoading = false; toastMsg('사전 데이터를 불러오지 못했어요'); };
     document.head.appendChild(s);
     if(!window.__bwdEx5Loaded){ window.__bwdEx5Loaded=true; var s2=document.createElement('script'); s2.src='js/bwd-ex5.js?cb='+Date.now(); s2.async=true; document.head.appendChild(s2); }
-    if(!window.__bwdMetaLoaded){ window.__bwdMetaLoaded=true; ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){ var s3=document.createElement('script'); s3.src=src+'?cb='+Date.now(); s3.async=true; document.head.appendChild(s3); }); }
+  }
+  // ── 메타(BWD_META: cefr/origin/syn/ant) 지연 로딩 — 사전 로드 상태와 무관하게 시트 열 때 1회 ──
+  var _metaLoaded = false;
+  function ensureMeta() {
+    if (_metaLoaded || window.__bwdMetaLoaded) return;
+    _metaLoaded = true; window.__bwdMetaLoaded = true;
+    ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){ var s=document.createElement('script'); s.src=src+'?cb='+Date.now(); s.async=true; document.head.appendChild(s); });
   }
   function onDictReady() {
     try {
@@ -413,6 +419,7 @@
     if (!wrap) return;
     wrap.classList.add('open');
     ensureDict();
+    ensureMeta();
     setBrand();
     input.value = '';
     clrBtn.style.display = 'none';

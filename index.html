@@ -348,10 +348,11 @@ body.fs-md{font-size:15px!important}
 body.fs-lg{font-size:17px!important}
 @keyframes hd-flutter{0%{transform:rotate(-7deg) translateY(0px) scale(1);}20%{transform:rotate(5deg) translateY(-5px) scale(1.04);}40%{transform:rotate(-6deg) translateY(1px) scale(0.97);}60%{transform:rotate(6deg) translateY(-4px) scale(1.03);}80%{transform:rotate(-4deg) translateY(1px) scale(0.98);}100%{transform:rotate(-7deg) translateY(0px) scale(1);}}
 @keyframes hd-cat{0%,100%{transform:translateY(0) rotate(0deg) scaleX(1)}25%{transform:translateY(-2px) rotate(-3.5deg) scaleX(.96)}50%{transform:translateY(0) rotate(0deg) scaleX(1.04)}75%{transform:translateY(-2px) rotate(3.5deg) scaleX(.96)}}
-@keyframes plGlowAll{0%,100%{filter:none}45%{filter:drop-shadow(0 0 7px var(--theme))}}
-@keyframes plGlowToday{0%,100%{filter:none}45%{filter:drop-shadow(0 0 7px #16A34A)}}
-.pl-glow-all{animation:plGlowAll .85s ease 2}
-.pl-glow-today{animation:plGlowToday .85s ease 2}</style>
+@keyframes plTipAll{0%,100%{opacity:.4}50%{opacity:1;filter:drop-shadow(0 0 5px var(--theme))}}
+@keyframes plTipToday{0%,100%{opacity:.4}50%{opacity:1;filter:drop-shadow(0 0 5px #16A34A)}}
+.pl-tip{opacity:0;transition:opacity .35s}
+.pl-tip-all.on{animation:plTipAll 1.8s ease-in-out infinite}
+.pl-tip-today.on{animation:plTipToday 1.8s ease-in-out infinite}</style>
 </head>
 <body>
 <div id="app">
@@ -6647,19 +6648,8 @@ function rGameOnlyTab() {
 
   let html = `<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA);min-height:100%">
 
-  <!-- 단어장 + 통계 압축 헤더 (둥근 카드, 그룹 카드와 통일) -->
-  <div style="margin:14px 16px 0;padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border,#ECEEF1);border-radius:16px">
-
-    <!-- 단어장 선택 -->
-    <div style="position:relative;margin-bottom:10px">
-      <select onchange="_selectBook(this.value);go('game')" style="width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:13px;font-weight:700;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;cursor:pointer;outline:none">
-        ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===bookName?'selected':''}>${b.name} (${_bookCntL(b)}개)</option>`).join('')}
-      </select>
-      <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3,#9CA3AF);pointer-events:none">▾</span>
-    </div>
-    ${_bookSummaryLine(bookName)}
-
-  </div>
+  <!-- 단어장+목표 묶음 (듀얼 링) -->
+  <div style="margin:14px 16px 0">${renderStudyGoalCard('game')}</div>
 
     <!-- 카테고리별 게임 (미니멀 그룹 · 컴팩트 행) -->
   <div style="padding:14px 16px 26px;display:flex;flex-direction:column;gap:10px">
@@ -8918,11 +8908,14 @@ function renderGoalLearnBlock(){
 // ===== 단어장+목표 묶음 (듀얼 링) — 학습탭/홈 공용 =====
 function _goalDonut(p,size,sw,id,color,center){
   var r=(size-sw)/2, c=2*Math.PI*r, off=c*(1-p/100), cx=size/2;
-  var glow=(id==='pl-td-ring')?'pl-glow-today':'pl-glow-all';
+  var ang=(p/100)*2*Math.PI;
+  var tx=cx+r*Math.cos(ang), ty=cx+r*Math.sin(ang);
+  var tipCls=(id==='pl-td-ring')?'pl-tip-today':'pl-tip-all';
   return '<div style="position:relative;width:'+size+'px;height:'+size+'px;margin:0 auto">'+
     '<svg width="'+size+'" height="'+size+'" style="transform:rotate(-90deg)">'+
       '<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="var(--bg-sub,#EEF2F7)" stroke-width="'+sw+'"/>'+
-      '<circle id="'+id+'" class="pl-ring-anim" data-glow="'+glow+'" cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+c+'" data-circ="'+c+'" data-fill="'+off+'" style="transition:stroke-dashoffset 1.7s cubic-bezier(.25,.9,.3,1)"/>'+
+      '<circle id="'+id+'" class="pl-ring-anim" cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+c+'" data-circ="'+c+'" data-fill="'+off+'" style="transition:stroke-dashoffset 1.7s cubic-bezier(.25,.9,.3,1)"/>'+
+      '<circle class="pl-tip '+tipCls+'" cx="'+tx.toFixed(1)+'" cy="'+ty.toFixed(1)+'" r="'+(sw/2+0.5).toFixed(1)+'" fill="'+color+'"/>'+
     '</svg>'+
     '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">'+center+'</div></div>';
 }
@@ -8953,10 +8946,12 @@ function _studyGoalInner(){
   var rings='<div style="display:flex;gap:10px;justify-content:center;margin-bottom:3px">'+
     '<div style="flex:1">'+_goalDonut(pct,104,12,'pl-ring-all',B,cAll)+'</div>'+
     '<div style="flex:1">'+_goalDonut(tPct,104,12,'pl-td-ring','#16A34A',cToday)+'</div></div>';
-  var subline='<div style="text-align:center;font-size:11px;font-weight:800;color:'+pace.col+';margin:3px 0 6px">'+(pace.lvl==='new'?('외운 '+_nf(memo)+'개 · 남은 '+_nf(remaining)+'개'):pace.txt)+'</div>';
+  var eta=_planEtaDate(remaining,daily,ctx.today);
+  var etaTxt=remaining<=0?'🎉 완료':('완료 '+_planFmt(eta));
+  var subline='<div style="text-align:center;font-size:11px;color:var(--text3,#9CA3AF);margin:5px 0 2px">외운 <b style="color:#16A34A">'+_nf(memo)+'</b> · 남은 <b style="color:var(--theme)">'+_nf(remaining)+'</b> · '+etaTxt+'</div>'+(pace.lvl==='new'?'':'<div style="text-align:center;font-size:11px;font-weight:800;color:'+pace.col+';margin:0 0 6px">'+pace.txt+'</div>');
   var toggle='<button onclick="_planToggleFull()" style="width:100%;font-size:12px;font-weight:800;color:'+B+';background:var(--theme-tint);border:1.5px solid '+B+';border-radius:10px;padding:9px;cursor:pointer">🎯 목표 설정 <span id="pl-caret">'+(open?'▴':'▾')+'</span></button>';
   var full='<div id="pl-full" style="display:'+(open?'block':'none')+';margin-top:11px">'+_planBodyHTML(sel)+'</div>';
-  var trig='<img src="x" alt="" style="display:none" onerror="(function(){requestAnimationFrame(function(){var es=document.querySelectorAll(\'.pl-ring-anim\');for(var i=0;i<es.length;i++){es[i].style.strokeDashoffset=es[i].getAttribute(\'data-fill\');}setTimeout(function(){for(var j=0;j<es.length;j++){es[j].classList.add(es[j].getAttribute(\'data-glow\'));}},1780);});})()">';
+  var trig='<img src="x" alt="" style="display:none" onerror="(function(){requestAnimationFrame(function(){var es=document.querySelectorAll(\'.pl-ring-anim\');for(var i=0;i<es.length;i++){es[i].style.strokeDashoffset=es[i].getAttribute(\'data-fill\');}setTimeout(function(){var ts=document.querySelectorAll(\'.pl-tip\');for(var j=0;j<ts.length;j++){ts[j].classList.add(\'on\');}},1720);});})()">';
   return drop+rings+subline+toggle+full+trig;
 }
 function renderStudyGoalCard(tab){
@@ -10734,12 +10729,7 @@ function rStudyBooks() {
   html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';
   const _allBooksTab = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const _curName = S.currentBook||'내 단어장';
-  html += '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:14px;padding:12px 13px">'
-    +'<div style="position:relative"><select onchange="_selectBook(this.value);go(\'mybooks\',\'books\')" style="width:100%;padding:10px 32px 10px 14px;border:1.5px solid var(--border,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;background:var(--bg-card,#fff);appearance:none;cursor:pointer;color:var(--text1,#111);font-family:inherit;outline:none">'
-    + _orderBooks(_allBooksTab).map(function(b){ return '<option value="'+String(b.name).replace(/"/g,'&quot;')+'" '+(b.name===_curName?'selected':'')+'>'+b.name+' ('+((_bookCntL(b)))+'개)</option>'; }).join('')
-    +'</select><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF;font-size:12px">▾</span></div>'
-    + (typeof _bookSummaryLine==='function'?_bookSummaryLine(_curName):'')
-  +'</div>';
+  html += renderStudyGoalCard('mybooks');
   html += g1 + g2 + g3;
   html += '</div></div>';
   return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;

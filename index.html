@@ -8590,8 +8590,17 @@ function _todayMemoCount(dayStr){
   }catch(e){ return 0; }
 }
 function _planTodayMemo(ens, todayStr){
-  // [통일] markDates(처음 외운) → 오늘 외웠음 표시 기준 단일 소스
-  return (typeof _todayMemoCount==='function') ? _todayMemoCount(todayStr) : 0;
+  // [버그수정] 스코프(단어장)별 집계 — ens가 있으면 오늘 외운 단어 중 그 단어장에 속한 것만 센다.
+  //  (기존: ens를 무시하고 전체 오늘 외운 수를 반환 → 다른 단어장에도 같은 수가 떠 보이던 문제)
+  try{
+    var t=todayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+    var d=(S.studyLog||{})[t]||{};
+    var marked=Array.isArray(d.markedEns)?d.markedEns:[];
+    if(!ens) return marked.length;
+    var set=Object.create(null); for(var i=0;i<ens.length;i++){ set[ens[i]]=1; }
+    var c=0; for(var j=0;j<marked.length;j++){ if(set[marked[j]]) c++; }
+    return c;
+  }catch(e){ return (typeof _todayMemoCount==='function')?_todayMemoCount(todayStr):0; }
 }
 function _planRecentMemo(ens, days, todayStr){
   var md=S.markDates||{}; var end=_planParse(todayStr).getTime(); var start=end-(days-1)*86400000;

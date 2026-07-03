@@ -1,4 +1,4 @@
-<!-- build: 20260703-intro-countdown-fix -->
+<!-- build: 20260703-no-autofill -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -1085,7 +1085,8 @@ function _gmCard(en){ try{ return getMultiCard(en,S.learnLang,S.nativeLang,(type
 // 학습언어 라벨(문제어·음성용). 다국어 아니거나 데이터 없으면 w.en.
 function _gmQ(w){ if(_gIsMulti()){ var m=_gmCard(w.en); if(m&&m.q&&m.q.label) return m.q.label; } return w.en; }
 // 모국어 라벨(뜻·보기용). 다국어 아니거나 데이터 없으면 w.kr.
-function _gmA(w){ if(_gIsMulti()){ var m=_gmCard(w.en); if(m&&m.a&&m.a.label!=null&&m.a.label!=='') return m.a.label; } return w.kr||''; }
+function _clamp2Mean(s){ s=String(s==null?'':s); if(s.indexOf(';')<0) return s; var p=s.split(';').map(function(x){return x.trim();}).filter(Boolean); return p.slice(0,2).join('; '); }
+function _gmA(w){ if(_gIsMulti()){ var m=_gmCard(w.en); if(m&&m.a&&m.a.label!=null&&m.a.label!=='') return _clamp2Mean(m.a.label); } return _clamp2Mean(w.kr||''); }
 // 학습언어 발음기호. 다국어면 학습언어 ph(ja/de는 ''), 아니면 w.ph.
 function _gmPh(w){ if(_gIsMulti()){ var m=_gmCard(w.en); return (m&&m.q)?(m.q.ph||''):''; } return w.ph||''; }
 // 학습언어 예문 1개(현재 step). 다국어 아니면 영어 예문.
@@ -4061,7 +4062,7 @@ function load() {
   S.lastDate = localStorage.getItem('wd-dt') || '';
   S.lastDate = localStorage.getItem('wd-dt')||'';
   S.nick = localStorage.getItem('wd-nk')||'';
-  S.words = JSON.parse(localStorage.getItem('wd-w')||'null')||[...DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg];
+  S.words = JSON.parse(localStorage.getItem('wd-w')||'null')||[];
   S.learned = new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]'));
   S.markMap = JSON.parse(localStorage.getItem('wd-mk')||'{}');
   S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}');
@@ -5159,6 +5160,9 @@ function updStreak() {
 
 // ── Firestore 단어 로드 ──
 async function loadWordsFromFirestore(lid) {
+  // [비활성화] 빈 단어장에 시스템 기본단어를 자동으로 밀어넣던 로직 제거.
+  // 사용자가 단어를 지웠거나 신규여도, 프로그램이 멋대로 단어를 채우지 않는다.
+  return;
   try {
     // 사용자가 이미 커스텀 단어(내 단어장)를 가지고 있으면, 시스템 기본단어로 덮어쓰지 않는다.
     if(S.words && S.words.length > 0) return;
@@ -5725,7 +5729,7 @@ function startApp() {
   document.getElementById('hd').style.display='';
   document.getElementById('nav').style.display='flex';
   updHD(); scheduleAlarms();
-  loadWordsFromFirestore(S.lid);
+  // [제거] 빈 단어장에 시스템 기본단어를 멋대로 채워넣던 자동주입 호출 삭제
   setTimeout(()=>checkAttend(), 1000);
   setTimeout(()=>syncProfileToFirebase(), 2000);
   setTimeout(async ()=>{

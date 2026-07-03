@@ -4158,7 +4158,11 @@ function getBookWords(book) {
   if (book.packId) {
     // 마켓팩은 오직 Firebase _marketPacks에서만 조회 + 단어사전 라이브 오버레이
     const livePack = (S._marketPacks || []).find(p => p.id === book.packId);
-    return _dictOverlayArr(livePack ? (livePack.words || []) : []);
+    var _arr = _dictOverlayArr(livePack ? (livePack.words || []) : []);
+    // 사용자가 개별 삭제(숨김)한 단어 제외
+    var _hid = (S.hiddenPackWords && S.hiddenPackWords[book.packId]) || null;
+    if(_hid && _hid.length){ var _hs=Object.create(null); _hid.forEach(function(e){_hs[e]=1;}); _arr=_arr.filter(function(w){return !_hs[w.en];}); }
+    return _arr;
   }
   return book.words || [];
 }
@@ -4320,6 +4324,7 @@ function sv() {
       gameDailyCount:S.gameDailyCount||{},
       gamePlayCount:S.gamePlayCount||{},
       bestScores:S.bestScores||{},
+      hiddenPackWords:S.hiddenPackWords||{},
       modeSettings:_mset,
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
@@ -10852,7 +10857,7 @@ function showBookMenu(name, type) {
   const items = isDefault ? [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['🔄', '외웠음 표시 초기화', `cm();if(confirm('내 단어장의 외웠음 표시를 모두 초기화할까요? (헷갈림 표시는 유지)')){_resetBookMarks('${safeN}');}`],
-    ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){S.words=[];S.markMap={};S.learned=new Set();sv();go();toast('🗑️ 전체 삭제 완료');}`],
+    ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){if(typeof _selectBook==='function')_selectBook('내 단어장');S.words=[];S.markMap={};S.learned=new Set();try{localStorage.setItem('wd-w','[]');localStorage.setItem('wd-mk','{}');localStorage.setItem('wd-lrn','[]');}catch(e){}sv();go();toast('🗑️ 전체 삭제 완료');}`],
   ] : [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['✏️', '이름 수정', `cm();const n=prompt('새 이름');if(n&&n.trim()){const b=S.books?.find(x=>x.name==='${safeN}');if(b){b.name=n.trim();sv();go();toast('이름 변경 완료!');}}`],
@@ -12002,8 +12007,22 @@ function saveWordToCurrentBook(word) {
   }
 }
 
-function wordExistsInCurrentBook(en) {
+function removeWordFromCurrentBook(en){
   const bookName = S.currentBook || '내 단어장';
+  if(bookName === '내 단어장'){ S.words = (S.words||[]).filter(w=>w.en!==en); return true; }
+  const bk = (S.books||[]).find(b=>b.name===bookName);
+  if(!bk){ S.words = (S.words||[]).filter(w=>w.en!==en); return true; }
+  if(bk.packId){
+    // 마켓팩: 개별 단어는 삭제 대신 사용자별 '숨김' 처리(다시 등록 시 복구)
+    if(!S.hiddenPackWords) S.hiddenPackWords={};
+    if(!S.hiddenPackWords[bk.packId]) S.hiddenPackWords[bk.packId]=[];
+    if(S.hiddenPackWords[bk.packId].indexOf(en)<0) S.hiddenPackWords[bk.packId].push(en);
+    return true;
+  }
+  bk.words = (bk.words||[]).filter(w=>w.en!==en);
+  return true;
+}
+function wordExistsInCurrentBook(en) {  const bookName = S.currentBook || '내 단어장';
   if(bookName === '내 단어장') return !!S.words.find(w=>w.en===en);
   const bk = (S.books||[]).find(b=>b.name===bookName);
   return bk ? !!(bk.words||[]).find(w=>w.en===en) : false;
@@ -12132,75 +12151,73 @@ function showExtracted(words){
 function blkModal(){document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:16px;font-weight:800;margin-bottom:8px">📋 여러 단어 붙여넣기</div><div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">한 줄에 하나, 쉼표나 = 로 구분</div><textarea id="bt" placeholder="apple, 사과&#10;book = 책" style="min-height:100px;resize:none;font-size:13px;margin-bottom:10px"></textarea><button class="btn bg" onclick="addBlk()">추가하기</button></div></div>`;}
 function addBlk(){const t=document.getElementById('bt')?.value||'';let cnt=0;t.split('\n').filter(l=>l.trim()).forEach(ln=>{const p=ln.split(/[,=\t]/);if(p.length>=2){const en=p[0].trim(),kr=p[1].trim();if(en&&kr&&!wordExistsInCurrentBook(en)){saveWordToCurrentBook({en,kr,ph:'',ex:en+'.',tip:en+' = '+kr,meanings:[kr],img:'📝'});cnt++;}}});sv();cm();toast(`✅ ${cnt}개 추가!`);go('mybooks','add');}
 function rList(){
-  // 현재 단어장 기준 단어 목록 가져오기
+  // 현재 단어장 기준 단어 목록 (팩 단어장은 getBookWords로 실제 단어 로드)
   const bookName = S.currentBook || '내 단어장';
-  const allBooks = [{name:'내 단어장', words:S.words, markMap:S.markMap||{}}, ...(S.books||[])];
+  const allBooks = [{name:'내 단어장', words:S.words||[]}, ...(S.books||[])];
   const curBook = allBooks.find(b=>b.name===bookName) || allBooks[0];
-  const curWords = curBook.words || [];
-  const curMarkMap = (bookName==='내 단어장') ? (S.markMap||{}) : (curBook.markMap||{});
+  const curWords = (bookName==='내 단어장') ? (S.words||[]) : ((typeof getBookWords==='function')?getBookWords(curBook):(curBook.words||[]));
 
-  const getMark_ = (en) => curMarkMap[en] || 0;
+  const getMark_ = (en) => (typeof getMark==='function' ? getMark(en) : ((S.markMap||{})[_mk(en)]||0));
 
   if(!curWords.length)return `<div class="pad" style="text-align:center;margin-top:30px">${cbrow('단어가 없어! 추가해줘 😊',S.lid)}</div>`;
   const filterMark=S.listMarkFilter??-1;
   const searchQ=(S.listSearch||'').toLowerCase();
   const sortBy=S.listSort||'default';
-  const marked1=curWords.filter(w=>getMark_(w.en)===1).length;
-  const marked2=curWords.filter(w=>getMark_(w.en)===2).length;
-  const markedFav=(Array.isArray(S.favorites)?S.favorites:[]).length;
-  // 즐겨찾기 필터 (-2)
+  const memoCnt=curWords.filter(w=>getMark_(w.en)===1).length;
+  const notCnt=curWords.length-memoCnt;
+  const favArr=(Array.isArray(S.favorites)?S.favorites:[]);
   let filtered;
-  if(filterMark===-2) {
-    filtered = [...curWords].filter(w=>(Array.isArray(S.favorites)?S.favorites:[]).indexOf(w.en)>=0);
-  } else {
-    filtered = filterMark<0 ? [...curWords] : curWords.filter(w=>getMark_(w.en)===filterMark);
-  }
-  if(searchQ) filtered=filtered.filter(w=>w.en.toLowerCase().includes(searchQ)||w.kr.includes(searchQ));
+  if(filterMark===-2) filtered=curWords.filter(w=>favArr.indexOf(w.en)>=0);
+  else if(filterMark===-3) filtered=curWords.filter(w=>getMark_(w.en)!==1);
+  else if(filterMark===1) filtered=curWords.filter(w=>getMark_(w.en)===1);
+  else filtered=[...curWords];
+  if(searchQ) filtered=filtered.filter(w=>w.en.toLowerCase().includes(searchQ)||(w.kr||'').includes(searchQ));
   if(sortBy==='alpha') filtered.sort((a,b)=>a.en.localeCompare(b.en));
-  else if(sortBy==='alpha_kr') filtered.sort((a,b)=>a.kr.localeCompare(b.kr));
-  else if(sortBy==='mark') filtered.sort((a,b)=>getMark_(b.en)-getMark_(a.en));
+  else if(sortBy==='alpha_kr') filtered.sort((a,b)=>(a.kr||'').localeCompare(b.kr||''));
   else if(sortBy==='random') { for(let i=filtered.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[filtered[i],filtered[j]]=[filtered[j],filtered[i]];} }
-  const rows=filtered.map(w=>{
-    const mark=getMark_(w.en); const mInfo=MARK_INFO[mark];
+  const _GRN='#16A34A';
+  const rows=filtered.map((w,i)=>{
+    const done=getMark_(w.en)===1;
     const safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return '<div style="background:#fff;border-radius:14px;border:1.5px solid #E5E7EB;padding:12px 14px;display:flex;align-items:center;gap:10px">'
-      +'<div style="font-size:22px">'+( w.img||'📝')+'</div>'
-      +'<div style="flex:1;min-width:0;cursor:pointer" onclick="showWordDetail(\''+safeEn+'\')">'
-      +'<div style="font-size:15px;font-weight:800;color:#111;font-family:monospace">'+w.en+'</div>'
-      +'<div style="font-size:12px;color:#6B7280">'+w.kr+'</div>'
-      +(w.ph?'<div style="font-size:11px;color:var(--text3,#9CA3AF)">'+w.ph+'</div>':'')
-      +(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.length?'<div style="margin-top:4px">'+exs.map(e=>'<div style="font-size:11px;color:#6B7280;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+e+'</div>').join('')+'</div>':''})()
+    const chk=done
+      ? '<div onclick="event.stopPropagation();setMark(\''+safeEn+'\',0);go()" style="width:26px;height:26px;border-radius:8px;background:'+_GRN+';display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:900;flex:none;cursor:pointer">✓</div>'
+      : '<div onclick="event.stopPropagation();setMark(\''+safeEn+'\',1);go()" style="width:26px;height:26px;border-radius:8px;background:#fff;border:2px solid #CBD5E1;flex:none;cursor:pointer"></div>';
+    return '<div style="display:flex;align-items:center;gap:11px;padding:9px 10px;'+(i===filtered.length-1?'':'border-bottom:1px solid #F1F5F9;')+'">'
+      +'<span style="font-size:20px;width:24px;text-align:center;flex:none">'+(w.img||'📝')+'</span>'
+      +'<div style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap" onclick="showWordDetail(\''+safeEn+'\')">'
+        +'<span style="font-size:15px;font-weight:800;color:'+(done?'#94A3B8':'#111')+'">'+w.en+'</span>'
+        +(w.ph?'<span style="font-size:11px;color:#94A3B8">/'+w.ph+'/</span>':'')
+        +'<span style="font-size:13px;color:#64748B">'+(w.kr||'')+'</span>'
       +'</div>'
-      +'<button onclick="event.stopPropagation();const n=cycleMark(\''+safeEn+'\');const inf=MARK_INFO[n];toast(inf.label+\'!\');go();" style="width:36px;height:36px;border-radius:50%;background:'+mInfo.bg+';border:1.5px solid '+mInfo.color+'44;font-size:16px;cursor:pointer;flex-shrink:0">'+(mark===0?'○':'🐾')+'</button>'
-      +'<button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(\''+safeEn+'\');u.lang=\'en-US\';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:36px;height:36px;border-radius:50%;background:#F3F4F6;border:none;font-size:16px;cursor:pointer;flex-shrink:0">🔊</button>'
-      +'<button onclick="if(confirm(\'삭제?\')){S.words=S.words.filter(x=>x.en!==\''+safeEn+'\');sv();go();}" style="background:none;border:none;color:#FCA5A5;font-size:18px;cursor:pointer;flex-shrink:0">×</button>'
+      +'<button onclick="event.stopPropagation();window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(\''+safeEn+'\');u.lang=\'en-US\';u.rate=0.85;window.speechSynthesis.speak(u)" style="width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:#94A3B8;font-size:14px;cursor:pointer;flex:none">🔊</button>'
+      +chk
       +'</div>';
   }).join('');
+  const _pill=(v,lb,cnt)=>'<button onclick="S.listMarkFilter='+v+';go()" style="padding:6px 13px;border-radius:999px;border:none;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;background:'+(filterMark===v?'var(--theme)':'#F1F5F9')+';color:'+(filterMark===v?'#fff':'#64748B')+'">'+lb+' '+cnt+'</button>';
   return '<div class="pad">'
-    +'<div style="display:flex;gap:8px;margin-bottom:8px">'
-    +'<input oninput="S.listSearch=this.value;go()" value="'+(S.listSearch||'')+'" placeholder="🔍 단어 검색..." style="flex:1;font-size:13px">'
-    +'<select onchange="S.listSort=this.value;go()" style="background:#F3F4F6;border:none;border-radius:10px;padding:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">'
-    +'<option value="default" '+(sortBy==='default'?'selected':'')+'>추가순</option>'
-    +'<option value="alpha" '+(sortBy==='alpha'?'selected':'')+'>영어 A-Z</option>'
-    +'<option value="alpha_kr" '+(sortBy==='alpha_kr'?'selected':'')+'>한글 가나다</option>'
-    +'<option value="mark" '+(sortBy==='mark'?'selected':'')+'>마크순</option>'
-    +'<option value="random" '+(sortBy==='random'?'selected':'')+'>🔀 랜덤</option>'
-    +'</select>'
-    +'<button onclick="if(confirm(\'마크 초기화?\')){S.markMap={};S.learned.clear();sv();go();}" style="background:none;border:none;font-size:12px;color:#9CA3AF;cursor:pointer;white-space:nowrap">초기화</button>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+      +'<div style="font-size:12px;color:#94A3B8">단어 <b style="color:var(--theme)">'+curWords.length+'</b>개 · <span style="color:'+_GRN+'">외움 '+memoCnt+'</span></div>'
+      +'<button onclick="go(\'mybooks\',\'add\')" style="border:none;background:var(--theme);color:#fff;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer">＋ 추가</button>'
     +'</div>'
-    +'<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px">'
-    +[[-1,'전체',curWords.length,'#374151'],[0,'미분류',curWords.length-marked1-marked2,'#9CA3AF'],[1,'외웠음 ✅',marked1,'#16A34A'],[2,'헷갈림 🦋',marked2,'var(--theme)'],[-2,'⭐즐겨찾기',markedFav,'#D97706']].map(function(arr){
-      const v=arr[0],lb=arr[1],cnt=arr[2],col=arr[3];
-      return '<button onclick="S.listMarkFilter='+v+';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(filterMark===v?col:'#E5E7EB')+';font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;background:'+(filterMark===v?col:'#F9FAFB')+';color:'+(filterMark===v?'#fff':col)+'">'+lb+' '+cnt+'</button>';
-    }).join('')
+    +'<div style="display:flex;gap:8px;margin-bottom:10px">'
+      +'<input oninput="S.listSearch=this.value;go()" value="'+(S.listSearch||'').replace(/"/g,'&quot;')+'" placeholder="🔍 단어 검색..." style="flex:1;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px;padding:9px 12px;font-size:13px;outline:none">'
+      +'<select onchange="S.listSort=this.value;go()" style="background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px;padding:0 10px;font-size:12px;font-weight:700;color:#64748B;cursor:pointer">'
+        +'<option value="default"'+(sortBy==='default'?' selected':'')+'>추가순</option>'
+        +'<option value="alpha"'+(sortBy==='alpha'?' selected':'')+'>A-Z</option>'
+        +'<option value="alpha_kr"'+(sortBy==='alpha_kr'?' selected':'')+'>가나다</option>'
+        +'<option value="random"'+(sortBy==='random'?' selected':'')+'>🔀</option>'
+      +'</select>'
     +'</div>'
-    +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-bottom:8px">'+filtered.length+'개 표시</div>'
-    +'<div style="display:flex;flex-direction:column;gap:6px">'+rows+'</div>'
+    +'<div style="display:flex;gap:7px;margin-bottom:8px;overflow-x:auto;padding-bottom:2px">'
+      +_pill(-1,'전체',curWords.length)+_pill(-3,'안외운',notCnt)+_pill(1,'외움',memoCnt)+_pill(-2,'⭐',favArr.length)
+    +'</div>'
+    +'<div style="background:#fff;border-radius:16px;padding:4px 6px;border:1px solid #EEF2F7">'+(rows||'<div style="text-align:center;color:#94A3B8;font-size:12px;padding:20px">해당하는 단어가 없어요</div>')+'</div>'
     +'</div>';
 }
 
 function showWordDetail(en) {
-  const w = S.words.find(x=>x.en===en);
+  let w = S.words.find(x=>x.en===en);
+  if(!w && typeof getCurrentBookWords==='function') w = getCurrentBookWords().find(x=>x.en===en);
   if(!w) return;
   const mark=getMark(en); const mInfo=MARK_INFO[mark];
   const safeEn=en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -12268,6 +12285,7 @@ function showWordDetail(en) {
      <button onclick="downloadWordCard('${safeEn}')" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:10px 12px;font-size:16px;cursor:pointer" title="단어 카드 저장">📸</button>
 
     <button onclick="showWordEdit('${safeEn}')" style="width:100%;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;color:#374151">✏️ 단어 직접 수정</button>
+    <button onclick="if(confirm('&quot;${safeEn}&quot; 단어를 삭제할까요?')){removeWordFromCurrentBook('${safeEn}');sv();cm();go();toast('🗑️ 삭제됨');}" style="width:100%;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;color:#DC2626">🗑️ 이 단어 삭제</button>
     <button onclick="cm()" class="btn bgr">닫기</button>
   </div></div>`;
 }
@@ -15533,7 +15551,7 @@ auth.onAuthStateChanged(async user => {
             console.warn('[Firebase 백그라운드] 비정상 데이터 감지, 머지 건너뜀', {localXp:_localXp, fbXp:_fbXp});
           } else {
             ['xp','lid','streak','nick','words','books',
-             'markMap','_achievements','_acc','_equipped','_ownedPacks',
+             'markMap','_achievements','_acc','_equipped','_ownedPacks','hiddenPackWords',
              'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
              '_dailyDate','_dailyXpGiven','fontFamily','lastDate','_totalXp','attendCount','attendDates'
             ].forEach(k => {

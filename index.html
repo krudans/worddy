@@ -1,4 +1,4 @@
-<!-- build: 20260703-home-split-cards -->
+<!-- build: 20260703-scope-empty-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -8968,8 +8968,8 @@ function _bookColor(name){
 function _studyGoalInner(){
   try{ localStorage.setItem('wd-plan-scope', S.currentBook||'내 단어장'); window._planCtx=null; }catch(e){}
   var ctx=window._planCtx=_planScopeData();
-  var sel=_planScopeSel(); if(!ctx.scopes[sel]) sel='__all__';
-  var sc=ctx.scopes[sel]||ctx.scopes['__all__'];
+  var sel=_planScopeSel();
+  var sc=ctx.scopes[sel]||{memo:0,total:0,ens:[]};
   var memo=sc.memo, total=sc.total, remaining=_planRemaining(memo,total);
   var pct=total?Math.round(memo/total*100):0;
   var plan=_planLoadFor(sel);
@@ -15570,9 +15570,20 @@ auth.onAuthStateChanged(async user => {
             S.books = _wd.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;});
             localStorage.setItem('wd-bks', JSON.stringify(_wd.books));
           }
-          if(_wd.words && _wd.words.length>0) {
-            S.words = _wd.words;
-            localStorage.setItem('wd-w', JSON.stringify(_wd.words));
+          if(Array.isArray(_wd.words)) {
+            if(_wd.words.length > 0) {
+              // 서버 정본에 단어 있음 → 로드
+              S.words = _wd.words;
+              localStorage.setItem('wd-w', JSON.stringify(_wd.words));
+            } else if(_wd.books !== undefined) {
+              // 서버 정본이 '명시적으로 빈 단어장'(다른 기기에서 비움)이고 정상 저장본(books 필드 존재)
+              //  → 이 기기의 stale 로컬 단어를 서버 정본에 맞춰 정리 (크로스 기기 동기화)
+              if((S.words||[]).length > 0){
+                console.log('[동기화] 서버 정본이 빈 단어장 → 로컬 stale '+(S.words||[]).length+'개 정리');
+              }
+              S.words = [];
+              localStorage.setItem('wd-w', '[]');
+            }
           }
           console.log('[앱] user_words 로드:', (S.books||[]).map(b=>b.name+':'+b.words?.length).join(', '));
         }

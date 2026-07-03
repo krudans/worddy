@@ -4049,7 +4049,6 @@ function load() {
   S.lastDate = localStorage.getItem('wd-dt')||'';
   S.nick = localStorage.getItem('wd-nk')||'';
   S.words = JSON.parse(localStorage.getItem('wd-w')||'null')||[...DEFAULT_WORDS[S.lid]||DEFAULT_WORDS.egg];
-  try{ console.warn('[TRACE_LOAD] S.words='+(S.words||[]).length+' wd-w='+((localStorage.getItem('wd-w')||'').length)+' cbk='+(localStorage.getItem('wd-cbk')||'')); }catch(e){}
   S.learned = new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]'));
   S.markMap = JSON.parse(localStorage.getItem('wd-mk')||'{}');
   S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}');
@@ -4224,7 +4223,6 @@ function _migratePackWords() {
 }
 
 function sv() {
-  try{ if((S.words||[]).length < 600 && S.currentBook==='내 단어장') console.warn('[TRACE_SVENTRY] sv() called words='+(S.words||[]).length+' cbk='+S.currentBook+'\n'+(new Error().stack||'')); }catch(e){}
   // 잡 키(순수 숫자/빈 문자열) 마크 제거 — 단어가 아닌 마크가 저장·Firebase 동기화되지 않도록
   try{ if(S.markMap) Object.keys(S.markMap).forEach(function(k){ if(!k||/^[0-9]+$/.test(k)) delete S.markMap[k]; }); }catch(e){}
   localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-xp',S.xp);
@@ -4340,7 +4338,6 @@ function sv() {
       delete saveDataLite.words; delete saveDataLite.books;
       // books/words는 별도 컬렉션에 저장 (Firestore 1MB 제한 방지)
       const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: S.words||[], updatedAt: new Date().toISOString()};
-      try{ if((S.words||[]).length < 600) console.warn('[TRACE_SV] user_words write words='+(S.words||[]).length+' books='+(S.books||[]).length+' cbk='+S.currentBook+'\n'+(new Error().stack||'')); }catch(e){}
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장
@@ -5150,10 +5147,13 @@ function updStreak() {
 // ── Firestore 단어 로드 ──
 async function loadWordsFromFirestore(lid) {
   try {
+    // 사용자가 이미 커스텀 단어(내 단어장)를 가지고 있으면, 시스템 기본단어로 덮어쓰지 않는다.
+    // (이걸 안 막으면 로그인마다 words/{lid} 기본 목록이 내 단어장을 덮어써 계정이 초기화됨)
+    if(S.words && S.words.length > 0) return;
     const doc = await db.collection('words').doc(lid).get();
     if(doc.exists) {
       const data = doc.data();
-      if(data.list && data.list.length > 0) {
+      if(data.list && data.list.length > 0 && (!S.words || S.words.length === 0)) {
         S.words = data.list;
         sv(); go();
         toast(`✅ ${data.list.length}개 단어 로드 완료!`);

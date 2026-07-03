@@ -1,4 +1,4 @@
-<!-- build: 20260703-game-entry-guard -->
+<!-- build: 20260703-home-redesign -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -9019,16 +9019,20 @@ function _studyGoalInner(){
   if(tab==='home'){
     var _wDone=_wToday>=_wGoal, _gDone=_gMin>=_gGoal, _sDone=_sMin>=_sGoal;
     var _doneCnt=(_wDone?1:0)+(_gDone?1:0)+(_sDone?1:0);
-    function _d3h(p,center,sub,done,col,id){
-      return '<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0">'+_goalDonut(Math.min(100,p),88,11,id,col,'<div style=\'font-size:14px;font-weight:900;color:'+col+';line-height:1\'>'+center+'</div>')+'<span style="font-size:11px;color:var(--text1,#111);font-weight:800;text-align:center;line-height:1.3">'+sub+'</span><span style="font-size:10px;font-weight:800;color:'+(done?'#16A34A':'var(--text3,#9CA3AF)')+'">'+(done?'✅ 완료':'진행 중')+'</span></div>';
+    function _bar(icon,ibg,label,cur,goal,unit,done,col){
+      var p=goal?Math.min(100,Math.round(cur/goal*100)):0;
+      return '<div style="display:flex;align-items:center;gap:11px">'+
+        '<div style="width:30px;height:30px;border-radius:9px;background:'+ibg+';display:flex;align-items:center;justify-content:center;font-size:15px">'+icon+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:12px;color:var(--text2,#475569)">'+label+'</span><span style="font-size:12px;font-weight:800;color:'+(done?'#16A34A':'var(--text3,#94A3B8)')+'">'+cur+' / '+goal+unit+(done?' ✓':'')+'</span></div>'+
+        '<div style="height:6px;background:var(--bg-sub,#F1F5F9);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+p+'%;background:'+col+';border-radius:3px"></div></div></div></div>';
     }
-    var h3='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-size:14px;font-weight:900;color:var(--text1,#111)">🗓 오늘의 학습</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--theme);font-weight:800">'+_doneCnt+'/3</span><button onclick="event.stopPropagation();showAlarmSettings()" style="background:rgba(0,0,0,.06);border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;color:#6B7280">⚙ 목표 설정</button></div></div>'+
-      '<div style="display:flex;justify-content:space-around;align-items:flex-start;gap:6px">'+
-      _d3h(_wGoal?_wToday/_wGoal*100:0,_wToday+'/'+_wGoal,'단어 '+_wGoal+'개 외우기',_wDone,'#16A34A','pl-h1')+
-      _d3h(_gGoal?_gMin/_gGoal*100:0,_gMin+'/'+_gGoal,'게임 '+_gGoal+'분 플레이',_gDone,'#D97706','pl-h2')+
-      _d3h(_sGoal?_sMin/_sGoal*100:0,_sMin+'/'+_sGoal,_sGoal+'분 공부하기',_sDone,'#2563EB','pl-h3')+
-      '</div><div style="text-align:center;font-size:11px;color:var(--text3,#9CA3AF);margin-top:11px">🔥 연속 '+_streak+'일 · 오늘 외운 '+_wToday+'</div>';
-    return h3+trig;
+    var h3='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px"><span style="font-size:14px;font-weight:900;color:var(--text1,#111)">🗓 오늘의 학습</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--text3,#9CA3AF)">'+_doneCnt+'/3 · <b style="color:#E65100;font-weight:800">🔥'+_streak+'일</b></span><button onclick="event.stopPropagation();showAlarmSettings()" style="background:rgba(0,0,0,.06);border:none;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;color:#6B7280">⚙</button></div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:12px">'+
+      _bar('📖','#DCFCE7','단어 외우기',_wToday,_wGoal,'',_wDone,'#16A34A')+
+      _bar('🎮','#FEF3C7','게임 플레이',_gMin,_gGoal,'분',_gDone,'#D97706')+
+      _bar('📚','#DBEAFE','공부하기',_sMin,_sGoal,'분',_sDone,'#2563EB')+
+      '</div>';
+    return drop+rings+subline+toggle+full+'<div style="height:1px;background:var(--border,#E5E7EB);margin:16px 0"></div>'+h3+trig;
   }
   if(tab==='game'){
     var _gp=_gGoal?Math.min(100,_gMin/_gGoal*100):0;
@@ -9242,46 +9246,7 @@ function rHome() {
 
   // ── XP 사용 가능 배너 제거됨 (상단 캐릭터 카드의 XP·레벨업 표시와 중복) ──
 
-  // ── 오늘 현황 (풍성한 버전) ──
-  const todayWords = todayLog.words||0;
-  const todayQuiz = todayLog.quiz||0;
-  const markDone = (typeof countMemorized==='function') ? countMemorized('today') : 0;
-  const _hbWords = (typeof getCurrentBookWords==='function') ? (getCurrentBookWords()||[]) : (S.words||[]);
-  const _hbMark = (typeof getCurrentBookMarkMap==='function') ? (getCurrentBookMarkMap()||{}) : (S.markMap||{});
-  const totalWordsCount = _hbWords.length;
-  const bookMemo = _hbWords.filter(w=>_hbMark[_mk(w.en)]===1).length;
-  const bookPct = totalWordsCount ? Math.round(bookMemo/totalWordsCount*100) : 0;
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:18px;border:1.5px solid var(--border,var(--border,#E5E7EB));padding:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:800;color:var(--text1,var(--text1,#111111))">📊 오늘의 현황</div>
-      <div style="font-size:11px;color:var(--text3,#9CA3AF)">${new Date().toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'short'})}</div>
-    </div>
-    <div style="display:flex;align-items:center">
-      <div onclick="showStudyCalendar()" style="flex:1;text-align:center;cursor:pointer">
-        <div style="font-size:20px;font-weight:900;color:#E65100">🔥${S.streak||0}</div>
-        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">연속 학습</div>
-      </div>
-      <div style="width:1px;height:30px;background:var(--border,#E5E7EB)"></div>
-      <div style="flex:1;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:var(--theme)">${todayWords}</div>
-        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 학습</div>
-      </div>
-      <div style="width:1px;height:30px;background:var(--border,#E5E7EB)"></div>
-      <div onclick="S.listMarkFilter=1;go('mybooks','list')" style="flex:1;text-align:center;cursor:pointer">
-        <div style="font-size:22px;font-weight:900;color:#16A34A">${markDone}</div>
-        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">오늘 외움</div>
-      </div>
-    </div>
-    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border,#E5E7EB)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-size:11px;font-weight:700;color:var(--text2,#7A5C00)">${_bookNameHome} 진행도 <span style="font-weight:500;color:var(--text3,#9CA3AF)">· 외운 단어 비율</span></div>
-        <div style="font-size:11px;color:var(--text3,#9CA3AF)">${bookMemo}/${totalWordsCount}개 · ${bookPct}%</div>
-      </div>
-      <div style="background:rgba(0,0,0,.08);border-radius:4px;height:6px;overflow:hidden">
-        <div style="height:100%;background:#16A34A;border-radius:4px;width:${bookPct}%;transition:width .6s"></div>
-      </div>
-    </div>
-  </div>`);
+  // ── [제거됨] 오늘의 현황 카드 (진행도는 상단 그래프 카드로 통합) ──
 
   // ── XP 순위(리더보드) 제거됨 — 개인 XP/레벨은 유지 ──
 

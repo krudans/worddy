@@ -12059,5 +12059,21 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "fecund": {cefr:"C2",origin:"라틴어 fecundus(비옥한)에서",syn:["fertile","productive","prolific"],ant:["barren","infertile"]},
   "fecundity": {cefr:"C2",origin:"라틴어 fecundus(비옥한)에서",syn:["fertility","fruitfulness","productivity"],ant:["sterility","barrenness"]},
   "fed": {cefr:"A1",origin:"고대영어 fedan(먹이다)에서",syn:["nourished","supplied"],ant:[]},
-  "federal": {cefr:"B2",origin:"라틴어 foedus(동맹)에서",syn:["national","central","union"],ant:["local","state"]}
+  "federal": {cefr:"B2",origin:"라틴어 foedus(동맹)에서",syn:["national","central","union"],ant:["local","state"]},
+  "federalism": {cefr:"C1",origin:"라틴어 foedus(동맹)에서",syn:["devolution","decentralization"],ant:["centralism"]},
+  "federalist": {cefr:"C1",origin:"라틴어 foedus(동맹)에서",syn:["centralist"],ant:[]},
+  "federally": {cefr:"B2",origin:"라틴어 foedus(동맹)에서",syn:["nationally"],ant:[]},
+  "federated": {cefr:"C1",origin:"라틴어 foedus(동맹)에서",syn:["united","allied","combined"],ant:[]},
+  "federation": {cefr:"B2",origin:"라틴어 foedus(동맹)에서",syn:["union","alliance","coalition"],ant:[]},
+  "fedora": {cefr:"C2",origin:"프랑스어 연극 제목 Fédora에서",syn:["hat"],ant:[]},
+  "feds": {cefr:"C1",origin:"federal의 약어에서",syn:["agents","police"],ant:[]},
+  "fee": {cefr:"A2",origin:"고대프랑스어 fie(봉토)에서",syn:["charge","payment","cost"],ant:[]},
+  "feeble": {cefr:"B2",origin:"라틴어 flebilis(가련한)에서",syn:["weak","frail","infirm"],ant:["strong","robust","vigorous"]},
+  "feed": {cefr:"A1",origin:"고대영어 fedan(먹이다)에서",syn:["nourish","supply"],ant:["starve"]},
+  "feedback": {cefr:"B1",origin:"영어 feed(먹이다) + back(뒤로)의 합성어",syn:["comments","input","evaluation","criticism"],ant:[]},
+  "feeder": {cefr:"B2",origin:"영어 feed(먹이다) + -er(사람/도구 접미사)에서",syn:["dispenser","trough"],ant:[]},
+  "feeders": {cefr:"B2",origin:"영어 feed(먹이다) + -er(사람/도구 접미사)에서",syn:["dispensers","troughs"],ant:[]},
+  "feeding": {cefr:"A2",origin:"영어 feed(먹이다)의 현재분사형에서",syn:["nurturing","nourishing"],ant:[]},
+  "feeds": {cefr:"A2",origin:"고대영어 fedan(먹이다)에서",syn:["nourishes","provides for"],ant:[]},
+  "feedstock": {cefr:"C1",origin:"영어 feed(먹이다/공급하다) + stock(재고)의 합성어",syn:["raw material","supply"],ant:[]}
 });

@@ -5148,8 +5148,15 @@ function updStreak() {
 async function loadWordsFromFirestore(lid) {
   try {
     // 사용자가 이미 커스텀 단어(내 단어장)를 가지고 있으면, 시스템 기본단어로 덮어쓰지 않는다.
-    // (이걸 안 막으면 로그인마다 words/{lid} 기본 목록이 내 단어장을 덮어써 계정이 초기화됨)
     if(S.words && S.words.length > 0) return;
+    // 레이스 방지: S.words가 잠깐 비어 있어도, 서버 정본(user_words)에 단어가 있으면 기본단어 로드 금지.
+    try {
+      const _u = firebase.auth().currentUser;
+      if(_u){
+        const _uw = await db.collection('user_words').doc(_u.uid).get();
+        if(_uw.exists && ((_uw.data().words)||[]).length > 0) return;
+      }
+    } catch(_e) {}
     const doc = await db.collection('words').doc(lid).get();
     if(doc.exists) {
       const data = doc.data();

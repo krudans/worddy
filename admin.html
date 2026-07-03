@@ -1514,6 +1514,17 @@ async function rBF() {
       <button class="btn bb" onclick="showAddBF()">➕ 나비 추가</button>
     </div>
   </div>
+  <!-- 희귀도 발생 확률 설정 -->
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:15px;font-weight:900;margin-bottom:4px">🎲 희귀도 발생 확률 (뽑기 가중치)</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">희귀도 점수(0~100)가 높을수록 잘 안 나오게 조정해요. 저장하면 앱 뽑기에 즉시 반영됩니다.</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+      <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">최고 확률 (100점 나비 1종당, %)</label><input id="bfr-top" type="number" step="0.001" min="0" value="0.01" oninput="_bfRarePreview()" style="width:170px;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box"></div>
+      <div style="flex:1;min-width:240px"><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">기울기 지수 — <span id="bfr-exp-val">2.0</span> (클수록 고희귀가 급격히 희귀)</label><input id="bfr-exp" type="range" min="1" max="6" step="0.1" value="2" oninput="_bfRarePreview()" style="width:100%"></div>
+      <button class="btn bb" onclick="saveBfRarity()" style="width:auto;padding:11px 22px">💾 저장</button>
+    </div>
+    <div id="bfr-preview" style="font-size:12px;color:#374151;background:#F9FAFB;border-radius:10px;padding:12px;line-height:1.9"></div>
+  </div>
   <!-- 나비 목록 표 -->
   <div class="card">
   <div class="tw"><table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -1531,8 +1542,40 @@ async function rBF() {
     </tbody>
   </table></div>
   </div>`;
+  try{ setTimeout(_bfRareLoad, 0); }catch(e){}
 }
 
+// ── 나비 희귀도 발생 확률 설정 ──
+function _bfRareCompute(topProb, exp){
+  var scores=(window._adminAllBF||[]).map(function(b){return (b.score!=null?b.score:50);});
+  if(!scores.length) scores=[100,95,80,50,20,10];
+  var topN=scores.filter(function(s){return s>=100;}).length;
+  var restBudget=Math.max(0, 1 - topN*topProb);
+  var wsum=scores.filter(function(s){return s<100;}).map(function(s){return Math.pow(Math.max(1,101-s),exp);}).reduce(function(a,c){return a+c;},0)||1;
+  return function(score){ if(score>=100) return topProb; return Math.pow(Math.max(1,101-score),exp)/wsum*restBudget; };
+}
+function _bfRarePreview(){
+  var te=document.getElementById('bfr-top'), ee=document.getElementById('bfr-exp'); if(!te||!ee) return;
+  var top=(parseFloat(te.value)/100); if(!isFinite(top)) top=0.0001;
+  var exp=parseFloat(ee.value); if(!isFinite(exp)) exp=2;
+  var ev=document.getElementById('bfr-exp-val'); if(ev) ev.textContent=exp.toFixed(1);
+  var f=_bfRareCompute(top,exp);
+  function pc(s){ var p=f(s)*100; return (p<0.001?p.toFixed(5):p<1?p.toFixed(3):p.toFixed(2))+'%'; }
+  var pv=document.getElementById('bfr-preview');
+  if(pv) pv.innerHTML='📊 1회 뽑기당 예상 발생 확률 — 100점: <b>'+pc(100)+'</b> · 95점: <b>'+pc(95)+'</b> · 80점: <b>'+pc(80)+'</b> · 50점: <b>'+pc(50)+'</b> · 20점: <b>'+pc(20)+'</b> · 10점: <b>'+pc(10)+'</b>';
+}
+async function saveBfRarity(){
+  var top=(parseFloat(document.getElementById('bfr-top').value)/100);
+  var exp=parseFloat(document.getElementById('bfr-exp').value);
+  if(!isFinite(top)||top<0){ toast('최고 확률 값이 올바르지 않아요'); return; }
+  if(!isFinite(exp)||exp<=0){ toast('기울기 값이 올바르지 않아요'); return; }
+  try{ await db.collection('settings').doc('butterflyRarity').set({topProb:top, exp:exp, updatedAt:new Date().toISOString()},{merge:true}); toast('✅ 저장됨 · 앱 뽑기에 반영돼요'); }
+  catch(e){ toast('저장 실패: '+(e.message||e)); }
+}
+async function _bfRareLoad(){
+  try{ var d=await db.collection('settings').doc('butterflyRarity').get(); if(d.exists){ var x=d.data()||{}; var t=document.getElementById('bfr-top'), e=document.getElementById('bfr-exp'); if(t&&x.topProb!=null) t.value=(x.topProb*100); if(e&&x.exp!=null) e.value=x.exp; } }catch(e){}
+  _bfRarePreview();
+}
 
 function showAddBF(bf){
   bf = bf||{};

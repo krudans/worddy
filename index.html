@@ -1793,6 +1793,17 @@ async function loadLevelConfig() {
     }
   } catch(e) {}
 }
+// ── 나비 희귀도 발생 가중치 설정 (관리자 settings/butterflyRarity 로 관리) ──
+async function loadButterflyRarityConfig() {
+  try {
+    if(typeof db === 'undefined') return;
+    const doc = await db.collection('settings').doc('butterflyRarity').get();
+    if(doc.exists) {
+      const data = doc.data()||{};
+      S._bfRarityCfg = { topProb:(data.topProb!=null?data.topProb:0.0001), exp:(data.exp!=null?data.exp:2) };
+    }
+  } catch(e) {}
+}
 function xp(key) { const v = window._XPC[key]; return Math.round((v!=null ? v : (XP_DEFAULT[key]||0)) * (window._XPC.xpMultiplier||1)); }
 
 function savePartialGameScore() {
@@ -8375,16 +8386,15 @@ function rollButterfly() {
   const pool = BUTTERFLY_LIST.slice();
   if(pool.length === 0) return null;
 
-  // ── score 기반 희소성 확률 ──
-  // 최고점(100) 나비는 정확히 0.01%씩 고정 배정.
-  // 나머지 확률(99.99%…)은 (101 - score)^2 가중치로 분배해
-  // 점수가 높을수록 희귀, 낮을수록 흔하게 한다.
-  //  예) 100점 = 0.01%, 95점 ≈ 0.06%, 50점대 ≈ 2.9%, 10점 ≈ 13.6%
-  const TOP_PROB = 0.0001; // 100점 1종당 0.01%
+  // ── score 기반 희소성 확률 (admin 나비 관리에서 조정 가능) ──
+  // topProb: 최고점(100) 나비 1종당 고정 확률 / exp: (101-score)^exp 기울기(클수록 고희귀가 급격히 희귀)
+  var _bfCfg=(typeof S!=='undefined'&&S._bfRarityCfg)||{};
+  const TOP_PROB = (_bfCfg.topProb!=null && isFinite(_bfCfg.topProb)) ? _bfCfg.topProb : 0.0001; // 100점 1종당 (기본 0.01%)
+  const _RARE_EXP = (_bfCfg.exp!=null && isFinite(_bfCfg.exp)) ? _bfCfg.exp : 2; // 기본 지수 2
   const topIdx = [], restIdx = [];
   pool.forEach((b,i) => { ((b.score||0) >= 100 ? topIdx : restIdx).push(i); });
   const restBudget = Math.max(0, 1 - topIdx.length * TOP_PROB); // 나머지가 나눠가질 확률
-  const restWeights = restIdx.map(i => Math.pow(101 - (pool[i].score||50), 2));
+  const restWeights = restIdx.map(i => Math.pow(Math.max(1, 101 - (pool[i].score||50)), _RARE_EXP));
   const restWsum = restWeights.reduce((a,c)=>a+c, 0) || 1;
   // 각 나비의 최종 확률 배열 (pool 인덱스 순서)
   const probs = new Array(pool.length).fill(0);
@@ -15387,6 +15397,7 @@ auth.onAuthStateChanged(async user => {
       await loadXPConfig();
       await loadLevelConfig();
       await loadPopupConfig();
+      await loadButterflyRarityConfig();
       setSplash(90, '시작합니다! 🦋', '앱 시작 중');
       startApp();
       // Firebase 백그라운드 동기화 (앱 시작 후)
@@ -15560,6 +15571,7 @@ auth.onAuthStateChanged(async user => {
     setSplash(40, '계정 데이터 로드 중...', 'Firebase 연결 중');
     await loadXPConfig();
     await loadLevelConfig();
+    await loadButterflyRarityConfig();
     await loadPopupConfig();
     setSplash(60, '계정 데이터 로드 중...', '사용자 데이터 받아오는 중');
 

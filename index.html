@@ -1,4 +1,4 @@
-<!-- build: 20260704-books-persist-fix -->
+<!-- build: 20260704-dict-register-full -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -12254,9 +12254,15 @@ function showWordDetail(en) {
   const koSnd = w.koSnd||'';
   // 연상 메모
   const memo = w.memo||'';
-  // 품사/동의어
+  // 품사/동의어·반의어·메타·다국어 (사전 등록 시 보존된 전체 필드)
   const pos = w.pos||'';
-  const syn = w.syn||'';
+  const synArr = Array.isArray(w.syn)?w.syn.slice():(w.syn?String(w.syn).split(/[,、]\s*/).map(s=>s.trim()).filter(Boolean):[]);
+  const antArr = Array.isArray(w.ant)?w.ant.slice():(w.ant?String(w.ant).split(/[,、]\s*/).map(s=>s.trim()).filter(Boolean):[]);
+  const cefr = w.cefr||''; const origin = w.origin||'';
+  const jaW = w.ja||null; const deW = w.de||null;
+  const _esc2 = s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const _sq = s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const _chip = (arr,color,bg,bd)=>arr.map(x=>`<span style="background:${bg};color:${color};font-size:12px;font-weight:700;padding:4px 10px;border-radius:14px;border:1px solid ${bd}">${_esc2(x)}</span>`).join(' ');
 
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
 
@@ -12275,8 +12281,22 @@ function showWordDetail(en) {
     <!-- 3. 품사 -->
     ${pos?`<div style="text-align:center;margin-bottom:10px">
       <span style="background:var(--theme-tint);color:var(--theme);font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;border:1px solid var(--theme-soft)">${pos}</span>
-      ${syn?`<span style="background:#F5F3FF;color:var(--theme);font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;border:1px solid #DDD6FE;margin-left:6px">≈ ${syn}</span>`:''}
+      ${cefr?`<span style="background:#EFF6FF;color:#2563EB;font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;border:1px solid #BFDBFE;margin-left:6px">${cefr}</span>`:''}
     </div>`:''}
+
+    <!-- 3-1. 다른 언어 (일본어/독일어) -->
+    ${(jaW||deW)?`<div style="background:#F6F9FC;border:1px solid #EBF1F7;border-radius:12px;padding:9px 12px;margin-bottom:10px">
+      <div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">다른 언어</div>
+      ${(jaW&&jaW.label)?`<div style="display:flex;align-items:center;gap:8px;${(deW&&deW.label)?'margin-bottom:6px':''}"><span style="font-size:12px;color:#6B7280;min-width:66px">🇯🇵 일본어</span><span style="font-size:15px;font-weight:700;color:#111">${_esc2(jaW.label)}</span>${[jaW.kanji,jaW.roma].filter(Boolean).length?`<span style="font-size:12px;color:#94A3B8">${_esc2([jaW.kanji,jaW.roma].filter(Boolean).join(' · '))}</span>`:''}<button onclick="window.speechSynthesis.cancel();var u=new SpeechSynthesisUtterance('${_sq(jaW.label)}');u.lang='ja-JP';window.speechSynthesis.speak(u)" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:15px">🔊</button></div>`:''}
+      ${(deW&&deW.label)?`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#6B7280;min-width:66px">🇩🇪 독일어</span><span style="font-size:15px;font-weight:700;color:#111">${_esc2(deW.label)}</span>${[deW.gender,deW.plural?('복수 '+deW.plural):''].filter(Boolean).length?`<span style="font-size:12px;color:#94A3B8">${_esc2([deW.gender,deW.plural?('복수 '+deW.plural):''].filter(Boolean).join(' · '))}</span>`:''}<button onclick="window.speechSynthesis.cancel();var u=new SpeechSynthesisUtterance('${_sq(deW.label)}');u.lang='de-DE';window.speechSynthesis.speak(u)" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:15px">🔊</button></div>`:''}
+    </div>`:''}
+
+    <!-- 3-2. 어원 -->
+    ${origin?`<div style="background:#F8F9FA;border-radius:12px;padding:8px 12px;margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">🌱 어원</div><div style="font-size:13px;color:#4B5563;line-height:1.5">${_esc2(origin)}</div></div>`:''}
+
+    <!-- 3-3. 유의어 / 반의어 -->
+    ${synArr.length?`<div style="margin-bottom:8px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">유의어</div><div style="display:flex;flex-wrap:wrap;gap:5px">${_chip(synArr,'#059669','#ECFDF5','#A7F3D0')}</div></div>`:''}
+    ${antArr.length?`<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">반의어</div><div style="display:flex;flex-wrap:wrap;gap:5px">${_chip(antArr,'#DC2626','#FEF2F2','#FECACA')}</div></div>`:''}
 
     <!-- 4. 발음기호 -->
     ${(w.ph||koSnd)?`<div style="text-align:center;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">
@@ -12287,8 +12307,17 @@ function showWordDetail(en) {
       <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="background:var(--theme);color:#fff;border:none;border-radius:10px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer">🔊 발음 듣기</button>
     </div>`}
 
-    <!-- 5. 예문 (최대 3개) -->
-    ${(()=>{const exList=w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[]);if(!exList.length)return '';return '<div style="background:#F8F9FA;border-radius:12px;padding:10px 14px;margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">예문</div>'+exList.map((ex,i)=>'<div style="font-size:13px;color:#374151;font-style:italic;line-height:1.6'+(i>0?';margin-top:5px;padding-top:5px;border-top:1px solid #E5E7EB':'')+'">'+'"'+ex+'"</div>').join('')+'</div>';})()}
+    <!-- 5. 예문 / 5형식 문장 -->
+    ${(()=>{
+      if(w.ex5&&w.ex5.length){
+        const FCOL=['#3B82F6','#10B981','#8B5CF6','#F97316','#EC4899'];
+        return '<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">문장 5형식</div>'+
+          w.ex5.map(sx=>{const col=FCOL[(sx.t||1)-1]||'#3B82F6';return '<div style="display:flex;gap:8px;align-items:flex-start;background:#F8F9FA;border-radius:10px;padding:8px 10px;margin-top:6px"><span style="flex:none;width:30px;height:22px;border-radius:6px;background:'+col+';color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center">'+(sx.t||'')+'형</span><div style="flex:1"><div style="font-size:13px;color:#111;line-height:1.5">'+_esc2(sx.en||'')+'</div>'+(sx.kr?'<div style="font-size:12px;color:#94A3B8;margin-top:2px">'+_esc2(sx.kr)+'</div>':'')+'</div></div>';}).join('')+'</div>';
+      }
+      const exList=w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[]);
+      if(!exList.length)return '';
+      return '<div style="background:#F8F9FA;border-radius:12px;padding:10px 14px;margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">예문</div>'+exList.map((ex,i)=>'<div style="font-size:13px;color:#374151;font-style:italic;line-height:1.6'+(i>0?';margin-top:5px;padding-top:5px;border-top:1px solid #E5E7EB':'')+'">'+'"'+_esc2(ex)+'"</div>').join('')+'</div>';
+    })()}
     ${w.tip?`<div style="background:#FFF8E1;border-radius:10px;padding:8px 12px;font-size:13px;color:#E65100;margin-bottom:10px">💡 ${w.tip}</div>`:''}
 
     <button onclick="window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('${safeEn}');u.lang='en-US';u.rate=0.85;window.speechSynthesis.speak(u)" style="background:var(--theme);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🔊 발음 듣기</button>

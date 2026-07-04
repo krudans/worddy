@@ -670,15 +670,33 @@
     var S = ST(); if (S && S.currentBook === '내 단어장') { S.words = arr.slice(); }
   }
   function _bwduiBuildW(word) {
+    try { if (typeof ensureMeta === 'function') ensureMeta(); } catch (e) {}
     var d = D(); var e = (d && d[word]) || null;
     var x5 = (window.BWD_EX5 && window.BWD_EX5[word]) || null;
     var exList = (x5 && x5.ex5 && x5.ex5.length) ? x5.ex5.map(function (s) { return s.en; }) : ((e && e.ex) ? [e.ex] : []);
-    return {
+    // 뜻 여러 개 분리(세미콜론·가운뎃점 기준, 쉼표는 한 뜻 안 동의어라 유지)
+    var meanings = (e && e.kr) ? String(e.kr).split(/[;∙·、]+/).map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    if (!meanings.length && e && e.kr) meanings = [String(e.kr)];
+    var w = {
       en: word, kr: (e && e.kr) || '', ph: pronOf(word) || '', ex: (e && e.ex) || '',
       exList: exList, tip: word + (e && e.kr ? ' = ' + e.kr : ''),
-      meanings: (e && e.kr) ? [e.kr] : [], img: (x5 && x5.img) ? x5.img : '📖', pos: (e && e.pos) || '',
+      meanings: meanings, img: (x5 && x5.img) ? x5.img : '📖', pos: (e && e.pos) || '',
       ex5: (x5 && x5.ex5) ? x5.ex5 : null
     };
+    // 다국어(일본어/독일어) — 등록 시 사전 내용 전체 보존
+    var jaW = (window.BWD_JA && window.BWD_JA[word]) || null;
+    var deW = (window.BWD_DE && window.BWD_DE[word]) || null;
+    if (jaW && jaW.label) w.ja = { label: jaW.label || '', kanji: jaW.kanji || '', roma: jaW.roma || '' };
+    if (deW && deW.label) w.de = { label: deW.label || '', gender: deW.gender || '', plural: deW.plural || '' };
+    // 메타(CEFR 난이도·어원·유의어·반의어)
+    var meta = (window.BWD_META && window.BWD_META[word]) || null;
+    if (meta) {
+      if (meta.cefr) w.cefr = meta.cefr;
+      if (meta.origin) w.origin = meta.origin;
+      if (meta.syn && meta.syn.length) w.syn = meta.syn.slice();
+      if (meta.ant && meta.ant.length) w.ant = meta.ant.slice();
+    }
+    return w;
   }
   // 기본: 내 단어장에 저장 → 이후 다른 단어장으로 옮기기 픽커
   function addToBook(word) {

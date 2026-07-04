@@ -1,4 +1,4 @@
-<!-- build: 20260704-dict-register-full -->
+<!-- build: 20260704-import-dict-fill -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -11559,6 +11559,7 @@ function rAdd() {
 
   // 단어장 저장 헬퍼
   function _saveWord(w) {
+    w = _enrichFromDict(w);
     if(curBook!=='내 단어장') {
       const bk=(S.books||[]).find(b=>b.name===curBook);
       if(bk && bk.packId) { toast('마켓팩은 단어를 추가할 수 없어요','err'); return; }
@@ -12016,7 +12017,66 @@ const aiM = aiMFull;
 
 
 // ── 현재 선택된 단어장에 단어 저장 헬퍼 ──
+// ── [사전 자동 채움] 입력(사진/PDF/엑셀/붙여넣기/수동)으로 들어온 단어를 앱 사전(butterfly dic)에서 조회해 세부정보를 채운다. AI 아님. ──
+function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||(window.BWD_META&&Object.keys(window.BWD_META).length))return; window.__bwdMetaLoaded=true; ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+Date.now();s.async=true;document.head.appendChild(s);}); }catch(e){} }
+function _dictLookup(en){
+  en=String(en||'').trim(); var lo=en.toLowerCase();
+  var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:null;
+  var e=D?(D[en]||D[lo]):null;
+  return { en:en, e:e,
+    ph:(typeof BWD_PRON!=='undefined' && (BWD_PRON[en]||BWD_PRON[lo]))||'',
+    x5:(window.BWD_EX5||{})[en]||(window.BWD_EX5||{})[lo]||null,
+    ja:(window.BWD_JA||{})[en]||(window.BWD_JA||{})[lo]||null,
+    de:(window.BWD_DE||{})[en]||(window.BWD_DE||{})[lo]||null,
+    meta:(window.BWD_META||{})[en]||(window.BWD_META||{})[lo]||null };
+}
+function _enrichFromDict(word){
+  try{
+    if(!word||!word.en) return word;
+    _ensureBwdMeta();
+    var L=_dictLookup(word.en); var e=L.e;
+    // 사전에 뜻이 없음 → 관리자 미등록 알림 적재 (사용자 입력 뜻은 유지)
+    if(!e||!e.kr) _reportMissingDictWord(word.en, word.kr||'');
+    var kr=(word.kr&&String(word.kr).trim())?word.kr:((e&&e.kr)||'');
+    var meanings=kr?String(kr).split(/[;∙·、]+/).map(function(s){return s.trim();}).filter(Boolean):[];
+    if(!meanings.length&&kr) meanings=[String(kr)];
+    var exList=(L.x5&&L.x5.ex5&&L.x5.ex5.length)?L.x5.ex5.map(function(s){return s.en;}):((word.exList&&word.exList.length)?word.exList:((e&&e.ex)?[e.ex]:(word.ex?[word.ex]:[])));
+    var w=Object.assign({}, word, {
+      en:word.en, kr:kr,
+      ph:(word.ph&&String(word.ph).trim())?word.ph:(L.ph||''),
+      ex:(e&&e.ex)||word.ex||'',
+      exList:exList, meanings:meanings,
+      pos:(e&&e.pos)||word.pos||'',
+      img:(word.img&&word.img!=='📝'&&word.img!=='📖')?word.img:((L.x5&&L.x5.img)||word.img||'📝'),
+      tip:word.tip||(word.en+(kr?(' = '+kr):'')),
+      ex5:(L.x5&&L.x5.ex5)?L.x5.ex5:(word.ex5||null)
+    });
+    if(L.ja&&L.ja.label) w.ja={label:L.ja.label,kanji:L.ja.kanji||'',roma:L.ja.roma||''};
+    if(L.de&&L.de.label) w.de={label:L.de.label,gender:L.de.gender||'',plural:L.de.plural||''};
+    if(L.meta){ if(L.meta.cefr)w.cefr=L.meta.cefr; if(L.meta.origin)w.origin=L.meta.origin; if(L.meta.syn&&L.meta.syn.length)w.syn=L.meta.syn.slice(); if(L.meta.ant&&L.meta.ant.length)w.ant=L.meta.ant.slice(); }
+    return w;
+  }catch(err){ return word; }
+}
+// 사전에 없는 단어 → 관리자용 미등록 컬렉션에 적재 (관리자가 그때그때 사전 등록)
+function _reportMissingDictWord(en, kr){
+  try{
+    en=String(en||'').trim(); if(!en) return;
+    if(!window.__missReported) window.__missReported={};
+    var lo=en.toLowerCase();
+    if(window.__missReported[lo]) return; window.__missReported[lo]=1;
+    if(typeof db==='undefined'||!db) return;
+    db.collection('dict_missing').doc(lo).set({
+      en:en, kr:kr||'',
+      count:firebase.firestore.FieldValue.increment(1),
+      lastAt:new Date().toISOString(),
+      lastBy:(S.user&&S.user.uid)||'',
+      resolved:false
+    }, {merge:true}).catch(function(){});
+  }catch(e){}
+}
+
 function saveWordToCurrentBook(word) {
+  word = _enrichFromDict(word);
   const bookName = S.currentBook || '내 단어장';
   if(bookName === '내 단어장') {
     if(!S.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
@@ -12077,6 +12137,7 @@ function addW(){
   };
 
   // 현재 단어장에 저장
+  newWord = _enrichFromDict(newWord);
   if(S.currentBook && S.currentBook!=='내 단어장') {
     const bk = S.books.find(b=>b.name===S.currentBook);
     if(bk && bk.packId) { toast('마켓팩은 단어를 추가할 수 없어요','err'); return; }
@@ -15865,7 +15926,10 @@ auth.onAuthStateChanged(async user => {
 <script src="js/bwd-suggest.js"></script>
   <script src="js/bwd-fix.js?v=2"></script>
   <script src="js/bwd-dict-ui.js?v=7ex5"></script>
-  <script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=false;document.head.appendChild(s);});window.__bwdEx5Loaded=true;})();</script>
+  <script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=false;document.head.appendChild(s);});window.__bwdEx5Loaded=true;
+  // 메타(CEFR/어원/유의어/반의어)도 미리 로드(논블로킹) — 입력 자동채움에 사용
+  if(!window.__bwdMetaLoaded){window.__bwdMetaLoaded=true;['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=true;document.head.appendChild(s);});}
+  })();</script>
 
 <script>
 /* Worddy AI fix (2026-06-13): model 2.5-flash + thinkingBudget0 + fallback + 난이도 모달 체크박스 */

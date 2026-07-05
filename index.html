@@ -1,4 +1,4 @@
-<!-- build: 20260705-sv-myword-leak-fix -->
+<!-- build: 20260705-migv2-fn -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15518,6 +15518,38 @@ async function _initSessionLock(uid){
     if(!res.ok){ window._sessionLost=true; _showLockOverlay(uid, 'busy', (res.other&&res.other.name)||''); return; }
     window._sessionLost=false; _startHeartbeat(uid); _watchLock(uid);
   }catch(e){ window._sessionLost=false; /* 락 실패 시 잠그지 않음 */ console.warn('[세션락] 초기화 실패(락 없이 진행)', e); }
+}
+
+// [문서분리 1단계] schemaV<2면 user_words blob → 개별 문서(users/{uid}/books/*, words/*)로 fan-out.
+//  가산적(blob·읽기·쓰기 경로 미변경, blob이 폴백 백업). schemaV:2로 1회만. 실패해도 앱 정상(다음 호출 재시도).
+//  ★현재는 로드에 자동연결 안 함 — 본인 계정 수동 호출로 검증 후 다음 단계에서 연결.
+async function _migrateToV2(uid){
+  try{
+    if(typeof db==='undefined') return {skipped:'no-db'};
+    const uref=db.collection('users').doc(uid);
+    const usnap=await uref.get();
+    if(usnap.exists && (usnap.data().schemaV||0) >= 2){ return {skipped:'already-v2'}; }
+    const uwsnap=await db.collection('user_words').doc(uid).get();
+    const uw=uwsnap.exists?uwsnap.data():null;
+    const books=(uw&&uw.books)||[], words=(uw&&uw.words)||[];
+    const ts=firebase.firestore.FieldValue.serverTimestamp();
+    const bcol=uref.collection('books'), wcol=uref.collection('words');
+    const ops=[];
+    books.forEach((b,i)=>{
+      const id=b.packId||('bk'+i);
+      ops.push([bcol.doc(id), {name:b.name||'', packId:b.packId||null, order:i, deleted:false, updatedAt:ts}]);
+      if(!b.packId && Array.isArray(b.words)) b.words.forEach((w,j)=>{ if(w&&w.en) ops.push([wcol.doc('b'+i+'_'+j), {bookId:id, en:w.en, kr:w.kr||'', mark:(w.mark||0), deleted:false, updatedAt:ts}]); });
+    });
+    words.forEach((w,i)=>{ if(w&&w.en) ops.push([wcol.doc('my'+i), {bookId:'__my__', en:w.en, kr:w.kr||'', mark:(w.mark||0), deleted:false, updatedAt:ts}]); });
+    for(let k=0;k<ops.length;k+=400){
+      const batch=db.batch();
+      ops.slice(k,k+400).forEach(function(pair){ batch.set(pair[0],pair[1]); });
+      await batch.commit();
+    }
+    await uref.set({schemaV:2, schemaV2At:new Date().toISOString()},{merge:true});
+    console.log('[migV2] 완료: 문서 '+ops.length+'개 (books '+books.length+', words '+words.length+')');
+    return {ok:true, docs:ops.length, books:books.length, words:words.length};
+  }catch(e){ console.warn('[migV2] 실패(재시도 가능)', e); return {err:String(e)}; }
 }
 
 auth.onAuthStateChanged(async user => {

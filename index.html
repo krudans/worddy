@@ -1,4 +1,4 @@
-<!-- build: 20260705-lock-btn-rename -->
+<!-- build: 20260705-lock-always-warn -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15461,8 +15461,9 @@ function _deviceName(){ try{ return (/Mobile|Android|iPhone|iPad/i.test(navigato
 async function _acquireLock(uid, force){
   var ref=db.collection('sessions').doc(uid), me=_deviceId(), now=Date.now();
   var snap=await ref.get(); var d=snap.exists?snap.data():null;
-  var heldByOther = d && d.deviceId && d.deviceId!==me && ((now-(d.hb||0)) < LOCK_STALE_MS);
-  if(heldByOther && !force) return {ok:false, other:d};
+  var existsOther = d && d.deviceId && d.deviceId!==me;
+  var fresh = existsOther && ((now-(d.hb||0)) < LOCK_STALE_MS);
+  if(existsOther && !force) return {ok:false, other:d, stale:!fresh};
   await ref.set({deviceId:me, name:_deviceName(), at:now, hb:now});
   return {ok:true};
 }
@@ -15484,14 +15485,18 @@ function _watchLock(uid){
     }
   }, function(){});
 }
-function _showLockOverlay(uid, mode, otherName){
+function _showLockOverlay(uid, mode, otherName, opts){
   try{
+    opts = opts || {};
     var ex=document.getElementById('sessLockOv'); if(ex) ex.remove();
     var isLost = (mode==='lost');
-    var title = isLost ? '다른 기기에서 접속됨' : '이미 계정이 사용 중입니다';
+    var _ago = '';
+    if(opts.hb){ var _m=Math.max(1, Math.round((Date.now()-opts.hb)/60000)); _ago = (_m>=60? (Math.round(_m/60)+'시간') : (_m+'분'))+' 전'; }
+    var _useState = opts.stale ? ('마지막으로 '+(_ago||'얼마 전')+' 사용됨') : '사용 중';
+    var title = isLost ? '다른 기기에서 접속됨' : (opts.stale ? '다른 기기가 등록돼 있어요' : '이미 계정이 사용 중입니다');
     var body  = isLost
       ? ('다른 기기'+(otherName?'('+otherName+')':'')+'에서 이 계정에 접속했어요.<br>데이터 꼬임 방지를 위해 이 기기에서는 저장이 멈췄어요.<br>이 기기에서 계속하려면 아래를 누르세요. 그러면 <b>다른 기기가 강제 종료</b>됩니다.')
-      : ('이 계정을 다른 기기'+(otherName?'('+otherName+')':'')+'에서 사용 중입니다.<br>이 기기에서 다시 시작하면, <b>다른 기기는 강제 종료</b>되며 <b>이 기기 상태로 저장</b>됩니다.');
+      : ('이 계정을 다른 기기'+(otherName?'('+otherName+')':'')+'에서 '+_useState+'이에요.<br>이 기기에서 다시 시작하면, <b>다른 기기는 강제 종료</b>되며 <b>이 기기 상태로 저장</b>됩니다.');
     var takeLabel = isLost ? '이 기기에서 계속하기' : '이 기기에서 다시 시작하기';
     var ov=document.createElement('div'); ov.id='sessLockOv';
     ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.94);display:flex;align-items:center;justify-content:center;padding:24px';
@@ -15518,7 +15523,7 @@ function _showLockOverlay(uid, mode, otherName){
 async function _initSessionLock(uid){
   try{
     var res=await _acquireLock(uid, false);
-    if(!res.ok){ window._sessionLost=true; _showLockOverlay(uid, 'busy', (res.other&&res.other.name)||''); return; }
+    if(!res.ok){ window._sessionLost=true; _showLockOverlay(uid, 'busy', (res.other&&res.other.name)||'', {stale:res.stale, hb:(res.other&&res.other.hb)}); return; }
     window._sessionLost=false; _startHeartbeat(uid); _watchLock(uid);
   }catch(e){ window._sessionLost=false; /* 락 실패 시 잠그지 않음 */ console.warn('[세션락] 초기화 실패(락 없이 진행)', e); }
 }

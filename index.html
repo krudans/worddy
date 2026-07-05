@@ -1,4 +1,4 @@
-<!-- build: 20260704-lset-collapse-on-start -->
+<!-- build: 20260705-step2-userwords-merge-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15410,6 +15410,33 @@ const _authTimeout = setTimeout(() => {
   }
 }, 10000);
 
+// ── [크로스기기 유실 방지] books/words 합집합 병합 헬퍼 ──
+// STEP2 빠른 경로가 서버 user_words(정본)를 안 읽고 로컬(스테일)로 덮던 버그를 막기 위한 union 병합.
+// 서버 ∪ 로컬 → 어느 쪽에만 있는 책/단어도 보존(파괴 금지). 단어 키=en(소문자), 책 키=packId 또는 name.
+function _mergeWordsUnion(localArr, srvArr){
+  const out = Array.isArray(localArr) ? localArr.slice() : [];
+  const have = new Set(out.map(w => (w && w.en) ? String(w.en).toLowerCase() : '').filter(Boolean));
+  (Array.isArray(srvArr) ? srvArr : []).forEach(w => {
+    const k = (w && w.en) ? String(w.en).toLowerCase() : '';
+    if(k && !have.has(k)){ out.push(w); have.add(k); }
+  });
+  return out;
+}
+function _mergeBooksUnion(localBks, srvBks){
+  const key = b => b ? (b.packId ? 'p:'+b.packId : 'n:'+(b.name||'')) : '';
+  const out = []; const idx = {};
+  (Array.isArray(localBks) ? localBks : []).forEach(b => {
+    const k = key(b); if(!k) return;
+    if(idx[k]===undefined){ idx[k]=out.length; out.push({...b}); }
+  });
+  (Array.isArray(srvBks) ? srvBks : []).forEach(b => {
+    const k = key(b); if(!k) return;
+    if(idx[k]===undefined){ idx[k]=out.length; out.push({...b}); }
+    else if(!b.packId){ out[idx[k]].words = _mergeWordsUnion(out[idx[k]].words, b.words); } // 커스텀 책만 단어 union(팩은 단어 미저장)
+  });
+  return out;
+}
+
 auth.onAuthStateChanged(async user => {
   clearTimeout(_authTimeout);
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
@@ -15630,8 +15657,24 @@ auth.onAuthStateChanged(async user => {
           });
           S.words = _fix(S.words||[]);
           S.books = (S.books||[]).map(bk=>({...bk,words:_fix(bk.words||[])}));
-          sv(); // 최신 데이터 저장
-          console.log('[앱] Firebase 백그라운드 동기화 완료');
+          // [크로스기기 유실 방지 — 근본수정] STEP2 빠른 경로는 여태 서버 user_words(정본)를 안 읽고
+          //  로컬(스테일)로 user_words를 merge:false 덮어써서, 다른 기기가 넣은 책/단어를 통째로 파괴했다(§1-C).
+          //  → 저장 직전 서버 user_words를 읽어 books/words를 합집합 병합(서버 ∪ 로컬)한 뒤 저장한다.
+          (async ()=>{
+            try{
+              const _uwSnap = await db.collection('user_words').doc(user.uid).get();
+              if(_uwSnap.exists){
+                const _uw = _uwSnap.data();
+                const _bBefore = (S.books||[]).length, _wBefore = (S.words||[]).length;
+                S.books = _mergeBooksUnion(S.books, _uw.books);
+                S.words = _mergeWordsUnion(S.words, _uw.words);
+                console.log('[앱] user_words 병합: 책 '+_bBefore+'→'+(S.books||[]).length+', 단어 '+_wBefore+'→'+(S.words||[]).length+' (서버책 '+((_uw.books||[]).length)+')');
+                try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(b=>{ if(b&&b.packId){ const {words,...r}=b; return r; } return b; }))); }catch(e){}
+              }
+            }catch(e){ console.warn('[앱] user_words 병합 실패(로컬 유지)', e); }
+            sv(); // 병합된 정본 저장
+            console.log('[앱] Firebase 백그라운드 동기화 완료(user_words 병합)');
+          })();
         }).catch(e => console.warn('[앱] Firebase 동기화 실패', e));
       }
       return; // 아래 로직 실행 안 함

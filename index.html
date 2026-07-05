@@ -1,4 +1,4 @@
-<!-- build: 20260705-lock-always-warn -->
+<!-- build: 20260706-book-attributed-today-memo -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -3973,6 +3973,9 @@ function setMark(en, val) {
       if(!Array.isArray(S.studyLog[_t].markedEns)) S.studyLog[_t].markedEns=[];
       if(!S.studyLog[_t].markedEns.includes(en)) S.studyLog[_t].markedEns.push(en);
       S.studyLog[_t].marked=S.studyLog[_t].markedEns.length;
+      // [책귀속] 어느 단어장에서 외웠는지 기록 → 책별 '오늘 외운' 정확화(겹치는 단어가 안 연 책에 잡히던 버그 수정)
+      if(!S.studyLog[_t].markBook || typeof S.studyLog[_t].markBook!=='object') S.studyLog[_t].markBook={};
+      S.studyLog[_t].markBook[en]=(S.currentBook||'내 단어장');
     }catch(e){}
   } else {
     delete S.markDates[en];
@@ -8642,6 +8645,27 @@ function _planTodayMemo(ens, todayStr){
     return c;
   }catch(e){ return (typeof _todayMemoCount==='function')?_todayMemoCount(todayStr):0; }
 }
+// [책귀속] 책별 '오늘 외운' — markBook(외운 책 기록) 기준. 귀속 기록 없는 과거 표시는
+//  '이 책에만 있는 단어'일 때만 인정(겹치는 단어는 어느 책에도 안 셈 → 안 연 책에 잘못 잡히던 문제 해결).
+function _todayMemoByBook(bookName, todayStr, booksArr){
+  try{
+    var t=todayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+    var d=(S.studyLog||{})[t]||{};
+    var marked=Array.isArray(d.markedEns)?d.markedEns:[];
+    if(!bookName || bookName==='__all__') return marked.length;
+    var mb=(d.markBook&&typeof d.markBook==='object')?d.markBook:{};
+    var books=booksArr||[];
+    var c=0;
+    for(var i=0;i<marked.length;i++){
+      var en=marked[i];
+      if(mb[en]!==undefined){ if(mb[en]===bookName) c++; continue; } // 귀속 기록 있음(정확)
+      var owners=0, inThis=false;
+      for(var b=0;b<books.length;b++){ var es=books[b].ens; if(es && es.indexOf && es.indexOf(en)>=0){ owners++; if(books[b].name===bookName) inThis=true; } }
+      if(inThis && owners===1) c++; // 겹침 단어(owners>1)는 제외
+    }
+    return c;
+  }catch(e){ return 0; }
+}
 function _planRecentMemo(ens, days, todayStr){
   var md=S.markDates||{}; var end=_planParse(todayStr).getTime(); var start=end-(days-1)*86400000;
   function inR(d){ if(!d) return false; var t=_planParse(String(d).slice(0,10)).getTime(); return t>=start && t<=end; }
@@ -8984,6 +9008,7 @@ function _studyGoalInner(){
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
   var pace=_planPace(sc.ens,daily,ctx.today);
+  if(sel && sel!=='__all__'){ pace.todayMemo=_todayMemoByBook(sel,ctx.today,ctx.books); } // [책귀속] 책별 '오늘'은 실제 그 책에서 외운 것만
   var tPct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
   var B='var(--theme)';
   var open=!!window._planAutoOpen; try{ window._planAutoOpen=false; }catch(e){}

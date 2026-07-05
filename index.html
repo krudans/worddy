@@ -1,4 +1,4 @@
-<!-- build: 20260705-migv2-autohook -->
+<!-- build: 20260705-account-switch-guard -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15563,6 +15563,17 @@ auth.onAuthStateChanged(async user => {
   loadButterfliesFromFirebase();
 
   if(user) {
+    // [계정전환 보호] 직전 로그인 계정과 다르면 이전 계정의 로컬 데이터를 비워 섞임 방지.
+    //  (첫 로그인=wd-uid 없음이면 정리 안 함. 같은 계정 재로그인이면 유지.)
+    try{
+      var _prevUid = localStorage.getItem('wd-uid');
+      if(_prevUid && _prevUid !== user.uid){
+        ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk','wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl','wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-txp','wd-tsm','wd-dg','wd-dsm','wd-dd','wd-dxg','wd-mkd','wd-fav','wd-ach','wd-als','wd-alg','wd-alst','wd-butterflies','bw-collection','wd-plan','wd-plan-scope','wd-quizgoal','wd-last-backup'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} });
+        S.books=[]; S.words=[]; S.markMap={}; try{S.learned=new Set();}catch(e){}
+        console.warn('[계정전환] 이전 계정과 다름 → 로컬 초기화, 서버에서 새로 로드');
+      }
+      localStorage.setItem('wd-uid', user.uid);
+    }catch(e){}
     // ── STEP 1: localStorage 즉시 복원 (동기, 빠름) ──
     setSplash(20, '데이터 복원 중...', '로컬 데이터 불러오는 중');
     try {

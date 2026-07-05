@@ -1,4 +1,4 @@
-<!-- build: 20260705-session-lock-overlay-v2 -->
+<!-- build: 20260705-sv-myword-leak-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -4352,7 +4352,13 @@ function sv() {
       const saveDataLite = {...saveData};
       delete saveDataLite.words; delete saveDataLite.books;
       // books/words는 별도 컬렉션에 저장 (Firestore 1MB 제한 방지)
-      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: S.words||[], updatedAt: new Date().toISOString()};
+      // [내단어장 누수 수정] S.words는 '내 단어장'과 '현재 학습 중인 책(팩)'을 겸용한다.
+      //  현재 책이 내 단어장이 아니면 S.words=팩 단어 → 그대로 저장하면 팩 단어가 내 단어장에 새어들어감(오염·1MiB 부풀림).
+      //  → 내 단어장이 아닐 땐 내 단어장 정본(localStorage wd-w)을 저장한다.
+      const _myWords = (!S.currentBook || S.currentBook==='내 단어장')
+        ? (S.words||[])
+        : (function(){ try{ return JSON.parse(localStorage.getItem('wd-w')||'[]')||[]; }catch(e){ return []; } })();
+      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: _myWords, updatedAt: new Date().toISOString()};
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장

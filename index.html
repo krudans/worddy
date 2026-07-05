@@ -1,4 +1,4 @@
-<!-- build: 20260705-session-lock-single-device -->
+<!-- build: 20260705-session-lock-overlay-v2 -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15471,25 +15471,37 @@ function _watchLock(uid){
     var d=snap.data();
     if(d && d.deviceId && d.deviceId!==me && !window._sessionLost){
       window._sessionLost=true;                 // 다른 기기가 접속 → 이 기기 쓰기 중단
-      _showLockOverlay('다른 기기('+(d.name||'')+')에서 접속했어요.', uid);
+      _showLockOverlay(uid, 'lost', (d.name||''));
     }
   }, function(){});
 }
-function _showLockOverlay(msg, uid){
+function _showLockOverlay(uid, mode, otherName){
   try{
     var ex=document.getElementById('sessLockOv'); if(ex) ex.remove();
+    var isLost = (mode==='lost');
+    var title = isLost ? '다른 기기에서 접속됨' : '이미 계정이 사용 중입니다';
+    var body  = isLost
+      ? ('다른 기기'+(otherName?'('+otherName+')':'')+'에서 이 계정에 접속했어요.<br>데이터 꼬임 방지를 위해 이 기기에서는 저장이 멈췄어요.<br>이 기기에서 계속하려면 아래를 누르세요. 그러면 <b>다른 기기가 강제 종료</b>됩니다.')
+      : ('이 계정을 다른 기기'+(otherName?'('+otherName+')':'')+'에서 사용 중입니다.<br>이 기기에서 다시 시작하면, <b>다른 기기는 강제 종료</b>되며 <b>이 기기 상태로 저장</b>됩니다.');
+    var takeLabel = isLost ? '이 기기에서 계속하기' : '이 기기에서 다시 시작하기';
     var ov=document.createElement('div'); ov.id='sessLockOv';
     ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.94);display:flex;align-items:center;justify-content:center;padding:24px';
     ov.innerHTML='<div style="max-width:340px;text-align:center;color:#fff">'
       +'<div style="font-size:40px;margin-bottom:12px">🔒</div>'
-      +'<div style="font-size:16px;font-weight:900;margin-bottom:8px">단독 접속 모드</div>'
-      +'<div style="font-size:13px;color:#CBD5E1;line-height:1.6;margin-bottom:18px">'+msg+'<br>데이터 꼬임 방지를 위해 이 기기에서는 저장이 멈췄어요.</div>'
-      +'<button id="sessTakeBtn" style="width:100%;padding:13px;background:#22C55E;border:none;border-radius:12px;font-size:14px;font-weight:800;color:#fff;cursor:pointer">이 기기에서 계속하기</button>'
-      +'<div style="font-size:11px;color:#94A3B8;margin-top:10px">누르면 이 기기가 접속을 가져오고 최신 데이터로 새로고침돼요.</div>'
+      +'<div style="font-size:16px;font-weight:900;margin-bottom:8px">'+title+'</div>'
+      +'<div style="font-size:13px;color:#CBD5E1;line-height:1.6;margin-bottom:18px">'+body+'</div>'
+      +'<button id="sessTakeBtn" style="width:100%;padding:13px;background:#22C55E;border:none;border-radius:12px;font-size:14px;font-weight:800;color:#fff;cursor:pointer">'+takeLabel+'</button>'
+      +'<button id="sessCancelBtn" style="width:100%;padding:12px;margin-top:9px;background:transparent;border:1px solid #475569;border-radius:12px;font-size:13px;font-weight:700;color:#CBD5E1;cursor:pointer">취소 / 종료</button>'
+      +'<div style="font-size:11px;color:#94A3B8;margin-top:10px">다시 시작: 이 기기가 접속을 가져오고 최신 데이터로 새로고침돼요.<br>취소/종료: 로그아웃하고 이 기기 접속을 끝냅니다.</div>'
       +'</div>';
     document.body.appendChild(ov);
     document.getElementById('sessTakeBtn').onclick=async function(){
       try{ await _acquireLock(uid, true); }catch(e){}
+      location.reload();
+    };
+    document.getElementById('sessCancelBtn').onclick=async function(){
+      try{ if(typeof auth!=='undefined' && auth.signOut) await auth.signOut(); }catch(e){}
+      try{ window.close(); }catch(e){}
       location.reload();
     };
   }catch(e){}
@@ -15497,7 +15509,7 @@ function _showLockOverlay(msg, uid){
 async function _initSessionLock(uid){
   try{
     var res=await _acquireLock(uid, false);
-    if(!res.ok){ window._sessionLost=true; _showLockOverlay('다른 기기('+((res.other&&res.other.name)||'')+')에서 사용 중이에요.', uid); return; }
+    if(!res.ok){ window._sessionLost=true; _showLockOverlay(uid, 'busy', (res.other&&res.other.name)||''); return; }
     window._sessionLost=false; _startHeartbeat(uid); _watchLock(uid);
   }catch(e){ window._sessionLost=false; /* 락 실패 시 잠그지 않음 */ console.warn('[세션락] 초기화 실패(락 없이 진행)', e); }
 }

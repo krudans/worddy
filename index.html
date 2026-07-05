@@ -1,4 +1,4 @@
-<!-- build: 20260705-account-switch-guard -->
+<!-- build: 20260705-delete-tombstone -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -4358,7 +4358,7 @@ function sv() {
       const _myWords = (!S.currentBook || S.currentBook==='내 단어장')
         ? (S.words||[])
         : (function(){ try{ return JSON.parse(localStorage.getItem('wd-w')||'[]')||[]; }catch(e){ return []; } })();
-      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: _myWords, updatedAt: new Date().toISOString()};
+      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: _myWords, tombBooks:(S._tombBooks||[]), tombWords:(S._tombWords||[]), updatedAt: new Date().toISOString()};
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장
@@ -9485,6 +9485,7 @@ function _deleteDefaultGroup(){
   const DEFGRP = _defGroupPacks();
   if(!confirm('Butterfly Word 기본 암기 단어 그룹(초등·중학·고등)을 모두 삭제할까요?\n진도는 사라지지만 언제든지 다시 등록할 수 있어요.')) return;
   const delNames = (S.books||[]).filter(b=>DEFGRP.includes(b.packId)).map(b=>b.name);
+  DEFGRP.forEach(function(pid){ _tombBookKey('p:'+pid); });
   S.books = (S.books||[]).filter(b=>!DEFGRP.includes(b.packId));
   S._ownedPacks = (S._ownedPacks||[]).filter(id=>!DEFGRP.includes(id));
   if(delNames.includes(S.currentBook)){ if(typeof _selectBook==='function') _selectBook('내 단어장'); else S.currentBook='내 단어장'; }
@@ -9602,6 +9603,7 @@ function createBook() {
   if(!name){toast('단어장 이름을 입력하세요');return;}
   if((S.books||[]).length>=10){toast('단어장은 최대 10개까지 만들 수 있어요 📚');return;}
   if(name==='내 단어장'||S.books.find(b=>b.name===name)){toast('이미 있는 이름');return;}
+  _untombBookByName(name);
   S.books.push({name,words:[],markMap:{},learned:[]});
   sv();
   toast(`✅ "${name}" 단어장 생성!`);
@@ -10956,7 +10958,7 @@ function _confirmDeleteBook(name, fromModal) {
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px">단어장을 삭제할까요?<br>단어 데이터도 함께 삭제됩니다.</div>
     <div style="display:flex;gap:8px">
       <button onclick="${back}" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});}S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')S.currentBook='내 단어장';sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});}_tombBookKey(_db&&_db.packId?('p:'+_db.packId):('n:'+'${esc}'));S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')S.currentBook='내 단어장';sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
     </div>
   </div></div>`;
 }
@@ -12087,6 +12089,7 @@ function _reportMissingDictWord(en, kr){
 function saveWordToCurrentBook(word) {
   word = _enrichFromDict(word);
   const bookName = S.currentBook || '내 단어장';
+  try{ if(word&&word.en) _untombWord(word.en); }catch(e){}
   if(bookName === '내 단어장') {
     if(!S.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
       S.words.push(word);
@@ -12106,9 +12109,9 @@ function saveWordToCurrentBook(word) {
 
 function removeWordFromCurrentBook(en){
   const bookName = S.currentBook || '내 단어장';
-  if(bookName === '내 단어장'){ S.words = (S.words||[]).filter(w=>w.en!==en); return true; }
+  if(bookName === '내 단어장'){ _tombWord(en); S.words = (S.words||[]).filter(w=>w.en!==en); return true; }
   const bk = (S.books||[]).find(b=>b.name===bookName);
-  if(!bk){ S.words = (S.words||[]).filter(w=>w.en!==en); return true; }
+  if(!bk){ _tombWord(en); S.words = (S.words||[]).filter(w=>w.en!==en); return true; }
   if(bk.packId){
     // 마켓팩: 개별 단어는 삭제 대신 사용자별 '숨김' 처리(다시 등록 시 복구)
     if(!S.hiddenPackWords) S.hiddenPackWords={};
@@ -15420,27 +15423,27 @@ const _authTimeout = setTimeout(() => {
 // ── [크로스기기 유실 방지] books/words 합집합 병합 헬퍼 ──
 // STEP2 빠른 경로가 서버 user_words(정본)를 안 읽고 로컬(스테일)로 덮던 버그를 막기 위한 union 병합.
 // 서버 ∪ 로컬 → 어느 쪽에만 있는 책/단어도 보존(파괴 금지). 단어 키=en(소문자), 책 키=packId 또는 name.
-function _mergeWordsUnion(localArr, srvArr){
-  const out = Array.isArray(localArr) ? localArr.slice() : [];
-  const have = new Set(out.map(w => (w && w.en) ? String(w.en).toLowerCase() : '').filter(Boolean));
-  (Array.isArray(srvArr) ? srvArr : []).forEach(w => {
-    const k = (w && w.en) ? String(w.en).toLowerCase() : '';
-    if(k && !have.has(k)){ out.push(w); have.add(k); }
-  });
+// [삭제 되살아남 방지 — tombstone] 지운 항목 키를 기록해 병합 시 제외. 재생성/재추가 시 해제. 서버에도 저장돼 기기 간 전파.
+function _tombBookKey(k){ if(!S._tombBooks)S._tombBooks=[]; if(k && S._tombBooks.indexOf(k)<0) S._tombBooks.push(k); }
+function _tombBookByName(name){ try{ var b=(S.books||[]).find(function(x){return x&&x.name===name;}); _tombBookKey(b&&b.packId?('p:'+b.packId):('n:'+name)); }catch(e){} }
+function _untombBookByName(name){ try{ if(S._tombBooks) S._tombBooks=S._tombBooks.filter(function(k){return k!=='n:'+name;}); }catch(e){} }
+function _tombWord(en){ try{ if(!en)return; var k=String(en).toLowerCase(); if(!S._tombWords)S._tombWords=[]; if(S._tombWords.indexOf(k)<0)S._tombWords.push(k); }catch(e){} }
+function _untombWord(en){ try{ if(!S._tombWords||!en)return; var k=String(en).toLowerCase(); S._tombWords=S._tombWords.filter(function(x){return x!==k;}); }catch(e){} }
+function _mergeWordsUnion(localArr, srvArr, tomb){
+  const tset = new Set((tomb||[]).map(x=>String(x).toLowerCase()));
+  const out = []; const have = new Set();
+  const add = w => { const k=(w&&w.en)?String(w.en).toLowerCase():''; if(!k||tset.has(k)||have.has(k))return; out.push(w); have.add(k); };
+  (Array.isArray(localArr)?localArr:[]).forEach(add);
+  (Array.isArray(srvArr)?srvArr:[]).forEach(add);
   return out;
 }
-function _mergeBooksUnion(localBks, srvBks){
+function _mergeBooksUnion(localBks, srvBks, tomb){
+  const tset = new Set(tomb||[]);
   const key = b => b ? (b.packId ? 'p:'+b.packId : 'n:'+(b.name||'')) : '';
   const out = []; const idx = {};
-  (Array.isArray(localBks) ? localBks : []).forEach(b => {
-    const k = key(b); if(!k) return;
-    if(idx[k]===undefined){ idx[k]=out.length; out.push({...b}); }
-  });
-  (Array.isArray(srvBks) ? srvBks : []).forEach(b => {
-    const k = key(b); if(!k) return;
-    if(idx[k]===undefined){ idx[k]=out.length; out.push({...b}); }
-    else if(!b.packId){ out[idx[k]].words = _mergeWordsUnion(out[idx[k]].words, b.words); } // 커스텀 책만 단어 union(팩은 단어 미저장)
-  });
+  const add = b => { const k=key(b); if(!k||tset.has(k))return; if(idx[k]===undefined){idx[k]=out.length;out.push({...b});} else if(!b.packId){ out[idx[k]].words=_mergeWordsUnion(out[idx[k]].words, b.words, []); } };
+  (Array.isArray(localBks)?localBks:[]).forEach(add);
+  (Array.isArray(srvBks)?srvBks:[]).forEach(add);
   return out;
 }
 
@@ -15793,8 +15796,10 @@ auth.onAuthStateChanged(async user => {
               if(_uwSnap.exists){
                 const _uw = _uwSnap.data();
                 const _bBefore = (S.books||[]).length, _wBefore = (S.words||[]).length;
-                S.books = _mergeBooksUnion(S.books, _uw.books);
-                S.words = _mergeWordsUnion(S.words, _uw.words);
+                S._tombBooks = Array.from(new Set([...(S._tombBooks||[]), ...((_uw.tombBooks)||[])]));
+                S._tombWords = Array.from(new Set([...(S._tombWords||[]), ...((_uw.tombWords)||[])]));
+                S.books = _mergeBooksUnion(S.books, _uw.books, S._tombBooks);
+                S.words = _mergeWordsUnion(S.words, _uw.words, S._tombWords);
                 console.log('[앱] user_words 병합: 책 '+_bBefore+'→'+(S.books||[]).length+', 단어 '+_wBefore+'→'+(S.words||[]).length+' (서버책 '+((_uw.books||[]).length)+')');
                 try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(b=>{ if(b&&b.packId){ const {words,...r}=b; return r; } return b; }))); }catch(e){}
               }
@@ -15828,6 +15833,8 @@ auth.onAuthStateChanged(async user => {
         // user_words에서 단어장 복원
         if(_wdoc && _wdoc.exists) {
           const _wd = _wdoc.data();
+          if(Array.isArray(_wd.tombBooks)) S._tombBooks = _wd.tombBooks.slice();
+          if(Array.isArray(_wd.tombWords)) S._tombWords = _wd.tombWords.slice();
           if(_wd.books && _wd.books.some(b=>(b.words||[]).length>0 || b.packId)) {
             S.books = _wd.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;});
             localStorage.setItem('wd-bks', JSON.stringify(_wd.books));

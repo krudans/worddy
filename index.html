@@ -1,4 +1,4 @@
-<!-- build: 20260706-book-memo-allsites -->
+<!-- build: 20260706-migv3-progress -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15567,7 +15567,7 @@ async function _migrateToV2(uid){
     if(typeof db==='undefined') return {skipped:'no-db'};
     const uref=db.collection('users').doc(uid);
     const usnap=await uref.get();
-    if(usnap.exists && (usnap.data().schemaV||0) >= 2){ return {skipped:'already-v2'}; }
+    if(usnap.exists && (usnap.data().schemaV||0) >= 3){ return {skipped:'already-v3'}; }
     const uwsnap=await db.collection('user_words').doc(uid).get();
     const uw=uwsnap.exists?uwsnap.data():null;
     const books=(uw&&uw.books)||[], words=(uw&&uw.words)||[];
@@ -15576,17 +15576,17 @@ async function _migrateToV2(uid){
     const ops=[];
     books.forEach((b,i)=>{
       const id=b.packId||('bk'+i);
-      ops.push([bcol.doc(id), {name:b.name||'', packId:b.packId||null, order:i, deleted:false, updatedAt:ts}]);
+      ops.push([bcol.doc(id), {name:b.name||'', packId:b.packId||null, order:i, fromMarket:!!b.fromMarket, markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{}, learned:(b.learned!=null?b.learned:0), deleted:false, updatedAt:ts}]);
       if(!b.packId && Array.isArray(b.words)) b.words.forEach((w,j)=>{ if(w&&w.en) ops.push([wcol.doc('b'+i+'_'+j), {bookId:id, en:w.en, kr:w.kr||'', mark:(w.mark||0), deleted:false, updatedAt:ts}]); });
     });
     words.forEach((w,i)=>{ if(w&&w.en) ops.push([wcol.doc('my'+i), {bookId:'__my__', en:w.en, kr:w.kr||'', mark:(w.mark||0), deleted:false, updatedAt:ts}]); });
     for(let k=0;k<ops.length;k+=400){
       const batch=db.batch();
-      ops.slice(k,k+400).forEach(function(pair){ batch.set(pair[0],pair[1]); });
+      ops.slice(k,k+400).forEach(function(pair){ batch.set(pair[0],pair[1],{merge:true}); });
       await batch.commit();
     }
-    await uref.set({schemaV:2, schemaV2At:new Date().toISOString()},{merge:true});
-    console.log('[migV2] 완료: 문서 '+ops.length+'개 (books '+books.length+', words '+words.length+')');
+    await uref.set({schemaV:3, schemaV3At:new Date().toISOString()},{merge:true});
+    console.log('[migV3] 완료: 문서 '+ops.length+'개 (books '+books.length+', words '+words.length+')');
     return {ok:true, docs:ops.length, books:books.length, words:words.length};
   }catch(e){ console.warn('[migV2] 실패(재시도 가능)', e); return {err:String(e)}; }
 }

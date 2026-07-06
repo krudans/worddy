@@ -4389,6 +4389,46 @@ function sv() {
   }
 }
 
+// [문서분리 STEP2 · 2단계 섀도읽기] blob 로드 후 분할문서(users/{uid}/books)를 읽어
+//  정합성만 비교(화면 미반영·읽기전용·S 무변경). 불일치는 콘솔 로그만. 1회 실행.
+window._shadowReadDone = false;
+function _shadowReadCompare(){
+  if(window._shadowReadDone) return;
+  try{
+    if(!window._splitReady) return;                       // 마이그레이션 완료 전엔 미실행
+    if(typeof db==='undefined' || !S.user || !S.user.uid) return;
+    if(!Array.isArray(S.books)) return;
+    window._shadowReadDone = true;                         // 준비되면 1회만
+    var uid=S.user.uid;
+    // blob(정본) 기준 기대치: 문서ID 규칙은 STEP1 이중쓰기와 동일(packId || 'bk'+i)
+    var expect={};
+    (S.books||[]).forEach(function(b,i){
+      var id=b.packId||('bk'+i);
+      expect[id]={ mm:(b.markMap&&typeof b.markMap==='object')?Object.keys(b.markMap).length:0, name:b.name||'' };
+    });
+    db.collection('users').doc(uid).collection('books').get().then(function(snap){
+      var split={};
+      snap.forEach(function(d){ var v=d.data()||{}; if(v.deleted) return;
+        split[d.id]={ mm:(v.markMap&&typeof v.markMap==='object')?Object.keys(v.markMap).length:0, name:v.name||'' }; });
+      var mism=[];
+      Object.keys(expect).forEach(function(id){
+        if(!(id in split)) mism.push({id:id, type:'missing-in-split', blobMM:expect[id].mm});
+        else if(split[id].mm!==expect[id].mm) mism.push({id:id, type:'markMap-count', blobMM:expect[id].mm, splitMM:split[id].mm});
+      });
+      Object.keys(split).forEach(function(id){ if(!(id in expect)) mism.push({id:id, type:'extra-in-split', splitMM:split[id].mm}); });
+      console.log('[섀도읽기] blob books='+Object.keys(expect).length+' | split docs='+Object.keys(split).length+' | 불일치='+mism.length, mism.length?mism:'(일치)');
+    }).catch(function(e){ console.warn('[섀도읽기] 분할문서 읽기 실패', e); });
+  }catch(e){ console.warn('[섀도읽기] skip', e); }
+}
+// 로드 타이밍 무관 1회 실행: _splitReady + S.books 준비될 때까지 폴링, 준비되면 비교 후 종료.
+(function(){
+  var _srT=setInterval(function(){
+    if(window._shadowReadDone){ clearInterval(_srT); return; }
+    try{ _shadowReadCompare(); }catch(e){}
+  }, 2000);
+  setTimeout(function(){ try{ clearInterval(_srT); }catch(e){} }, 60000);
+})();
+
 function toast(msg) {
   const w=document.getElementById('tw');
   const t=document.createElement('div'); t.className='toast'; t.textContent=msg; w.appendChild(t);
@@ -11661,13 +11701,22 @@ function rAdd() {
       <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:16px;margin-bottom:10px">
         <div style="font-size:13px;font-weight:800;color:var(--text1);margin-bottom:4px">🖼️ 이미지에서 단어 자동 추출</div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:14px">사진·스크린샷·교재 이미지를 올리면 AI가 영어 단어를 찾아 자동 등록해요</div>
-        <label style="display:block;border:2px dashed var(--border);border-radius:12px;padding:30px 16px;text-align:center;cursor:pointer;background:var(--bg-sub);transition:border-color .2s"
-          onmouseover="this.style.borderColor='var(--theme)'" onmouseout="this.style.borderColor='var(--border)'">
-          <div style="font-size:32px;margin-bottom:8px">📷</div>
-          <div style="font-size:14px;font-weight:700;color:var(--text2);margin-bottom:4px">이미지 파일 선택</div>
-          <div style="font-size:11px;color:var(--text3)">JPG, PNG, GIF, WEBP 지원</div>
-          <input type="file" accept="image/*" multiple style="display:none" onchange="handleImgFiles(this.files)">
-        </label>
+        <div style="display:flex;gap:10px">
+          <label style="flex:1;display:block;border:2px dashed var(--border);border-radius:12px;padding:22px 12px;text-align:center;cursor:pointer;background:var(--bg-sub);transition:border-color .2s"
+            onmouseover="this.style.borderColor='var(--theme)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:6px">🖼️</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text2)">이미지 불러오기</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">갤러리·파일</div>
+            <input type="file" accept="image/*" multiple style="display:none" onchange="handleImgFiles(this.files)">
+          </label>
+          <label style="flex:1;display:block;border:2px dashed var(--border);border-radius:12px;padding:22px 12px;text-align:center;cursor:pointer;background:var(--bg-sub);transition:border-color .2s"
+            onmouseover="this.style.borderColor='var(--theme)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:6px">📷</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text2)">사진 촬영</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">카메라로 찍기</div>
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleImgFiles(this.files)">
+          </label>
+        </div>
         ${S.ai?'<div style="margin-top:14px;text-align:center;color:var(--theme);font-size:13px;font-weight:700">⏳ AI가 이미지 분석 중...</div>':''}
       </div>
       <div style="background:var(--theme-tint);border-radius:12px;padding:10px 14px">

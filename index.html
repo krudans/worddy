@@ -1,4 +1,4 @@
-<!-- build: 20260706-book-attributed-today-memo -->
+<!-- build: 20260706-book-memo-allsites -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -8712,8 +8712,15 @@ function _planStat(label,val){
 }
 
 // 페이스 판정 (오늘/최근7일 외운 vs 하루목표)
-function _planPace(ens, daily, todayStr){
-  var todayMemo=_planTodayMemo(ens,todayStr);
+function _planPace(ens, daily, todayStr, bookName){
+  // [책귀속] 특정 단어장이면 markBook 기준으로 오늘 외운 수 계산(겹치는 단어가 안 연 책에 잡히던 버그 방지)
+  var todayMemo;
+  if(bookName && bookName!=='__all__' && typeof _todayMemoByBook==='function'){
+    var _bx=window._planCtx||(typeof _planScopeData==='function'?_planScopeData():null);
+    todayMemo=_todayMemoByBook(bookName,todayStr,_bx?_bx.books:[]);
+  } else {
+    todayMemo=_planTodayMemo(ens,todayStr);
+  }
   var r7=_planRecentMemo(ens,7,todayStr);
   var avg7=r7/7;
   var lvl,txt,col;
@@ -8738,7 +8745,7 @@ function _planBodyHTML(key){
   var _gameG=parseInt(localStorage.getItem('wd-gamegoal'))||20;
   var _minG=(typeof S!=='undefined'&&S._dailyGoalMin)||30;
   var eta=_planEtaDate(remaining,daily,ctx.today); var etaKey=_planKeyOf(eta); var etaFmt=_planFmt(eta);
-  var pace=_planPace(sc.ens,daily,ctx.today);
+  var pace=_planPace(sc.ens,daily,ctx.today,key);
   window._planData={memo:memo, total:total, remaining:remaining, today:ctx.today, key:key, maxDaily:maxDaily, ens:sc.ens, todayMemo:pace.todayMemo, r7:pace.r7};
   window._planPendingDaily=daily;
 
@@ -8796,7 +8803,7 @@ function _planBodyHTML(key){
 // 오늘/페이스 카드
 function _planPaceCard(daily){
   var d=window._planData||{}; var ens=d.ens, today=d.today||_planTodayStr();
-  var pace=_planPace(ens,daily,today);
+  var pace=_planPace(ens,daily,today,d.key);
   var tpct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
   var tDone=daily>0&&pace.todayMemo>=daily;
   return '<div style="background:#FAFBFC;border:1px solid #ECEFF3;border-radius:12px;padding:11px;margin-bottom:12px">'+
@@ -8858,7 +8865,7 @@ function renderGoalSummary(){
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
   var BLUE='var(--theme)';
-  var pace=_planPace(sc.ens,daily,ctx.today);
+  var pace=_planPace(sc.ens,daily,ctx.today,sel);
   var tDone=daily>0&&pace.todayMemo>=daily;
   var line;
   if(remaining<=0){ line='<span style="font-size:12px;font-weight:800;color:#16A34A">🎉 「'+_esc(sc.label)+'」 다 외웠어요!</span>'; }
@@ -8896,7 +8903,7 @@ function _planSelect(key){
 function _planMarkDirty(){ var h=document.getElementById('pl-savehint'); if(h) h.textContent='변경됨 — 저장을 눌러 적용하세요'; var b=document.getElementById('pl-savebtn'); if(b) b.textContent='저장하기'; }
 function _planUpdatePace(daily){
   var d=window._planData||{};
-  var pace=_planPace(d.ens,daily,d.today||_planTodayStr());
+  var pace=_planPace(d.ens,daily,d.today||_planTodayStr(),d.key);
   var tpct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
   var tDone=daily>0&&pace.todayMemo>=daily;
   var g=document.getElementById('pl-td-goal'); if(g) g.textContent=daily;
@@ -8955,7 +8962,7 @@ function renderGoalStrip(open){
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
   var BLUE='var(--theme)';
-  var pace=_planPace(sc.ens,daily,ctx.today);
+  var pace=_planPace(sc.ens,daily,ctx.today,sel);
   var right=remaining<=0?'🎉 다 외웠어요!':('📅 '+_planFmt(_planEtaDate(remaining,daily,ctx.today))+' 완료 예정');
   var todayBadge = remaining<=0?'':('<span style="font-size:11px;color:'+(pace.todayMemo>=daily?'#16A34A':'#6B7280')+';font-weight:800">오늘 '+pace.todayMemo+'/'+daily+'</span>');
   return '<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E2E8F0);padding:11px 13px;margin-bottom:8px">'+
@@ -9007,8 +9014,7 @@ function _studyGoalInner(){
   var plan=_planLoadFor(sel);
   var maxDaily=Math.max(5,Math.min(100,remaining||10));
   var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
-  var pace=_planPace(sc.ens,daily,ctx.today);
-  if(sel && sel!=='__all__'){ pace.todayMemo=_todayMemoByBook(sel,ctx.today,ctx.books); } // [책귀속] 책별 '오늘'은 실제 그 책에서 외운 것만
+  var pace=_planPace(sc.ens,daily,ctx.today,sel);
   var tPct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
   var B='var(--theme)';
   var open=!!window._planAutoOpen; try{ window._planAutoOpen=false; }catch(e){}

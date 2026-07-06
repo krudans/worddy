@@ -11686,8 +11686,8 @@ function rAdd() {
         <span class="waddc-lbl">발음기호</span>
         <input id="nph" class="waddc-inp" placeholder="[ˈæpəl]" value="${S.nPh||''}" oninput="S.nPh=this.value"
           style="font-size:13px;font-family:monospace;margin-bottom:11px">
-        ${[1,2,3].map(n=>`<span class="waddc-lbl">예문 ${n}${n===1?' <span style="color:var(--theme)">*</span>':' <span style="font-weight:400;color:var(--text3)">(선택)</span>'}</span><input id="nex${n}" class="waddc-inp" placeholder="예문을 입력하세요" value="${S['nEx'+n]||''}" oninput="S['nEx${n}']=this.value"
-          style="font-size:12px;margin-bottom:${n<3?'10px':'0'}">`).join('')}
+        ${[1,2,3,4,5].map(n=>`<span class="waddc-lbl">예문 ${n}${n===1?' <span style="color:var(--theme)">*</span>':' <span style="font-weight:400;color:var(--text3)">(선택)</span>'}</span><input id="nex${n}" class="waddc-inp" placeholder="예문을 입력하세요" value="${S['nEx'+n]||''}" oninput="S['nEx${n}']=this.value"
+          style="font-size:12px;margin-bottom:${n<5?'10px':'0'}">`).join('')}
       </div>
       <div id="bwdPrev" style="margin-bottom:10px"></div>
       <div class="waddc-card">
@@ -12043,12 +12043,12 @@ function bwdLocalSearch() {
   };
   if(d&&d.kr) fill('nk2',d.kr,v=>{S.nKr=v;});
   if(ph) fill('nph',ph,v=>{S.nPh=v;});
-  // 예문 1·2·3: 사전 5형식 예문(ex5) 우선, 없으면 기본 예문(d.ex)
+  // 예문 1~5: 사전 5형식 예문(ex5) 전부, 없으면 기본 예문(d.ex) 1개
   const _exs=(L.x5&&L.x5.ex5&&L.x5.ex5.length)?L.x5.ex5.map(s=>s.en).filter(Boolean):[];
-  const _ex1=_exs[0]||(d&&d.ex)||'', _ex2=_exs[1]||'', _ex3=_exs[2]||'';
-  if(_ex1) fill('nex1',_ex1,v=>{S.nEx1=v;});
-  if(_ex2) fill('nex2',_ex2,v=>{S.nEx2=v;});
-  if(_ex3) fill('nex3',_ex3,v=>{S.nEx3=v;});
+  [1,2,3,4,5].forEach(function(n){
+    var v=_exs[n-1]||((n===1&&d&&d.ex)?d.ex:'');
+    if(v) fill('nex'+n, v, function(vv){ S['nEx'+n]=vv; });
+  });
   S.nEn=en;
   // 사전이 가진 나머지 항목(다른언어·난이도·어원·유의어·반의어) 읽기전용 미리보기 → 저장 시 함께 등록됨
   try{ _renderAddDictPreview(L); }catch(e){}
@@ -12103,6 +12103,8 @@ async function aiMFull() {
     _setField('nex1', S.nEx1);
     _setField('nex2', '');
     _setField('nex3', '');
+    _setField('nex4', '');
+    _setField('nex5', '');
 
     // 버튼 복원
     const btn = document.querySelector('button[onclick="aiMFull()"]');
@@ -12243,13 +12245,11 @@ function addW(){
   const en=(document.getElementById('ne')?.value||S.nEn||'').trim();
   const kr=(document.getElementById('nk2')?.value||S.nKr||'').trim();
   const ph=(document.getElementById('nph')?.value||S.nPh||'').trim();
-  const ex1=(document.getElementById('nex1')?.value||S.nEx1||'').trim();
-  const ex2=(document.getElementById('nex2')?.value||S.nEx2||'').trim();
-  const ex3=(document.getElementById('nex3')?.value||S.nEx3||'').trim();
+  const _exVals=[1,2,3,4,5].map(function(n){ return (document.getElementById('nex'+n)?.value||S['nEx'+n]||'').trim(); });
   if(!en||!kr){toast('영단어와 뜻 입력');return;}
   if(wordExistsInCurrentBook(en)){toast('이미 있는 단어 (현재 단어장)');return;}
   const aiD=S.nAiData||{};
-  const exList=[ex1,ex2,ex3].filter(Boolean);
+  const exList=_exVals.filter(Boolean);
   const newWord={en,kr,
     ph:ph||aiD.ph||'',
     ex:exList[0]||aiD.ex||'',

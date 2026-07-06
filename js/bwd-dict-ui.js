@@ -594,7 +594,7 @@
     if (meta) {
       if (meta.cefr || meta.origin) {
         html += '<div class="bwdui-mlb">난이도 · 어원</div><div class="bwdui-metainfo">';
-        if (meta.cefr) html += '<span class="bwdui-cefr">' + esc(meta.cefr) + '</span>';
+        if (meta.cefr) html += '<span class="bwdui-cefr">' + (typeof _cefrTag==='function'?_cefrTag(meta.cefr):esc(meta.cefr)) + '</span>';
         if (meta.origin) html += '<span class="bwdui-origin">' + esc(meta.origin) + '</span>';
         html += '</div>';
       }

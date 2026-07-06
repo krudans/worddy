@@ -6606,6 +6606,52 @@ function checkLearnComplete() {
   }
 }
 
+// ── 챕터 시험 (챕터 200슬라이스 → 5게임×10 = 50문제, 90점 통과 → 나비) ──
+function _chapterSlice(book, chIdx){ try{ var ws=(typeof getBookWords==='function')?getBookWords(book):[]; return ws.slice(chIdx*200,(chIdx+1)*200); }catch(e){ return []; } }
+function _chapterMemorized(book, chIdx){ var sl=_chapterSlice(book,chIdx); if(!sl.length) return false; var mm=book.markMap||{}; return sl.every(function(w){return mm[w.en]===1;}); }
+function _chapterUnlocked(book, chIdx){ if(chIdx===0) return true; var cp=book.chPass||[]; return !!cp[chIdx-1]; }
+function startChapterExam(book, chIdx){
+  try{
+    if(!book){ toast('단어장을 찾을 수 없어요'); return; }
+    var sl=_chapterSlice(book,chIdx); if(sl.length<5){ toast('시험 볼 단어가 부족해요'); return; }
+    var pool=sl.slice(); for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+    var picked=pool.slice(0, Math.min(50,pool.length));
+    var games=['quiz','listenq','fill','scramble','typing'];
+    var per=Math.ceil(picked.length/games.length);
+    var groups=[]; for(var g=0;g<games.length;g++){ groups.push(picked.slice(g*per,(g+1)*per)); }
+    S._chExam={ bookName:book.name, chIdx:chIdx, games:games, groups:groups, gi:0, correct:0, total:0 };
+    S._inChExam=true; S._inLevelTest=false; S._inLearnSession=false; S._prevTab=S.tab;
+    if(typeof startGameW==='function') startGameW(games[0], groups[0]);
+  }catch(e){ toast('시험 시작 실패'); }
+}
+function finishChapterExam(){
+  try{
+    var ex=S._chExam||{}; var pct=ex.total?Math.round(ex.correct/ex.total*100):0; var passed=pct>=90;
+    var b=(S.books||[]).filter(function(x){return x.name===ex.bookName;})[0];
+    var gotNabi=false;
+    if(passed && b){
+      if(!Array.isArray(b.chPass)) b.chPass=[false,false,false,false,false];
+      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; S.bfCoupons=(S.bfCoupons||0)+1; gotNabi=true; }
+      if(typeof sv==='function') sv();
+    }
+    S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
+    requestAnimationFrame(function(){
+      try{ if(typeof go==='function') go(S._prevTab||'learn'); }catch(e){}
+      requestAnimationFrame(function(){
+        var mr=document.getElementById('mr'); if(!mr) return;
+        mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
+          +'<div style="font-size:52px;margin-bottom:10px">'+(passed?'🎉':'😢')+'</div>'
+          +'<div style="font-size:20px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+';margin-bottom:4px">'+(passed?'챕터 시험 통과!':'조금 아쉬워요')+'</div>'
+          +'<div style="font-size:30px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+'">'+pct+'점</div>'
+          +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+ex.correct+'/'+ex.total+' 정답 (기준 90점)</div>'
+          +(gotNabi?'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🎫 나비 쿠폰 1장 획득! · 다음 챕터 열림</div>':'')
+          +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px">틀린 단어 복습 후 다시 도전해요</div>')
+          +'<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">확인</button>'
+          +'</div></div>';
+      });
+    });
+  }catch(e){ S._inChExam=false; S._chExam=null; }
+}
 function showLevelUpTest() {
   const words=S._sysWords||DEFAULT_WORDS[S.lid]||[];
   if(!words.length){toast('시스템 단어가 없어요');return;}
@@ -12886,13 +12932,29 @@ function rGameDone(){
   SFX.stopBG();
   S._gameRunning=false;
   if(typeof _accrueGameTime==='function') _accrueGameTime();
-  if(!S._inLevelTest && !S._inLearnSession && typeof savePartialGameScore==='function') savePartialGameScore();
+  if(!S._inLevelTest && !S._inChExam && !S._inLearnSession && typeof savePartialGameScore==='function') savePartialGameScore();
   if(typeof saveGameScore==='function') saveGameScore(S.gScore);
   S._gameScoreSaved=true; // 완료 저장 완료 표시 (부분저장 중복 방지)
   // XP 지급은 saveGameScore 내부에서 처리 (중복 방지)
-  if(!S._inLevelTest && !S._inLearnSession) {
+  if(!S._inLevelTest && !S._inChExam && !S._inLearnSession) {
     checkAchievements();
     checkXpUsable();
+  }
+  // 챕터 시험 (5게임 체이닝)
+  if(S._inChExam && S._chExam) {
+    var _crm={...(S.gResultMap||{})};
+    var _cex=S._chExam;
+    var _cgrp=_cex.groups[_cex.gi]||[];
+    _cex.correct += _cgrp.filter(function(w){return _crm[w.en]!==false;}).length;
+    _cex.total += _cgrp.length;
+    _cex.gi++;
+    if(_cex.gi < _cex.games.length){
+      S.gDone=false;
+      requestAnimationFrame(function(){ if(typeof startGameW==='function') startGameW(_cex.games[_cex.gi], _cex.groups[_cex.gi]); });
+      return;
+    }
+    finishChapterExam();
+    return;
   }
   // 레벨 테스트
   if(S._inLevelTest) {

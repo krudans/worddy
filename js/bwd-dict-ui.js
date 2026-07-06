@@ -698,66 +698,78 @@
     }
     return w;
   }
-  // 기본: 내 단어장에 저장 → 이후 다른 단어장으로 옮기기 픽커
+  // 저장 목적지 먼저 선택 → 고른 곳에만 저장 (자동 저장 안 함)
   function addToBook(word) {
     try {
       var w = _bwduiBuildW(word);
-      var arr = _bwduiMyWords();
-      var exists = arr.some(function (x) { return x.en === word; });
-      if (!exists) {
-        arr.push(w); _bwduiSaveMyWords(arr);
-        if (typeof logStudy === 'function') { try { logStudy('words', word); } catch (e3) {} }
-        if (typeof sv === 'function') sv();
-        try { var S = ST(); if (typeof go === 'function' && S && S.tab === 'mybooks') go(); } catch (e4) {}
-        toastMsg('⭐ 내 단어장에 추가했어요');
-      }
-      _bwduiOpenPicker(word, w, exists);
+      _bwduiOpenPicker(word, w);
     } catch (err) { toastMsg('추가 실패'); }
   }
 
   var _bwduiPickWord = null, _bwduiPickW = null;
-  function _bwduiOpenPicker(word, w, already) {
+  function _bwduiOpenPicker(word, w) {
     _bwduiPickWord = word; _bwduiPickW = w;
     var S = ST();
+    // 팩/마켓 책은 단어를 담을 수 없어 후보에서 제외 (getBookWords가 book.words 무시 + 저장 시 제거됨)
     var custom = (S && Array.isArray(S.books)) ? S.books.filter(function (b) { return !b.packId && !b.fromMarket; }) : [];
+    var inMy = _bwduiMyWords().some(function (x) { return x.en === word; });
+    var badge = ' <span style="font-size:11px;color:#16A34A;font-weight:700">✓ 이미 있음</span>';
     var rows = '';
+    // 1) 기본 내 단어장
+    rows += '<button onclick="window.__bwduiSaveTo(\'my\')" style="text-align:left;padding:12px 14px;background:var(--theme-tint,#F1F5F9);border:1.5px solid var(--theme-soft,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--theme,#1E5FA5);cursor:pointer">📝 내 단어장' + (inMy ? badge : '') + '</button>';
+    // 2) 사용자가 만든 커스텀 단어장들 (팩북 제외됨)
     custom.forEach(function (b) {
       var idx = S.books.indexOf(b);
-      rows += '<button onclick="window.__bwduiMove(' + idx + ')" style="text-align:left;padding:12px 14px;background:var(--theme-tint,#F1F5F9);border:1.5px solid var(--theme-soft,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--theme,#1E5FA5);cursor:pointer">📓 ' + esc(b.name) + '</button>';
+      var has = Array.isArray(b.words) && b.words.some(function (x) { return x.en === word; });
+      rows += '<button onclick="window.__bwduiSaveTo(' + idx + ')" style="text-align:left;padding:12px 14px;background:var(--theme-tint,#F1F5F9);border:1.5px solid var(--theme-soft,#E2E8F0);border-radius:12px;font-size:14px;font-weight:700;color:var(--theme,#1E5FA5);cursor:pointer">📓 ' + esc(b.name) + (has ? badge : '') + '</button>';
     });
-    if (!custom.length) rows = '<div style="font-size:12px;color:#94A3B8;padding:4px 2px 2px">아직 만든 단어장이 없어요. 아래에서 새로 만들 수 있어요.</div>';
     var ov = document.getElementById('bwdui-picker'); if (ov) ov.remove();
     ov = document.createElement('div');
     ov.id = 'bwdui-picker';
     ov.style.cssText = 'position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.42);display:flex;align-items:flex-end;justify-content:center';
     ov.innerHTML =
       '<div style="background:#fff;width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:16px 16px 22px;box-shadow:0 -4px 22px rgba(0,0,0,.22)">' +
-        '<div style="font-size:15px;font-weight:900;color:#111;margin-bottom:3px">' + (already ? 'ℹ️ 이미 내 단어장에 있어요' : '⭐ 내 단어장에 추가됨') + '</div>' +
-        '<div style="font-size:12px;color:#64748B;margin-bottom:13px">\'' + esc(word) + '\' · 다른 단어장에 넣으려면 선택하세요</div>' +
-        '<div style="display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto">' + rows +
+        '<div style="font-size:15px;font-weight:900;color:#111;margin-bottom:3px">📚 어느 단어장에 저장할까요?</div>' +
+        '<div style="font-size:12px;color:#64748B;margin-bottom:13px">\'' + esc(word) + '\' · 저장할 곳을 선택하세요</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto">' + rows +
           '<button onclick="window.__bwduiNewBook()" style="text-align:left;padding:12px 14px;background:#fff;border:1.5px dashed var(--theme,#1E5FA5);border-radius:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5);cursor:pointer">➕ 새 단어장 만들기</button>' +
         '</div>' +
-        '<button onclick="window.__bwduiClosePicker()" style="margin-top:13px;width:100%;padding:13px;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer">내 단어장에 그대로 두기</button>' +
+        '<button onclick="window.__bwduiClosePicker()" style="margin-top:13px;width:100%;padding:13px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer">취소</button>' +
       '</div>';
     ov.addEventListener('click', function (ev) { if (ev.target === ov) window.__bwduiClosePicker(); });
     document.body.appendChild(ov);
   }
   window.__bwduiClosePicker = function () { var o = document.getElementById('bwdui-picker'); if (o) o.remove(); };
-  function _bwduiMoveOut() {
-    var arr = _bwduiMyWords().filter(function (x) { return x.en !== _bwduiPickWord; });
-    _bwduiSaveMyWords(arr);
-  }
-  window.__bwduiMove = function (idx) {
-    var S = ST(); if (!S || !Array.isArray(S.books) || !S.books[idx]) { toastMsg('단어장을 찾을 수 없어요'); return; }
-    var bk = S.books[idx];
+
+  // 선택한 목적지에만 저장 (target: 'my' = 내 단어장, 숫자 = S.books 인덱스)
+  window.__bwduiSaveTo = function (target) {
+    var S = ST();
+    var word = _bwduiPickWord, w = _bwduiPickW;
+    if (!word || !w) { window.__bwduiClosePicker(); return; }
+    if (target === 'my') {
+      var arr = _bwduiMyWords();
+      if (arr.some(function (x) { return x.en === word; })) { toastMsg('ℹ️ 이미 내 단어장에 있어요'); window.__bwduiClosePicker(); return; }
+      arr.push(w); _bwduiSaveMyWords(arr);
+      if (typeof logStudy === 'function') { try { logStudy('words', word); } catch (e) {} }
+      if (typeof sv === 'function') sv();
+      try { if (typeof go === 'function' && S && S.tab === 'mybooks') go(); } catch (e) {}
+      window.__bwduiClosePicker();
+      toastMsg('⭐ 내 단어장에 추가했어요');
+      return;
+    }
+    if (!S || !Array.isArray(S.books) || !S.books[target]) { toastMsg('단어장을 찾을 수 없어요'); return; }
+    var bk = S.books[target];
+    if (bk.packId || bk.fromMarket) { toastMsg('이 단어장에는 추가할 수 없어요'); return; }
     bk.words = bk.words || []; bk.markMap = bk.markMap || {};
-    if (!bk.words.some(function (x) { return x.en === _bwduiPickWord; })) bk.words.push(_bwduiPickW);
-    _bwduiMoveOut();
+    if (bk.words.some(function (x) { return x.en === word; })) { toastMsg('ℹ️ 이미 이 단어장에 있어요'); window.__bwduiClosePicker(); return; }
+    bk.words.push(w);
+    if (typeof logStudy === 'function') { try { logStudy('words', word); } catch (e) {} }
     if (typeof sv === 'function') sv();
     try { if (typeof go === 'function' && S.tab === 'mybooks') go(); } catch (e) {}
     window.__bwduiClosePicker();
-    toastMsg('📓 \'' + bk.name + '\'(으)로 옮겼어요');
+    toastMsg('📓 \'' + bk.name + '\'에 추가했어요');
   };
+
   window.__bwduiNewBook = function () {
     var name = prompt('새 단어장 이름을 입력하세요');
     if (name == null) return;
@@ -768,7 +780,7 @@
     if (name === '내 단어장' || S.books.find(function (b) { return b.name === name; })) { toastMsg('이미 있는 이름이에요'); return; }
     if (S.books.length >= 10) { toastMsg('단어장은 최대 10개까지예요'); return; }
     S.books.push({ name: name, words: [_bwduiPickW], markMap: {}, learned: [] });
-    _bwduiMoveOut();
+    if (typeof logStudy === 'function') { try { logStudy('words', _bwduiPickWord); } catch (e) {} }
     if (typeof sv === 'function') sv();
     try { if (typeof go === 'function' && S.tab === 'mybooks') go(); } catch (e) {}
     window.__bwduiClosePicker();

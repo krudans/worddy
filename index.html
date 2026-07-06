@@ -109,6 +109,7 @@ body { background: var(--bg) !important; }
 .nav { background: var(--bg-card) !important; border-top: 1.5px solid var(--border) !important; }
 /* 헤더 유지 (성향색) */
 
+@keyframes bwdspin { to { transform: rotate(360deg); } }
 /* 캐릭터 미세 움직임 */
 @keyframes comboFlash {
   0%   { opacity:0; transform:translate(-50%,-50%) scale(.5); }
@@ -11688,6 +11689,7 @@ function rAdd() {
         ${[1,2,3].map(n=>`<span class="waddc-lbl">예문 ${n}${n===1?' <span style="color:var(--theme)">*</span>':' <span style="font-weight:400;color:var(--text3)">(선택)</span>'}</span><input id="nex${n}" class="waddc-inp" placeholder="예문을 입력하세요" value="${S['nEx'+n]||''}" oninput="S['nEx${n}']=this.value"
           style="font-size:12px;margin-bottom:${n<3?'10px':'0'}">`).join('')}
       </div>
+      <div id="bwdPrev" style="margin-bottom:10px"></div>
       <div class="waddc-card">
         <div style="font-size:13px;font-weight:800;color:var(--text1);margin-bottom:10px">🎨 연상 이모지</div>
         <div class="waddc-grid">
@@ -11717,7 +11719,7 @@ function rAdd() {
             <input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleImgFiles(this.files)">
           </label>
         </div>
-        ${S.ai?'<div style="margin-top:14px;text-align:center;color:var(--theme);font-size:13px;font-weight:700">⏳ AI가 이미지 분석 중...</div>':''}
+        ${S.ai?'<div style="margin-top:14px;text-align:center;color:var(--theme);font-size:13px;font-weight:700"><span style="display:inline-block;animation:bwdspin .9s linear infinite">⏳</span> AI가 이미지 분석 중...</div>':''}
       </div>
       <div style="background:var(--theme-tint);border-radius:12px;padding:10px 14px">
         <div style="font-size:11px;color:var(--theme);font-weight:700">💡 이런 이미지가 잘 됩니다</div>
@@ -11736,7 +11738,7 @@ function rAdd() {
           <div style="font-size:11px;color:var(--text3)">PDF 형식 지원 (최대 10MB)</div>
           <input type="file" accept=".pdf" style="display:none" onchange="handlePdfFile(this.files[0])">
         </label>
-        ${S.ai?'<div style="margin-top:14px;text-align:center;color:#E65100;font-size:13px;font-weight:700">⏳ AI가 PDF 분석 중...</div>':''}
+        ${S.ai?'<div style="margin-top:14px;text-align:center;color:#E65100;font-size:13px;font-weight:700"><span style="display:inline-block;animation:bwdspin .9s linear infinite">⏳</span> AI가 PDF 분석 중...</div>':''}
       </div>
       <div style="background:#FFF8F0;border-radius:12px;padding:10px 14px">
         <div style="font-size:11px;color:#E65100;font-weight:700">💡 추출 팁</div>
@@ -12023,11 +12025,11 @@ function parseGeminiJson(text) {
 
 // [Butterfly Word 사전 검색] 로컬 BWD_DICT/BWD_PRON 에서 즉시 채움 (AI 아님, 오프라인)
 function bwdLocalSearch() {
-  const en=(document.getElementById('ne')?.value||S.nEn||'').trim().toLowerCase();
+  const en=(document.getElementById('ne')?.value||S.nEn||'').trim();
   if(!en){toast('영단어를 먼저 입력하세요');return;}
   if(typeof BWD_DICT==='undefined'){toast('사전 데이터를 불러오는 중이에요. 잠시 후 다시 시도해주세요','err');return;}
-  const d=BWD_DICT[en];
-  const ph=(typeof BWD_PRON!=='undefined'&&BWD_PRON[en])?BWD_PRON[en]:'';
+  try{ _ensureBwdMeta(); }catch(e){}
+  const L=_dictLookup(en); const d=L.e; const ph=L.ph;
   if(!d&&!ph){toast('"'+en+'" 단어가 사전에 없어요. ✨ AI로 시도해보세요','err');return;}
   const fill=(id,val,setS)=>{
     if(val==null||val==='')return;
@@ -12040,10 +12042,32 @@ function bwdLocalSearch() {
     }
   };
   if(d&&d.kr) fill('nk2',d.kr,v=>{S.nKr=v;});
-  if(d&&d.ex) fill('nex1',d.ex,v=>{S.nEx1=v;});
   if(ph) fill('nph',ph,v=>{S.nPh=v;});
+  // 예문 1·2·3: 사전 5형식 예문(ex5) 우선, 없으면 기본 예문(d.ex)
+  const _exs=(L.x5&&L.x5.ex5&&L.x5.ex5.length)?L.x5.ex5.map(s=>s.en).filter(Boolean):[];
+  const _ex1=_exs[0]||(d&&d.ex)||'', _ex2=_exs[1]||'', _ex3=_exs[2]||'';
+  if(_ex1) fill('nex1',_ex1,v=>{S.nEx1=v;});
+  if(_ex2) fill('nex2',_ex2,v=>{S.nEx2=v;});
+  if(_ex3) fill('nex3',_ex3,v=>{S.nEx3=v;});
   S.nEn=en;
+  // 사전이 가진 나머지 항목(다른언어·난이도·어원·유의어·반의어) 읽기전용 미리보기 → 저장 시 함께 등록됨
+  try{ _renderAddDictPreview(L); }catch(e){}
   toast('📖 사전에서 채웠어요','ok');
+}
+// 단어추가 화면: 사전이 가진 부가 항목을 읽기전용으로 표시(폼 필드가 없는 항목까지 보이도록)
+function _renderAddDictPreview(L){
+  var box=document.getElementById('bwdPrev'); if(!box) return;
+  var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var chip=function(t){ return '<span style="display:inline-block;background:var(--theme-tint,#EEF3FA);color:var(--theme,#1E5FA5);border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700;margin:2px 3px 0 0">'+esc(t)+'</span>'; };
+  var rows='';
+  if(L.meta&&L.meta.cefr) rows+='<div style="margin-bottom:4px"><span style="font-size:11px;color:var(--text3)">난이도</span> '+chip(L.meta.cefr)+'</div>';
+  if(L.meta&&L.meta.origin) rows+='<div style="font-size:12px;color:var(--text2);margin-bottom:4px"><span style="font-size:11px;color:var(--text3)">어원</span> '+esc(L.meta.origin)+'</div>';
+  if(L.ja&&L.ja.label) rows+='<div style="font-size:12px;color:var(--text2);margin-bottom:4px">🇯🇵 '+esc(L.ja.label)+(L.ja.roma?' · '+esc(L.ja.roma):'')+'</div>';
+  if(L.de&&L.de.label) rows+='<div style="font-size:12px;color:var(--text2);margin-bottom:4px">🇩🇪 '+esc(L.de.label)+'</div>';
+  if(L.meta&&L.meta.syn&&L.meta.syn.length) rows+='<div style="margin-bottom:2px"><span style="font-size:11px;color:var(--text3)">유의어</span> '+L.meta.syn.slice(0,6).map(chip).join('')+'</div>';
+  if(L.meta&&L.meta.ant&&L.meta.ant.length) rows+='<div><span style="font-size:11px;color:var(--text3)">반의어</span> '+L.meta.ant.slice(0,6).map(chip).join('')+'</div>';
+  if(!rows){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="waddc-card" style="background:var(--bg-sub,#F8FAFC)"><div style="font-size:12px;font-weight:800;color:var(--text1);margin-bottom:8px">📚 사전 정보 <span style="font-size:10px;font-weight:600;color:var(--text3)">· 저장 시 함께 등록돼요</span></div>'+rows+'</div>';
 }
 
 async function aiMFull() {

@@ -10835,6 +10835,44 @@ function _bwlSetMark(en, val) {
   var mr = document.getElementById('mr');
   if(mr) _renderBookWordList(mr, bookName, window._bwlCurrentQ||'');
 }
+// ── 레벨업 코스 그룹 렌더 (단어장 목록) ──
+window._openCourse = function(tier){ try{ var b=(S.books||[]).filter(function(x){return x.isCurriculum&&x.tier===tier;})[0]; if(b){ if(typeof switchBook==='function') switchBook(b.name); if(typeof go==='function') go('learn'); } }catch(e){} };
+function _curriculumGroupHtml(){
+  try{
+    var cur=(S.books||[]).filter(function(b){return b.isCurriculum;}).sort(function(a,b){return (a.tier||0)-(b.tier||0);});
+    var head='<div style="display:flex;align-items:center;gap:7px;padding:11px 2px 4px"><span style="font-size:14px">🎯</span><span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937)">내 레벨업 코스</span>';
+    if(!cur.length){
+      return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 14px">'
+        + head + '</div>'
+        + '<div style="text-align:center;padding:8px 6px 2px">'
+          + '<div style="font-size:28px;margin-bottom:4px">🎯</div>'
+          + '<div style="font-size:13px;font-weight:800;color:var(--theme,#1E5FA5);margin-bottom:4px">내 레벨에 맞는 학습 코스</div>'
+          + '<div style="font-size:11.5px;color:#6B7280;line-height:1.7;margin-bottom:12px">레벨테스트로 내 수준을 확인하면 딱 맞는 3단계 코스(3,000단어)가 자동으로 만들어져요. 챕터마다 나비도 받아요.</div>'
+          + '<button onclick="typeof showTestIntro===\'function\'&&showTestIntro()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">📝 레벨테스트 시작하기</button>'
+          + '<div style="font-size:10px;color:#9CA3AF;margin-top:6px">약 30문항 · 약 5분</div>'
+        + '</div></div>';
+    }
+    var tierName=['다지기','도약','정복'], rows='', prevPct=100;
+    cur.forEach(function(b,i){
+      var ws=(typeof getBookWords==='function')?getBookWords(b):[]; var mm=b.markMap||{};
+      var mem=ws.filter(function(w){return mm[w.en]===1;}).length;
+      var pct=ws.length?Math.round(mem/ws.length*100):0;
+      var nabi=(b.chPass||b.chDone||[]).filter(Boolean).length;
+      var nm=(typeof CEFR_LABEL!=='undefined'&&CEFR_LABEL[b.cefr])?CEFR_LABEL[b.cefr].name:'';
+      var bt=(i>0?'border-top:1px solid #ECEEF1;':'');
+      var locked=(i>0 && prevPct<80);
+      if(locked){
+        rows+='<div style="padding:10px 2px;'+bt+'opacity:.55"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">🔒</span><span style="flex:1;font-size:13px;font-weight:700;color:#6B7280">'+(i+1)+'단계 · '+tierName[i]+'</span><span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 7px;border-radius:8px">'+b.cefr+' '+nm+'</span></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;margin-left:25px">이전 단계 80% 외우면 열려요</div></div>';
+      } else {
+        rows+='<div onclick="_openCourse('+b.tier+')" style="padding:10px 2px;'+bt+'cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">'+(pct>=100?'✅':'▶️')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:var(--text1,#1F2937)">'+(i+1)+'단계 · '+tierName[i]+'</span><span style="font-size:10px;background:var(--theme-tint,#EEF3FA);color:var(--theme,#1E5FA5);padding:1px 7px;border-radius:8px">'+b.cefr+' '+nm+'</span><span style="font-size:10px;color:var(--theme,#1E5FA5)">🦋'+nabi+'/5</span></div><div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin:5px 0 3px 25px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div><div style="font-size:10.5px;color:#9CA3AF;margin-left:25px">외움 '+mem+'/'+ws.length+' · 챕터 시험 통과 시 나비</div></div>';
+      }
+      prevPct=pct;
+    });
+    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 8px">'
+      + head + '<span style="font-size:9px;font-weight:700;color:var(--theme,#1E5FA5);background:var(--theme-tint,#EEF3FA);border-radius:6px;padding:1px 6px;margin-left:auto">내 레벨 '+cur[0].cefr+'</span></div>'
+      + rows + '</div>';
+  }catch(e){ return ''; }
+}
 function rStudyBooks() {
   const DEFGRP = (typeof _defGroupPacks==='function') ? _defGroupPacks() : ['초등학교_8129','중학생_단어_3982','고등학생_수준_단어_7519'];
   const books = S.books||[];
@@ -10892,7 +10930,7 @@ function rStudyBooks() {
   const grpBooks    = _orderBooks(books.filter(b=>DEFGRP.includes(b.packId)));
   const otherBooks  = books.filter(b=>!DEFGRP.includes(b.packId));
   const marketBooks = _orderBooks(otherBooks.filter(b=>b.fromMarket));
-  const myMadeBooks = _orderBooks(otherBooks.filter(b=>!b.fromMarket));
+  const myMadeBooks = _orderBooks(otherBooks.filter(b=>!b.fromMarket && !b.isCurriculum));
 
   function _groupCard(headEmoji, headName, badge, rowsHtml, extra){
     return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 8px">'
@@ -10930,7 +10968,7 @@ function rStudyBooks() {
   const _allBooksTab = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const _curName = S.currentBook||'내 단어장';
   html += renderStudyGoalCard('mybooks');
-  html += g1 + g2 + g3;
+  html += g1 + _curriculumGroupHtml() + g2 + g3;
   html += '</div></div>';
   return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }

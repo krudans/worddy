@@ -1,4 +1,4 @@
-<!-- build: 20260706-migv3-progress -->
+<!-- build: 20260706-dualwrite-step1 -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -4367,6 +4367,13 @@ function sv() {
       // 단어장 별도 저장
       db.collection('user_words').doc(uid).set(booksData, {merge:false})
         .catch(e=>console.warn('단어장 저장 오류',e));
+      // [문서분리 STEP2 · 1단계 이중쓰기] 별도 books 서브컬렉션에 markMap/진도 가산 갱신.
+      //  blob(정본)·읽기 경로는 안 건드림. _splitReady(마이그레이션 완료) 게이트 + 완전 격리 → 저장 흐름 절대 안 깨짐.
+      if(window._splitReady){ try{
+        const _ts2=firebase.firestore.FieldValue.serverTimestamp();
+        const _bcol2=db.collection('users').doc(uid).collection('books');
+        (S.books||[]).forEach((b,i)=>{ try{ const _id=b.packId||('bk'+i); _bcol2.doc(_id).set({ name:b.name||'', packId:b.packId||null, order:i, fromMarket:!!b.fromMarket, markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{}, learned:(b.learned!=null?b.learned:0), deleted:false, updatedAt:_ts2 },{merge:true}).catch(()=>{}); }catch(_e){} });
+      }catch(e){ console.warn('[분리이중쓰기] skip', e); } }
       // 일별 백업 (하루 1번)
       const _bd = today();
       const lastBackup = localStorage.getItem('wd-last-backup');
@@ -15595,7 +15602,7 @@ auth.onAuthStateChanged(async user => {
   clearTimeout(_authTimeout);
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
-  if(user && typeof db!=='undefined'){ try{ _initSessionLock(user.uid); }catch(e){} try{ _migrateToV2(user.uid); }catch(e){} } // [세션락]+[문서분리 마이그레이션] 비차단
+  if(user && typeof db!=='undefined'){ try{ _initSessionLock(user.uid); }catch(e){} try{ _migrateToV2(user.uid).then(function(r){ if(r&&(r.ok||r.skipped==='already-v3')) window._splitReady=true; }); }catch(e){} } // [세션락]+[문서분리 마이그레이션] 비차단, 완료 후 이중쓰기 게이트 open
   setSplash(10, '로그인 확인 중...', user ? '로그인됨: ' + (user.email||'').split('@')[0] : '로그인 필요');
 
   // 관리자에서 등록/수정한 나비 데이터 머지 (로그인 여부 무관)

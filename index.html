@@ -491,6 +491,46 @@ function _cefrTag(c){ var m=CEFR_LABEL[String(c||'').toUpperCase()]; return m?(c
 function _cefrDesc(c){ var m=CEFR_LABEL[String(c||'').toUpperCase()]; return m?m.desc:''; }
 function showCefrInfo(c){ try{ var m=CEFR_LABEL[String(c||'').toUpperCase()]; if(m&&typeof toast==='function') toast('📚 '+c+' · '+m.name+' — '+m.desc); }catch(e){} }
 
+// ── 레벨업 코스 (커리큘럼) 헬퍼 ──
+const CEFR_ORDER = ['A1','A2','B1','B2','C1','C2'];
+const LV_TO_CEFR = { egg:'A1', baby:'A1', crown:'A2', coco:'B1', shine:'B2', small:'C1', big:'C2', god:'C2' }; // 나비레벨→CEFR 시작점(튜닝 가능)
+const _CW_TIER = ['다지기','도약','정복'];
+window._cwCache = window._cwCache || {};
+// 해당 CEFR 단어 n개(등재순=빈도 근사). BWD_META∩BWD_DICT. 결과 캐시.
+function _cefrWords(cefr, n){
+  n = n||1000; cefr = String(cefr||'').toUpperCase();
+  if(window._cwCache[cefr] && window._cwCache[cefr].length) return window._cwCache[cefr].slice(0,n);
+  try{
+    if(typeof BWD_META==='undefined' || typeof BWD_DICT==='undefined') return [];
+    var out=[], keys=Object.keys(BWD_META);
+    for(var i=0;i<keys.length && out.length<n;i++){
+      var k=keys[i], m=BWD_META[k];
+      if(m && String(m.cefr||'').toUpperCase()===cefr && BWD_DICT[k]){ out.push(_enrichFromDict({en:k})); }
+    }
+    if(out.length) window._cwCache[cefr]=out;
+    return out.slice(0,n);
+  }catch(e){ return []; }
+}
+function _isMasterableBook(b){ return !!(b && (b.isCurriculum || (b.packId && !b.fromMarket && /초등|중학|고등/.test(b.name||'')))); }
+function _curriculumBooks(){ return (typeof S!=='undefined'&&Array.isArray(S.books)) ? S.books.filter(function(b){return b.isCurriculum;}) : []; }
+function _bookMastered(b){ try{ var ws=getBookWords(b); if(!ws.length) return false; var mm=b.markMap||{}; for(var i=0;i<ws.length;i++){ if(mm[ws[i].en]!==1) return false; } return true; }catch(e){ return false; } }
+// 레벨테스트 결과 CEFR 시작점으로 3단계 코스 생성(내레벨/+1/+2, 각1000). 기존 커리큘럼 책은 교체.
+function _generateCurriculum(startCefr){
+  try{
+    startCefr = String(startCefr||'B1').toUpperCase();
+    var si = CEFR_ORDER.indexOf(startCefr); if(si<0) si=2;
+    if(typeof S==='undefined') return; if(!Array.isArray(S.books)) S.books=[];
+    S.books = S.books.filter(function(b){ return !b.isCurriculum; });
+    for(var t=0;t<3;t++){
+      var ci = Math.min(si+t, CEFR_ORDER.length-1);
+      var cefr = CEFR_ORDER[ci];
+      var nm = (typeof CEFR_LABEL!=='undefined'&&CEFR_LABEL[cefr])?CEFR_LABEL[cefr].name:cefr;
+      S.books.push({ name:(t+1)+'단계 · '+_CW_TIER[t]+' ('+cefr+' '+nm+')', isCurriculum:true, cefr:cefr, tier:(t+1), markMap:{}, learned:[], chDone:[false,false,false,false,false] });
+    }
+    if(typeof sv==='function') sv();
+  }catch(e){}
+}
+
 const LEVELS = [
   {id:'egg',   name:'알',           emoji:'🥚', color:'#F9A825',bg:'#FFF9C4',min:0,    xp:150,  desc:'성장 시작', isFinal:false,
    alarm:['깨어나! 단어 공부할 시간이야!','알 속에서 꼼지락... 공부해야지!']},
@@ -4186,6 +4226,7 @@ function _dictOverlayArr(raw){
 }
 function getBookWords(book) {
   if (!book) return [];
+  if (book.isCurriculum) return _cefrWords(book.cefr, 1000);
   if (book.packId) {
     // 마켓팩은 오직 Firebase _marketPacks에서만 조회 + 단어사전 라이브 오버레이
     const livePack = (S._marketPacks || []).find(p => p.id === book.packId);
@@ -5699,6 +5740,9 @@ function finishAdaptiveTest() {
   const finalLv = LEVELS[finalLvIdx];
 
   S.lid = finalLv.id;
+  // 레벨테스트 결과 → CEFR 시작점 → 레벨업 코스 3단계 자동 생성
+  S._myCefr = (typeof LV_TO_CEFR!=='undefined' && LV_TO_CEFR[finalLv.id]) || 'B1';
+  try{ _generateCurriculum(S._myCefr); }catch(e){}
   // 레벨테스트 XP: 맞힌 문항당 2XP + 통과한 레벨마다 10XP 보너스
   let _testCorrect = 0;
   Object.keys(S.tScore||{}).forEach(k => { _testCorrect += (S.tScore[k]||0); });

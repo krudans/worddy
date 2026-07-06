@@ -13,7 +13,7 @@
   // ── 안전 헬퍼 (앱 함수는 모두 feature-detect) ──
   function D() { try { return (typeof BWD_DICT !== 'undefined') ? BWD_DICT : (window.BWD_DICT || null); } catch (e) { return null; } }
   function SUG() { try { return (typeof BWDSuggest !== 'undefined') ? BWDSuggest : (window.BWDSuggest || null); } catch (e) { return null; } }
-  function ST() { try { return window.S || null; } catch (e) { return null; } }
+  function ST() { try { if (typeof S !== 'undefined' && S) return S; } catch (e) {} try { return window.S || null; } catch (e) { return null; } }
   function toastMsg(m, t) { try { if (typeof toast === 'function') { toast(m, t); return; } } catch (e) {} }
   function pronOf(w) {
     try {

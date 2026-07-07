@@ -491,44 +491,50 @@ function _cefrTag(c){ var m=CEFR_LABEL[String(c||'').toUpperCase()]; return m?(c
 function _cefrDesc(c){ var m=CEFR_LABEL[String(c||'').toUpperCase()]; return m?m.desc:''; }
 function showCefrInfo(c){ try{ var m=CEFR_LABEL[String(c||'').toUpperCase()]; if(m&&typeof toast==='function') toast('📚 '+c+' · '+m.name+' — '+m.desc); }catch(e){} }
 
-// ── 레벨업 코스 (커리큘럼) 헬퍼 ──
-const CEFR_ORDER = ['A1','A2','B1','B2','C1','C2'];
-const LV_TO_CEFR = { egg:'A1', baby:'A1', crown:'A2', coco:'B1', shine:'B2', small:'C1', big:'C2', god:'C2' }; // 나비레벨→CEFR 시작점(튜닝 가능)
+// ── 레벨업 코스 (커리큘럼) 헬퍼 · 10레벨 밴드 ──
+const CW_MAXLEVEL = 10;
+const LV_TO_LEVEL = { egg:1, baby:2, crown:3, coco:4, shine:6, small:7, big:9, god:10 }; // 나비레벨→레벨(1~10), 튜닝 가능
 const _CW_TIER = ['다지기','도약','정복'];
-window._cwCache = window._cwCache || {};
-// 해당 CEFR 단어 n개(등재순=빈도 근사). BWD_META∩BWD_DICT. 결과 캐시.
-function _cefrWords(cefr, n){
-  n = n||1000; cefr = String(cefr||'').toUpperCase();
-  if(window._cwCache[cefr] && window._cwCache[cefr].length) return window._cwCache[cefr].slice(0,n);
+window._lwSorted = window._lwSorted || null; window._lwCache = window._lwCache || {};
+// 난이도(CEFR) 1차 + 빈도(등재순) 2차 정렬 상위 10,000 단어
+function _lvlSorted(){
+  if(window._lwSorted) return window._lwSorted;
   try{
     if(typeof BWD_META==='undefined' || typeof BWD_DICT==='undefined') return [];
-    var out=[], keys=Object.keys(BWD_META);
-    for(var i=0;i<keys.length && out.length<n;i++){
-      var k=keys[i], m=BWD_META[k];
-      if(m && String(m.cefr||'').toUpperCase()===cefr && BWD_DICT[k]){ out.push(_enrichFromDict({en:k})); }
-    }
-    if(out.length) window._cwCache[cefr]=out;
-    return out.slice(0,n);
+    var order={A1:0,A2:1,B1:2,B2:3,C1:4,C2:5}, keys=Object.keys(BWD_META), arr=[];
+    for(var i=0;i<keys.length;i++){ var k=keys[i], m=BWD_META[k]; if(m && m.cefr && BWD_DICT[k]){ var c=String(m.cefr).toUpperCase(); arr.push({en:k, r:(order[c]!=null?order[c]:9), i:i}); } }
+    arr.sort(function(a,b){ return (a.r-b.r) || (a.i-b.i); });
+    window._lwSorted = arr.slice(0,10000).map(function(x){return x.en;});
+    return window._lwSorted;
   }catch(e){ return []; }
+}
+// 레벨(1~10) 밴드 1000단어 (enriched, 캐시)
+function _levelWords(level){
+  level = Math.max(1, Math.min(CW_MAXLEVEL, level|0));
+  if(window._lwCache[level] && window._lwCache[level].length) return window._lwCache[level];
+  var sorted=_lvlSorted(); if(!sorted.length) return [];
+  var slice=sorted.slice((level-1)*1000, level*1000);
+  var out=slice.map(function(en){ return _enrichFromDict({en:en}); });
+  if(out.length) window._lwCache[level]=out;
+  return out;
 }
 function _isMasterableBook(b){ return !!(b && (b.isCurriculum || (b.packId && !b.fromMarket && /초등|중학|고등/.test(b.name||'')))); }
 function _curriculumBooks(){ return (typeof S!=='undefined'&&Array.isArray(S.books)) ? S.books.filter(function(b){return b.isCurriculum;}) : []; }
-function _bookMastered(b){ try{ var ws=getBookWords(b); if(!ws.length) return false; var mm=b.markMap||{}; for(var i=0;i<ws.length;i++){ if(mm[ws[i].en]!==1) return false; } return true; }catch(e){ return false; } }
-// 레벨테스트 결과 CEFR 시작점으로 3단계 코스 생성(내레벨/+1/+2, 각1000). 기존 커리큘럼 책은 교체.
-function _generateCurriculum(startCefr){
+function _bookMastered(b){ try{ if(b&&b.isCurriculum&&Array.isArray(b.chPass)) return b.chPass.length>=5 && b.chPass.slice(0,5).every(Boolean); var ws=getBookWords(b); if(!ws.length) return false; var mm=b.markMap||{}; for(var i=0;i<ws.length;i++){ if(mm[ws[i].en]!==1) return false; } return true; }catch(e){ return false; } }
+function _curriculumComplete(){ var cur=_curriculumBooks(); if(!cur.length) return false; return cur.every(_bookMastered) && cur.some(function(b){return (b.level||0)>=CW_MAXLEVEL;}); }
+function _curriculumInProgress(){ var cur=_curriculumBooks(); return cur.length>0 && !cur.every(_bookMastered); }
+// 레벨테스트 결과 레벨(1~10)로 3단계 코스 생성([L,L+1,L+2] 클램프+중복제거). 기존 커리큘럼 교체.
+function _generateCurriculum(startLevel){
   try{
-    startCefr = String(startCefr||'B1').toUpperCase();
-    var si = CEFR_ORDER.indexOf(startCefr); if(si<0) si=2;
+    startLevel = Math.max(1, Math.min(CW_MAXLEVEL, startLevel|0)) || 5;
     if(typeof S==='undefined') return; if(!Array.isArray(S.books)) S.books=[];
     S.books = S.books.filter(function(b){ return !b.isCurriculum; });
-    for(var t=0;t<3;t++){
-      var ci = Math.min(si+t, CEFR_ORDER.length-1);
-      var cefr = CEFR_ORDER[ci];
-      var nm = (typeof CEFR_LABEL!=='undefined'&&CEFR_LABEL[cefr])?CEFR_LABEL[cefr].name:cefr;
-      var _cnm = (t+1)+'단계 · '+_CW_TIER[t]+' ('+cefr+' '+nm+')';
+    var levels=[]; for(var t=0;t<3;t++){ var L=Math.min(startLevel+t, CW_MAXLEVEL); if(levels.indexOf(L)<0) levels.push(L); }
+    levels.forEach(function(L, idx){
+      var _cnm = (idx+1)+'단계 · '+(_CW_TIER[idx]||'코스')+' (레벨 '+L+')';
       try{ if(typeof _untombBookByName==='function') _untombBookByName(_cnm); }catch(e){}
-      S.books.push({ name:_cnm, isCurriculum:true, cefr:cefr, tier:(t+1), markMap:{}, learned:[], chDone:[false,false,false,false,false] });
-    }
+      S.books.push({ name:_cnm, isCurriculum:true, level:L, tier:(idx+1), markMap:{}, learned:[], chPass:[false,false,false,false,false] });
+    });
     if(typeof sv==='function') sv();
   }catch(e){}
 }
@@ -4228,7 +4234,7 @@ function _dictOverlayArr(raw){
 }
 function getBookWords(book) {
   if (!book) return [];
-  if (book.isCurriculum) return _cefrWords(book.cefr, 1000);
+  if (book.isCurriculum) return _levelWords(book.level);
   if (book.packId) {
     // 마켓팩은 오직 Firebase _marketPacks에서만 조회 + 단어사전 라이브 오버레이
     const livePack = (S._marketPacks || []).find(p => p.id === book.packId);
@@ -5524,6 +5530,10 @@ async function finishSurvey() {
 
 // ── 레벨 테스트 ──
 function showTestIntro(isRetry=false) {
+  if(!isRetry && typeof _curriculumInProgress==='function' && _curriculumInProgress()){
+    var _mr=document.getElementById('mr');
+    if(_mr){ _mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center"><div style="font-size:40px;margin-bottom:8px">⚠️</div><div style="font-size:16px;font-weight:800;color:#111;margin-bottom:6px">진행 중인 코스가 있어요</div><div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:16px">지금 레벨테스트를 다시 보면<br>현재 레벨업 코스가 <b>새로 만들어지고</b><br>진행하던 챕터 진도는 초기화됩니다.</div><div style="display:flex;gap:8px"><button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">그만두기</button><button onclick="cm();showTestIntro(true)" style="flex:1;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">새로 시작</button></div></div></div>'; return; }
+  }
   document.getElementById('hd').style.display='none';
   // nav 항상 표시
   document.getElementById('body').innerHTML=`<div class="pad" style="padding-top:24px">
@@ -5742,9 +5752,9 @@ function finishAdaptiveTest() {
   const finalLv = LEVELS[finalLvIdx];
 
   S.lid = finalLv.id;
-  // 레벨테스트 결과 → CEFR 시작점 → 레벨업 코스 3단계 자동 생성
-  S._myCefr = (typeof LV_TO_CEFR!=='undefined' && LV_TO_CEFR[finalLv.id]) || 'B1';
-  try{ _generateCurriculum(S._myCefr); }catch(e){}
+  // 레벨테스트 결과 → 레벨(1~10) → 레벨업 코스 3단계 자동 생성
+  S._myLevel = (typeof LV_TO_LEVEL!=='undefined' && LV_TO_LEVEL[finalLv.id]) || 5;
+  try{ _generateCurriculum(S._myLevel); }catch(e){}
   // 레벨테스트 XP: 맞힌 문항당 2XP + 통과한 레벨마다 10XP 보너스
   let _testCorrect = 0;
   Object.keys(S.tScore||{}).forEach(k => { _testCorrect += (S.tScore[k]||0); });
@@ -10895,30 +10905,38 @@ function _curriculumGroupHtml(){
         + '<div style="text-align:center;padding:8px 6px 2px">'
           + '<div style="font-size:28px;margin-bottom:4px">🎯</div>'
           + '<div style="font-size:13px;font-weight:800;color:var(--theme,#1E5FA5);margin-bottom:4px">내 레벨에 맞는 학습 코스</div>'
-          + '<div style="font-size:11.5px;color:#6B7280;line-height:1.7;margin-bottom:12px">레벨테스트로 내 수준을 확인하면 딱 맞는 3단계 코스(3,000단어)가 자동으로 만들어져요. 챕터마다 나비도 받아요.</div>'
+          + '<div style="font-size:11.5px;color:#6B7280;line-height:1.7;margin-bottom:12px">레벨테스트로 내 수준을 확인하면 딱 맞는 단계별 코스가 자동으로 만들어져요. 챕터마다 나비도 받아요.</div>'
           + '<button onclick="typeof showTestIntro===\'function\'&&showTestIntro()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">📝 레벨테스트 시작하기</button>'
           + '<div style="font-size:10px;color:#9CA3AF;margin-top:6px">약 30문항 · 약 5분</div>'
         + '</div></div>';
     }
+    var complete = (typeof _curriculumComplete==='function') && _curriculumComplete();
     var tierName=['다지기','도약','정복'], rows='', prevPct=100;
     cur.forEach(function(b,i){
       var ws=(typeof getBookWords==='function')?getBookWords(b):[]; var mm=b.markMap||{};
       var mem=ws.filter(function(w){return mm[w.en]===1;}).length;
       var pct=ws.length?Math.round(mem/ws.length*100):0;
-      var nabi=(b.chPass||b.chDone||[]).filter(Boolean).length;
-      var nm=(typeof CEFR_LABEL!=='undefined'&&CEFR_LABEL[b.cefr])?CEFR_LABEL[b.cefr].name:'';
+      var nabi=(b.chPass||[]).filter(Boolean).length;
       var bt=(i>0?'border-top:1px solid #ECEEF1;':'');
       var locked=(i>0 && prevPct<80);
+      var lvBadge='레벨 '+(b.level||'?');
       if(locked){
-        rows+='<div style="padding:10px 2px;'+bt+'opacity:.55"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">🔒</span><span style="flex:1;font-size:13px;font-weight:700;color:#6B7280">'+(i+1)+'단계 · '+tierName[i]+'</span><span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 7px;border-radius:8px">'+b.cefr+' '+nm+'</span></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;margin-left:25px">이전 단계 80% 외우면 열려요</div></div>';
+        rows+='<div style="padding:10px 2px;'+bt+'opacity:.55"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">🔒</span><span style="flex:1;font-size:13px;font-weight:700;color:#6B7280">'+(i+1)+'단계 · '+(tierName[i]||'코스')+'</span><span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 7px;border-radius:8px">'+lvBadge+'</span></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;margin-left:25px">이전 단계 80% 외우면 열려요</div></div>';
       } else {
-        rows+='<div onclick="_openCourse('+b.tier+')" style="padding:10px 2px;'+bt+'cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">'+(pct>=100?'✅':'▶️')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:var(--text1,#1F2937)">'+(i+1)+'단계 · '+tierName[i]+'</span><span style="font-size:10px;background:var(--theme-tint,#EEF3FA);color:var(--theme,#1E5FA5);padding:1px 7px;border-radius:8px">'+b.cefr+' '+nm+'</span><span style="font-size:10px;color:var(--theme,#1E5FA5)">🦋'+nabi+'/5</span></div><div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin:5px 0 3px 25px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div><div style="font-size:10.5px;color:#9CA3AF;margin-left:25px">외움 '+mem+'/'+ws.length+' · 챕터 시험 통과 시 나비</div></div>';
+        rows+='<div onclick="_openCourse('+b.tier+')" style="padding:10px 2px;'+bt+'cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">'+(pct>=100?'✅':'▶️')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:var(--text1,#1F2937)">'+(i+1)+'단계 · '+(tierName[i]||'코스')+'</span><span style="font-size:10px;background:var(--theme-tint,#EEF3FA);color:var(--theme,#1E5FA5);padding:1px 7px;border-radius:8px">'+lvBadge+'</span><span style="font-size:10px;color:var(--theme,#1E5FA5)">🦋'+nabi+'/5</span></div><div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin:5px 0 3px 25px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div><div style="font-size:10.5px;color:#9CA3AF;margin-left:25px">외움 '+mem+'/'+ws.length+' · 챕터 시험 통과 시 나비</div></div>';
       }
       prevPct=pct;
     });
-    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 8px">'
-      + head + '<span style="font-size:9px;font-weight:700;color:var(--theme,#1E5FA5);background:var(--theme-tint,#EEF3FA);border-radius:6px;padding:1px 6px;margin-left:auto">내 레벨 '+cur[0].cefr+'</span></div>'
-      + rows + '</div>';
+    var footer='';
+    if(complete){
+      var maxed = cur.some(function(b){return (b.level||0)>=CW_MAXLEVEL;});
+      footer = maxed
+        ? '<div style="margin-top:8px;text-align:center;background:var(--theme-tint,#EEF3FA);border-radius:10px;padding:11px;font-size:12px;font-weight:800;color:var(--theme,#1E5FA5)">🎉 최고 레벨 달성! 커리큘럼 완료 — 핵심 단어를 다 정복했어요</div>'
+        : '<button onclick="typeof showTestIntro===\'function\'&&showTestIntro()" style="margin-top:8px;width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">🎉 완주! 재테스트로 다음 코스</button>';
+    }
+    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 10px">'
+      + head + '<span style="font-size:9px;font-weight:700;color:var(--theme,#1E5FA5);background:var(--theme-tint,#EEF3FA);border-radius:6px;padding:1px 6px;margin-left:auto">내 레벨 '+cur[0].level+'</span></div>'
+      + rows + footer + '</div>';
   }catch(e){ return ''; }
 }
 function rStudyBooks() {

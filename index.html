@@ -1,4 +1,4 @@
-<!-- build: 20260708-course-manage-menu -->
+<!-- build: 20260708-leveltest-exam-revamp -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -5575,15 +5575,16 @@ function showTestIntro(isRetry=false) {
       <div style="font-size:22px;font-weight:900;color:#111;margin-bottom:8px">${isRetry?'📝 레벨 재테스트':'📝 레벨 테스트'}</div>
       <div style="font-size:14px;color:#6B7280;line-height:1.8;margin-bottom:14px">쉬운 단어부터 시작해서<br>실력에 맞는 레벨을 찾아드려요!</div>
       <div style="background:var(--theme-tint);border-radius:14px;padding:14px;margin-bottom:14px;text-align:left">
-        <div style="font-size:13px;font-weight:700;color:var(--theme);margin-bottom:8px">📌 적응형 테스트 방식</div>
+        <div style="font-size:13px;font-weight:700;color:var(--theme);margin-bottom:8px">📌 이렇게 진행돼요</div>
         <div style="font-size:12px;color:#374151;line-height:1.9">
-          ✅ 3개 연속 정답 → 다음 레벨로 상승<br>
-          ❌ 2개 오답 → 현재 레벨로 확정<br>
-          ⏱️ 최소 3문제 ~ 최대 24문제
+          🎯 뜻 맞추기 25문제 + 🔊 듣고 맞추기 25문제<br>
+          📚 쉬운 단어부터 어려운 단어까지 골고루 출제<br>
+          🏅 맞힌 만큼 내 레벨(1~10)을 찾아드려요<br>
+          ⏱️ 총 50문제 · 문제당 10초
         </div>
       </div>
       ${isRetry?`<div style="background:#FFF8E1;border-radius:12px;padding:10px;margin-bottom:14px;font-size:13px;color:#E65100">현재 레벨: ${typeof charSVGAnimated==="function"?"<span style='display:inline-block;vertical-align:middle'>"+charSVGAnimated(S.lid,16,"normal")+"</span>":lv(S.lid).emoji} ${lv(S.lid).name}</div>`:''}
-      <button class="btn bb" onclick="startTest()">테스트 시작! 🚀</button>
+      <button class="btn bb" onclick="startInitialLevelExam()">테스트 시작! 🚀</button>
       ${isRetry?`<button class="btn bgr" onclick="startApp()" style="margin-top:8px">취소</button>`:''}
     </div>
   </div>`;
@@ -6158,6 +6159,7 @@ function _commitAndLeave(){
   window._studyActive=false; window._autoActive=false; window._spkActive=false; window._sdActive=false; window._lsActive=false; window._autoLocked=false;
   try{ if(window._lsAutoTimer){ clearTimeout(window._lsAutoTimer); window._lsAutoTimer=null; } }catch(e){}
   try{ if(typeof S!=='undefined'){ S._sessTs=0; S._gameStartTs=null; S._gameRunning=false; if(wasGame) S.gDone=true; } }catch(e){}
+  try{ if(typeof S!=='undefined' && S._chExam && S._chExam.isLevelTest){ S._inChExam=false; S._chExam=null; } }catch(e){}
   try{ var sc=document.getElementById('sess-clock-bar'); if(sc) sc.style.display='none'; }catch(e){}
   try{ var ov=document.getElementById('auto-lock-overlay'); if(ov) ov.remove(); }catch(e){}
   try{ var mr=document.getElementById('mr'); if(mr){ mr.innerHTML=''; mr.style.pointerEvents='none'; } }catch(e){}
@@ -6698,6 +6700,101 @@ function finishChapterExam(){
       });
     });
   }catch(e){ S._inChExam=false; S._chExam=null; }
+}
+// ══════════════════════════════════════════════════════════════
+// 초기 레벨테스트 — 챕터시험과 동일 형식(뜻맞추기25+듣고맞추기25=50문제)
+// 실제 커리큘럼 단어(_levelWords 1~10밴드)에서 출제 → 결과 레벨로 3단계 코스 생성
+// ══════════════════════════════════════════════════════════════
+function _levelExamReady(){
+  try{ return typeof BWD_META!=='undefined' && typeof BWD_DICT!=='undefined' && _lvlSorted().length>500; }catch(e){ return false; }
+}
+function _buildLevelExamSample(){
+  // 레벨1~10 각 5단어씩 = 50단어. 각 단어에 출제 레벨(_lvl) 태그.
+  var perLv=5, out=[], seen=Object.create(null);
+  for(var L=1; L<=CW_MAXLEVEL; L++){
+    var band=_levelWords(L)||[];
+    if(!band.length) continue;
+    var pool=band.filter(function(w){ return w && w.en && w.kr && !seen[w.en]; });
+    for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+    pool.slice(0, perLv).forEach(function(w){ seen[w.en]=1; out.push(Object.assign({}, w, {_lvl:L})); });
+  }
+  return out;
+}
+function startInitialLevelExam(){
+  try{
+    if(!_levelExamReady()){
+      if(typeof _ensureBwdMeta==='function') _ensureBwdMeta();
+      var _b=document.getElementById('body');
+      if(_b) _b.innerHTML='<div class="pad" style="padding-top:60px;text-align:center"><div style="font-size:15px;font-weight:800;color:#374151;margin-bottom:8px">📚 단어 사전을 불러오는 중…</div><div style="font-size:12px;color:#9CA3AF">잠시만 기다려 주세요</div></div>';
+      var _tries=0;
+      var _iv=setInterval(function(){
+        _tries++;
+        if(_levelExamReady()){ clearInterval(_iv); startInitialLevelExam(); }
+        else if(_tries>=25){ clearInterval(_iv); if(typeof toast==='function') toast('사전을 불러오지 못했어요. 잠시 후 다시 시도해주세요','err'); if(typeof showTestIntro==='function') showTestIntro(); }
+      }, 300);
+      return;
+    }
+    var sample=_buildLevelExamSample();
+    if(sample.length<20){ if(typeof toast==='function') toast('출제할 단어가 부족해요','err'); return; }
+    for(var i=sample.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=sample[i]; sample[i]=sample[j]; sample[j]=t; }
+    var games=['quiz','listenq'];
+    var per=Math.ceil(sample.length/games.length);
+    var groups=[]; for(var g=0;g<games.length;g++){ groups.push(sample.slice(g*per,(g+1)*per)); }
+    var lvMap=Object.create(null); sample.forEach(function(w){ lvMap[w.en]=w._lvl; });
+    S._chExam={ isLevelTest:true, bookName:'레벨 찾기', chIdx:0, games:games, groups:groups, gi:0, correct:0, total:0, lvMap:lvMap, perLv:{} };
+    S._inChExam=true; S._inLevelTest=false; S._inLearnSession=false; S._prevTab=S.tab;
+    S._studyChapterIdx=null;
+    try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; }catch(e){}
+    if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
+    if(typeof startGameW==='function') startGameW(games[0], groups[0]);
+  }catch(e){ if(typeof toast==='function') toast('레벨테스트 시작 실패','err'); }
+}
+function finishInitialLevelExam(){
+  try{
+    var ex=S._chExam||{}; var per=ex.perLv||{};
+    // 밑에서부터 연속 통과(정답률≥60%)한 최고 레벨 = 시작 레벨
+    var startLevel=1;
+    for(var L=1; L<=CW_MAXLEVEL; L++){
+      var d=per[L]; if(!d||!d.n) continue;
+      if(d.c/d.n >= 0.6) startLevel=L; else break;
+    }
+    startLevel=Math.max(1, Math.min(CW_MAXLEVEL, startLevel));
+    var totalCorrect=ex.correct||0, totalQ=ex.total||0;
+    var pct=totalQ?Math.round(totalCorrect/totalQ*100):0;
+    S._myLevel=startLevel;
+    try{ _generateCurriculum(startLevel); }catch(e){}
+    try{
+      var best=null;
+      LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=startLevel){ if(!best||v>best.v) best={id:l.id,v:v}; } });
+      if(best) S.lid=best.id;
+    }catch(e){}
+    S._inChExam=false; S._chExam=null; S.gDone=false;
+    try{ localStorage.setItem('wd-tested','1'); }catch(e){}
+    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), level:startLevel, pct:pct, totalQ:totalQ}); localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+    if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
+    if(typeof sv==='function') sv();
+    var tierName=['다지기','도약','정복'], courseRows='';
+    for(var t=0;t<3;t++){ var cl=Math.min(startLevel+t, CW_MAXLEVEL); courseRows+='<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;background:'+(t===0?'var(--theme-tint,#EEF3FA)':'#F8F9FA')+';border:1px solid '+(t===0?'var(--theme-soft,#BFD7F0)':'#E5E7EB')+';margin-bottom:6px"><span style="font-size:15px">'+(t===0?'▶️':'🔒')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:#374151">'+(t+1)+'단계 · '+tierName[t]+'</span><span style="font-size:10px;background:#fff;color:var(--theme,#1E5FA5);padding:2px 8px;border-radius:8px;font-weight:700">레벨 '+cl+'</span></div>'; }
+    if(typeof S!=='undefined'){ S.tab='mybooks'; S.stab='books'; }
+    if(typeof go==='function'){ try{ go('mybooks','books'); }catch(e){} }
+    requestAnimationFrame(function(){
+      var mr=document.getElementById('mr'); if(!mr) return;
+      mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px;text-align:center">'
+        +'<div style="font-size:48px;margin-bottom:6px">🎯</div>'
+        +'<div style="font-size:20px;font-weight:900;color:#111;margin-bottom:2px">레벨테스트 완료!</div>'
+        +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">50문제 중 '+totalCorrect+'개 정답 ('+pct+'%)</div>'
+        +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:14px">'
+          +'<div style="font-size:12px;color:var(--theme,#1E5FA5);font-weight:700;margin-bottom:2px">나의 레벨</div>'
+          +'<div style="font-size:26px;font-weight:900;color:var(--theme,#1E5FA5)">레벨 '+startLevel+'</div>'
+        +'</div>'
+        +'<div style="text-align:left;margin-bottom:14px">'
+          +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 이 코스가 만들어졌어요</div>'
+          +courseRows
+        +'</div>'
+        +'<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">학습 시작하기 🚀</button>'
+        +'</div></div>';
+    });
+  }catch(e){ S._inChExam=false; S._chExam=null; try{ if(typeof go==='function') go('mybooks','books'); }catch(e2){} }
 }
 function showLevelUpTest() {
   const words=S._sysWords||DEFAULT_WORDS[S.lid]||[];
@@ -13163,7 +13260,8 @@ function _chExamBanner(){try{
   var wrong=Math.max(0,answered-correct);
   var score=correct*2;
   var acc=answered>0?Math.round(correct/answered*100):0;
-  var passed=score>=90;
+  var isLT=!!ex.isLevelTest;
+  var passed=!isLT && score>=90;
   var lite=(S.theme!=='dark');
   var C_HDRBG=lite?'#FFFFFF':'#1B2740';
   var C_TITLE=lite?'#12233B':'#F1F5F9';
@@ -13202,7 +13300,7 @@ function _chExamBanner(){try{
       +'<div style="display:flex;align-items:center;gap:7px;min-width:0">'
         +'<span style="font-size:14px">🎫</span>'
         +'<span style="font-size:14px;font-weight:900;color:'+C_TITLE+'">레벨테스트</span>'
-        +'<span style="font-size:11px;color:'+C_MUTED+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+bookShort+' · 챕터 '+((ex.chIdx||0)+1)+'</span>'
+        +'<span style="font-size:11px;color:'+C_MUTED+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(isLT?'내 레벨 찾기':(bookShort+' · 챕터 '+((ex.chIdx||0)+1)))+'</span>'
       +'</div>'
       +'<button onclick="exitConfirm()" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:'+C_MUTED+';font-size:18px;font-weight:700;line-height:1;flex-shrink:0">✕</button>'
     +'</div>'
@@ -13270,12 +13368,21 @@ function rGameDone(){
     var _cgrp=_cex.groups[_cex.gi]||[];
     _cex.correct += Object.keys(_crm).filter(function(k){return _crm[k]===true;}).length;
     _cex.total += _cgrp.length;
+    if(_cex.isLevelTest && _cex.lvMap){
+      _cex.perLv=_cex.perLv||{};
+      _cgrp.forEach(function(w){
+        var L=_cex.lvMap[w.en]; if(!L) return;
+        var d=_cex.perLv[L]||(_cex.perLv[L]={c:0,n:0});
+        d.n++; if(_crm[w.en]===true) d.c++;
+      });
+    }
     _cex.gi++;
     if(_cex.gi < _cex.games.length){
       S.gDone=false;
       requestAnimationFrame(function(){ if(typeof startGameW==='function') startGameW(_cex.games[_cex.gi], _cex.groups[_cex.gi]); });
       return;
     }
+    if(_cex.isLevelTest){ finishInitialLevelExam(); return; }
     finishChapterExam();
     return;
   }

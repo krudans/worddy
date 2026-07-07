@@ -13106,11 +13106,38 @@ function startGameW(id, ws) {
 
   // 게임 탭 또는 나비 탭으로 전환 (호출된 탭 기준)
   if(S.tab!=='game') S.tab='butterfly'; S.stab=null; updHD();
-  S._enterIntro?(S._enterIntro=false,S._gameIntro=true,go()):(S._gameIntro?go():showCountdown(()=>go()));
+  if(S._inChExam){ S._enterIntro=false; S._gameIntro=false; go(); }
+  else { S._enterIntro?(S._enterIntro=false,S._gameIntro=true,go()):(S._gameIntro?go():showCountdown(()=>go())); }
 }
 
 function rGame(){if(S.gDone)return rGameDone();if(S._gameIntro)return rGameIntro();const map={quiz:rQ4,listenq:rListenQ,fill:rFill,wordfind:rWF,match:rMatch,sentence:rSentence,scramble:rScramble,typing:rTyping,wc:rWC,ssort:rSSorting};var _gh=(map[S.gameId]||rGameDone)();if(S._inChExam&&S._chExam)return _chExamBanner()+_gh;return _gh;}
-function _chExamBanner(){try{var ex=S._chExam;var gi=(ex.gi||0);var cur=Math.min(gi*10+(S.gIdx||0)+1,50);return '<div style="background:var(--theme,#1E5FA5);color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:800">'+'<span>🎫 레벨테스트 · 챕터 '+((ex.chIdx||0)+1)+'</span>'+'<span>'+cur+'/50 · 90점 통과</span>'+'</div>';}catch(e){return '';}}
+function _chExamBanner(){try{
+  var ex=S._chExam; var gi=(ex.gi||0);
+  var cur=S.gResultMap||{}; var ck=Object.keys(cur);
+  var curCorrect=ck.filter(function(k){return cur[k]===true;}).length;
+  var curAnswered=ck.length;
+  var correct=(ex.correct||0)+curCorrect;
+  var answered=gi*10+curAnswered;
+  var wrong=Math.max(0,answered-correct);
+  var score=correct*2;
+  var qNum=Math.min(gi*10+(S.gIdx||0)+1,50);
+  var passed=score>=90;
+  var need=Math.max(0,45-correct);
+  var barPct=Math.min(100,Math.round(answered/50*100));
+  return '<div style="background:'+(passed?'#16A34A':'var(--theme,#1E5FA5)')+';color:#fff;padding:9px 14px 8px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
+      +'<span style="font-size:11px;font-weight:800;opacity:.95">🎫 레벨테스트 · 챕터 '+((ex.chIdx||0)+1)+'</span>'
+      +'<span style="font-size:11px;font-weight:800;opacity:.95">'+qNum+' / 50 문제</span>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:10px">'
+      +'<span style="font-size:20px;font-weight:900;line-height:1">'+score+'<span style="font-size:11px;font-weight:700;opacity:.8">점</span></span>'
+      +'<span style="font-size:12px;font-weight:800">⭕ '+correct+'</span>'
+      +'<span style="font-size:12px;font-weight:800;opacity:.85">❌ '+wrong+'</span>'
+      +'<span style="margin-left:auto;font-size:11px;font-weight:800;background:rgba(255,255,255,.18);padding:2px 9px;border-radius:20px">'+(passed?'✅ 통과!':'통과까지 '+need+'개')+'</span>'
+    +'</div>'
+    +'<div style="margin-top:6px;height:4px;background:rgba(255,255,255,.25);border-radius:20px;overflow:hidden"><div style="width:'+barPct+'%;height:100%;background:#fff"></div></div>'
+  +'</div>';
+}catch(e){return '';}}
 
 function rGameIntro(){
   var NM={quiz:'🎯 뜻 고르기 퀴즈',listenq:'🔊 발음 듣고 뜻 고르기',fill:'📝 예문 빈칸 채우기',match:'🔗 빠르게 짝 맞추기',typing:'\u270f\ufe0f \ubc1b\uc544\uc4f0\uae30',sentence:'\ud83d\udd24 \ud55c\uae00 \uc601\uc791',ssort:'\ud83d\udd0a \ubb38\uc7a5 \ubc30\uc5f4',scramble:'\ud83d\udd00 \uc2a4\ud06c\ub7a8\ube14',wc:'\ud83d\udd21 \ub2e8\uc5b4 \uc644\uc131',wordfind:'🔍 격자에서 단어 찾기'};

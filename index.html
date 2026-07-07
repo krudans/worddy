@@ -1,4 +1,4 @@
-<!-- build: 20260707-exam-2games-25each -->
+<!-- build: 20260707-exam-theme-aware -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -13113,28 +13113,71 @@ function startGameW(id, ws) {
 function rGame(){if(S.gDone)return rGameDone();if(S._gameIntro)return rGameIntro();const map={quiz:rQ4,listenq:rListenQ,fill:rFill,wordfind:rWF,match:rMatch,sentence:rSentence,scramble:rScramble,typing:rTyping,wc:rWC,ssort:rSSorting};return (map[S.gameId]||rGameDone)();}
 function _chExamBanner(){try{
   var ex=S._chExam||{}; var gi=(ex.gi||0);
+  var games=ex.games||['quiz','listenq'];
+  var groups=ex.groups||[];
   var cur=S.gResultMap||{}; var ck=Object.keys(cur);
+  var curAns=ck.length;
   var curCorrect=ck.filter(function(k){return cur[k]===true;}).length;
   var correct=(ex.correct||0)+curCorrect;
-  var answered=(ex.total||0)+ck.length;
+  var answered=(ex.total||0)+curAns;
   var wrong=Math.max(0,answered-correct);
   var score=correct*2;
-  var qNum=Math.min((ex.total||0)+(S.gIdx||0)+1,50);
+  var acc=answered>0?Math.round(correct/answered*100):0;
   var passed=score>=90;
-  var need=Math.max(0,45-correct);
-  var barPct=Math.min(100,Math.round(answered/50*100));
-  return '<div style="padding:12px 16px 8px;flex-shrink:0">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-      +'<div style="font-size:14px;font-weight:900;color:#fff">\ud83c\udfab \ub808\ubca8\ud14c\uc2a4\ud2b8 <span style="font-size:11px;color:#94A3B8;font-weight:700">\ucc55\ud130 '+((ex.chIdx||0)+1)+'</span></div>'
-      +'<button onclick="exitConfirm()" style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);border-radius:20px;padding:6px 12px;color:#FCA5A5;font-size:12px;font-weight:700;cursor:pointer">\u2715 \ub098\uac00\uae30</button>'
+  var lite=(S.theme!=='dark');
+  var C_HDRBG=lite?'#FFFFFF':'#1B2740';
+  var C_TITLE=lite?'#12233B':'#F1F5F9';
+  var C_MUTED=lite?'#94A3B8':'#8595AD';
+  var C_TRACKBG=lite?'#E4EAF1':'rgba(255,255,255,.12)';
+  var C_TRACKFILL=lite?'#1E5FA5':'#60A5FA';
+  var C_LBL_ACT=lite?'#1E5FA5':'#7FB2F7';
+  var C_LBL_IN=lite?'#64748B':'#94A3B8';
+  var C_NUM_ACT=lite?'#64748B':'#B6C2D6';
+  var C_NUM_IN=lite?'#94A3B8':'#7C8AA3';
+  var C_DIV=lite?'#EDF1F6':'rgba(255,255,255,.1)';
+  var C_SCORE=passed?(lite?'#16A34A':'#4ADE80'):(lite?'#12233B':'#F1F5F9');
+  var C_OK=lite?'#0F6E56':'#4ADE80';
+  var C_NG=lite?'#A32D2D':'#F87171';
+  var C_CHIPBG=passed?(lite?'#DCFCE7':'rgba(74,222,128,.18)'):(lite?'#E1F5EE':'rgba(96,165,250,.16)');
+  var C_CHIPTX=passed?(lite?'#166534':'#4ADE80'):(lite?'#0F6E56':'#93C5FD');
+  var LAB={quiz:'뜻 맞추기',listenq:'🔊 듣고 맞추기',fill:'빈칸 채우기',scramble:'스크램블',typing:'받아쓰기',match:'짝 맞추기',sentence:'영작',ssort:'문장 배열',wc:'단어 완성',wordfind:'단어 찾기'};
+  var bookShort=(ex.bookName||'').split('(')[0].trim();
+  var tracks='';
+  for(var i=0;i<games.length;i++){
+    var gl=(groups[i]||[]).length||0;
+    var ans=(i<gi)?gl:((i===gi)?curAns:0);
+    var pct=gl>0?Math.round(ans/gl*100):0;
+    var active=(i===gi);
+    tracks+='<div style="'+(active?'':'opacity:.5;')+(i>0?'margin-top:9px':'')+'">'
+      +'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
+        +'<span style="font-size:12px;font-weight:700;color:'+(active?C_LBL_ACT:C_LBL_IN)+'">'+(LAB[games[i]]||games[i])+'</span>'
+        +'<span style="font-size:11px;font-weight:700;color:'+(active?C_NUM_ACT:C_NUM_IN)+'">'+ans+' / '+gl+'</span>'
+      +'</div>'
+      +'<div style="height:7px;background:'+C_TRACKBG+';border-radius:20px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+C_TRACKFILL+';border-radius:20px;transition:width .3s"></div></div>'
+    +'</div>';
+  }
+  var chip=passed?'통과권 ✓':(answered>0?acc+'%':'—');
+  return '<div style="background:'+C_HDRBG+';padding:14px 18px 13px;flex-shrink:0">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+      +'<div style="display:flex;align-items:center;gap:7px;min-width:0">'
+        +'<span style="font-size:14px">🎫</span>'
+        +'<span style="font-size:14px;font-weight:900;color:'+C_TITLE+'">레벨테스트</span>'
+        +'<span style="font-size:11px;color:'+C_MUTED+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+bookShort+' · 챕터 '+((ex.chIdx||0)+1)+'</span>'
+      +'</div>'
+      +'<button onclick="exitConfirm()" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:'+C_MUTED+';font-size:18px;font-weight:700;line-height:1;flex-shrink:0">✕</button>'
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:7px">'
-      +'<span style="font-size:24px;font-weight:900;color:'+(passed?'#4ADE80':'#fff')+';line-height:1">'+score+'<span style="font-size:12px;color:#94A3B8;font-weight:700">\uc810</span></span>'
-      +'<span style="font-size:13px;font-weight:800;color:#4ADE80">\u2b55 '+correct+'</span>'
-      +'<span style="font-size:13px;font-weight:800;color:#F87171">\u274c '+wrong+'</span>'
-      +'<span style="margin-left:auto;font-size:12px;font-weight:800;color:'+(passed?'#4ADE80':'#94A3B8')+'">'+(passed?'\u2705 \ud1b5\uacfc!':qNum+'/50 \u00b7 \ub0a8\uc740 '+need+'\uac1c')+'</span>'
+    +tracks
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding-top:11px;margin-top:12px;border-top:1px solid '+C_DIV+'">'
+      +'<div style="display:flex;align-items:baseline;gap:3px">'
+        +'<span style="font-size:23px;font-weight:900;color:'+C_SCORE+';line-height:1">'+score+'</span>'
+        +'<span style="font-size:11px;color:'+C_MUTED+'">점</span>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:11px">'
+        +'<span style="font-size:13px;font-weight:800;color:'+C_OK+'">✓ '+correct+'</span>'
+        +'<span style="font-size:13px;font-weight:800;color:'+C_NG+'">✗ '+wrong+'</span>'
+        +'<span style="background:'+C_CHIPBG+';border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800;color:'+C_CHIPTX+'">'+chip+'</span>'
+      +'</div>'
     +'</div>'
-    +'<div style="height:5px;background:rgba(255,255,255,.15);border-radius:20px;overflow:hidden"><div style="width:'+barPct+'%;height:100%;background:'+(passed?'#4ADE80':'#60A5FA')+';transition:width .3s"></div></div>'
   +'</div>';
 }catch(e){return '';}}
 
@@ -13666,23 +13709,30 @@ function rQ4(){
 
   if(!dir && !answered && gs.voiceMode==='question' && S._q4Spoke!==S.gIdx){ S._q4Spoke=S.gIdx; if(typeof speak==='function') setTimeout(function(){speak(_gmQ(w),_gmAudio());},150); }
 
-  var H='<div style="position:fixed;inset:0;background:'+gameBg(S.gameId||'quiz')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
+  var exam=!!S._inChExam;
+  var lightExam=exam&&(S.theme!=='dark');
+  var TBG=lightExam?'#FFFFFF':gameBg(S.gameId||'quiz');
+  var TCO=lightExam?'#12233B':'#fff';
+  var TSUB=lightExam?'#94A3B8':'rgba(255,255,255,.5)';
+  var TPH=lightExam?'#1E5FA5':'rgba(96,165,250,.9)';
+  var TEX=lightExam?'#94A3B8':'rgba(255,255,255,.45)';
+  var H='<div style="position:fixed;inset:0;background:'+TBG+';z-index:200;display:flex;flex-direction:column;color:'+TCO+';overflow:hidden">';
   H+=ghdrDark('🎯 뜻 고르기 퀴즈',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
-  H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
+  if(!exam) H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
 
   // ── 본문(가변 영역). 단어/발음/품사/이모지는 설정값에만 의존 → 정답여부와 무관하게 높이 고정 ──
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
   var dir=(S.gameSettings&&S.gameSettings.quizDir===1)?1:0; var _qt=dir?_gmA(w):_gmQ(w);
   H+='<div style="font-size:11px;color:'+acc+';font-weight:700;background:'+acc+'22;border-radius:20px;padding:5px 16px;margin-bottom:16px">'+(dir?'\uc774 \ub73b\uc758 \ub2e8\uc5b4\ub294?':'\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?')+'</div>';
-  if(w.img && gs.showEmoji!==false) H+='<div style="font-size:34px;margin-bottom:8px">'+w.img+'</div>';
+  if(!exam && w.img && gs.showEmoji!==false) H+='<div style="font-size:34px;margin-bottom:8px">'+w.img+'</div>';
   var enFz=_qt.length>30?'20px':_qt.length>20?'26px':_qt.length>12?'34px':_qt.length>8?'40px':'44px';
   H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+_qt+'</div>';
-  if(!dir){ var _qph=_gmPh(w); if(_qph && gs.showPh!==false) H+='<div style="font-size:13px;color:rgba(96,165,250,.9);font-family:monospace;margin-top:8px">'+_qph+'</div>'; }
-  if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px">'+w.pos+'</div>';
-  if(gs.showEx){ var _qex=_gIsMulti()?_gmEx(w):(exList.length?exList[0]:''); if(_qex) H+='<div style="font-size:12px;color:rgba(255,255,255,.45);font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+_qex+'</div>'; }
+  if(!dir){ var _qph=_gmPh(w); if(_qph && gs.showPh!==false) H+='<div style="font-size:13px;color:'+TPH+';font-family:monospace;margin-top:8px">'+_qph+'</div>'; }
+  if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:'+TSUB+';margin-top:6px">'+w.pos+'</div>';
+  if(gs.showEx){ var _qex=_gIsMulti()?_gmEx(w):(exList.length?exList[0]:''); if(_qex) H+='<div style="font-size:12px;color:'+TEX+';font-style:italic;margin-top:10px;max-width:320px;line-height:1.5">'+_qex+'</div>'; }
   // 결과 한 줄(높이 항상 예약 → 정답 시 화면 안 움직임)
-  var fbTxt='', fbCol='#fff';
-  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol='#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+(_gIsMulti()?(dir?_gmQ(w):_gmA(w)):w.kr);fbCol='#FCA5A5';} }
+  var fbTxt='', fbCol=TCO;
+  if(answered){ if(isCorrect){fbTxt='\u2705 \uc815\ub2f5!';fbCol=lightExam?'#16A34A':'#22C55E';} else {fbTxt='\u274c \uc815\ub2f5: '+(_gIsMulti()?(dir?_gmQ(w):_gmA(w)):w.kr);fbCol=lightExam?'#DC2626':'#FCA5A5';} }
   H+='<div style="min-height:26px;margin-top:12px;font-size:16px;font-weight:800;color:'+fbCol+';display:flex;align-items:center;justify-content:center">'+fbTxt+'</div>';
   if(answered && typeof _multiLangPanel==='function') H+=_multiLangPanel(w.en);
   H+='</div>';
@@ -13691,7 +13741,7 @@ function rQ4(){
   if(gs.timeLimit){
     H+='<div style="padding:0 32px 8px;flex-shrink:0;min-height:28px">';
     if(!answered){
-      H+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:rgba(255,255,255,.1);border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div>';
+      H+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:'+(lightExam?'#E4EAF1':'rgba(255,255,255,.1)')+';border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div>';
     }
     H+='</div>';
   }
@@ -13701,10 +13751,10 @@ function rQ4(){
   cs.forEach(function(ch,_ci){
     var isAns=ch.en===w.en, picked=answered&&S.gAns===ch.en;
     var bg,bd,col;
-    if(!answered){bg='rgba(255,255,255,.06)';bd='rgba(255,255,255,.14)';col='#fff';}
-    else if(isAns){bg='rgba(34,197,94,.2)';bd='#22C55E';col='#fff';}
-    else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
-    else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
+    if(!answered){bg=lightExam?'#FFFFFF':'rgba(255,255,255,.06)';bd=lightExam?'#DDE4EC':'rgba(255,255,255,.14)';col=lightExam?'#334155':'#fff';}
+    else if(isAns){bg=lightExam?'#DCFCE7':'rgba(34,197,94,.2)';bd=lightExam?'#16A34A':'#22C55E';col=lightExam?'#166534':'#fff';}
+    else if(picked){bg=lightExam?'#FEE2E2':'rgba(239,68,68,.2)';bd=lightExam?'#DC2626':'#EF4444';col=lightExam?'#991B1B':'#fff';}
+    else{bg=lightExam?'#F8FAFC':'rgba(255,255,255,.03)';bd=lightExam?'#E4EAF1':'rgba(255,255,255,.08)';col=lightExam?'#94A3B8':'rgba(255,255,255,.4)';}
     var oc=answered?'':'pickQ4('+_ci+')';
     H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+(dir?_gmQ(ch):_gmA(ch))+'</button>';
   });
@@ -13718,7 +13768,7 @@ function rQ4(){
   H+='</div>';
 
   // ── 설정바 ──
-  H+=gsetBar(_gUnified()+gsetRow('출제방향',[['영\u2192한',"S.gameSettings.quizDir=0;S._gCs=null;sv();go()",!(S.gameSettings&&S.gameSettings.quizDir===1)],['한\u2192영',"S.gameSettings.quizDir=1;S._gCs=null;sv();go()",(S.gameSettings&&S.gameSettings.quizDir===1)]])+
+  if(!exam) H+=gsetBar(_gUnified()+gsetRow('출제방향',[['영\u2192한',"S.gameSettings.quizDir=0;S._gCs=null;sv();go()",!(S.gameSettings&&S.gameSettings.quizDir===1)],['한\u2192영',"S.gameSettings.quizDir=1;S._gCs=null;sv();go()",(S.gameSettings&&S.gameSettings.quizDir===1)]])+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
     +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])
@@ -13788,34 +13838,39 @@ function rListenQ(){
   // \uc0c8 \ubb38\uc81c\ub9c8\ub2e4 \ubc1c\uc74c \uc790\ub3d9 \uc7ac\uc0dd 1\ud68c
   if(!answered && S._lqPlayedIdx!==S.gIdx){ S._lqPlayedIdx=S.gIdx; setTimeout(function(){ if(typeof _lqPlay==='function') _lqPlay(); }, 380); }
 
-  var H='<div style="position:fixed;inset:0;background:'+gameBg('listenq')+';z-index:200;display:flex;flex-direction:column;color:#fff;overflow:hidden">';
+  var exam=!!S._inChExam;
+  var lightExam=exam&&(S.theme!=='dark');
+  var TBG=lightExam?'#FFFFFF':gameBg('listenq');
+  var TCO=lightExam?'#12233B':'#fff';
+  var TSUB=lightExam?'#94A3B8':'rgba(255,255,255,.5)';
+  var H='<div style="position:fixed;inset:0;background:'+TBG+';z-index:200;display:flex;flex-direction:column;color:'+TCO+';overflow:hidden">';
   H+=ghdrDark('🔊 발음 듣고 뜻 고르기',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
-  H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
+  if(!exam) H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
 
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
   if(!answered){
     H+='<div style="font-size:11px;color:'+acc+';font-weight:700;background:'+acc+'22;border-radius:20px;padding:5px 16px;margin-bottom:20px">\ub4e4\ub9ac\ub294 \ubc1c\uc74c\uc758 \ub73b\uc740?</div>';
     H+='<button onclick="_lqPlay()" style="width:120px;height:120px;border-radius:50%;background:'+acc+'2E;border:2px solid '+acc+';color:#fff;font-size:52px;cursor:pointer;display:flex;align-items:center;justify-content:center">\ud83d\udd0a</button>';
     H+='<div style="font-size:12px;color:#94A3B8;margin-top:14px">\ud0ed\ud558\uba74 \ub2e4\uc2dc \ub4e4\ub824\uc694</div>';
-    if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px">'+w.pos+'</div>';
+    if(w.pos && gs.showPos!==false) H+='<div style="font-size:13px;color:'+TSUB+';margin-top:10px">'+w.pos+'</div>';
     H+='<div style="min-height:26px;margin-top:12px"></div>';
   } else {
     var _qlab=_gmQ(w); var enFz=_qlab.length>20?'24px':_qlab.length>12?'30px':'40px';
-    if(w.img && gs.showEmoji!==false) H+='<div style="font-size:30px;margin-bottom:6px">'+w.img+'</div>';
+    if(!exam && w.img && gs.showEmoji!==false) H+='<div style="font-size:30px;margin-bottom:6px">'+w.img+'</div>';
     H+='<div style="font-size:'+enFz+';font-weight:900;letter-spacing:-.5px">'+_qlab+'</div>';
     var _qph=_gmPh(w); if(_qph && gs.showPh!==false) H+='<div style="font-size:13px;color:'+acc+';font-family:monospace;margin-top:6px">'+_qph+'</div>';
-    if(w.pos && gs.showPos!==false) H+='<div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:5px">'+w.pos+'</div>';
-    var fb=isCorrect?'#22C55E':'#FCA5A5'; var _alab=_gmA(w);
+    if(w.pos && gs.showPos!==false) H+='<div style="font-size:12px;color:'+TSUB+';margin-top:5px">'+w.pos+'</div>';
+    var fb=isCorrect?(lightExam?'#16A34A':'#22C55E'):(lightExam?'#DC2626':'#FCA5A5'); var _alab=_gmA(w);
     H+='<div style="min-height:26px;margin-top:12px;font-size:17px;font-weight:800;color:'+fb+'">'+(isCorrect?'\u2705 \uc815\ub2f5! \u00b7 '+_alab:'\u274c \uc815\ub2f5: '+_alab)+'</div>';
     if(S.gAns && typeof _multiLangPanel==='function') H+=_multiLangPanel(w.en);
-    var _qex=_gmEx(w); if(gs.showEx && _qex) H+='<div style="background:rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:12px;color:rgba(255,255,255,.7);font-style:italic;max-width:320px;line-height:1.5">'+_qex+'</div>';
+    var _qex=_gmEx(w); if(gs.showEx && _qex) H+='<div style="background:'+(lightExam?'#F1F5F9':'rgba(255,255,255,.08)')+';border-radius:10px;padding:8px 12px;margin-top:8px;font-size:12px;color:'+(lightExam?'#475569':'rgba(255,255,255,.7)')+';font-style:italic;max-width:320px;line-height:1.5">'+_qex+'</div>';
   }
   H+='</div>';
 
   if(gs.timeLimit){
     H+='<div style="padding:0 32px 8px;flex-shrink:0;min-height:28px">';
     if(!answered){
-      H+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:rgba(255,255,255,.1);border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div>';
+      H+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;flex-shrink:0">\u23f1</span><div style="flex:1;background:'+(lightExam?'#E4EAF1':'rgba(255,255,255,.1)')+';border-radius:8px;height:12px;overflow:hidden"><div id="qgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:8px"></div></div><span id="qgauge-num" style="font-size:16px;font-weight:900;color:#22C55E;font-family:monospace;flex-shrink:0;min-width:36px;text-align:right">'+(gs.timeSec||10)+'\ucd08</span></div>';
     }
     H+='</div>';
   }
@@ -13824,10 +13879,10 @@ function rListenQ(){
   cs.forEach(function(ch,_ci){
     var isAns=ch.en===w.en, picked=answered&&S.gAns===ch.en;
     var bg,bd,col;
-    if(!answered){bg='rgba(255,255,255,.06)';bd='rgba(255,255,255,.14)';col='#fff';}
-    else if(isAns){bg='rgba(34,197,94,.2)';bd='#22C55E';col='#fff';}
-    else if(picked){bg='rgba(239,68,68,.2)';bd='#EF4444';col='#fff';}
-    else{bg='rgba(255,255,255,.03)';bd='rgba(255,255,255,.08)';col='rgba(255,255,255,.4)';}
+    if(!answered){bg=lightExam?'#FFFFFF':'rgba(255,255,255,.06)';bd=lightExam?'#DDE4EC':'rgba(255,255,255,.14)';col=lightExam?'#334155':'#fff';}
+    else if(isAns){bg=lightExam?'#DCFCE7':'rgba(34,197,94,.2)';bd=lightExam?'#16A34A':'#22C55E';col=lightExam?'#166534':'#fff';}
+    else if(picked){bg=lightExam?'#FEE2E2':'rgba(239,68,68,.2)';bd=lightExam?'#DC2626':'#EF4444';col=lightExam?'#991B1B':'#fff';}
+    else{bg=lightExam?'#F8FAFC':'rgba(255,255,255,.03)';bd=lightExam?'#E4EAF1':'rgba(255,255,255,.08)';col=lightExam?'#94A3B8':'rgba(255,255,255,.4)';}
     var oc=answered?'':'pickQ4('+_ci+')';
     H+='<button onclick="'+oc+'" style="background:'+bg+';border:1.5px solid '+bd+';border-radius:16px;padding:17px 12px;color:'+col+';font-size:16px;font-weight:700;cursor:'+(answered?'default':'pointer')+';text-align:center">'+(isAns&&answered?'\u2705 ':'')+(picked&&!isAns?'\u274c ':'')+_gmA(ch)+'</button>';
   });
@@ -13839,7 +13894,7 @@ function rListenQ(){
   }
   H+='</div>';
 
-  H+=gsetBar(_gUnified()+
+  if(!exam) H+=gsetBar(_gUnified()+
      gsetRow('\uc81c\ud55c\uc2dc\uac04',[['\ub055',"S.gameSettings.timeLimit=false;sv();go()",gs.timeLimit!==true],['10\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=10;sv();go()",gs.timeLimit===true&&(gs.timeSec||10)===10],['15\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=15;sv();go()",gs.timeLimit===true&&gs.timeSec===15],['20\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=20;sv();go()",gs.timeLimit===true&&gs.timeSec===20],['30\ucd08',"S.gameSettings.timeLimit=true;S.gameSettings.timeSec=30;sv();go()",gs.timeLimit===true&&gs.timeSec===30]])
     +gsetRow('\ub118\uae30\uae30',[['\uc790\ub3d9',"S.gameSettings.autoNext=true;sv();go()",gs.autoNext===true],['\uae30\ub2e4\ub9ac\uae30',"S.gameSettings.autoNext=false;sv();go()",gs.autoNext!==true]])
     +gsetRow('\ubd80\uac00\uc815\ubcf4',[['\ubc1c\uc74c\uae30\ud638',"S.gameSettings.showPh=(S.gameSettings.showPh===false);sv();go()",gs.showPh!==false],['\ud488\uc0ac',"S.gameSettings.showPos=(S.gameSettings.showPos===false);sv();go()",gs.showPos!==false],['\uc608\ubb38',"S.gameSettings.showEx=!S.gameSettings.showEx;sv();go()",!!gs.showEx],['\uc774\ubaa8\uc9c0',"S.gameSettings.showEmoji=(S.gameSettings.showEmoji===false);sv();go()",gs.showEmoji!==false]])

@@ -4428,6 +4428,7 @@ function sv() {
       modeSettings:_mset,
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       bfCoupons: S.bfCoupons||0,
+      email:(S.user&&S.user.email)||'',
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       updatedAt: new Date().toISOString()
     };
@@ -10976,13 +10977,72 @@ function _bwlSetMark(en, val) {
   if(mr) _renderBookWordList(mr, bookName, window._bwlCurrentQ||'');
 }
 // ── 레벨업 코스 그룹 렌더 (단어장 목록) ──
-window._openCourse = function(tier){ try{ var b=(S.books||[]).filter(function(x){return x.isCurriculum&&x.tier===tier;})[0]; if(b){ if(typeof switchBook==='function') switchBook(b.name); if(typeof go==='function') go('learn'); } }catch(e){} };
+window._openCourse = function(tier){
+  try{
+    var b=(S.books||[]).filter(function(x){return x.isCurriculum&&x.tier===tier;})[0];
+    if(!b) return;
+    if(typeof switchBook==='function') switchBook(b.name);
+    _showCourseChapters(b.name);
+  }catch(e){}
+};
+function _showCourseChapters(bookName){
+  try{
+    var b=(S.books||[]).filter(function(x){return x.name===bookName;})[0];
+    var mr=document.getElementById('mr'); if(!b||!mr) return;
+    var ws=(typeof getBookWords==='function')?getBookWords(b):[]; var mm=b.markMap||{}; var chPass=b.chPass||[];
+    var rows='';
+    for(var c=0;c<5;c++){
+      var slice=ws.slice(c*200,(c+1)*200);
+      var mem=slice.filter(function(w){return mm[w.en]===1;}).length;
+      var passed=!!chPass[c];
+      var unlocked=(c===0)||!!chPass[c-1];
+      var allMem=slice.length>0 && mem>=slice.length;
+      var pct=slice.length?Math.round(mem/slice.length*100):0;
+      var status, action;
+      if(!unlocked){ status='<span style="color:#9CA3AF">🔒 잠김</span>'; action='<span style="font-size:10px;color:#9CA3AF">이전 챕터 통과 필요</span>'; }
+      else if(passed){ status='<span style="color:#16A34A">✅ 통과 🦋</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:#F3F4F6;color:#6B7280;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">복습</button>'; }
+      else if(allMem){ status='<span style="color:var(--theme,#1E5FA5)">시험 가능!</span>'; action='<button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b)startChapterExam(_b,'+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">🎫 챕터 시험</button>'; }
+      else { status='<span style="color:#6B7280">외우기 '+mem+'/'+slice.length+'</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">학습</button>'; }
+      rows += '<div style="padding:11px 2px;border-top:'+(c>0?'1px solid #EEE':'none')+';opacity:'+(unlocked?'1':'.5')+'">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:'+(unlocked&&!passed?'6px':'0')+'"><span style="flex:1;font-size:13px;font-weight:700;color:#111">챕터 '+(c+1)+' <span style="font-size:10px;color:#9CA3AF;font-weight:400">'+(c*200+1)+'~'+((c+1)*200)+'</span></span><span style="font-size:11px;font-weight:700">'+status+'</span>'+action+'</div>'
+        +(unlocked&&!passed?'<div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div>':'')
+        +'</div>';
+    }
+    var done=chPass.filter(Boolean).length;
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px;text-align:left">'
+      +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">'+b.name+'</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">200단어씩 5챕터 · 외우고 시험(90점) 통과하면 나비 🦋 <b style="color:var(--theme,#1E5FA5)">'+done+'/5</b></div>'
+      +rows
+      +'<button onclick="cm()" style="width:100%;margin-top:14px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">닫기</button>'
+      +'</div></div>';
+  }catch(e){}
+}
+function _studyChapter(bookName, chIdx){
+  try{ if(typeof switchBook==='function') switchBook(bookName); S._studyChapterIdx=chIdx; if(typeof go==='function') go('learn'); }catch(e){}
+}
+function _showCourseHelp(){
+  var mr=document.getElementById('mr'); if(!mr) return;
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:420px;text-align:left">'
+    +'<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:10px">🎯 레벨업 코스란?</div>'
+    +'<div style="font-size:12.5px;color:#374151;line-height:1.8;margin-bottom:14px">레벨테스트로 내 실력(1~10레벨)을 찾으면, 딱 맞는 <b>3단계 코스(3,000단어)</b>가 자동으로 만들어져요. 쉬운 단어부터 차근차근 정복하는 방식이에요.</div>'
+    +'<div style="background:#F8FAFC;border-radius:12px;padding:13px;margin-bottom:12px">'
+      +'<div style="font-size:12px;font-weight:800;color:#111;margin-bottom:8px">어떻게 진행되나요</div>'
+      +'<div style="font-size:12px;color:#374151;line-height:1.9">1. 레벨테스트(30문항)로 내 레벨 찾기<br>2. 내 레벨 + 다음 2단계 = 코스 3개 자동 생성<br>3. 코스마다 200단어씩 5챕터로 외우기<br>4. 챕터 시험(50문제) 90점 → 🦋 나비 + 다음 챕터 열림</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+      +'<div style="flex:1;background:#F0FDF4;border-radius:10px;padding:10px"><div style="font-size:11px;font-weight:800;color:#16A34A;margin-bottom:3px">👍 좋은 점</div><div style="font-size:11px;color:#15803D;line-height:1.6">내 수준 맞춤 · 작은 챕터로 부담↓ · 나비 보상</div></div>'
+      +'<div style="flex:1;background:#FFFBEB;border-radius:10px;padding:10px"><div style="font-size:11px;font-weight:800;color:#B45309;margin-bottom:3px">💡 알아둘 점</div><div style="font-size:11px;color:#92400E;line-height:1.6">챕터 순서대로 · 시험 90점 필요 · 재테스트 시 초기화</div></div>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#6B7280;text-align:center;background:var(--theme-tint,#EEF3FA);border-radius:10px;padding:10px;margin-bottom:14px">💡 하루 한 챕터(200단어)씩 5일이면 코스 1개 완성!</div>'
+    +'<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:800;cursor:pointer">확인</button>'
+    +'</div></div>';
+}
 function _curriculumGroupHtml(){
   try{
     var cur=(S.books||[]).filter(function(b){return b.isCurriculum;}).sort(function(a,b){return (a.tier||0)-(b.tier||0);});
-    var head='<div style="display:flex;align-items:center;gap:7px;padding:11px 2px 4px"><span style="font-size:14px">🎯</span><span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937)">내 레벨업 코스</span>';
+    var head='<div style="display:flex;align-items:center;gap:7px;padding:11px 2px 4px"><span style="font-size:14px">🎯</span><span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937)">내 레벨업 코스</span><span onclick="event.stopPropagation();_showCourseHelp()" style="width:17px;height:17px;border-radius:50%;background:#EEF0F3;color:#9CA3AF;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer">?</span>';
     if(!cur.length){
-      return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 14px">'
+      return '<div style="background:var(--theme-tint,#EEF3FA);border:1.5px solid var(--theme-soft,#BFD7F0);border-radius:16px;padding:6px 12px 16px">'
         + head + '</div>'
         + '<div style="text-align:center;padding:8px 6px 2px">'
           + '<div style="font-size:28px;margin-bottom:4px">🎯</div>'
@@ -10999,13 +11059,13 @@ function _curriculumGroupHtml(){
       var mem=ws.filter(function(w){return mm[w.en]===1;}).length;
       var pct=ws.length?Math.round(mem/ws.length*100):0;
       var nabi=(b.chPass||[]).filter(Boolean).length;
-      var bt=(i>0?'border-top:1px solid #ECEEF1;':'');
+      var bt='background:var(--bg-card,#fff);border:0.5px solid #E5E7EB;border-radius:12px;padding:11px 12px;margin-bottom:7px;';
       var locked=(i>0 && prevPct<80);
       var lvBadge='레벨 '+(b.level||'?');
       if(locked){
-        rows+='<div style="padding:10px 2px;'+bt+'opacity:.55"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">🔒</span><span style="flex:1;font-size:13px;font-weight:700;color:#6B7280">'+(i+1)+'단계 · '+(tierName[i]||'코스')+'</span><span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 7px;border-radius:8px">'+lvBadge+'</span></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;margin-left:25px">이전 단계 80% 외우면 열려요</div></div>';
+        rows+='<div style="'+bt+'opacity:.6"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">🔒</span><span style="flex:1;font-size:13px;font-weight:700;color:#6B7280">'+(i+1)+'단계 · '+(tierName[i]||'코스')+'</span><span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 7px;border-radius:8px">'+lvBadge+'</span></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;margin-left:25px">이전 단계 80% 외우면 열려요</div></div>';
       } else {
-        rows+='<div onclick="_openCourse('+b.tier+')" style="padding:10px 2px;'+bt+'cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">'+(pct>=100?'✅':'▶️')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:var(--text1,#1F2937)">'+(i+1)+'단계 · '+(tierName[i]||'코스')+'</span><span style="font-size:10px;background:var(--theme-tint,#EEF3FA);color:var(--theme,#1E5FA5);padding:1px 7px;border-radius:8px">'+lvBadge+'</span><span style="font-size:10px;color:var(--theme,#1E5FA5)">🦋'+nabi+'/5</span></div><div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin:5px 0 3px 25px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div><div style="font-size:10.5px;color:#9CA3AF;margin-left:25px">외움 '+mem+'/'+ws.length+' · 챕터 시험 통과 시 나비</div></div>';
+        rows+='<div onclick="_openCourse('+b.tier+')" style="'+bt+'cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px">'+(pct>=100?'✅':'▶️')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:var(--text1,#1F2937)">'+(i+1)+'단계 · '+(tierName[i]||'코스')+'</span><span style="font-size:10px;background:var(--theme-tint,#EEF3FA);color:var(--theme,#1E5FA5);padding:1px 7px;border-radius:8px">'+lvBadge+'</span><span style="font-size:10px;color:var(--theme,#1E5FA5)">🦋'+nabi+'/5</span></div><div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin:5px 0 3px 25px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div><div style="font-size:10.5px;color:#9CA3AF;margin-left:25px">외움 '+mem+'/'+ws.length+' · 챕터 시험 통과 시 나비</div></div>';
       }
       prevPct=pct;
     });
@@ -11016,7 +11076,7 @@ function _curriculumGroupHtml(){
         ? '<div style="margin-top:8px;text-align:center;background:var(--theme-tint,#EEF3FA);border-radius:10px;padding:11px;font-size:12px;font-weight:800;color:var(--theme,#1E5FA5)">🎉 최고 레벨 달성! 커리큘럼 완료 — 핵심 단어를 다 정복했어요</div>'
         : '<button onclick="typeof showTestIntro===\'function\'&&showTestIntro()" style="margin-top:8px;width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">🎉 완주! 재테스트로 다음 코스</button>';
     }
-    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:4px 13px 10px">'
+    return '<div style="background:var(--theme-tint,#EEF3FA);border:1.5px solid var(--theme-soft,#BFD7F0);border-radius:16px;padding:6px 12px 12px">'
       + head + '<span style="font-size:9px;font-weight:700;color:var(--theme,#1E5FA5);background:var(--theme-tint,#EEF3FA);border-radius:6px;padding:1px 6px;margin-left:auto">내 레벨 '+cur[0].level+'</span></div>'
       + rows + footer + '</div>';
   }catch(e){ return ''; }

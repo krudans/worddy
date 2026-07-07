@@ -1,4 +1,4 @@
-<!-- build: 20260707-chapter-scope-fix -->
+<!-- build: 20260707-exam-10sec-instant-next -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -9846,6 +9846,7 @@ function _selectBook(name) {
   try{ localStorage.setItem('wd-plan-scope', name); window._planCtx=null; }catch(e){}
   if(name === S.currentBook) return;
   S._studyChapterIdx=null; // 다른 책 선택 시 챕터 스코프 해제
+  var _tb=(S.books||[]).find(function(b){return b.name===name;});
   if(_tb && typeof _curriculumStageLocked==='function' && _curriculumStageLocked(_tb)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
   saveCurrentBook(); // 현재 책 먼저 저장 (안전망 포함)
   if(name === '내 단어장') {
@@ -13484,11 +13485,12 @@ function _clearQTimer(){ if(window._qTO){clearTimeout(window._qTO);window._qTO=n
 function _examTimerClear(){ if(window._exIV){clearInterval(window._exIV);window._exIV=null;} if(window._exTO){clearTimeout(window._exTO);window._exTO=null;} }
 function _examTimerArm(){
   if(!S._inChExam){ _examTimerClear(); S._exTimerKey=null; return; }
+  if(S.gAns){ _examTimerClear(); return; } // 이미 답함 → 타이머 불필요(답변 경로가 즉시 진행)
   var key=(S.gameId||'')+':'+S.gIdx;
   if(S._exTimerKey===key && window._exTO) return; // 같은 문제: 진행 중 타이머 유지
   _examTimerClear();                              // 새 문제: 이전 타이머 정리
   S._exTimerKey=key;
-  var total=5, qi=S.gIdx, gid=S.gameId;
+  var total=10, qi=S.gIdx, gid=S.gameId;
   S._exDeadline=Date.now()+total*1000;
   window._exIV=setInterval(function(){
     var leftRaw=Math.max(0,(S._exDeadline-Date.now())/1000);
@@ -13721,13 +13723,19 @@ function pickQ4(ci){
   if(okk){
     if(typeof ok==='function')ok(); S.gScore+=100; S.gResultMap[S.gIdx]=true;
     go();
-    if(!S._inChExam && S.gameSettings&&S.gameSettings.autoNext){
+    if(S._inChExam){
+      if(typeof _examTimerClear==='function') _examTimerClear();
+      setTimeout(function(){ if(S._inChExam && S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },600);
+    } else if(S.gameSettings&&S.gameSettings.autoNext){
       var d=Math.round((S.gameSettings.autoNextSec||1.0)*1000);
       setTimeout(function(){ if(S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },d);
     }
   } else {
     if(typeof ng==='function')ng(); S.gResultMap[S.gIdx]=false; go();
-    if(!S._inChExam && S.gameSettings&&S.gameSettings.autoNext){
+    if(S._inChExam){
+      if(typeof _examTimerClear==='function') _examTimerClear();
+      setTimeout(function(){ if(S._inChExam && S.gAns&&S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },1100);
+    } else if(S.gameSettings&&S.gameSettings.autoNext){
       setTimeout(function(){ if(S.gAns&&S.gIdx===qi){S.gAns=null;S.gRes=null;S._gCs=null;S.gIdx++;go();} },3000);
     }
   }
@@ -13760,7 +13768,7 @@ function rQ4(){
   var H='<div style="position:fixed;inset:0;background:'+TBG+';z-index:200;display:flex;flex-direction:column;color:'+TCO+';overflow:hidden">';
   H+=ghdrDark('🎯 뜻 고르기 퀴즈',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
   if(!exam) H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
-  if(exam) H+='<div style="padding:7px 18px 3px;flex-shrink:0;display:flex;align-items:center;gap:9px"><div style="flex:1;height:6px;background:'+(lightExam?'#E7ECF2':'rgba(255,255,255,.12)')+';border-radius:20px;overflow:hidden"><div id="exgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:20px"></div></div><span id="exgauge-num" style="font-size:12px;font-weight:800;font-family:monospace;color:#22C55E;min-width:26px;text-align:right">5\ucd08</span></div>';
+  if(exam) H+='<div style="padding:7px 18px 3px;flex-shrink:0;display:flex;align-items:center;gap:9px"><div style="flex:1;height:6px;background:'+(lightExam?'#E7ECF2':'rgba(255,255,255,.12)')+';border-radius:20px;overflow:hidden"><div id="exgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:20px"></div></div><span id="exgauge-num" style="font-size:12px;font-weight:800;font-family:monospace;color:#22C55E;min-width:26px;text-align:right">10\ucd08</span></div>';
 
   // ── 본문(가변 영역). 단어/발음/품사/이모지는 설정값에만 의존 → 정답여부와 무관하게 높이 고정 ──
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
@@ -13888,7 +13896,7 @@ function rListenQ(){
   var H='<div style="position:fixed;inset:0;background:'+TBG+';z-index:200;display:flex;flex-direction:column;color:'+TCO+';overflow:hidden">';
   H+=ghdrDark('🔊 발음 듣고 뜻 고르기',(S.gIdx+1)+'\ubb38\uc81c \uc911 \u00b7 \uc815\ub2f5 '+right);
   if(!exam) H+='<div style="padding:0 16px 6px;flex-shrink:0"><div style="background:rgba(255,255,255,.1);border-radius:3px;height:3px;overflow:hidden"><div style="height:100%;background:'+acc+';width:'+progress+'%;transition:width .3s"></div></div></div>';
-  if(exam) H+='<div style="padding:7px 18px 3px;flex-shrink:0;display:flex;align-items:center;gap:9px"><div style="flex:1;height:6px;background:'+(lightExam?'#E7ECF2':'rgba(255,255,255,.12)')+';border-radius:20px;overflow:hidden"><div id="exgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:20px"></div></div><span id="exgauge-num" style="font-size:12px;font-weight:800;font-family:monospace;color:#22C55E;min-width:26px;text-align:right">5\ucd08</span></div>';
+  if(exam) H+='<div style="padding:7px 18px 3px;flex-shrink:0;display:flex;align-items:center;gap:9px"><div style="flex:1;height:6px;background:'+(lightExam?'#E7ECF2':'rgba(255,255,255,.12)')+';border-radius:20px;overflow:hidden"><div id="exgauge-fill" style="height:100%;width:100%;background:#22C55E;border-radius:20px"></div></div><span id="exgauge-num" style="font-size:12px;font-weight:800;font-family:monospace;color:#22C55E;min-width:26px;text-align:right">10\ucd08</span></div>';
 
   H+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:0;text-align:center">';
   if(!answered){

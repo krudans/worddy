@@ -1,4 +1,4 @@
-<!-- build: 20260707-exam-5sec-timer -->
+<!-- build: 20260707-chapter-scope-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -6665,6 +6665,7 @@ function startChapterExam(book, chIdx){
     var groups=[]; for(var g=0;g<games.length;g++){ groups.push(picked.slice(g*per,(g+1)*per)); }
     S._chExam={ bookName:book.name, chIdx:chIdx, games:games, groups:groups, gi:0, correct:0, total:0 };
     S._inChExam=true; S._inLevelTest=false; S._inLearnSession=false; S._prevTab=S.tab;
+    S._studyChapterIdx=null;
     if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
     if(typeof startGameW==='function') startGameW(games[0], groups[0]);
   }catch(e){ toast('시험 시작 실패'); }
@@ -9844,7 +9845,7 @@ function _reRegisterDefaultGroup(){
 function _selectBook(name) {
   try{ localStorage.setItem('wd-plan-scope', name); window._planCtx=null; }catch(e){}
   if(name === S.currentBook) return;
-  var _tb=(S.books||[]).find(function(b){return b.name===name;});
+  S._studyChapterIdx=null; // 다른 책 선택 시 챕터 스코프 해제
   if(_tb && typeof _curriculumStageLocked==='function' && _curriculumStageLocked(_tb)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
   saveCurrentBook(); // 현재 책 먼저 저장 (안전망 포함)
   if(name === '내 단어장') {
@@ -9871,6 +9872,7 @@ function _selectBook(name) {
 }
 
 function switchBook(name) {
+  S._studyChapterIdx=null; // 책 전환 시 챕터 스코프 해제
   if(name==='내 단어장'){
     S.currentBook='내 단어장'; S.idx=0; S.flip=false;
     sv(); cm(); go('mybooks');
@@ -11637,7 +11639,14 @@ function _gcbwRaw() {
   const bk = (S.books||[]).find(b=>b.name===S.currentBook);
   if(bk) {
     const w=getBookWords(bk);
-    if(w.length) return w;
+    if(w.length){
+      // 챕터 학습 중이면 해당 챕터 200개로 스코프
+      if(S._studyChapterIdx!=null && S._studyChapterIdx>=0 && w.length>200){
+        var _cs=w.slice(S._studyChapterIdx*200,(S._studyChapterIdx+1)*200);
+        if(_cs.length) return _cs;
+      }
+      return w;
+    }
     // 마켓팩(packId)인데 아직 로드 안 됨 → 엉뚱한 S.words로 폴백 금지(다른 단어장 내용이 섞이는 버그)
     if(bk.packId) return [];
   }
@@ -13231,7 +13240,7 @@ function rGameDone(){
     var _crm={...(S.gResultMap||{})};
     var _cex=S._chExam;
     var _cgrp=_cex.groups[_cex.gi]||[];
-    _cex.correct += _cgrp.filter(function(w){return _crm[w.en]!==false;}).length;
+    _cex.correct += Object.keys(_crm).filter(function(k){return _crm[k]===true;}).length;
     _cex.total += _cgrp.length;
     _cex.gi++;
     if(_cex.gi < _cex.games.length){

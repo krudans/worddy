@@ -541,6 +541,17 @@ function _curriculumBooks(){ return (typeof S!=='undefined'&&Array.isArray(S.boo
 function _bookMastered(b){ try{ if(b&&b.isCurriculum&&Array.isArray(b.chPass)) return b.chPass.length>=5 && b.chPass.slice(0,5).every(Boolean); var ws=getBookWords(b); if(!ws.length) return false; var mm=b.markMap||{}; for(var i=0;i<ws.length;i++){ if(mm[ws[i].en]!==1) return false; } return true; }catch(e){ return false; } }
 function _curriculumComplete(){ var cur=_curriculumBooks(); if(!cur.length) return false; return cur.every(_bookMastered) && cur.some(function(b){return (b.level||0)>=CW_MAXLEVEL;}); }
 function _curriculumInProgress(){ var cur=_curriculumBooks(); return cur.length>0 && !cur.every(_bookMastered); }
+// 커리큘럼 단계 잠김: 2단계+ 이면서 이전 단계 80% 미만 외움
+function _curriculumStageLocked(book){
+  try{
+    if(!book || !book.isCurriculum || !(book.tier>1)) return false;
+    var prev=(S.books||[]).filter(function(x){return x.isCurriculum && x.tier===book.tier-1;})[0];
+    if(!prev) return false;
+    var ws=(typeof getBookWords==='function')?getBookWords(prev):[]; if(!ws.length) return false;
+    var mm=prev.markMap||{}, mem=ws.filter(function(w){return mm[w.en]===1;}).length;
+    return (mem/ws.length*100) < 80;
+  }catch(e){ return false; }
+}
 // 레벨테스트 결과 레벨(1~10)로 3단계 코스 생성([L,L+1,L+2] 클램프+중복제거). 기존 커리큘럼 교체.
 function _generateCurriculum(startLevel){
   try{
@@ -6974,7 +6985,7 @@ function rButterflyTab() {
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
   html += '<div style="font-size:14px;font-weight:800;color:#111">🦋 반려나비 도감</div>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
-  html += '<button onclick="showButterflyDogam()" style="background:#111;color:#fff;border:none;border-radius:10px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer">도감 보기</button>';
+  html += '<button onclick="window._bfSelMode=false;showButterflyDogam()" style="background:#111;color:#fff;border:none;border-radius:10px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer">도감 보기</button>';
   html += '<span style="font-size:12px;font-weight:700;color:var(--theme);background:#F5F3FF;padding:3px 10px;border-radius:20px">' + butterflies.length + '/30</span>';
   html += '</div></div>';
 
@@ -8749,6 +8760,8 @@ function showButterflyDogam(){
   if(!mr) return;
   var bfs=(typeof getMyButterflies==='function')?getMyButterflies():[];
   var list=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[];
+  var selMode=!!window._bfSelMode;
+  var sel=window._bfSel||(window._bfSel={});
   var sorted=list.slice().sort(function(a,b){
     var ao=bfs.includes(a.id), bo=bfs.includes(b.id);
     if(ao&&!bo)return -1; if(!ao&&bo)return 1; return (b.score||0)-(a.score||0);
@@ -8758,26 +8771,59 @@ function showButterflyDogam(){
     var svg=(typeof getButterflyCharSVG==='function')?getButterflyCharSVG(b.id,38,owned):'<span style="font-size:22px">🦋</span>';
     var nm=owned?(b.name||b.id):'???';
     var sub=owned?(b.status?(b.status+(b.habitat?' · '+b.habitat:'')):(b.habitat||'')):'아직 만나지 못한 나비';
-    return '<div onclick="'+(owned?'showButterflyDetail(\''+b.id+'\')':'')+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:'+(owned?'#fff':'#F9FAFB')+';border:1.5px solid '+(owned?'#EEF0F3':'#F1F2F4')+';cursor:'+(owned?'pointer':'default')+'">'
+    var picked=!!sel[b.id];
+    var click = selMode ? (owned?'_bfClearSelToggle(\''+b.id+'\')':'') : (owned?'showButterflyDetail(\''+b.id+'\')':'');
+    var rightEl = selMode
+      ? (owned ? '<div style="flex:none;width:22px;height:22px;border-radius:50%;border:2px solid '+(picked?'#DC2626':'#D1D5DB')+';background:'+(picked?'#DC2626':'#fff')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px">'+(picked?'✓':'')+'</div>' : '<div style="flex:none;font-size:14px;color:#D1D5DB">🔒</div>')
+      : (owned ? '<div style="flex:none;font-size:11px;font-weight:700;color:var(--theme)">자세히 ›</div>' : '<div style="flex:none;font-size:14px;color:#D1D5DB">🔒</div>');
+    return '<div onclick="'+click+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:'+(picked?'#FEF2F2':(owned?'#fff':'#F9FAFB'))+';border:1.5px solid '+(picked?'#FCA5A5':(owned?'#EEF0F3':'#F1F2F4'))+';cursor:'+(owned?'pointer':'default')+'">'
       +'<div style="width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:9px;background:'+(owned?(b.bg||'#F5F3FF'):'#F1F2F4')+'">'+svg+'</div>'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:13px;font-weight:800;color:'+(owned?'#111':'#9CA3AF')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+' <span style="font-size:10px;color:'+(owned?'#F59E0B':'#D1D5DB')+'">'+(b.rare||'')+'</span></div>'
         +'<div style="font-size:10px;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+sub+'</div>'
       +'</div>'
-      +(owned?'<div style="flex:none;font-size:11px;font-weight:700;color:var(--theme)">자세히 ›</div>':'<div style="flex:none;font-size:14px;color:#D1D5DB">🔒</div>')
+      +rightEl
       +'</div>';
   }).join('');
   var pct=list.length?Math.round(bfs.length/list.length*100):0;
+  var selCount=Object.keys(sel).filter(function(k){return sel[k];}).length;
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:86vh;display:flex;flex-direction:column;width:92%;max-width:440px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px 6px">'
       +'<div style="font-size:16px;font-weight:900;color:#111">🦋 반려나비 도감 <span style="font-size:12px;font-weight:700;color:var(--theme)">'+bfs.length+'/'+list.length+'종 ('+pct+'%)</span></div>'
-      +'<button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF;line-height:1">×</button>'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+        +(selMode?'':(bfs.length?'<button onclick="_bfClearMode(true)" style="background:none;border:1px solid #E5E7EB;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:700;color:#6B7280;cursor:pointer">🗑️ 비우기</button>':''))
+        +'<button onclick="'+(selMode?'_bfClearMode(false)':'cm()')+'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF;line-height:1">×</button>'
+      +'</div>'
     +'</div>'
     +'<div style="margin:0 18px 10px;height:6px;background:#E5E7EB;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'#16A34A':'var(--theme)')+';border-radius:99px"></div></div>'
+    +(selMode?'<div style="margin:0 18px 8px;font-size:11px;color:#9CA3AF">비울 나비를 탭하세요. 비운 나비는 다시 뽑을 수 있어요.</div>':'')
     +'<div style="overflow-y:auto;padding:0 14px 16px;display:flex;flex-direction:column;gap:7px">'+rows+'</div>'
+    +(selMode?'<div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid #EEF0F3"><button onclick="_bfClearAll()" style="flex:1;background:#fff;border:1px solid #FCA5A5;color:#DC2626;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">전체 비우기</button><button onclick="_bfClearSelected()" style="flex:2;background:'+(selCount?'#DC2626':'#F3F4F6')+';color:'+(selCount?'#fff':'#9CA3AF')+';border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:'+(selCount?'pointer':'default')+'">선택 '+selCount+'개 비우기</button></div>':'')
   +'</div></div>';
 }
-
+function _bfClearMode(on){ window._bfSelMode=!!on; window._bfSel={}; showButterflyDogam(); }
+function _bfClearSelToggle(id){ if(!window._bfSel)window._bfSel={}; if(window._bfSel[id])delete window._bfSel[id]; else window._bfSel[id]=1; showButterflyDogam(); }
+function _bfSaveButterflies(arr){ try{ S.myButterflies=arr; localStorage.setItem('wd-butterflies',JSON.stringify(arr)); if(S.user&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({myButterflies:arr},{merge:true}).catch(function(){}); } }catch(e){} }
+function _bfClearSelected(){
+  var sel=window._bfSel||{}; var ids=Object.keys(sel).filter(function(k){return sel[k];});
+  if(!ids.length) return;
+  if(!confirm('선택한 '+ids.length+'마리를 도감에서 비울까요? (다시 뽑을 수 있어요)')) return;
+  var bfs=(typeof getMyButterflies==='function')?getMyButterflies():[];
+  var kept=bfs.filter(function(id){return ids.indexOf(id)<0;});
+  _bfSaveButterflies(kept);
+  window._bfSel={};
+  if(typeof toast==='function') toast('🗑️ '+ids.length+'마리 비웠어요');
+  showButterflyDogam();
+}
+function _bfClearAll(){
+  var bfs=(typeof getMyButterflies==='function')?getMyButterflies():[];
+  if(!bfs.length){ if(typeof toast==='function') toast('도감이 이미 비어있어요'); return; }
+  if(!confirm('도감의 나비 '+bfs.length+'마리를 모두 비울까요? (다시 뽑을 수 있어요)')) return;
+  _bfSaveButterflies([]);
+  window._bfSel={};
+  if(typeof toast==='function') toast('🗑️ 도감을 비웠어요');
+  showButterflyDogam();
+}
 // ── 반려나비 상세 보기 (관리자 등록 전체 필드) ──
 function showButterflyDetail(id){
   var mr=document.getElementById('mr');
@@ -9795,6 +9841,8 @@ function _reRegisterDefaultGroup(){
 function _selectBook(name) {
   try{ localStorage.setItem('wd-plan-scope', name); window._planCtx=null; }catch(e){}
   if(name === S.currentBook) return;
+  var _tb=(S.books||[]).find(function(b){return b.name===name;});
+  if(_tb && typeof _curriculumStageLocked==='function' && _curriculumStageLocked(_tb)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
   saveCurrentBook(); // 현재 책 먼저 저장 (안전망 포함)
   if(name === '내 단어장') {
     // 내 단어장으로 전환: wd-w(내 단어장 백업)에서 활성 단어 복원
@@ -9827,6 +9875,7 @@ function switchBook(name) {
   }
   const book = S.books.find(b=>b.name===name);
   if(!book) return;
+  if(typeof _curriculumStageLocked==='function' && _curriculumStageLocked(book)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
   // 현재 단어장 저장
   saveCurrentBook();
   // 새 단어장으로 전환
@@ -11000,8 +11049,8 @@ function _showCourseChapters(bookName){
       var pct=slice.length?Math.round(mem/slice.length*100):0;
       var status, action;
       if(!unlocked){ status='<span style="color:#9CA3AF">🔒 잠김</span>'; action='<span style="font-size:10px;color:#9CA3AF">이전 챕터 통과 필요</span>'; }
-      else if(passed){ status='<span style="color:#16A34A">✅ 통과 🦋</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:#F3F4F6;color:#6B7280;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">복습</button>'; }
-      else if(allMem){ status='<span style="color:var(--theme,#1E5FA5)">시험 가능!</span>'; action='<button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b)startChapterExam(_b,'+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">🎫 챕터 시험</button>'; }
+      else if(passed){ status='<span style="color:#16A34A">✅ 통과 🦋</span>'; action='<div style="display:flex;gap:5px"><button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:#fff;border:1px solid #E5E7EB;color:#6B7280;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer">🔄 재학습</button><button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b)startChapterExam(_b,'+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer">🎫 재시험</button></div>'; }
+      else if(allMem){ status='<span style="color:var(--theme,#1E5FA5)">시험 가능!</span>'; action='<div style="display:flex;gap:5px"><button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:#fff;border:1px solid var(--theme-soft,#BFD7F0);color:var(--theme,#1E5FA5);border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer">🔄 재학습</button><button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b)startChapterExam(_b,'+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer">🎫 시험</button></div>'; }
       else { status='<span style="color:#6B7280">외우기 '+mem+'/'+slice.length+'</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">학습</button>'; }
       rows += '<div style="padding:11px 2px;border-top:'+(c>0?'1px solid #EEE':'none')+';opacity:'+(unlocked?'1':'.5')+'">'
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:'+(unlocked&&!passed?'6px':'0')+'"><span style="flex:1;font-size:13px;font-weight:700;color:#111">챕터 '+(c+1)+' <span style="font-size:10px;color:#9CA3AF;font-weight:400">'+(c*200+1)+'~'+((c+1)*200)+'</span></span><span style="font-size:11px;font-weight:700">'+status+'</span>'+action+'</div>'
@@ -11619,6 +11668,10 @@ window._doMark = function(v) {
   go();
 };
 function rLearn() {
+  var _lb=(S.books||[]).filter(function(x){return x.name===S.currentBook;})[0];
+  if(_lb && _curriculumStageLocked(_lb)){
+    return '<div style="padding:44px 24px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:16px;font-weight:800;color:var(--text1,#111);margin-bottom:8px">아직 잠긴 단계예요</div><div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">이전 단계를 80% 이상 외우면<br>이 단계가 열려요.</div><button onclick="go(\'mybooks\',\'books\')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px 24px;font-size:14px;font-weight:800;cursor:pointer">레벨업 코스로 가기</button></div>';
+  }
   if(typeof _startStudySession==='function') _startStudySession();
   const sort = S.flashSort||'default';
   const filter = S.flashRange??-1;

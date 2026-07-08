@@ -1,4 +1,4 @@
-<!-- build: 20260708-curriculum-tomb-fix -->
+<!-- build: 20260708-mylevel-persist-col-tomb -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2232,6 +2232,26 @@ function saveCollection(col) {
     },2000);
   }
 }
+// ── 반려나비 collection 묘비(tombstone): 삭제 전파(크로스기기) ──
+function _colTombGet(){ try{ return JSON.parse(localStorage.getItem('bw-col-tomb')||'[]'); }catch(e){ return []; } }
+function _colTombSet(arr){ try{ arr=Array.from(new Set(arr||[])); localStorage.setItem('bw-col-tomb',JSON.stringify(arr)); if(S.user&&S.user.uid&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({deletedCollection:arr},{merge:true}).catch(function(){}); } return arr; }catch(e){ return arr||[]; } }
+function _colTombAdd(ids){ ids=Array.isArray(ids)?ids:[ids]; var set=new Set(_colTombGet()); ids.forEach(function(id){ if(id) set.add(id); }); return _colTombSet([...set]); }
+function _colMerge(fireCol, fireTomb){
+  var localCol=[]; try{ localCol=JSON.parse(localStorage.getItem('bw-collection')||'[]'); }catch(e){}
+  var tomb=new Set([].concat(Array.isArray(fireTomb)?fireTomb:[], _colTombGet()));
+  var seen=Object.create(null), out=[];
+  [].concat(Array.isArray(fireCol)?fireCol:[], localCol).forEach(function(it){
+    var id=it&&it.id;
+    if(id){ if(tomb.has(id)||seen[id]) return; seen[id]=1; }  // id 있으면 묘비/중복 제외, 없으면(레거시) 유지
+    out.push(it);
+  });
+  out=out.slice(0, (typeof MAX_COLLECTION!=='undefined'?MAX_COLLECTION:10));
+  var tombArr=[...tomb];
+  S._collection=out;
+  try{ localStorage.setItem('bw-collection',JSON.stringify(out)); localStorage.setItem('bw-col-tomb',JSON.stringify(tombArr)); }catch(e){}
+  if(S.user&&S.user.uid&&typeof db!=='undefined'){ try{ db.collection('users').doc(S.user.uid).set({collection:out, deletedCollection:tombArr},{merge:true}); }catch(e){} }
+  return out;
+}
 
 function addToCollectionConfirm(petData) {
   // 현재 캐릭터 상태 캡처
@@ -2304,6 +2324,8 @@ function replaceCollection(removeIdx, btn) {
   let newData;
   try { newData = JSON.parse(newDataStr.replace(/&quot;/g,'"')); } catch(e) { return; }
   const col = getMyCollection();
+  var _removed = col[removeIdx];
+  if(_removed && _removed.id && typeof _colTombAdd==='function') _colTombAdd([_removed.id]);
   col.splice(removeIdx, 1, newData);
   saveCollection(col);
   cm();
@@ -2437,6 +2459,7 @@ function showCollectionDetail(colId) {
 function removeFromCollection(colId) {
   if(!confirm('도감에서 빼시겠어요?')) return;
   const col = getMyCollection().filter(x=>x.id!==colId);
+  if(typeof _colTombAdd==='function') _colTombAdd([colId]);
   saveCollection(col);
   cm(); toast('도감에서 뺐어요'); go();
 }
@@ -4236,6 +4259,9 @@ function load() {
   setTimeout(()=>{
   }, 150);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
+  // S._myLevel 복원: 저장값 우선, 없으면 커리큘럼 tier-1 코스 레벨에서 파생(자가치유)
+  S._myLevel = parseInt(localStorage.getItem('wd-mylevel'))||0;
+  if(!S._myLevel){ var _c1=(S.books||[]).find(function(b){return b.isCurriculum && b.tier===1 && b.level;}); if(_c1) S._myLevel=_c1.level; }
   S.books.forEach(b => { if(b.packId && b.words !== undefined) delete b.words; }); // 마켓팩 구 단어 즉시 제거
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
@@ -4366,6 +4392,7 @@ function sv() {
   localStorage.setItem('wd-sva',JSON.stringify(S.surveyAns));
   localStorage.setItem('wd-sty',S.studyStyle);
   localStorage.setItem('wd-th',JSON.stringify(S.tHistory));
+  if(S._myLevel) localStorage.setItem('wd-mylevel', String(S._myLevel));
   localStorage.setItem('wd-ac',S.attendCount);
   localStorage.setItem('wd-ad',JSON.stringify(S.attendDates));
   if(S._noPopupToday) localStorage.setItem('wd-npt',S._noPopupToday);
@@ -4450,6 +4477,7 @@ function sv() {
       bfCoupons: S.bfCoupons||0,
       email:(S.user&&S.user.email)||'',
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
+      deletedCollection:(typeof _colTombGet==='function'?_colTombGet():JSON.parse(localStorage.getItem('bw-col-tomb')||'[]')),
       updatedAt: new Date().toISOString()
     };
     // throttle: 3초에 1번만
@@ -7184,7 +7212,7 @@ function rButterflyTab() {
 
   // 캐릭터 수집
   if(myCol.length > 0) {
-  html += '<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">수집한 캐릭터 (' + myCol.length + '/' + MAX_COLLECTION + ')<button onclick="if(confirm(\'도감을 전부 비울까요?\')){S._collection=[];saveCollection([]);toast(\'도감을 비웠어요\');go();}" style="font-size:9px;padding:2px 7px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;cursor:pointer;font-weight:700">전부 빼기</button></div>';
+  html += '<div style="font-size:11px;font-weight:700;color:#6B7280;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">수집한 캐릭터 (' + myCol.length + '/' + MAX_COLLECTION + ')<button onclick="if(confirm(\'도감을 전부 비울까요?\')){var _ids=getMyCollection().map(function(x){return x.id;}).filter(Boolean);if(window._colTombAdd)_colTombAdd(_ids);S._collection=[];saveCollection([]);toast(\'도감을 비웠어요\');go();}" style="font-size:9px;padding:2px 7px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;cursor:pointer;font-weight:700">전부 빼기</button></div>';
     html += '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">';
     myCol.forEach(function(item) {
       html += '<div onclick="showCollectionDetail(\''+item.id+'\')" style="text-align:center;padding:6px;border-radius:10px;background:#F3F4F6;border:1.5px solid #E5E7EB;cursor:pointer">';
@@ -16413,7 +16441,7 @@ auth.onAuthStateChanged(async user => {
     try{
       var _prevUid = localStorage.getItem('wd-uid');
       if(_prevUid && _prevUid !== user.uid){
-        ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk','wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl','wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-txp','wd-tsm','wd-dg','wd-dsm','wd-dd','wd-dxg','wd-mkd','wd-fav','wd-ach','wd-als','wd-alg','wd-alst','wd-butterflies','wd-bf-tomb','bw-collection','wd-plan','wd-plan-scope','wd-quizgoal','wd-last-backup'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} });
+        ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk','wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl','wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-txp','wd-tsm','wd-dg','wd-dsm','wd-dd','wd-dxg','wd-mkd','wd-fav','wd-ach','wd-als','wd-alg','wd-alst','wd-butterflies','wd-bf-tomb','bw-collection','bw-col-tomb','wd-plan','wd-plan-scope','wd-quizgoal','wd-last-backup'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} });
         S.books=[]; S.words=[]; S.markMap={}; try{S.learned=new Set();}catch(e){}
         console.warn('[계정전환] 이전 계정과 다름 → 로컬 초기화, 서버에서 새로 로드');
       }
@@ -16595,21 +16623,9 @@ auth.onAuthStateChanged(async user => {
             // 합집합(획득 손실 방지) − 묘비(삭제 전파). _bfMerge가 LS·Firebase·S 모두 갱신.
             if(typeof _bfMerge==='function') _bfMerge(_data.myButterflies, _data.deletedButterflies);
           }
-          if(Array.isArray(_data.collection)) {
-            // [버그수정] 합집합 병합 금지 — 뺀/비운 항목이 되살아나는 문제. 로컬이 권위.
-            // bw-collection 키가 아예 없을 때(이 기기 첫 사용)만 클라우드로 시드.
-            const _raw = localStorage.getItem('bw-collection');
-            if(_raw === null){
-              const _seed = _data.collection.slice(0, MAX_COLLECTION);
-              S._collection = _seed;
-              localStorage.setItem('bw-collection', JSON.stringify(_seed));
-            } else {
-              const _lsCol = JSON.parse(_raw||'[]').slice(0, MAX_COLLECTION);
-              S._collection = _lsCol;
-              if(S.user && typeof db!=='undefined' && JSON.stringify(_lsCol)!==JSON.stringify(_data.collection)){
-                try{ db.collection('users').doc(S.user.uid).set({collection:_lsCol},{merge:true}); }catch(e){}
-              }
-            }
+          if(Array.isArray(_data.collection) || Array.isArray(_data.deletedCollection)) {
+            // 합집합(수집 손실 방지) − 묘비(삭제 전파). _colMerge가 LS·Firebase·S 갱신.
+            if(typeof _colMerge==='function') _colMerge(_data.collection, _data.deletedCollection);
           }
           const _fix = (arr) => (arr||[]).map(w => {
             if(!w||!w.en||!w.kr) return w;
@@ -16787,28 +16803,10 @@ auth.onAuthStateChanged(async user => {
           // Firebase에 나비 없음 → 로컬 데이터(묘비 반영)로 병합·시드
           if(typeof _bfMerge==='function') _bfMerge([], []);
         }
-        if(Array.isArray(_data.collection)) {
-          // [버그수정] 합집합 병합 금지 — 뺀/비운 항목 되살아남 방지. 로컬이 권위(키 없을 때만 클라우드 시드).
-          const _raw = localStorage.getItem('bw-collection');
-          if(_raw === null){
-            const _seed = _data.collection.slice(0, MAX_COLLECTION);
-            S._collection = _seed;
-            localStorage.setItem('bw-collection', JSON.stringify(_seed));
-          } else {
-            const _lsCol = JSON.parse(_raw||'[]').slice(0, MAX_COLLECTION);
-            S._collection = _lsCol;
-            if(S.user && typeof db!=='undefined' && JSON.stringify(_lsCol)!==JSON.stringify(_data.collection)){
-              try{ db.collection('users').doc(S.user.uid).set({collection:_lsCol},{merge:true}); }catch(e){}
-            }
-          }
+        if(Array.isArray(_data.collection) || Array.isArray(_data.deletedCollection)) {
+          if(typeof _colMerge==='function') _colMerge(_data.collection, _data.deletedCollection);
         } else {
-          const lsCol = JSON.parse(localStorage.getItem('bw-collection')||'[]');
-          if(lsCol.length > 0) {
-            S._collection = lsCol;
-            if(S.user && typeof db!=='undefined') {
-              db.collection('users').doc(S.user.uid).set({collection:lsCol},{merge:true});
-            }
-          }
+          if(typeof _colMerge==='function') _colMerge([], []);
         }
 
           // 필드 순서 오류 자동 수정

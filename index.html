@@ -1,4 +1,4 @@
-<!-- build: 20260709-curriculum-rename -->
+<!-- build: 20260709-chapter-scope-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -576,9 +576,11 @@ function _migrateCurriculumNames(bks, noTomb){
         }
       }
     });
-    if(changed && !noTomb){
-      try{ if(S.currentBook){ var cm2=String(S.currentBook).match(re); if(cm2) S.currentBook='레벨업 '+parseInt(cm2[1],10)+'단계 _ Lv.'+parseInt(cm2[2],10); } }catch(e){}
-      try{ localStorage.setItem('wd-bks', JSON.stringify(bks.map(function(b){ if(b&&b.packId){ var c=Object.assign({},b); delete c.words; return c; } return b; }))); }catch(e){}
+    if(changed){
+      try{ if(S.currentBook){ var cm2=String(S.currentBook).match(re); if(cm2){ S.currentBook='레벨업 '+parseInt(cm2[1],10)+'단계 _ Lv.'+parseInt(cm2[2],10); try{ localStorage.setItem('wd-cbk', S.currentBook); }catch(e){} } } }catch(e){}
+      if(!noTomb){
+        try{ localStorage.setItem('wd-bks', JSON.stringify(bks.map(function(b){ if(b&&b.packId){ var c=Object.assign({},b); delete c.words; return c; } return b; }))); }catch(e){}
+      }
     }
     return bks;
   }catch(e){ return bks; }
@@ -4295,6 +4297,10 @@ function load() {
   if(!S._myLevel){ var _c1=(S.books||[]).find(function(b){return b.isCurriculum && b.tier===1 && b.level;}); if(_c1) S._myLevel=_c1.level; }
   S.books.forEach(b => { if(b.packId && b.words !== undefined) delete b.words; }); // 마켓팩 구 단어 즉시 제거
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
+  // 커리큘럼 이름 변경 대응: 현재 단어장이 옛 이름이면 새 이름으로 교정(books는 위에서 이미 마이그레이션됨)
+  try{ var _cbm=String(S.currentBook).match(/^([1-3])단계\s*·\s*\S+\s*\(레벨\s*(\d+)\)$/);
+    if(_cbm){ S.currentBook='레벨업 '+parseInt(_cbm[1],10)+'단계 _ Lv.'+parseInt(_cbm[2],10); localStorage.setItem('wd-cbk', S.currentBook); }
+  }catch(e){}
   try { S.gameSettings = JSON.parse(localStorage.getItem('wd-gs')||JSON.stringify(S.gameSettings)); } catch(e){}
   try { S.alStudy = JSON.parse(localStorage.getItem('wd-als')||JSON.stringify(S.alStudy)); } catch(e){}
   try { S.alGoal = JSON.parse(localStorage.getItem('wd-alg')||JSON.stringify(S.alGoal)); } catch(e){}
@@ -9284,7 +9290,12 @@ function _planScopeData(){
   else { try{myWords=JSON.parse(localStorage.getItem('wd-w')||'[]');}catch(e){myWords=[];} try{myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}');}catch(e){myMM={};} }
   myWords=_mStudyFilter(myWords||[]);
   var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[_mk(w.en)]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[_mk(w.en)]===2;}).length, ens:(myWords||[]).map(function(w){return w.en;})}];
-  (S.books||[]).forEach(function(b){ var w=_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]); var mm=b.markMap||{}; books.push({name:b.name, total:w.length, memo:w.filter(function(x){return mm[_mk(x.en)]===1;}).length, weak:w.filter(function(x){return mm[_mk(x.en)]===2;}).length, ens:w.map(function(x){return x.en;})}); });
+  (S.books||[]).forEach(function(b){ var w=_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]); var mm=b.markMap||{};
+    var _memo=w.filter(function(x){return mm[_mk(x.en)]===1;}).length, _weak=w.filter(function(x){return mm[_mk(x.en)]===2;}).length;
+    // [버그수정] 마켓팩 단어 미로드(w=[])면 memo=0이 되어 헤더가 '외운 0·남은 0 → 완료'로 오표시.
+    // 단어 목록을 못 구했을 땐 markMap(내 학습기록)으로 외움 수를 센다.
+    if(!w.length){ var _mk1=0,_mk2=0; Object.keys(mm).forEach(function(k){ if(!_mkMine||_mkMine(k)){ if(mm[k]===1)_mk1++; else if(mm[k]===2)_mk2++; } }); _memo=_mk1; _weak=_mk2; }
+    books.push({name:b.name, total:w.length, memo:_memo, weak:_weak, ens:w.map(function(x){return x.en;})}); });
   var memoAll=0, totalAll=0, weak=0;
   books.forEach(function(b){ memoAll+=b.memo; totalAll+=b.total; weak+=b.weak; });
   // [수정] 전체 외움은 정본(_memorizedAcrossBooks: 책별 markMap 기준 중복제거)과 동일하게 — 단어장 헤더와 일치
@@ -9292,7 +9303,9 @@ function _planScopeData(){
   // 학습언어 필터로 전체합이 줄면 외움이 총수를 넘지 않게 보정(pct>100 방지)
   if(_allMemo>totalAll) _allMemo=memoAll;
   var scopes={ '__all__':{label:'전체', memo:_allMemo, total:totalAll, ens:null} };
-  books.forEach(function(b){ if(b.total>0) scopes[b.name]={label:b.name, memo:b.memo, total:b.total, ens:b.ens}; });
+  // total>0인 책 등록. 단, 마켓팩이 아직 로드되지 않아 total=0인 책도 현재 선택 중이거나 외운 기록이 있으면 등록
+  // (누락 시 '전체'로 폴백되어 헤더 수치가 어긋남).
+  books.forEach(function(b){ if(b.total>0 || b.name===S.currentBook || b.memo>0) scopes[b.name]={label:b.name, memo:b.memo, total:b.total, ens:b.ens}; });
   var act=[]; var now=new Date(); for(var i=29;i>=0;i--){var k=_planKstKey(new Date(now.getTime()-i*86400000)); act.push(((S.studyLog||{})[k]||{}).words||0);}
   return {scopes:scopes, books:books, weak:weak, act:act, streak:S.streak||0, today:_planTodayStr()};
 }
@@ -9625,8 +9638,13 @@ function _studyGoalInner(){
     _goalDonut(pct,104,12,'pl-ring-all',SC,cAll)+
     _goalDonut(tPct,104,12,'pl-td-ring','#16A34A',cToday)+'</div>';
   var eta=_planEtaDate(remaining,daily,ctx.today);
-  var subline='<div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin:6px 0 2px">외운 <b style="color:#16A34A">'+_nf(memo)+'</b> · 남은 <b style="color:var(--theme)">'+_nf(remaining)+'</b></div>'+(pace.lvl==='new'?'':'<div style="text-align:center;font-size:11px;font-weight:800;color:'+pace.col+';margin:2px 0 8px">'+pace.txt+'</div>');
-  var _etaTxt=remaining<=0?'🎉 완료':_planFmt(eta);
+  // [버그수정] 마켓팩 단어가 아직 로드되기 전(total=0)엔 '외운 0·남은 0 → 🎉 완료'로 오표시됐다.
+  // 단어 수를 모르는 상태이므로 완료로 단정하지 않고 불러오는 중으로 표시한다.
+  var _loadingCnt = (total===0 && memo>0);
+  var subline= _loadingCnt
+    ? '<div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin:6px 0 2px">외운 <b style="color:#16A34A">'+_nf(memo)+'</b> · 단어 불러오는 중…</div>'
+    : '<div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin:6px 0 2px">외운 <b style="color:#16A34A">'+_nf(memo)+'</b> · 남은 <b style="color:var(--theme)">'+_nf(remaining)+'</b></div>'+(pace.lvl==='new'?'':'<div style="text-align:center;font-size:11px;font-weight:800;color:'+pace.col+';margin:2px 0 8px">'+pace.txt+'</div>');
+  var _etaTxt = _loadingCnt ? '—' : (remaining<=0 && total>0 ? '🎉 완료' : _planFmt(eta));
   var toggle='<button onclick="_planToggleFull()" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;background:var(--theme-tint);border:1.5px solid '+SC+';border-radius:10px;padding:11px 13px;cursor:pointer">'+
     '<span style="font-size:12px;color:var(--text2,#475569)">🎯 예상 완료 <b style="font-size:15px;color:'+SC+'">'+_etaTxt+'</b></span>'+
     '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:'+B+'">목표 설정 <span id="pl-caret" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:'+B+';color:#fff;font-size:13px;font-weight:900">'+(open?'▴':'▾')+'</span></span>'+
@@ -10142,6 +10160,9 @@ function _selectBook(name) {
   try{ localStorage.setItem('wd-plan-scope', name); window._planCtx=null; }catch(e){}
   if(name === S.currentBook) return;
   S._studyChapterIdx=null; // 다른 책 선택 시 챕터 스코프 해제
+  try{ var _cb=(S.books||[]).find(function(b){return b.name===name;});
+    if(_cb && _cb.isCurriculum && typeof _activeChapterIdx==='function'){ var _ci2=_activeChapterIdx(_cb); if(_ci2!=null) S._studyChapterIdx=_ci2; }
+  }catch(e){}
   var _tb=(S.books||[]).find(function(b){return b.name===name;});
   if(_tb && typeof _curriculumStageLocked==='function' && _curriculumStageLocked(_tb)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
   saveCurrentBook(); // 현재 책 먼저 저장 (안전망 포함)
@@ -10168,8 +10189,28 @@ function _selectBook(name) {
   if(typeof sv === 'function') sv();
 }
 
+// 커리큘럼 책의 '지금 학습할 챕터' 인덱스 — 통과하지 않은 첫 챕터(잠금 해제된 범위 내).
+// 모두 통과했으면 마지막 챕터. 자동학습/플래시 등이 책 전체(1000개)가 아닌 해당 챕터 200개를 대상으로 하게 한다.
+function _activeChapterIdx(book){
+  try{
+    if(!book || !book.isCurriculum) return null;
+    var ws=(typeof getBookWords==='function')?getBookWords(book):[];
+    var nCh=Math.max(1, Math.ceil(ws.length/200));
+    var cp=book.chPass||[];
+    for(var i=0;i<nCh;i++){
+      if(!cp[i]){                                   // 아직 통과 안 한 챕터
+        if(i===0 || cp[i-1]) return i;              // 잠금 해제된 경우만
+        return Math.max(0,i-1);
+      }
+    }
+    return nCh-1;                                    // 전부 통과 → 마지막 챕터
+  }catch(e){ return null; }
+}
 function switchBook(name) {
   S._studyChapterIdx=null; // 책 전환 시 챕터 스코프 해제
+  try{ var _b=(S.books||[]).find(function(b){return b.name===name;});
+    if(_b && _b.isCurriculum){ var _ci=_activeChapterIdx(_b); if(_ci!=null) S._studyChapterIdx=_ci; }
+  }catch(e){}
   if(name==='내 단어장'){
     S.currentBook='내 단어장'; S.idx=0; S.flip=false;
     sv(); cm(); go('mybooks');

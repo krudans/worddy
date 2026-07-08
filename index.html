@@ -1,4 +1,4 @@
-<!-- build: 20260709-chapter-scope-fix2 -->
+<!-- build: 20260709-course-lv-progress -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -560,43 +560,69 @@ function _curriculumStageLocked(book){
 function _migrateCurriculumNames(bks, noTomb){
   try{
     if(!Array.isArray(bks)) return bks;
-    var re=/^([1-3])단계\s*·\s*\S+\s*\(레벨\s*(\d+)\)$/;
+    var reOld=/^([1-3])단계\s*·\s*\S+\s*\(레벨\s*(\d+)\)$/;      // 1단계 · 다지기 (레벨 2)
+    var reLv=/^레벨업\s*([1-3])단계\s*_\s*Lv\.\s*(\d+)$/;         // 레벨업 1단계 _ Lv.2 (구 저장형)
     var changed=false;
+    function conv(nm){
+      var m=String(nm).match(reOld); if(m) return {tier:parseInt(m[1],10), level:parseInt(m[2],10), nn:'레벨업 '+parseInt(m[1],10)+'단계'};
+      var m2=String(nm).match(reLv);  if(m2) return {tier:parseInt(m2[1],10), level:parseInt(m2[2],10), nn:'레벨업 '+parseInt(m2[1],10)+'단계'};
+      return null;
+    }
     bks.forEach(function(b){
       if(!b || !b.name) return;
-      var m=String(b.name).match(re);
-      if(m){
-        var tier=parseInt(m[1],10), lv=parseInt(m[2],10);
-        var nn='레벨업 '+tier+'단계 _ Lv.'+lv;
-        if(b.name!==nn){
-          if(!noTomb && typeof _tombBookKey==='function'){ try{ _tombBookKey('n:'+b.name); }catch(e){} }  // 옛 이름은 묘비(되살아남 방지)
-          b.name=nn; if(!b.tier) b.tier=tier; if(!b.level) b.level=lv; b.isCurriculum=true;
-          if(!noTomb && typeof _untombBookByName==='function'){ try{ _untombBookByName(nn); }catch(e){} }
-          changed=true;
-        }
+      var c=conv(b.name);
+      if(c && b.name!==c.nn){
+        if(!noTomb && typeof _tombBookKey==='function'){ try{ _tombBookKey('n:'+b.name); }catch(e){} }
+        b.name=c.nn; if(!b.tier) b.tier=c.tier; if(!b.level) b.level=c.level; b.isCurriculum=true;
+        if(!noTomb && typeof _untombBookByName==='function'){ try{ _untombBookByName(c.nn); }catch(e){} }
+        changed=true;
       }
     });
     if(changed){
-      try{ if(S.currentBook){ var cm2=String(S.currentBook).match(re); if(cm2){ S.currentBook='레벨업 '+parseInt(cm2[1],10)+'단계 _ Lv.'+parseInt(cm2[2],10); try{ localStorage.setItem('wd-cbk', S.currentBook); }catch(e){} } } }catch(e){}
+      try{ if(S.currentBook){ var cc=conv(S.currentBook); if(cc){ S.currentBook=cc.nn; try{ localStorage.setItem('wd-cbk', S.currentBook); }catch(e){} } } }catch(e){}
       if(!noTomb){
-        try{ localStorage.setItem('wd-bks', JSON.stringify(bks.map(function(b){ if(b&&b.packId){ var c=Object.assign({},b); delete c.words; return c; } return b; }))); }catch(e){}
+        try{ localStorage.setItem('wd-bks', JSON.stringify(bks.map(function(b){ if(b&&b.packId){ var c2=Object.assign({},b); delete c2.words; return c2; } return b; }))); }catch(e){}
       }
     }
     return bks;
   }catch(e){ return bks; }
 }
+// 표시용 단어장 이름. 커리큘럼 코스는 '레벨업 N단계 _ Lv.<진행 챕터>'로 보여준다.
+// 저장 이름(book.name)은 '레벨업 N단계'로 고정 — 이름이 동기화 키(n:이름)라 챕터마다 바뀌면 진도가 끊긴다.
+// Lv.은 그 코스 안에서의 진행도(챕터 1~5). 아직 시작 안 한 코스는 Lv.1.
+function _bookDisplayName(b){
+  try{
+    if(!b) return '';
+    if(!b.isCurriculum) return b.name||'';
+    var ci=(typeof _activeChapterIdx==='function')?_activeChapterIdx(b):null;
+    var lv=(ci==null?0:ci)+1;
+    return (b.name||'')+' _ Lv.'+lv;
+  }catch(e){ return (b&&b.name)||''; }
+}
+function _bookDisplayNameByName(nm){
+  try{ var b=(S.books||[]).find(function(x){return x.name===nm;}); return b?_bookDisplayName(b):(nm||''); }catch(e){ return nm||''; }
+}
 function _generateCurriculum(startLevel){
   try{
     startLevel = Math.max(1, Math.min(CW_MAXLEVEL, startLevel|0)) || 5;
     if(typeof S==='undefined') return; if(!Array.isArray(S.books)) S.books=[];
-    // 옛 커리큘럼 제거 전 묘비 처리 → 합집합 병합(_mergeBooksUnion)에서 되살아남 방지.
-    // 새로 만드는 이름은 아래 _untombBookByName로 묘비 해제되어 살아남음.
-    var _oldCur = S.books.filter(function(b){ return b.isCurriculum; });
-    _oldCur.forEach(function(b){ if(b && b.name && typeof _tombBookKey==='function') _tombBookKey('n:'+b.name); });
-    S.books = S.books.filter(function(b){ return !b.isCurriculum; });
     var levels=[]; for(var t=0;t<3;t++){ var L=Math.min(startLevel+t, CW_MAXLEVEL); if(levels.indexOf(L)<0) levels.push(L); }
+    var _newNames={}; levels.forEach(function(L, idx){ _newNames['레벨업 '+(idx+1)+'단계']=1; });
+    // [버그수정] 다른 기기가 만든 커리큘럼도 제거되도록, 가능한 모든 커리큘럼 이름(1~3단계 × Lv.1~10) 중
+    //   새 세트에 없는 것은 전부 묘비 처리한다. (기존엔 이 기기 로컬 books에 있는 것만 묘비 → 서버 세트가 합집합으로 살아남아 중복)
+    for(var _t=1;_t<=3;_t++){
+      var _base='레벨업 '+_t+'단계';
+      if(!_newNames[_base] && typeof _tombBookKey==='function'){ try{ _tombBookKey('n:'+_base); }catch(e){} }
+      for(var _l=1;_l<=CW_MAXLEVEL;_l++){   // 구 저장형('레벨업 N단계 _ Lv.L')도 정리
+        var _n=_base+' _ Lv.'+_l;
+        if(typeof _tombBookKey==='function'){ try{ _tombBookKey('n:'+_n); }catch(e){} }
+      }
+    }
+    // 옛 이름 형식(1단계 · 다지기 (레벨 N))도 묘비
+    S.books.forEach(function(b){ if(b && b.isCurriculum && b.name && !_newNames[b.name] && typeof _tombBookKey==='function'){ try{ _tombBookKey('n:'+b.name); }catch(e){} } });
+    S.books = S.books.filter(function(b){ return !b.isCurriculum; });
     levels.forEach(function(L, idx){
-      var _cnm = '레벨업 '+(idx+1)+'단계 _ Lv.'+L;
+      var _cnm = '레벨업 '+(idx+1)+'단계';
       try{ if(typeof _untombBookByName==='function') _untombBookByName(_cnm); }catch(e){}
       S.books.push({ name:_cnm, isCurriculum:true, level:L, tier:(idx+1), markMap:{}, learned:[], chPass:[false,false,false,false,false] });
     });
@@ -9438,7 +9464,7 @@ function renderGoalDashboard(){
   var bp=ctx.books.filter(function(b){return b.total>0;}).sort(function(a,b){return (b.memo/b.total)-(a.memo/a.total);}).map(function(b){
     var pc=Math.round(b.memo/b.total*100); var on=(b.name===sel);
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px'+(on?';background:var(--theme-tint);border-radius:8px;padding:3px 4px':'')+'">'+
-      '<div style="flex:0 0 96px;font-size:11px;color:'+(on?BLUE:'#374151')+';font-weight:'+(on?'800':'400')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(b.name)+'</div>'+
+      '<div style="flex:0 0 96px;font-size:11px;color:'+(on?BLUE:'#374151')+';font-weight:'+(on?'800':'400')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(_bookDisplayNameByName(b.name))+'</div>'+
       '<div style="flex:1;height:7px;border-radius:99px;background:#EEF2F7;overflow:hidden"><div style="width:'+Math.max(pc,pc>0?2:0)+'%;height:100%;background:'+BLUE+'"></div></div>'+
       '<div style="flex:0 0 74px;text-align:right;font-size:10px;color:#9CA3AF">'+_nf(b.memo)+'/'+_nf(b.total)+'·'+pc+'%</div></div>';
   }).join('');
@@ -9631,7 +9657,7 @@ function _studyGoalInner(){
   var cur=S.currentBook||'내 단어장';
   var SC=_bookColor(sel && sel!=='__all__' ? sel : cur);
   var ob=(typeof _orderBooks==='function')?_orderBooks(allBooks):allBooks;
-  var optsHtml=ob.map(function(b){ return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+'>'+_esc(b.name)+' ('+_bookCntL(b)+'개)</option>'; }).join('');
+  var optsHtml=ob.map(function(b){ return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+'>'+_esc(_bookDisplayName(b))+' ('+_bookCntL(b)+'개)</option>'; }).join('');
   var tab=window._planTab||'learn';
   var drop='<div style="position:relative;margin-bottom:13px">'+
     '<select onchange="_selectBook(this.value);go(\''+tab+'\')" style="width:100%;padding:11px 38px 11px 14px;border:1.5px solid var(--border,#E2E8F0);border-left:5px solid '+SC+';border-radius:12px;font-size:14px;font-weight:800;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;-webkit-appearance:none;cursor:pointer;outline:none">'+optsHtml+'</select>'+
@@ -9706,7 +9732,7 @@ function _studyGoalInner(){
       _d3(pct,pct+'%','전체 진도',SC,'pl-l1')+
       _d3(tPct,''+pace.todayMemo,'오늘 외운','#16A34A','pl-l2')+
       _streakBadge+
-      '</div><div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin-top:10px">'+_esc(cur)+' · 외운 '+_nf(memo)+' / 남은 '+_nf(remaining)+'</div>';
+      '</div><div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin-top:10px">'+_esc(_bookDisplayNameByName(cur))+' · 외운 '+_nf(memo)+' / 남은 '+_nf(remaining)+'</div>';
     return drop+l3+trig;
   }
   return drop+rings+subline+toggle+full+trig;
@@ -11216,7 +11242,7 @@ function rStudy() {
   // 상단 단어장 바 (학습 중)
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const _bkCur = S.currentBook||'내 단어장';
-  const _bkOpts = [{name:'내 단어장'}].concat((S.books||[]).map(function(b){return {name:b.name};})).map(function(b){return '<option value="'+_esc(b.name)+'"'+(b.name===_bkCur?' selected':'')+'>📚 '+_esc(b.name)+'</option>';}).join('');
+  const _bkOpts = [{name:'내 단어장'}].concat((S.books||[]).map(function(b){return {name:b.name};})).map(function(b){return '<option value="'+_esc(b.name)+'"'+(b.name===_bkCur?' selected':'')+'>📚 '+_esc(_bookDisplayNameByName(b.name))+'</option>';}).join('');
   const booksBar = `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-bottom:1px solid var(--border,#E5E7EB);padding:8px 16px;display:flex;align-items:center;gap:8px;overflow-x:auto;flex-shrink:0">
     <div style="position:relative;flex:1;min-width:0;max-width:66%">
       <select onchange="_selectBook(this.value);go('mybooks','list')" style="width:100%;background:var(--theme-tint);border:1.5px solid var(--theme-soft);border-radius:20px;padding:6px 30px 6px 13px;font-size:12px;font-weight:800;color:var(--theme);cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;text-overflow:ellipsis;white-space:nowrap">${_bkOpts}</select>
@@ -11868,7 +11894,7 @@ function showGameSettings(gameId, tab) {
 
       <div>
         <div style="font-size:12px;font-weight:700;color:#9CA3AF;margin-bottom:6px">단어장</div>
-        <select onchange="_selectBook(this.value);showGameSettings('${gameId}')" style="width:100%;padding:11px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;outline:none">${_orderBooks(allBooksForGame).map(b=>`<option value="${b.name}" ${b.name===bookName4Game?"selected":""}>${b.name} (${(_bookCntL(b))}개)</option>`).join("")}</select>
+        <select onchange="_selectBook(this.value);showGameSettings('${gameId}')" style="width:100%;padding:11px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;font-weight:700;color:#111;background:#fff;outline:none">${_orderBooks(allBooksForGame).map(b=>`<option value="${b.name}" ${b.name===bookName4Game?"selected":""}>${_bookDisplayName(b)} (${(_bookCntL(b))}개)</option>`).join("")}</select>
       </div>
 
       <div>
@@ -12015,9 +12041,16 @@ function _gcbwRaw() {
   if(bk) {
     const w=getBookWords(bk);
     if(w.length){
-      // 챕터 학습 중이면 해당 챕터 200개로 스코프
-      if(S._studyChapterIdx!=null && S._studyChapterIdx>=0 && w.length>200){
-        var _cs=w.slice(S._studyChapterIdx*200,(S._studyChapterIdx+1)*200);
+      // 챕터 학습 중이면 해당 챕터 200개로 스코프.
+      // [버그수정] 커리큘럼인데 스코프가 아직 없으면(새로고침 직후 등) 활성 챕터를 자동 계산한다.
+      //   없으면 책 전체(1000개)가 학습 대상이 되어 '자동학습 800개' 같은 오류가 생김.
+      var _sci = S._studyChapterIdx;
+      if((_sci==null || _sci<0) && bk.isCurriculum && typeof _activeChapterIdx==='function'){
+        var _auto=_activeChapterIdx(bk);
+        if(_auto!=null){ _sci=_auto; S._studyChapterIdx=_auto; }
+      }
+      if(_sci!=null && _sci>=0 && w.length>200){
+        var _cs=w.slice(_sci*200,(_sci+1)*200);
         if(_cs.length) return _cs;
       }
       return w;
@@ -12132,7 +12165,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   });
 
   var allBks=[{name:'내 단어장',words:S.words},...(S.books||[])], curBk=S.currentBook||'내 단어장';
-  var bookOpts='';_orderBooks(allBks).forEach(function(b){bookOpts+='<option value="'+b.name+'" '+(b.name===curBk?'selected':'')+'>'+b.name+' ('+_bookCntL(b)+')</option>';});
+  var bookOpts='';_orderBooks(allBks).forEach(function(b){bookOpts+='<option value="'+b.name+'" '+(b.name===curBk?'selected':'')+'>'+_bookDisplayName(b)+' ('+_bookCntL(b)+')</option>';});
 
   // ── 전체화면 플래시카드 ──
   var cardGrad = flip
@@ -12539,7 +12572,7 @@ function rAdd() {
         <div style="font-size:10px;font-weight:700;color:#9CA3AF;margin-bottom:5px">추가할 단어장</div>
         <div style="position:relative">
           <select onchange="switchBook(this.value);go('mybooks','add')" style="width:100%;padding:8px 30px 8px 10px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:13px;font-weight:700;color:#111;background:#fff;appearance:none;cursor:pointer;outline:none">
-            ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===curBook?'selected':''}>${b.name} (${b.cnt}개)</option>`).join('')}
+            ${_orderBooks(allBooks).map(b=>`<option value="${b.name}" ${b.name===curBook?'selected':''}>${_bookDisplayNameByName(b.name)} (${b.cnt}개)</option>`).join('')}
           </select>
           <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9CA3AF">▾</span>
         </div>
@@ -16453,7 +16486,20 @@ function _mergeBooksUnion(localBks, srvBks, tomb){
   const add = b => { const k=key(b); if(!k||tset.has(k))return; if(idx[k]===undefined){idx[k]=out.length;out.push({...b});} else { const d=out[idx[k]]; if(!b.packId){ d.words=_mergeWordsUnion(d.words, b.words, []); } _mergeBookProgress(d, b); } };
   (Array.isArray(localBks)?localBks:[]).forEach(add);
   (Array.isArray(srvBks)?srvBks:[]).forEach(add);
-  return out;
+  // [버그수정] 다른 기기가 다른 레벨로 재테스트하면 tier가 겹치는 커리큘럼이 합집합으로 쌓인다(예: 1단계 Lv.1 + 1단계 Lv.2).
+  //   tier당 1개만 남긴다. 진도(markMap)가 있는 쪽 우선, 동률이면 나중 것(로컬 우선순위상 뒤=서버)은 버림.
+  try{
+    var _seenTier={}, _out2=[];
+    out.forEach(function(b){
+      if(!b || !b.isCurriculum || !b.tier){ _out2.push(b); return; }
+      var t=b.tier, prev=_seenTier[t];
+      if(prev===undefined){ _seenTier[t]=_out2.length; _out2.push(b); return; }
+      var pb=_out2[prev];
+      var pn=Object.keys((pb&&pb.markMap)||{}).length, bn=Object.keys(b.markMap||{}).length;
+      if(bn>pn) _out2[prev]=b;   // 진도가 더 많은 쪽 채택
+    });
+    return _out2;
+  }catch(e){ return out; }
 }
 
 // ── [세션 락 — 단독 접속] 동시접속 시 데이터 clobber 방지 ──────────────────

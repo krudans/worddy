@@ -1,4 +1,4 @@
-<!-- build: 20260708-leveltest-exam-revamp -->
+<!-- build: 20260708-bf-tombstone-sync -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2638,6 +2638,7 @@ function _doRemoveButterfly(bId) {
   const owned = getMyButterflies().filter(id=>id!==bId);
   localStorage.setItem('wd-butterflies', JSON.stringify(owned));
   S.myButterflies = owned;
+  if(typeof _bfAddTomb==='function') _bfAddTomb([bId]);
   // Firebase에도 즉시 반영
   if(S.user && typeof db !== 'undefined') {
     db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true})
@@ -2663,6 +2664,8 @@ function changeNickname() {
     // 복사왕 → 나비 30종 전체 획득
     const allIds = BUTTERFLY_LIST.map(b=>b.id);
     localStorage.setItem('wd-butterflies', JSON.stringify(allIds));
+    S.myButterflies = allIds;
+    if(typeof _bfRemoveTomb==='function') _bfRemoveTomb(allIds);
     S.nick = v; sv();
     toast('👑 복사왕! 나비 30종 전체 획득!'); vib([100,50,200]);
     go(); return;
@@ -3270,6 +3273,7 @@ function _claimHourButterfly(bfId) {
   if(!owned.has(bfId)) {
     owned.add(bfId);
     localStorage.setItem(key, JSON.stringify([...owned]));
+    if(typeof _bfRemoveTomb==='function') _bfRemoveTomb([bfId]);
     showButterflyRoll(bf, null);
     checkAchievements();
   } else {
@@ -4438,6 +4442,7 @@ function sv() {
       hiddenPackWords:S.hiddenPackWords||{},
       modeSettings:_mset,
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
+      deletedButterflies:(typeof _bfGetTomb==='function'?_bfGetTomb():JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]')),
       bfCoupons: S.bfCoupons||0,
       email:(S.user&&S.user.email)||'',
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
@@ -5577,10 +5582,10 @@ function showTestIntro(isRetry=false) {
       <div style="background:var(--theme-tint);border-radius:14px;padding:14px;margin-bottom:14px;text-align:left">
         <div style="font-size:13px;font-weight:700;color:var(--theme);margin-bottom:8px">📌 이렇게 진행돼요</div>
         <div style="font-size:12px;color:#374151;line-height:1.9">
-          🎯 뜻 맞추기 25문제 + 🔊 듣고 맞추기 25문제<br>
-          📚 쉬운 단어부터 어려운 단어까지 골고루 출제<br>
-          🏅 맞힌 만큼 내 레벨(1~10)을 찾아드려요<br>
-          ⏱️ 총 50문제 · 문제당 10초
+          🎯 각 레벨의 단어로 뜻 맞추기<br>
+          📈 레벨 1부터, 잘 맞히면 다음 레벨로<br>
+          🛑 한 레벨에서 3개 틀리면 내 레벨 확정<br>
+          ⏱️ 문제당 10초 · 실력 따라 문항 수 달라져요
         </div>
       </div>
       ${isRetry?`<div style="background:#FFF8E1;border-radius:12px;padding:10px;margin-bottom:14px;font-size:13px;color:#E65100">현재 레벨: ${typeof charSVGAnimated==="function"?"<span style='display:inline-block;vertical-align:middle'>"+charSVGAnimated(S.lid,16,"normal")+"</span>":lv(S.lid).emoji} ${lv(S.lid).name}</div>`:''}
@@ -6159,7 +6164,6 @@ function _commitAndLeave(){
   window._studyActive=false; window._autoActive=false; window._spkActive=false; window._sdActive=false; window._lsActive=false; window._autoLocked=false;
   try{ if(window._lsAutoTimer){ clearTimeout(window._lsAutoTimer); window._lsAutoTimer=null; } }catch(e){}
   try{ if(typeof S!=='undefined'){ S._sessTs=0; S._gameStartTs=null; S._gameRunning=false; if(wasGame) S.gDone=true; } }catch(e){}
-  try{ if(typeof S!=='undefined' && S._chExam && S._chExam.isLevelTest){ S._inChExam=false; S._chExam=null; } }catch(e){}
   try{ var sc=document.getElementById('sess-clock-bar'); if(sc) sc.style.display='none'; }catch(e){}
   try{ var ov=document.getElementById('auto-lock-overlay'); if(ov) ov.remove(); }catch(e){}
   try{ var mr=document.getElementById('mr'); if(mr){ mr.innerHTML=''; mr.style.pointerEvents='none'; } }catch(e){}
@@ -6702,23 +6706,111 @@ function finishChapterExam(){
   }catch(e){ S._inChExam=false; S._chExam=null; }
 }
 // ══════════════════════════════════════════════════════════════
-// 초기 레벨테스트 — 챕터시험과 동일 형식(뜻맞추기25+듣고맞추기25=50문제)
-// 실제 커리큘럼 단어(_levelWords 1~10밴드)에서 출제 → 결과 레벨로 3단계 코스 생성
+// 초기 레벨테스트 — 레벨별 적응형 (뜻맞추기 단독)
+// 레벨1부터 위로, 각 레벨 단어(_levelWords)로 10문제. 한 레벨에서 오답 3개 도달 시
+// 중단하고 "직전 통과 레벨"로 판정 → [L, L+1, L+2] 3단계 코스 생성.
 // ══════════════════════════════════════════════════════════════
 function _levelExamReady(){
   try{ return typeof BWD_META!=='undefined' && typeof BWD_DICT!=='undefined' && _lvlSorted().length>500; }catch(e){ return false; }
 }
-function _buildLevelExamSample(){
-  // 레벨1~10 각 5단어씩 = 50단어. 각 단어에 출제 레벨(_lvl) 태그.
-  var perLv=5, out=[], seen=Object.create(null);
-  for(var L=1; L<=CW_MAXLEVEL; L++){
-    var band=_levelWords(L)||[];
-    if(!band.length) continue;
-    var pool=band.filter(function(w){ return w && w.en && w.kr && !seen[w.en]; });
-    for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
-    pool.slice(0, perLv).forEach(function(w){ seen[w.en]=1; out.push(Object.assign({}, w, {_lvl:L})); });
+function _ltClearTimer(){ if(window._ltIV){clearInterval(window._ltIV);window._ltIV=null;} if(window._ltTO){clearTimeout(window._ltTO);window._ltTO=null;} }
+function _ltArmTimer(){
+  _ltClearTimer();
+  if(!S._inInitLevelTest || !S._lt || S._lt.ans) return;
+  var total=10, left=total, qi=S._lt.qi, lv0=S._lt.level;
+  window._ltIV=setInterval(function(){
+    if(!S._inInitLevelTest || !S._lt || S._lt.ans || S._lt.qi!==qi || S._lt.level!==lv0){ _ltClearTimer(); return; }
+    left--;
+    var fill=document.getElementById('lt-gauge-fill'), num=document.getElementById('lt-gauge-num');
+    if(fill) fill.style.width=Math.max(0,left/total*100)+'%';
+    if(num) num.textContent=Math.max(0,left)+'초';
+    if(left<=0){ _ltClearTimer(); if(S._lt && !S._lt.ans) _ltAnswer(-1); }
+  }, 1000);
+}
+function _ltPickQuestion(level){
+  var band=_levelWords(level)||[];
+  if(band.length<4) return null;
+  S._lt.used=S._lt.used||{};
+  var usedSet=S._lt.used[level]||(S._lt.used[level]=Object.create(null));
+  var cands=band.filter(function(w){ return w && w.en && w.kr && !usedSet[w.en]; });
+  if(!cands.length) return null;
+  var word=cands[Math.floor(Math.random()*cands.length)];
+  usedSet[word.en]=1;
+  function firstMean(w){ return (w.meanings&&w.meanings[0]) || String(w.kr||'').split(/[;∙·、,]+/)[0].trim(); }
+  var correctKr=firstMean(word);
+  var others=band.filter(function(w){ return w.en!==word.en && w.kr && firstMean(w)!==correctKr; });
+  for(var i=others.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=others[i]; others[i]=others[j]; others[j]=t; }
+  var wrongs=[], seen=Object.create(null); seen[correctKr]=1;
+  for(var k=0;k<others.length && wrongs.length<3;k++){ var m=firstMean(others[k]); if(m && !seen[m]){ seen[m]=1; wrongs.push(m); } }
+  while(wrongs.length<3) wrongs.push('(다른 뜻)');
+  var choices=[correctKr].concat(wrongs);
+  for(var a=choices.length-1;a>0;a--){ var b=Math.floor(Math.random()*(a+1)); var tt=choices[a]; choices[a]=choices[b]; choices[b]=tt; }
+  return { en:word.en, kr:correctKr, choices:choices, correctIdx:choices.indexOf(correctKr), img:word.img||'' };
+}
+function _ltNext(){
+  if(!S._lt) return;
+  if(S._lt.wrong>=3){ _ltFinish(); return; }          // 이 레벨 실패 → 직전 통과 레벨로 판정
+  if(S._lt.qi>=10){                                     // 이 레벨 10문제 통과
+    S._lt.lastPassed=S._lt.level;
+    S._lt.level++; S._lt.qi=0; S._lt.wrong=0;
+    if(S._lt.level>CW_MAXLEVEL){ _ltFinish(); return; } // 전부 통과 → 최고 레벨
   }
-  return out;
+  var q=_ltPickQuestion(S._lt.level);
+  if(!q){ S._lt.lastPassed=S._lt.level; S._lt.level++; S._lt.qi=0; S._lt.wrong=0; if(S._lt.level>CW_MAXLEVEL){ _ltFinish(); return; } return _ltNext(); }
+  S._lt.cur=q; S._lt.ans=false; S._lt.res=null;
+  _ltRender();
+  _ltArmTimer();
+}
+function _ltAnswer(idx){
+  if(!S._lt || S._lt.ans) return;
+  _ltClearTimer();
+  S._lt.ans=true; S._lt.res=idx;
+  var correct=(idx===S._lt.cur.correctIdx);
+  if(correct){ if(typeof ok==='function') ok(); S._lt.correctTotal++; }
+  else { if(typeof ng==='function') ng(); S._lt.wrong++; }
+  S._lt.qi++; S._lt.qTotal++;
+  _ltRender();
+  window._ltTO=setTimeout(function(){ if(!S._lt) return; S._lt.cur=null; _ltNext(); }, correct?600:1100);
+}
+function _ltExit(){
+  if(!confirm('레벨테스트를 그만둘까요? 진행 상황은 저장되지 않아요.')) return;
+  _ltClearTimer(); S._inInitLevelTest=false; S._lt=null;
+  try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; var nv=document.getElementById('nav'); if(nv) nv.style.display=''; }catch(e){}
+  if(typeof go==='function') go('mybooks','books');
+}
+function _ltRender(){
+  var lt=S._lt; if(!lt||!lt.cur) return;
+  var q=lt.cur;
+  var wrongDots=''; for(var i=0;i<3;i++){ wrongDots+='<span style="display:inline-block;width:16px;height:16px;border-radius:50%;margin-left:3px;vertical-align:middle;background:'+(i<lt.wrong?'#DC2626':'#E5E7EB')+';border:2px solid '+(i<lt.wrong?'#FECDD3':'#D1D5DB')+'"></span>'; }
+  var choicesHtml=q.choices.map(function(c,ri){
+    var bg='#fff',col='#374151',bd='#E5E7EB';
+    if(lt.ans){
+      if(ri===q.correctIdx){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}
+      else if(ri===lt.res){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}
+    }
+    return '<button onclick="_ltAnswer('+ri+')" style="background:'+bg+';color:'+col+';border:2px solid '+bd+';border-radius:14px;padding:15px 10px;font-size:15px;font-weight:600;cursor:'+(lt.ans?'default':'pointer')+';width:100%;text-align:center">'+c+'</button>';
+  }).join('');
+  document.getElementById('body').innerHTML=
+    '<div class="pad" style="padding-top:14px">'
+    +'<div style="background:#fff;border-radius:16px;padding:13px 15px;border:1.5px solid #E5E7EB;margin-bottom:12px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">'
+        +'<span style="font-size:14px;font-weight:900;color:var(--theme)">🎯 레벨 '+lt.level+' 도전 중</span>'
+        +'<span style="font-size:11px;color:#9CA3AF">'+lt.qTotal+'번째 · 이 레벨 '+lt.qi+'/10</span>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between">'
+        +'<div style="display:flex;align-items:center"><span style="font-size:11px;color:#DC2626;font-weight:700;margin-right:1px">오답</span>'+wrongDots+'<span style="font-size:11px;color:#9CA3AF;margin-left:7px">3개면 판정</span></div>'
+        +'<span id="lt-gauge-num" style="font-size:12px;font-weight:800;color:var(--theme)">10초</span>'
+      +'</div>'
+      +'<div style="height:6px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin-top:8px"><div id="lt-gauge-fill" style="width:100%;height:100%;background:var(--theme);transition:width .35s linear"></div></div>'
+    +'</div>'
+    +'<div style="background:#F8F9FA;border-radius:20px;padding:28px 20px;text-align:center;border:1.5px solid #E5E7EB;margin-bottom:14px">'
+      +(q.img&&q.img!=='📝'?'<div style="font-size:52px;margin-bottom:8px">'+q.img+'</div>':'')
+      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">이 단어의 뜻은?</div>'
+      +'<div style="font-size:32px;font-weight:900;color:#111">'+q.en+'</div>'
+    +'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:9px">'+choicesHtml+'</div>'
+    +'<button onclick="_ltExit()" style="margin-top:16px;width:100%;background:none;border:none;color:#9CA3AF;font-size:12px;cursor:pointer">테스트 그만두기</button>'
+    +'</div>';
 }
 function startInitialLevelExam(){
   try{
@@ -6734,67 +6826,47 @@ function startInitialLevelExam(){
       }, 300);
       return;
     }
-    var sample=_buildLevelExamSample();
-    if(sample.length<20){ if(typeof toast==='function') toast('출제할 단어가 부족해요','err'); return; }
-    for(var i=sample.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=sample[i]; sample[i]=sample[j]; sample[j]=t; }
-    var games=['quiz','listenq'];
-    var per=Math.ceil(sample.length/games.length);
-    var groups=[]; for(var g=0;g<games.length;g++){ groups.push(sample.slice(g*per,(g+1)*per)); }
-    var lvMap=Object.create(null); sample.forEach(function(w){ lvMap[w.en]=w._lvl; });
-    S._chExam={ isLevelTest:true, bookName:'레벨 찾기', chIdx:0, games:games, groups:groups, gi:0, correct:0, total:0, lvMap:lvMap, perLv:{} };
-    S._inChExam=true; S._inLevelTest=false; S._inLearnSession=false; S._prevTab=S.tab;
-    S._studyChapterIdx=null;
-    try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; }catch(e){}
-    if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
-    if(typeof startGameW==='function') startGameW(games[0], groups[0]);
+    _ltClearTimer();
+    S._lt={ level:1, qi:0, wrong:0, lastPassed:0, used:{}, correctTotal:0, qTotal:0, cur:null, ans:false, res:null };
+    S._inInitLevelTest=true; S._prevTab=S.tab;
+    try{ var hd=document.getElementById('hd'); if(hd) hd.style.display='none'; var nv=document.getElementById('nav'); if(nv) nv.style.display='none'; }catch(e){}
+    _ltNext();
   }catch(e){ if(typeof toast==='function') toast('레벨테스트 시작 실패','err'); }
 }
-function finishInitialLevelExam(){
+function _ltFinish(){
   try{
-    var ex=S._chExam||{}; var per=ex.perLv||{};
-    // 밑에서부터 연속 통과(정답률≥60%)한 최고 레벨 = 시작 레벨
-    var startLevel=1;
-    for(var L=1; L<=CW_MAXLEVEL; L++){
-      var d=per[L]; if(!d||!d.n) continue;
-      if(d.c/d.n >= 0.6) startLevel=L; else break;
-    }
-    startLevel=Math.max(1, Math.min(CW_MAXLEVEL, startLevel));
-    var totalCorrect=ex.correct||0, totalQ=ex.total||0;
-    var pct=totalQ?Math.round(totalCorrect/totalQ*100):0;
-    S._myLevel=startLevel;
-    try{ _generateCurriculum(startLevel); }catch(e){}
-    try{
-      var best=null;
-      LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=startLevel){ if(!best||v>best.v) best={id:l.id,v:v}; } });
-      if(best) S.lid=best.id;
-    }catch(e){}
-    S._inChExam=false; S._chExam=null; S.gDone=false;
+    _ltClearTimer();
+    var lt=S._lt||{};
+    var placement=Math.max(1, Math.min(CW_MAXLEVEL, lt.lastPassed||0)); // 직전 통과 레벨(레벨1 실패=최소 1)
+    var correctTotal=lt.correctTotal||0, qTotal=lt.qTotal||0;
+    S._inInitLevelTest=false;
+    S._myLevel=placement;
+    try{ _generateCurriculum(placement); }catch(e){}
+    try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
     try{ localStorage.setItem('wd-tested','1'); }catch(e){}
-    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), level:startLevel, pct:pct, totalQ:totalQ}); localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
-    if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
+    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), level:placement, qTotal:qTotal, correct:correctTotal}); localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+    if(typeof addXP==='function') addXP(correctTotal*2);
     if(typeof sv==='function') sv();
+    S._lt=null;
     var tierName=['다지기','도약','정복'], courseRows='';
-    for(var t=0;t<3;t++){ var cl=Math.min(startLevel+t, CW_MAXLEVEL); courseRows+='<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;background:'+(t===0?'var(--theme-tint,#EEF3FA)':'#F8F9FA')+';border:1px solid '+(t===0?'var(--theme-soft,#BFD7F0)':'#E5E7EB')+';margin-bottom:6px"><span style="font-size:15px">'+(t===0?'▶️':'🔒')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:#374151">'+(t+1)+'단계 · '+tierName[t]+'</span><span style="font-size:10px;background:#fff;color:var(--theme,#1E5FA5);padding:2px 8px;border-radius:8px;font-weight:700">레벨 '+cl+'</span></div>'; }
-    if(typeof S!=='undefined'){ S.tab='mybooks'; S.stab='books'; }
-    if(typeof go==='function'){ try{ go('mybooks','books'); }catch(e){} }
-    requestAnimationFrame(function(){
-      var mr=document.getElementById('mr'); if(!mr) return;
-      mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px;text-align:center">'
-        +'<div style="font-size:48px;margin-bottom:6px">🎯</div>'
-        +'<div style="font-size:20px;font-weight:900;color:#111;margin-bottom:2px">레벨테스트 완료!</div>'
-        +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">50문제 중 '+totalCorrect+'개 정답 ('+pct+'%)</div>'
-        +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:14px">'
-          +'<div style="font-size:12px;color:var(--theme,#1E5FA5);font-weight:700;margin-bottom:2px">나의 레벨</div>'
-          +'<div style="font-size:26px;font-weight:900;color:var(--theme,#1E5FA5)">레벨 '+startLevel+'</div>'
-        +'</div>'
-        +'<div style="text-align:left;margin-bottom:14px">'
-          +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 이 코스가 만들어졌어요</div>'
-          +courseRows
-        +'</div>'
-        +'<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">학습 시작하기 🚀</button>'
-        +'</div></div>';
-    });
-  }catch(e){ S._inChExam=false; S._chExam=null; try{ if(typeof go==='function') go('mybooks','books'); }catch(e2){} }
+    for(var t=0;t<3;t++){ var cl=Math.min(placement+t, CW_MAXLEVEL); courseRows+='<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;background:'+(t===0?'var(--theme-tint,#EEF3FA)':'#F8F9FA')+';border:1px solid '+(t===0?'var(--theme-soft,#BFD7F0)':'#E5E7EB')+';margin-bottom:6px"><span style="font-size:15px">'+(t===0?'▶️':'🔒')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:#374151">'+(t+1)+'단계 · '+tierName[t]+'</span><span style="font-size:10px;background:#fff;color:var(--theme,#1E5FA5);padding:2px 8px;border-radius:8px;font-weight:700">레벨 '+cl+'</span></div>'; }
+    try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; var nv=document.getElementById('nav'); if(nv) nv.style.display=''; }catch(e){}
+    document.getElementById('body').innerHTML=
+      '<div class="pad" style="padding-top:22px;text-align:center">'
+      +'<div style="font-size:48px;margin-bottom:6px">🎯</div>'
+      +'<div style="font-size:22px;font-weight:900;color:#111;margin-bottom:2px">레벨테스트 완료!</div>'
+      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+qTotal+'문제 중 '+correctTotal+'개 정답</div>'
+      +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:16px">'
+        +'<div style="font-size:12px;color:var(--theme,#1E5FA5);font-weight:700;margin-bottom:2px">나의 레벨</div>'
+        +'<div style="font-size:26px;font-weight:900;color:var(--theme,#1E5FA5)">레벨 '+placement+'</div>'
+      +'</div>'
+      +'<div style="text-align:left;margin-bottom:18px">'
+        +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 이 코스가 만들어졌어요</div>'
+        +courseRows
+      +'</div>'
+      +'<button class="btn bb" onclick="startApp()">학습 시작하기 🚀</button>'
+      +'</div>';
+  }catch(e){ S._inInitLevelTest=false; S._lt=null; try{ if(typeof startApp==='function') startApp(); }catch(e2){} }
 }
 function showLevelUpTest() {
   const words=S._sysWords||DEFAULT_WORDS[S.lid]||[];
@@ -8741,6 +8813,7 @@ function rollButterfly(preferUnowned) {
     owned.push(chosen.id);
     localStorage.setItem('wd-butterflies', JSON.stringify(owned));
     S.myButterflies = owned;
+    if(typeof _bfRemoveTomb==='function') _bfRemoveTomb([chosen.id]);
     if(S.user && typeof db !== 'undefined') {
       try { db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true}); } catch(e) {}
     }
@@ -8904,6 +8977,23 @@ function showButterflyDogam(){
 }
 function _bfClearMode(on){ window._bfSelMode=!!on; window._bfSel={}; showButterflyDogam(); }
 function _bfClearSelToggle(id){ if(!window._bfSel)window._bfSel={}; if(window._bfSel[id])delete window._bfSel[id]; else window._bfSel[id]=1; showButterflyDogam(); }
+// ── 나비 도감 묘비(tombstone): 삭제 전파용 ──
+// 삭제한 나비 ID를 기록. 로그인 병합 시 합집합(획득 손실 방지)에서 묘비 ID를 빼서 삭제가 크로스기기로 전파되게 함.
+function _bfGetTomb(){ try{ return JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]'); }catch(e){ return []; } }
+function _bfSetTomb(arr){ try{ arr=Array.from(new Set(arr||[])); S.bfTomb=arr; localStorage.setItem('wd-bf-tomb',JSON.stringify(arr)); if(S.user&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({deletedButterflies:arr},{merge:true}).catch(function(){}); } return arr; }catch(e){ return arr||[]; } }
+function _bfAddTomb(ids){ ids=Array.isArray(ids)?ids:[ids]; var set=new Set(_bfGetTomb()); ids.forEach(function(id){ if(id) set.add(id); }); return _bfSetTomb([...set]); }
+function _bfRemoveTomb(ids){ ids=Array.isArray(ids)?ids:[ids]; var rm=new Set(ids); return _bfSetTomb(_bfGetTomb().filter(function(id){ return !rm.has(id); })); }
+function _bfMerge(fireBf, fireTomb){
+  var localBf=[]; try{ localBf=JSON.parse(localStorage.getItem('wd-butterflies')||'[]'); }catch(e){}
+  var tomb=new Set([].concat(Array.isArray(fireTomb)?fireTomb:[], _bfGetTomb()));
+  var union=new Set([].concat(Array.isArray(fireBf)?fireBf:[], Array.isArray(localBf)?localBf:[]));
+  var merged=[...union].filter(function(id){ return !tomb.has(id); });
+  var tombArr=[...tomb];
+  S.myButterflies=merged; S.bfTomb=tombArr;
+  try{ localStorage.setItem('wd-butterflies',JSON.stringify(merged)); localStorage.setItem('wd-bf-tomb',JSON.stringify(tombArr)); }catch(e){}
+  if(S.user&&typeof db!=='undefined'){ try{ db.collection('users').doc(S.user.uid).set({myButterflies:merged, deletedButterflies:tombArr},{merge:true}); }catch(e){} }
+  return merged;
+}
 function _bfSaveButterflies(arr){ try{ S.myButterflies=arr; localStorage.setItem('wd-butterflies',JSON.stringify(arr)); if(S.user&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({myButterflies:arr},{merge:true}).catch(function(){}); } }catch(e){} }
 function _bfClearSelected(){
   var sel=window._bfSel||{}; var ids=Object.keys(sel).filter(function(k){return sel[k];});
@@ -8912,6 +9002,7 @@ function _bfClearSelected(){
   var bfs=(typeof getMyButterflies==='function')?getMyButterflies():[];
   var kept=bfs.filter(function(id){return ids.indexOf(id)<0;});
   _bfSaveButterflies(kept);
+  if(typeof _bfAddTomb==='function') _bfAddTomb(ids);
   window._bfSel={};
   if(typeof toast==='function') toast('🗑️ '+ids.length+'마리 비웠어요');
   showButterflyDogam();
@@ -8921,6 +9012,7 @@ function _bfClearAll(){
   if(!bfs.length){ if(typeof toast==='function') toast('도감이 이미 비어있어요'); return; }
   if(!confirm('도감의 나비 '+bfs.length+'마리를 모두 비울까요? (다시 뽑을 수 있어요)')) return;
   _bfSaveButterflies([]);
+  if(typeof _bfAddTomb==='function') _bfAddTomb(bfs);
   window._bfSel={};
   if(typeof toast==='function') toast('🗑️ 도감을 비웠어요');
   showButterflyDogam();
@@ -13260,8 +13352,7 @@ function _chExamBanner(){try{
   var wrong=Math.max(0,answered-correct);
   var score=correct*2;
   var acc=answered>0?Math.round(correct/answered*100):0;
-  var isLT=!!ex.isLevelTest;
-  var passed=!isLT && score>=90;
+  var passed=score>=90;
   var lite=(S.theme!=='dark');
   var C_HDRBG=lite?'#FFFFFF':'#1B2740';
   var C_TITLE=lite?'#12233B':'#F1F5F9';
@@ -13300,7 +13391,7 @@ function _chExamBanner(){try{
       +'<div style="display:flex;align-items:center;gap:7px;min-width:0">'
         +'<span style="font-size:14px">🎫</span>'
         +'<span style="font-size:14px;font-weight:900;color:'+C_TITLE+'">레벨테스트</span>'
-        +'<span style="font-size:11px;color:'+C_MUTED+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(isLT?'내 레벨 찾기':(bookShort+' · 챕터 '+((ex.chIdx||0)+1)))+'</span>'
+        +'<span style="font-size:11px;color:'+C_MUTED+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+bookShort+' · 챕터 '+((ex.chIdx||0)+1)+'</span>'
       +'</div>'
       +'<button onclick="exitConfirm()" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:'+C_MUTED+';font-size:18px;font-weight:700;line-height:1;flex-shrink:0">✕</button>'
     +'</div>'
@@ -13368,21 +13459,12 @@ function rGameDone(){
     var _cgrp=_cex.groups[_cex.gi]||[];
     _cex.correct += Object.keys(_crm).filter(function(k){return _crm[k]===true;}).length;
     _cex.total += _cgrp.length;
-    if(_cex.isLevelTest && _cex.lvMap){
-      _cex.perLv=_cex.perLv||{};
-      _cgrp.forEach(function(w){
-        var L=_cex.lvMap[w.en]; if(!L) return;
-        var d=_cex.perLv[L]||(_cex.perLv[L]={c:0,n:0});
-        d.n++; if(_crm[w.en]===true) d.c++;
-      });
-    }
     _cex.gi++;
     if(_cex.gi < _cex.games.length){
       S.gDone=false;
       requestAnimationFrame(function(){ if(typeof startGameW==='function') startGameW(_cex.games[_cex.gi], _cex.groups[_cex.gi]); });
       return;
     }
-    if(_cex.isLevelTest){ finishInitialLevelExam(); return; }
     finishChapterExam();
     return;
   }
@@ -16327,7 +16409,7 @@ auth.onAuthStateChanged(async user => {
     try{
       var _prevUid = localStorage.getItem('wd-uid');
       if(_prevUid && _prevUid !== user.uid){
-        ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk','wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl','wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-txp','wd-tsm','wd-dg','wd-dsm','wd-dd','wd-dxg','wd-mkd','wd-fav','wd-ach','wd-als','wd-alg','wd-alst','wd-butterflies','bw-collection','wd-plan','wd-plan-scope','wd-quizgoal','wd-last-backup'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} });
+        ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk','wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl','wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-txp','wd-tsm','wd-dg','wd-dsm','wd-dd','wd-dxg','wd-mkd','wd-fav','wd-ach','wd-als','wd-alg','wd-alst','wd-butterflies','wd-bf-tomb','bw-collection','wd-plan','wd-plan-scope','wd-quizgoal','wd-last-backup'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} });
         S.books=[]; S.words=[]; S.markMap={}; try{S.learned=new Set();}catch(e){}
         console.warn('[계정전환] 이전 계정과 다름 → 로컬 초기화, 서버에서 새로 로드');
       }
@@ -16505,17 +16587,9 @@ auth.onAuthStateChanged(async user => {
           }
           if(Array.isArray(_data.learned)) S.learned=new Set([].concat([...(S.learned||[])], _data.learned)); // [데이터 손실 방지] 합집합
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
-          if(Array.isArray(_data.myButterflies)) {
-            // 로컬과 Firebase 합집합 (더 많은 나비 유지)
-            const _lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
-            const _bfSet = new Set([..._data.myButterflies, ..._lsBf]);
-            const _mergedBf = [..._bfSet];
-            S.myButterflies = _mergedBf;
-            localStorage.setItem('wd-butterflies', JSON.stringify(_mergedBf));
-            // 합집합이 Firebase보다 크면 Firebase도 업데이트
-            if(_mergedBf.length > _data.myButterflies.length && S.user && typeof db!=='undefined') {
-              db.collection('users').doc(S.user.uid).set({myButterflies:_mergedBf},{merge:true}).catch(()=>{});
-            }
+          if(Array.isArray(_data.myButterflies) || Array.isArray(_data.deletedButterflies)) {
+            // 합집합(획득 손실 방지) − 묘비(삭제 전파). _bfMerge가 LS·Firebase·S 모두 갱신.
+            if(typeof _bfMerge==='function') _bfMerge(_data.myButterflies, _data.deletedButterflies);
           }
           if(Array.isArray(_data.collection)) {
             // [버그수정] 합집합 병합 금지 — 뺀/비운 항목이 되살아나는 문제. 로컬이 권위.
@@ -16703,26 +16777,11 @@ auth.onAuthStateChanged(async user => {
           }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
-        if(Array.isArray(_data.myButterflies)) {
-          // 로컬과 Firebase 합집합 (더 많은 나비 유지, 어느 쪽도 손실 없음)
-          const _lsBf2 = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
-          const _bfSet2 = new Set([..._data.myButterflies, ..._lsBf2]);
-          const _mergedBf2 = [..._bfSet2];
-          S.myButterflies = _mergedBf2;
-          localStorage.setItem('wd-butterflies', JSON.stringify(_mergedBf2));
-          // 합집합이 Firebase보다 크면 Firebase도 업데이트
-          if(_mergedBf2.length > _data.myButterflies.length && S.user && typeof db!=='undefined') {
-            db.collection('users').doc(S.user.uid).set({myButterflies:_mergedBf2},{merge:true}).catch(()=>{});
-          }
+        if(Array.isArray(_data.myButterflies) || Array.isArray(_data.deletedButterflies)) {
+          if(typeof _bfMerge==='function') _bfMerge(_data.myButterflies, _data.deletedButterflies);
         } else {
-          // Firebase에 없으면 localStorage 데이터 사용 후 Firebase 저장
-          const lsBf = JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
-          if(lsBf.length > 0) {
-            S.myButterflies = lsBf;
-            if(S.user && typeof db!=='undefined') {
-              db.collection('users').doc(S.user.uid).set({myButterflies:lsBf},{merge:true});
-            }
-          }
+          // Firebase에 나비 없음 → 로컬 데이터(묘비 반영)로 병합·시드
+          if(typeof _bfMerge==='function') _bfMerge([], []);
         }
         if(Array.isArray(_data.collection)) {
           // [버그수정] 합집합 병합 금지 — 뺀/비운 항목 되살아남 방지. 로컬이 권위(키 없을 때만 클라우드 시드).
@@ -16812,7 +16871,7 @@ auth.onAuthStateChanged(async user => {
           if(typeof go === 'function') go();
           if(Array.isArray(data.learned)) S.learned=new Set(data.learned);
           if(Array.isArray(data.favorites)) S.favorites=data.favorites;
-        if(Array.isArray(data.myButterflies)) localStorage.setItem('wd-butterflies', JSON.stringify(data.myButterflies));
+        if(Array.isArray(data.myButterflies) || Array.isArray(data.deletedButterflies)){ if(typeof _bfMerge==='function') _bfMerge(data.myButterflies, data.deletedButterflies); }
           try { if(typeof updHD==='function') updHD(); } catch(e) {}
         }
       }).catch(()=>{});

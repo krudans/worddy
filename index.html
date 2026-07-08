@@ -1,4 +1,4 @@
-<!-- build: 20260709-course-lv-progress3 -->
+<!-- build: 20260709-srs-wrongnote -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -926,18 +926,68 @@ const ok = () => {
   if(S._combo===5)  { addXP(xp('combo_5'),true); showComboFlash(5, '+'+xp('combo_5')+'XP 🔥'); SFX.play('combo'); }
   if(S._combo===10) { addXP(xp('combo_10'),true); showComboFlash(10, '+'+xp('combo_10')+'XP ⚡'); }
   if(S._combo===20) { addXP(xp('combo_20'),true); showComboFlash(20, '+'+xp('combo_20')+'XP 🌟'); }
+  // SRS: 복습 퀴즈에서 맞히면 다음 단계로(간격 증가), 5단계면 졸업
+  if(S._srsSession){ var _cw=S.gWords?.[S.gIdx]; if(_cw && typeof _wrongPass==='function') _wrongPass(_cw.en); }
 };
+// ── 오답 노트 SRS(간격 반복) ──────────────────────────────
+// 각 오답에 box(0~5)와 due(다음 복습 시각)를 부여한다. 맞히면 box+1(간격 증가), 틀리면 box=0(내일 다시).
+// 간격(일): box0=0(오늘) 1=1 2=3 3=7 4=14 5=30
+const _SRS_DAYS=[0,1,3,7,14,30];
+function _srsDue(box){ var d=_SRS_DAYS[Math.max(0,Math.min(5,box|0))]||0; return Date.now()+d*86400000; }
+// 오답 추가(중복이면 box 리셋 + 출처 기록). src: 'game'|'exam'|'level'
+function _wrongAdd(w, src){
+  try{
+    if(!w || !w.en) return;
+    if(!Array.isArray(S._wrongWords)) S._wrongWords=[];
+    var i=S._wrongWords.findIndex(function(x){return x.en===w.en;});
+    var base = (i>=0) ? S._wrongWords[i] : Object.assign({}, w);
+    base.en=w.en; if(w.kr && !base.kr) base.kr=w.kr;
+    base.wrongAt=Date.now(); base.box=0; base.due=_srsDue(0);
+    base.miss=(base.miss||0)+1; if(src) base.src=src;
+    if(i>=0) S._wrongWords.splice(i,1);
+    S._wrongWords.unshift(base);
+    if(S._wrongWords.length>200) S._wrongWords.pop();   // 50 → 200으로 확장
+    if(typeof sv==='function') sv();
+  }catch(e){}
+}
+// 복습에서 맞힘 → 다음 단계로, 5단계 통과 시 졸업(목록에서 제거)
+function _wrongPass(en){
+  try{
+    var i=(S._wrongWords||[]).findIndex(function(x){return x.en===en;});
+    if(i<0) return;
+    var w=S._wrongWords[i];
+    w.box=Math.min(5,(w.box||0)+1);
+    if(w.box>=5){ S._wrongWords.splice(i,1); }   // 졸업
+    else { w.due=_srsDue(w.box); }
+    if(typeof sv==='function') sv();
+  }catch(e){}
+}
+function _wrongFail(en){
+  try{
+    var w=(S._wrongWords||[]).find(function(x){return x.en===en;});
+    if(!w) return;
+    w.box=0; w.due=_srsDue(0); w.miss=(w.miss||0)+1;
+    if(typeof sv==='function') sv();
+  }catch(e){}
+}
+// 오늘 복습할 단어(due 지난 것). 레거시(box/due 없는 기존 오답)는 즉시 대상.
+function _wrongDue(){
+  try{
+    var now=Date.now();
+    return (S._wrongWords||[]).filter(function(w){ return (w.due==null) || w.due<=now; });
+  }catch(e){ return []; }
+}
 const ng = () => {
   SFX.play('wrong'); vib([100,50,100]);
   if(S._combo>=3) toast('콤보 끊김 😢 ('+S._combo+'연속)');
   S._combo = 0;
-  // 오답 노트 추가
-  const gw = S.gWords?.[S.gIdx];
-  if(gw && !(S._wrongWords||[]).some(w=>w.en===gw.en)) {
-    if(!S._wrongWords) S._wrongWords=[];
-    S._wrongWords.unshift({...gw, wrongAt:Date.now()});
-    if(S._wrongWords.length>50) S._wrongWords.pop();
-    sv();
+  // 오답 노트 (SRS). 레벨테스트 중엔 _ltAnswer가 직접 기록하므로 건너뜀(잔여 gWords 오기록 방지)
+  if(!S._inInitLevelTest){
+    const gw = S.gWords?.[S.gIdx];
+    if(gw){
+      if(S._srsSession && typeof _wrongFail==='function') _wrongFail(gw.en);   // 복습에서 또 틀림 → 1단계로
+      else _wrongAdd(gw, 'game');
+    }
   }
 };
 
@@ -2880,8 +2930,11 @@ function showWrongNote() {
   mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;border-radius:20px;overflow:hidden;max-height:85vh">
     <div style="background:#DC2626;padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
       <div><div style="font-size:16px;font-weight:900;color:#fff">🦋 오답 노트</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.8)">${ww.length}개 · 탭해서 퀴즈</div></div>
-      <button onclick="startWrongQuiz()" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">🎯 전체 퀴즈</button>
+      <div style="font-size:11px;color:rgba(255,255,255,.8)">${ww.length}개 · 오늘 복습 ${(typeof _wrongDue==='function'?_wrongDue().length:ww.length)}개</div></div>
+      <div style="display:flex;gap:6px">
+        <button onclick="startWrongDueQuiz()" style="background:#fff;border:none;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:800;color:#DC2626;cursor:pointer">⏰ 오늘 복습</button>
+        <button onclick="startWrongQuiz()" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">🎯 전체</button>
+      </div>
     </div>
     <div style="overflow-y:auto;max-height:60vh;padding:12px;display:flex;flex-direction:column;gap:8px">
       ${ww.map((w,i)=>`
@@ -2889,7 +2942,11 @@ function showWrongNote() {
           <div style="flex:1">
             <div style="font-size:15px;font-weight:800;color:#DC2626;font-family:monospace">${w.en}</div>
             <div style="font-size:12px;color:var(--text2,var(--text2,#374151));margin-top:2px">${w.kr}</div>
-            ${w.ph?`<div style="font-size:11px;color:var(--text3,#9CA3AF)">${w.ph}</div>`:''}
+            <div style="display:flex;gap:5px;align-items:center;margin-top:3px">
+              <span style="font-size:9px;background:#FEF2F2;color:#DC2626;border-radius:6px;padding:1px 6px;font-weight:800">${(w.box||0)}/5단계</span>
+              <span style="font-size:9px;font-weight:700;color:${(w.due==null||w.due<=Date.now())?'#DC2626':'#9CA3AF'}">${(w.due==null||w.due<=Date.now())?'지금 복습':('D-'+Math.max(1,Math.ceil((w.due-Date.now())/86400000)))}</span>
+              ${w.miss>1?`<span style="font-size:9px;color:#9CA3AF">${w.miss}회 틀림</span>`:''}
+            </div>
           </div>
           <button onclick="speak('${w.en.replace(/'/g,"\'")}');event.stopPropagation()" style="background:#FEF2F2;border:none;border-radius:8px;padding:6px 10px;font-size:14px;cursor:pointer">🔊</button>
           <button onclick="S._wrongWords=S._wrongWords.filter(x=>x.en!=='${w.en.replace(/'/g,"\'")}');sv();showWrongNote()" style="background:#F3F4F6;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:#9CA3AF">✕</button>
@@ -2905,7 +2962,19 @@ function startWrongQuiz() {
   const ww=S._wrongWords||[];
   if(ww.length<2){toast('오답 단어가 2개 이상 필요해요');return;}
   cm();
+  S._srsSession=true;   // 게임 채점 시 SRS 반영
   startGameW('quiz', ww);
+}
+// 오늘 복습(due 지난 단어만). 간격 반복의 핵심 진입점.
+function startWrongDueQuiz() {
+  var due=(typeof _wrongDue==='function')?_wrongDue():(S._wrongWords||[]);
+  if(due.length<2){
+    if(!due.length){ toast('오늘 복습할 단어가 없어요! 🎉'); return; }
+    toast('복습할 단어가 2개 이상 필요해요'); return;
+  }
+  cm();
+  S._srsSession=true;
+  startGameW('quiz', due);
 }
 
 // ── 도전 과제 정의 ──
@@ -6877,7 +6946,8 @@ function _ltAnswer(idx){
   if(correct){ if(typeof ok==='function') ok(); S._lt.correctTotal++; S._lt.levelStats[_L].c++; }
   else { if(typeof ng==='function') ng(); S._lt.wrong++;
     if(!S._lt.wrongWords) S._lt.wrongWords=[];
-    var _q=S._lt.cur; if(_q) S._lt.wrongWords.push({en:_q.en, kr:_q.choices[_q.correctIdx], level:_L});
+    var _q=S._lt.cur; if(_q){ S._lt.wrongWords.push({en:_q.en, kr:_q.choices[_q.correctIdx], level:_L});
+      if(typeof _wrongAdd==='function') _wrongAdd({en:_q.en, kr:_q.choices[_q.correctIdx]}, 'level'); }
   }
   S._lt.qi++; S._lt.qTotal++;
   _ltRender();
@@ -12009,6 +12079,7 @@ function showGameGate(gameId, gate){
 }
 
 function startGameWithSettings(gameId) {
+  S._srsSession=false;   // 일반 게임은 SRS 채점 대상 아님(복습 퀴즈에서만 true)
   S.gameId = gameId;
   S._prevTab = S.tab; // 현재 탭 저장 → 나가기 시 복귀
   const gs = S.gameSettings||{count:10,markFilter:-1,dir:0,autoMark:true,autoNext:false};

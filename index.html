@@ -1,4 +1,4 @@
-<!-- build: 20260708-leveltest-diagnostic -->
+<!-- build: 20260709-progress-merge-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -16349,11 +16349,28 @@ function _mergeWordsUnion(localArr, srvArr, tomb){
   (Array.isArray(srvArr)?srvArr:[]).forEach(add);
   return out;
 }
+// 같은 책이 양쪽에 있으면 words뿐 아니라 학습진도(markMap 합집합 / chPass OR / 최대값 필드)도 병합한다.
+// [버그수정] 기존엔 로컬 책을 통째로 채택하고 서버의 markMap·chPass를 버려서, 다른 기기 학습분이 유실됐다.
+function _mergeBookProgress(dst, src){
+  if(!dst || !src) return;
+  // markMap: 합집합(외운 표시는 어느 기기 것이든 보존)
+  var dm=dst.markMap||{}, sm=src.markMap||{};
+  var outM={}; Object.keys(dm).forEach(function(k){ if(dm[k]) outM[k]=dm[k]; });
+  Object.keys(sm).forEach(function(k){ if(sm[k]) outM[k]=sm[k]; });
+  dst.markMap=outM;
+  // chPass: OR(한쪽이라도 통과면 통과)
+  var dc=Array.isArray(dst.chPass)?dst.chPass:[], sc=Array.isArray(src.chPass)?src.chPass:[];
+  if(dc.length || sc.length){ var n=Math.max(dc.length, sc.length), outC=[]; for(var i=0;i<n;i++) outC.push(!!dc[i] || !!sc[i]); dst.chPass=outC; }
+  // 진도성 수치 필드: 큰 값 채택
+  ['learned','studied','chIdx','lastCh'].forEach(function(f){ if(typeof src[f]==='number' && (typeof dst[f]!=='number' || src[f]>dst[f])) dst[f]=src[f]; });
+  // 로컬에 없는 메타는 서버 값 보완
+  ['isCurriculum','tier','level','packId','cefr'].forEach(function(f){ if(dst[f]===undefined && src[f]!==undefined) dst[f]=src[f]; });
+}
 function _mergeBooksUnion(localBks, srvBks, tomb){
   const tset = new Set(tomb||[]);
   const key = b => b ? (b.packId ? 'p:'+b.packId : 'n:'+(b.name||'')) : '';
   const out = []; const idx = {};
-  const add = b => { const k=key(b); if(!k||tset.has(k))return; if(idx[k]===undefined){idx[k]=out.length;out.push({...b});} else if(!b.packId){ out[idx[k]].words=_mergeWordsUnion(out[idx[k]].words, b.words, []); } };
+  const add = b => { const k=key(b); if(!k||tset.has(k))return; if(idx[k]===undefined){idx[k]=out.length;out.push({...b});} else { const d=out[idx[k]]; if(!b.packId){ d.words=_mergeWordsUnion(d.words, b.words, []); } _mergeBookProgress(d, b); } };
   (Array.isArray(localBks)?localBks:[]).forEach(add);
   (Array.isArray(srvBks)?srvBks:[]).forEach(add);
   return out;

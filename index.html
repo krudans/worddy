@@ -1,4 +1,4 @@
-<!-- build: 20260708-no-proper-nouns -->
+<!-- build: 20260708-leveltest-diagnostic -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -6800,8 +6800,15 @@ function _ltAnswer(idx){
   _ltClearTimer();
   S._lt.ans=true; S._lt.res=idx;
   var correct=(idx===S._lt.cur.correctIdx);
-  if(correct){ if(typeof ok==='function') ok(); S._lt.correctTotal++; }
-  else { if(typeof ng==='function') ng(); S._lt.wrong++; }
+  var _L=S._lt.level;
+  if(!S._lt.levelStats) S._lt.levelStats={};
+  if(!S._lt.levelStats[_L]) S._lt.levelStats[_L]={c:0,t:0};
+  S._lt.levelStats[_L].t++;
+  if(correct){ if(typeof ok==='function') ok(); S._lt.correctTotal++; S._lt.levelStats[_L].c++; }
+  else { if(typeof ng==='function') ng(); S._lt.wrong++;
+    if(!S._lt.wrongWords) S._lt.wrongWords=[];
+    var _q=S._lt.cur; if(_q) S._lt.wrongWords.push({en:_q.en, kr:_q.choices[_q.correctIdx], level:_L});
+  }
   S._lt.qi++; S._lt.qTotal++;
   _ltRender();
   window._ltTO=setTimeout(function(){ if(!S._lt) return; S._lt.cur=null; _ltNext(); }, correct?600:1100);
@@ -6866,6 +6873,24 @@ function startInitialLevelExam(){
     _ltNext();
   }catch(e){ if(typeof toast==='function') toast('레벨테스트 시작 실패','err'); }
 }
+function _lvCefr(l){ return ({1:'A1',2:'A1~A2',3:'A2',4:'A2',5:'A2~B1',6:'B1',7:'B1',8:'B1',9:'B1~B2',10:'B2'})[l]||''; }
+function _ltReviewWrong(){
+  try{
+    var r=window.__ltResult||{}; var ww=r.wrongWords||[];
+    if(!ww.length){ if(typeof toast==='function') toast('틀린 단어가 없어요'); return; }
+    var seen={}, uniq=[];
+    ww.forEach(function(x){ var en=x.en; if(en&&!seen[en]){ seen[en]=1; var w=(typeof _enrichFromDict==='function')?_enrichFromDict({en:en}):{en:en,kr:x.kr}; uniq.push(w); } });
+    var name='틀린 단어 복습';
+    if(!Array.isArray(S.books)) S.books=[];
+    S.books=S.books.filter(function(b){return b.name!==name;});
+    S.books.push({name:name, words:uniq, markMap:{}, review:true});
+    S.currentBook=name;
+    if(typeof _untombBookByName==='function') _untombBookByName(name);
+    if(typeof sv==='function') sv();
+    if(typeof toast==='function') toast('복습 단어장 '+uniq.length+'개 생성됨');
+    if(typeof go==='function'){ S.tab='mybooks'; go('mybooks','books'); }
+  }catch(e){}
+}
 function _ltFinish(){
   try{
     _ltClearTimer();
@@ -6880,24 +6905,44 @@ function _ltFinish(){
     try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), level:placement, qTotal:qTotal, correct:correctTotal}); localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
     if(typeof addXP==='function') addXP(correctTotal*2);
     if(typeof sv==='function') sv();
+    var _lvStats=lt.levelStats||{}, _wrong=(lt.wrongWords||[]);
+    window.__ltResult={ placement:placement, correctTotal:correctTotal, qTotal:qTotal, wrongWords:_wrong.slice(), levelStats:_lvStats };
     S._lt=null;
     var tierName=['다지기','도약','정복'], courseRows='';
     for(var t=0;t<3;t++){ var cl=Math.min(placement+t, CW_MAXLEVEL); courseRows+='<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;background:'+(t===0?'var(--theme-tint,#EEF3FA)':'#F8F9FA')+';border:1px solid '+(t===0?'var(--theme-soft,#BFD7F0)':'#E5E7EB')+';margin-bottom:6px"><span style="font-size:15px">'+(t===0?'▶️':'🔒')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:#374151">'+(t+1)+'단계 · '+tierName[t]+'</span><span style="font-size:10px;background:#fff;color:var(--theme,#1E5FA5);padding:2px 8px;border-radius:8px;font-weight:700">레벨 '+cl+'</span></div>'; }
     try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; var nv=document.getElementById('nav'); if(nv) nv.style.display=''; }catch(e){}
+    var _pctAll = qTotal?Math.round(correctTotal/qTotal*100):0;
+    var _cefr = (typeof _lvCefr==='function')?_lvCefr(placement):'';
+    var _statRows='';
+    Object.keys(_lvStats).map(Number).sort(function(a,b){return a-b;}).forEach(function(L){
+      var s=_lvStats[L], p=s.t?Math.round(s.c/s.t*100):0;
+      var bc=p>=70?'#16A34A':(p>=40?'#F59E0B':'#DC2626');
+      _statRows+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:11px;font-weight:700;color:#6B7280;width:46px">레벨 '+L+'</span><div style="flex:1;height:8px;background:#F1F3F5;border-radius:20px;overflow:hidden"><div style="width:'+p+'%;height:100%;background:'+bc+'"></div></div><span style="font-size:11px;font-weight:800;color:'+bc+';width:34px;text-align:right">'+p+'%</span></div>';
+    });
+    var _wrongHtml='';
+    if(_wrong.length){
+      var _items=_wrong.slice(0,20).map(function(x){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 10px;background:#FFF7F7;border:1px solid #FEE2E2;border-radius:9px;margin-bottom:5px"><span style="font-size:13px;font-weight:700;color:#111">'+x.en+'</span><span style="font-size:12px;color:#6B7280;text-align:right">'+(x.kr||'')+'</span></div>'; }).join('');
+      _wrongHtml='<div style="text-align:left;margin-bottom:16px"><div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">✏️ 틀린 단어 '+_wrong.length+'개</div>'+_items+(_wrong.length>20?'<div style="font-size:11px;color:#9CA3AF;text-align:center;margin:4px 0">외 '+(_wrong.length-20)+'개 더</div>':'')+'<button class="btn" style="width:100%;margin-top:8px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA;font-weight:700" onclick="_ltReviewWrong()">🎯 틀린 단어만 복습하기</button></div>';
+    }
     document.getElementById('body').innerHTML=
-      '<div class="pad" style="padding-top:22px;text-align:center">'
-      +'<div style="font-size:48px;margin-bottom:6px">🎯</div>'
-      +'<div style="font-size:22px;font-weight:900;color:#111;margin-bottom:2px">레벨테스트 완료!</div>'
-      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+qTotal+'문제 중 '+correctTotal+'개 정답</div>'
-      +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:16px">'
-        +'<div style="font-size:12px;color:var(--theme,#1E5FA5);font-weight:700;margin-bottom:2px">나의 레벨</div>'
-        +'<div style="font-size:26px;font-weight:900;color:var(--theme,#1E5FA5)">레벨 '+placement+'</div>'
+      '<div class="pad" style="padding-top:22px">'
+      +'<div style="text-align:center">'
+        +'<div style="font-size:48px;margin-bottom:6px">🎯</div>'
+        +'<div style="font-size:22px;font-weight:900;color:#111;margin-bottom:2px">레벨테스트 완료!</div>'
+        +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+qTotal+'문제 중 '+correctTotal+'개 정답 · 정답률 '+_pctAll+'%</div>'
+        +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:16px">'
+          +'<div style="font-size:12px;color:var(--theme,#1E5FA5);font-weight:700;margin-bottom:2px">나의 레벨</div>'
+          +'<div style="font-size:26px;font-weight:900;color:var(--theme,#1E5FA5)">레벨 '+placement+(_cefr?' <span style="font-size:13px;font-weight:700">· CEFR '+_cefr+'</span>':'')+'</div>'
+        +'</div>'
       +'</div>'
-      +'<div style="text-align:left;margin-bottom:18px">'
+      +(_statRows?'<div style="text-align:left;margin-bottom:16px"><div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:8px">📊 레벨별 정답률</div>'+_statRows+'</div>':'')
+      +'<div style="text-align:left;margin-bottom:16px">'
         +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 이 코스가 만들어졌어요</div>'
         +courseRows
       +'</div>'
-      +'<button class="btn bb" onclick="startApp()">학습 시작하기 🚀</button>'
+      +_wrongHtml
+      +'<button class="btn bb" style="width:100%" onclick="startApp()">학습 시작하기 🚀</button>'
+      +'<button class="btn" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;font-weight:700" onclick="startInitialLevelExam()">다시 진단하기</button>'
       +'</div>';
   }catch(e){ S._inInitLevelTest=false; S._lt=null; try{ if(typeof startApp==='function') startApp(); }catch(e2){} }
 }

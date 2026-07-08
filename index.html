@@ -1,4 +1,4 @@
-<!-- build: 20260709-progress-merge-fix -->
+<!-- build: 20260709-curriculum-rename -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -555,6 +555,34 @@ function _curriculumStageLocked(book){
   }catch(e){ return false; }
 }
 // 레벨테스트 결과 레벨(1~10)로 3단계 코스 생성([L,L+1,L+2] 클램프+중복제거). 기존 커리큘럼 교체.
+// ── 커리큘럼 이름 마이그레이션: '1단계 · 다지기 (레벨 2)' → '레벨업 1단계 _ Lv.2' ──
+// 이름이 동기화 키(n:이름)이므로, 옛 이름 책을 새 이름으로 바꿔 진도(markMap/chPass)를 그대로 잇는다.
+function _migrateCurriculumNames(bks, noTomb){
+  try{
+    if(!Array.isArray(bks)) return bks;
+    var re=/^([1-3])단계\s*·\s*\S+\s*\(레벨\s*(\d+)\)$/;
+    var changed=false;
+    bks.forEach(function(b){
+      if(!b || !b.name) return;
+      var m=String(b.name).match(re);
+      if(m){
+        var tier=parseInt(m[1],10), lv=parseInt(m[2],10);
+        var nn='레벨업 '+tier+'단계 _ Lv.'+lv;
+        if(b.name!==nn){
+          if(!noTomb && typeof _tombBookKey==='function'){ try{ _tombBookKey('n:'+b.name); }catch(e){} }  // 옛 이름은 묘비(되살아남 방지)
+          b.name=nn; if(!b.tier) b.tier=tier; if(!b.level) b.level=lv; b.isCurriculum=true;
+          if(!noTomb && typeof _untombBookByName==='function'){ try{ _untombBookByName(nn); }catch(e){} }
+          changed=true;
+        }
+      }
+    });
+    if(changed && !noTomb){
+      try{ if(S.currentBook){ var cm2=String(S.currentBook).match(re); if(cm2) S.currentBook='레벨업 '+parseInt(cm2[1],10)+'단계 _ Lv.'+parseInt(cm2[2],10); } }catch(e){}
+      try{ localStorage.setItem('wd-bks', JSON.stringify(bks.map(function(b){ if(b&&b.packId){ var c=Object.assign({},b); delete c.words; return c; } return b; }))); }catch(e){}
+    }
+    return bks;
+  }catch(e){ return bks; }
+}
 function _generateCurriculum(startLevel){
   try{
     startLevel = Math.max(1, Math.min(CW_MAXLEVEL, startLevel|0)) || 5;
@@ -566,7 +594,7 @@ function _generateCurriculum(startLevel){
     S.books = S.books.filter(function(b){ return !b.isCurriculum; });
     var levels=[]; for(var t=0;t<3;t++){ var L=Math.min(startLevel+t, CW_MAXLEVEL); if(levels.indexOf(L)<0) levels.push(L); }
     levels.forEach(function(L, idx){
-      var _cnm = (idx+1)+'단계 · '+(_CW_TIER[idx]||'코스')+' (레벨 '+L+')';
+      var _cnm = '레벨업 '+(idx+1)+'단계 _ Lv.'+L;
       try{ if(typeof _untombBookByName==='function') _untombBookByName(_cnm); }catch(e){}
       S.books.push({ name:_cnm, isCurriculum:true, level:L, tier:(idx+1), markMap:{}, learned:[], chPass:[false,false,false,false,false] });
     });
@@ -4261,6 +4289,7 @@ function load() {
   setTimeout(()=>{
   }, 150);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
+  try{ if(typeof _migrateCurriculumNames==='function') _migrateCurriculumNames(S.books); }catch(e){}
   // S._myLevel 복원: 저장값 우선, 없으면 커리큘럼 tier-1 코스 레벨에서 파생(자가치유)
   S._myLevel = parseInt(localStorage.getItem('wd-mylevel'))||0;
   if(!S._myLevel){ var _c1=(S.books||[]).find(function(b){return b.isCurriculum && b.tier===1 && b.level;}); if(_c1) S._myLevel=_c1.level; }
@@ -16367,6 +16396,7 @@ function _mergeBookProgress(dst, src){
   ['isCurriculum','tier','level','packId','cefr'].forEach(function(f){ if(dst[f]===undefined && src[f]!==undefined) dst[f]=src[f]; });
 }
 function _mergeBooksUnion(localBks, srvBks, tomb){
+  try{ if(typeof _migrateCurriculumNames==='function'){ _migrateCurriculumNames(localBks, true); _migrateCurriculumNames(srvBks, true); } }catch(e){}
   const tset = new Set(tomb||[]);
   const key = b => b ? (b.packId ? 'p:'+b.packId : 'n:'+(b.name||'')) : '';
   const out = []; const idx = {};

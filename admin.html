@@ -5317,7 +5317,8 @@ async function rUS(){
             +'<td><span style="background:'+(u.banned?'#FEF2F2':'#ECFDF5')+';color:'+(u.banned?'#DC2626':'#059669')+';border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(u.banned?'정지':'정상')+'</span></td>'
             +'<td><div style="display:flex;gap:4px">'
             +'<button class="btn bb" style="font-size:10px;padding:4px 8px" onclick="editUS(\''+u.id+'\',\''+u.lid+'\',\''+u.nick+'\')">수정</button>'
-            +'<button class="btn '+(u.banned?'bg':'br')+'" style="font-size:10px;padding:4px 8px" onclick="banUS(\''+u.id+'\','+(!u.banned)+')">'+(u.banned?'해제':'정지')+'</button>'
+            +'<button class="btn" style="font-size:10px;padding:4px 8px;background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE" onclick="grantCouponUI(\''+u.id+'\')">🎫 쿠폰</button>'
+            +'<button class="btn '+(u.banned?'bg':'br')+'" style="font-size:10px;padding:4px 8px" onclick="toggleBan(\''+u.id+'\','+(!u.banned)+')">'+(u.banned?'해제':'정지')+'</button>'
             +'</div></td>'
             +'</tr>';
         }).join('')}
@@ -5353,6 +5354,31 @@ async function showUserDetail(uid) {
 }
 async function saveUS(id){try{await db.collection('users').doc(id).update({nick:document.getElementById('un').value.trim(),lid:document.getElementById('ul').value});toast('✅ 수정 완료','ok');cm();rUS();}catch(e){toast('오류: '+e.message,'err');}}
 async function toggleBan(id,ban){try{await db.collection('users').doc(id).update({banned:ban});toast(ban?'🚫 정지 처리':'✅ 정지 해제','ok');rUS();}catch(e){toast('오류','err');}}
+// ── 나비 쿠폰 지급 (앱 사용자 선택 → 임의 지급/회수) ──
+async function grantCouponUI(id){
+  let u={};
+  try{ const d=await db.collection('users').doc(id).get(); if(d.exists) u=d.data()||{}; }catch(e){}
+  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mt">🎫 나비 쿠폰 지급</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:12px">${(u.nick||String(id).slice(0,8))} · 현재 <b style="color:#6D28D9">${u.bfCoupons||0}장</b></div>
+    <div class="fg"><label>지급 수량 <span style="color:#9CA3AF;font-weight:400">(음수면 회수)</span></label><input id="cq" type="number" value="1"></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="btn bg" style="flex:1" onclick="document.getElementById('cq').value=1">+1</button>
+      <button class="btn bg" style="flex:1" onclick="document.getElementById('cq').value=5">+5</button>
+      <button class="btn bg" style="flex:1" onclick="document.getElementById('cq').value=10">+10</button>
+    </div>
+    <div style="display:flex;gap:8px"><button class="btn bb" style="flex:1" onclick="grantCoupon('${id}')">지급</button><button class="btn bgr" onclick="cm()">취소</button></div>
+    <div style="font-size:10px;color:#9CA3AF;margin-top:8px;line-height:1.5">앱 사용자가 다음 접속(백그라운드 동기화) 시 반영됩니다. 사용자가 앱을 켜둔 상태면 반영이 늦거나 덮어써질 수 있어요.</div>
+  </div></div>`;
+}
+async function grantCoupon(id){
+  const amt=parseInt(document.getElementById('cq').value)||0;
+  if(!amt){ toast('수량을 입력하세요','err'); return; }
+  try{
+    await db.collection('users').doc(id).update({bfCoupons: firebase.firestore.FieldValue.increment(amt)});
+    toast('🎫 쿠폰 '+(amt>0?'+':'')+amt+'장 처리 완료','ok'); cm(); rUS();
+  }catch(e){ toast('오류: '+e.message,'err'); }
+}
 
 // ── 콕 찌르기 ──
 async function rPO(){

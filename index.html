@@ -1,4 +1,4 @@
-<!-- build: 20260709-growth-entry2 -->
+<!-- build: 20260709-growth-card-c -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -929,18 +929,59 @@ const ok = () => {
   // SRS: 복습 퀴즈에서 맞히면 다음 단계로(간격 증가), 5단계면 졸업
   if(S._srsSession){ var _cw=S.gWords?.[S.gIdx]; if(_cw && typeof _wrongPass==='function') _wrongPass(_cw.en); }
 };
-// ── 레벨테스트 성장 이력 병합: 합집합(기기별 이력 보존). 같은 날짜+레벨은 1건으로 본다. ──
-function _mergeTHistory(local, srv){
+// 성장 카드 축 라벨: '2026-07-09' → '7/9'
+function _fmtThDate(d){ try{ var p=String(d).split('-'); return p.length>=3 ? (parseInt(p[1],10)+'/'+parseInt(p[2],10)) : String(d); }catch(e){ return String(d||''); } }
+// 성장 이력 항목의 고유 키(묘비·중복제거 공용)
+function _thKey(h){ if(!h||!h.date) return ''; return h.date+'|'+(h.level!=null?h.level:(h.lid||''))+'|'+(h.qTotal||h.totalQ||0); }
+function _thGetTomb(){ try{ return S.thTomb || JSON.parse(localStorage.getItem('wd-th-tomb')||'[]'); }catch(e){ return []; } }
+function _thSetTomb(arr){
   try{
+    arr=Array.from(new Set(arr||[]));
+    S.thTomb=arr;
+    localStorage.setItem('wd-th-tomb', JSON.stringify(arr));
+    if(S.user && typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({deletedTHistory:arr},{merge:true}).catch(function(){}); }
+    return arr;
+  }catch(e){ return arr||[]; }
+}
+// ── 레벨테스트 성장 이력 병합: 합집합(기기별 이력 보존) − 묘비(삭제 전파) ──
+function _mergeTHistory(local, srv, tomb){
+  try{
+    var tset=new Set(tomb || _thGetTomb() || []);
     var out=[], seen=Object.create(null);
     [].concat(Array.isArray(local)?local:[], Array.isArray(srv)?srv:[]).forEach(function(h){
       if(!h || !h.date) return;
-      var k=h.date+'|'+(h.level!=null?h.level:(h.lid||''))+'|'+(h.qTotal||h.totalQ||0);
+      var k=_thKey(h);
+      if(tset.has(k)) return;              // 삭제된 기록은 되살아나지 않음
       if(seen[k]) return; seen[k]=1; out.push(h);
     });
     out.sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); });
     return out.slice(-50);
   }catch(e){ return Array.isArray(local)?local:[]; }
+}
+// 개별 삭제
+function _thDelete(key){
+  try{
+    if(!key) return;
+    S.tHistory=(S.tHistory||[]).filter(function(h){ return _thKey(h)!==key; });
+    _thSetTomb([].concat(_thGetTomb(), [key]));
+    try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+    if(typeof sv==='function') sv();
+    if(typeof showGrowthChart==='function') showGrowthChart();
+  }catch(e){}
+}
+// 전체 삭제
+function _thClearAll(){
+  try{
+    if(!confirm('성장 기록을 모두 삭제할까요?\n삭제한 기록은 되돌릴 수 없어요.')) return;
+    var keys=(S.tHistory||[]).map(_thKey).filter(Boolean);
+    S.tHistory=[];
+    _thSetTomb([].concat(_thGetTomb(), keys));
+    try{ localStorage.setItem('wd-th','[]'); }catch(e){}
+    if(typeof sv==='function') sv();
+    if(typeof cm==='function') cm();
+    if(typeof toast==='function') toast('성장 기록을 삭제했어요');
+    if(typeof go==='function') go(S.tab||'home');
+  }catch(e){}
 }
 // ── 오답 노트 SRS(간격 반복) ──────────────────────────────
 // 각 오답에 box(0~5)와 due(다음 복습 시각)를 부여한다. 맞히면 box+1(간격 증가), 틀리면 box=0(내일 다시).
@@ -4354,6 +4395,7 @@ function load() {
   S.surveyAns = JSON.parse(localStorage.getItem('wd-sva')||'[]');
   S.studyStyle = localStorage.getItem('wd-sty')||'';
   S.tHistory = JSON.parse(localStorage.getItem('wd-th')||'[]');
+  try{ S.thTomb = JSON.parse(localStorage.getItem('wd-th-tomb')||'[]'); }catch(e){ S.thTomb=[]; }
   S.attendCount = +(localStorage.getItem('wd-ac')||0);
   S.attendDates = JSON.parse(localStorage.getItem('wd-ad')||'[]');
   // 카운트가 실제 출석일 수와 다르면 동기화 (데이터 정합성 보정)
@@ -4630,6 +4672,7 @@ function sv() {
       deletedButterflies:(typeof _bfGetTomb==='function'?_bfGetTomb():JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]')),
       bfCoupons: S.bfCoupons||0,
       tHistory: (S.tHistory||[]).slice(-50),   // 레벨테스트 성장 이력(최근 50회)
+      deletedTHistory: (typeof _thGetTomb==='function'?_thGetTomb():[]),   // 삭제된 이력(묘비)
       email:(S.user&&S.user.email)||'',
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       deletedCollection:(typeof _colTombGet==='function'?_colTombGet():JSON.parse(localStorage.getItem('bw-col-tomb')||'[]')),
@@ -9976,22 +10019,69 @@ function rHome() {
   // ── 오늘의 도전 배너 제거됨 (오늘의 학습 '단어 외우기' 미션과 중복) ──
 
   // ── 오늘의 학습 막대 카드 제거됨 (홈 상단 원형 3개 그래프 카드로 통합) ──
-  // ── 레벨 성장 카드 (성장 그래프 진입점) ──
+  // ── 레벨 성장 카드 (C안: 대시보드 카드) ──
   try{
     var _gh=(typeof _growthData==='function')?_growthData():[];
+    var _CW='background:var(--bg-card,#fff);border:1.5px solid var(--border,#E5E7EB);border-radius:16px;padding:14px 15px;cursor:pointer';
+    var _HD='display:flex;align-items:center;gap:8px;margin-bottom:11px';
+    var _DOT='width:7px;height:7px;border-radius:50%;background:var(--theme,#3B82F6);flex-shrink:0';
+    var _HDT='flex:1;font-size:12.5px;font-weight:800;color:var(--text1,#111827)';
+    var _MORE='font-size:10.5px;color:var(--theme,#3B82F6);font-weight:700';
     if(_gh.length>=2){
       var _f=_gh[0].level, _l=_gh[_gh.length-1].level, _d=_l-_f;
-      var _c=_d>0?'#16A34A':(_d<0?'#DC2626':'#6B7280');
-      var _t=_d>0?('레벨 '+_d+' 상승 🎉'):(_d<0?('레벨 '+Math.abs(_d)+' 하락'):'레벨 유지 중');
-      parts.push('<div onclick="showGrowthChart()" style="background:var(--bg-card,#fff);border-radius:14px;border:1.5px solid var(--border,#E5E7EB);padding:12px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px">'
-        +'<span>📈</span><span style="flex:1;color:var(--text1,#1F2937)">내 레벨 성장 <span style="color:'+_c+'">Lv.'+_f+' → Lv.'+_l+'</span> · <span style="font-size:11px;color:'+_c+'">'+_t+'</span></span><span style="opacity:.4">→</span></div>');
+      var _c=_d>0?'#16A34A':(_d<0?'#DC2626':'var(--text3,#9CA3AF)');
+      var _dt=_d>0?('▲'+_d+' 상승'):(_d<0?('▼'+Math.abs(_d)+' 하락'):'변화 없음');
+      // 추이 막대(최근 5회) + 날짜 라벨(처음/중간/마지막)
+      var _rc=_gh.slice(-5);
+      var _mx=Math.max.apply(null,_rc.map(function(h){return h.level;}));
+      var _bars=_rc.map(function(h,bi){
+        var _hp=Math.max(18, Math.round(h.level/Math.max(1,_mx)*100));
+        var _bg=(bi===_rc.length-1)?'var(--theme,#3B82F6)':'var(--theme-soft,#BFDBFE)';
+        return '<i style="flex:1;height:'+_hp+'%;background:'+_bg+';border-radius:3px 3px 0 0;display:block"></i>';
+      }).join('');
+      var _lbl='';
+      if(_rc.length>1){
+        var _md=_rc[Math.floor((_rc.length-1)/2)];
+        _lbl='<div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:7px">'
+          +'<span>'+_fmtThDate(_rc[0].date)+'</span>'
+          +(_rc.length>2?'<span>'+_fmtThDate(_md.date)+'</span>':'')
+          +'<span>'+_fmtThDate(_rc[_rc.length-1].date)+'</span></div>';
+      }
+      parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
+        +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 레벨 성장</span><span style="'+_MORE+'">그래프 ›</span></div>'
+        +'<div style="display:flex;align-items:center;gap:14px">'
+          +'<div style="text-align:center;flex-shrink:0"><div style="font-size:26px;font-weight:900;color:var(--theme,#3B82F6);line-height:1">'+_l+'</div>'
+            +'<div style="font-size:9.5px;font-weight:800;margin-top:3px;color:'+_c+'">'+_dt+'</div></div>'
+          +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex-shrink:0"></div>'
+          +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:flex-end;gap:4px;height:36px">'+_bars+'</div></div>'
+        +'</div>'+_lbl
+        +'</div>');
     } else if(_gh.length===1){
-      parts.push('<div onclick="showGrowthChart()" style="background:var(--theme-tint,#EEF3FA);border-radius:14px;border:1.5px solid var(--theme-soft,#BFD7F0);padding:12px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px">'
-        +'<span>📈</span><span style="flex:1;color:var(--theme,#1E5FA5)">내 레벨 '+_gh[0].level+' · 다시 진단하면 성장이 보여요</span><span style="opacity:.4">→</span></div>');
+      var _h0=_gh[0];
+      var _acc=(_h0.qTotal&&_h0.correct!=null)?Math.round(_h0.correct/_h0.qTotal*100):null;
+      var _cf=(typeof _lvCefr==='function')?_lvCefr(_h0.level):'';
+      var _nx=Math.min(10,(_h0.level||1)+1);
+      parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
+        +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 레벨</span><span style="'+_MORE+'">다시 진단 ›</span></div>'
+        +'<div style="display:flex;align-items:center;gap:14px">'
+          +'<div style="text-align:center;flex-shrink:0"><div style="font-size:26px;font-weight:900;color:var(--theme,#3B82F6);line-height:1">'+_h0.level+'</div>'
+            +(_cf?'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);font-weight:700;margin-top:3px">CEFR '+_cf+'</div>':'')+'</div>'
+          +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex-shrink:0"></div>'
+          +'<div style="flex:1;min-width:0">'
+            +(_acc!=null?('<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px"><span style="color:var(--text3,#9CA3AF)">정답률</span><b style="font-weight:800;color:var(--text2,#374151)">'+_acc+'%</b></div>'
+              +'<div style="height:5px;background:var(--bg-sub,#F1F3F5);border-radius:20px;overflow:hidden"><span style="display:block;height:100%;width:'+_acc+'%;background:var(--theme,#3B82F6);border-radius:20px"></span></div>'):'')
+            +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:7px"><span style="color:var(--text3,#9CA3AF)">다음 목표</span><b style="font-weight:800;color:var(--text2,#374151)">레벨 '+_nx+'</b></div>'
+          +'</div>'
+        +'</div></div>');
     } else {
-      // 레벨테스트 이력이 없어도 진입점을 노출한다(진단 유도).
-      parts.push('<div onclick="startInitialLevelExam()" style="background:var(--theme-tint,#EEF3FA);border-radius:14px;border:1.5px solid var(--theme-soft,#BFD7F0);padding:12px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px">'
-        +'<span>🎯</span><span style="flex:1;color:var(--theme,#1E5FA5)">레벨테스트로 내 실력 진단하기 · 3분</span><span style="opacity:.4">→</span></div>');
+      parts.push('<div onclick="startInitialLevelExam()" style="'+_CW+'">'
+        +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">레벨 진단</span></div>'
+        +'<div style="display:flex;align-items:center;gap:11px">'
+          +'<div style="width:44px;height:44px;border-radius:12px;background:var(--theme-tint,#EFF6FF);border:1px dashed var(--theme-soft,#BFDBFE);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">🎯</div>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;margin-bottom:2px;color:var(--text1,#111827)">아직 진단 전이에요</div>'
+            +'<div style="font-size:11px;color:var(--text3,#9CA3AF)">3분 테스트로 내 수준 확인</div></div>'
+          +'<div style="background:var(--theme,#3B82F6);color:#fff;font-size:11.5px;font-weight:800;padding:8px 14px;border-radius:10px;white-space:nowrap;flex-shrink:0">시작</div>'
+        +'</div></div>');
     }
   }catch(e){}
 
@@ -11736,10 +11826,13 @@ function showGrowthChart(){
   var dCol = d>0 ? '#16A34A' : (d<0 ? '#DC2626' : '#6B7280');
   var rows=g.slice().reverse().slice(0,6).map(function(h){
     var acc=(h.qTotal&&h.correct!=null)?Math.round(h.correct/h.qTotal*100)+'%':'-';
-    return '<div style="display:flex;justify-content:space-between;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6">'
-      +'<span style="color:#6B7280">'+h.date+'</span>'
-      +'<span style="font-weight:800;color:#1E5FA5">레벨 '+h.level+'</span>'
-      +'<span style="color:#9CA3AF">정답률 '+acc+'</span></div>';
+    var k=_thKey(h).replace(/'/g,"\\'");
+    return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6">'
+      +'<span style="color:#6B7280;flex:1">'+h.date+'</span>'
+      +'<span style="font-weight:800;color:#1E5FA5;width:52px;text-align:center">레벨 '+h.level+'</span>'
+      +'<span style="color:#9CA3AF;width:62px;text-align:right">정답률 '+acc+'</span>'
+      +'<button onclick="event.stopPropagation();_thDelete(\''+k+'\')" title="이 기록 삭제" style="background:#F3F4F6;border:none;border-radius:7px;width:24px;height:24px;font-size:11px;color:#9CA3AF;cursor:pointer;flex-shrink:0">✕</button>'
+      +'</div>';
   }).join('');
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:360px;text-align:left">'
     +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">📈 내 레벨 성장</div>'
@@ -11752,6 +11845,7 @@ function showGrowthChart(){
     +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:4px">최근 기록</div>'
     +rows
     +'<button class="btn bb" style="width:100%;margin-top:12px" onclick="cm();startInitialLevelExam()">다시 진단하기</button>'
+    +'<button onclick="_thClearAll()" style="width:100%;margin-top:6px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">🗑️ 성장 기록 전체 삭제</button>'
     +'<button class="btn bgr" style="width:100%;margin-top:6px" onclick="cm()">닫기</button>'
     +'</div></div>';
 }
@@ -17081,8 +17175,10 @@ auth.onAuthStateChanged(async user => {
             // 합집합(획득 손실 방지) − 묘비(삭제 전파). _bfMerge가 LS·Firebase·S 모두 갱신.
             if(typeof _bfMerge==='function') _bfMerge(_data.myButterflies, _data.deletedButterflies);
           }
-          if(Array.isArray(_data.tHistory) && typeof _mergeTHistory==='function'){
-            S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory);      // 성장 이력 합집합(기기별 보존)
+          if((Array.isArray(_data.tHistory)||Array.isArray(_data.deletedTHistory)) && typeof _mergeTHistory==='function'){
+            var _tt=Array.from(new Set([].concat(_thGetTomb(), _data.deletedTHistory||[])));
+            _thSetTomb(_tt);                                              // 묘비 합집합(삭제 전파)
+            S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory, _tt);   // 합집합 − 묘비
             try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
           }
           if(Array.isArray(_data.collection) || Array.isArray(_data.deletedCollection)) {
@@ -17259,8 +17355,10 @@ auth.onAuthStateChanged(async user => {
           }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
-        if(Array.isArray(_data.tHistory) && typeof _mergeTHistory==='function'){
-          S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory);
+        if((Array.isArray(_data.tHistory)||Array.isArray(_data.deletedTHistory)) && typeof _mergeTHistory==='function'){
+          var _tt2=Array.from(new Set([].concat(_thGetTomb(), _data.deletedTHistory||[])));
+          _thSetTomb(_tt2);
+          S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory, _tt2);
           try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
         }
         if(Array.isArray(_data.myButterflies) || Array.isArray(_data.deletedButterflies)) {

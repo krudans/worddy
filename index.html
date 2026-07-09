@@ -1,4 +1,4 @@
-<!-- build: 20260709-growth-chart -->
+<!-- build: 20260709-chapter-precheck -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -11533,8 +11533,100 @@ function _showCourseChapters(bookName){
       +'</div></div>';
   }catch(e){}
 }
-function _studyChapter(bookName, chIdx){
+// ── 레벨 내 적응: 챕터 사전 체크 ─────────────────────────
+// 챕터를 처음 학습하기 전, 단어를 빠르게 넘기며 '알아요/몰라요'를 고른다.
+// 아는 단어는 외운 것(mark=1)으로 처리해 학습 대상에서 빠지고, 모르는 단어에만 집중한다.
+function _shouldPrecheck(book, chIdx){
+  try{
+    if(!book || !book.isCurriculum) return false;
+    if((book.preCheck||{})[chIdx]) return false;                 // 이미 체크한 챕터
+    var sl=(typeof _chapterSlice==='function')?_chapterSlice(book, chIdx):[];
+    if(sl.length<10) return false;
+    var mm=book.markMap||{};
+    var marked=sl.filter(function(w){ return mm[_mk(w.en)]; }).length;
+    return marked===0;                                            // 아직 학습 이력 없을 때만
+  }catch(e){ return false; }
+}
+function startChapterPrecheck(bookName, chIdx){
+  try{
+    var b=(S.books||[]).find(function(x){return x.name===bookName;});
+    if(!b) return;
+    var sl=(typeof _chapterSlice==='function')?_chapterSlice(b, chIdx):[];
+    if(!sl.length) return;
+    S._pc={ bookName:bookName, chIdx:chIdx, words:sl.slice(), i:0, known:[], unknown:[] };
+    if(typeof cm==='function') cm();
+    _pcRender();
+  }catch(e){}
+}
+function _pcRender(){
+  var pc=S._pc; if(!pc) return;
+  var mr=document.getElementById('mr'); if(!mr) return;
+  if(pc.i>=pc.words.length){ _pcFinish(); return; }
+  var w=pc.words[pc.i];
+  var pct=Math.round(pc.i/pc.words.length*100);
+  mr.innerHTML='<div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="max-width:360px;text-align:center">'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">아는 단어 빠르게 넘기기</div>'
+    +'<div style="height:6px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin-bottom:14px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5);transition:width .2s"></div></div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">'+(pc.i+1)+' / '+pc.words.length+'</div>'
+    +'<div style="font-size:30px;font-weight:900;color:#111;font-family:monospace;margin-bottom:6px">'+_esc(w.en)+'</div>'
+    +(w.ph?'<div style="font-size:12px;color:var(--theme,#1E5FA5);margin-bottom:14px">'+_esc(w.ph)+'</div>':'<div style="height:14px"></div>')
+    +'<div style="display:flex;gap:8px;margin-bottom:8px">'
+      +'<button onclick="_pcAnswer(false)" style="flex:1;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA;border-radius:12px;padding:14px;font-size:14px;font-weight:800;cursor:pointer">🤔 몰라요</button>'
+      +'<button onclick="_pcAnswer(true)" style="flex:1;background:#F0FDF4;color:#16A34A;border:1.5px solid #BBF7D0;border-radius:12px;padding:14px;font-size:14px;font-weight:800;cursor:pointer">✅ 알아요</button>'
+    +'</div>'
+    +'<button onclick="_pcSkipAll()" style="width:100%;background:transparent;border:none;color:#9CA3AF;font-size:11.5px;padding:8px;cursor:pointer">건너뛰고 전체 학습하기</button>'
+    +'</div></div>';
+}
+function _pcAnswer(known){
+  var pc=S._pc; if(!pc) return;
+  var w=pc.words[pc.i]; if(!w) return;
+  (known?pc.known:pc.unknown).push(w.en);
+  pc.i++;
+  _pcRender();
+}
+function _pcSkipAll(){
+  var pc=S._pc; if(!pc) return;
+  var bn=pc.bookName, ci=pc.chIdx;
+  S._pc=null;
+  if(typeof cm==='function') cm();
+  _studyChapterDirect(bn, ci);
+}
+function _pcFinish(){
+  var pc=S._pc; if(!pc) return;
+  try{
+    var b=(S.books||[]).find(function(x){return x.name===pc.bookName;});
+    if(b){
+      if(!b.markMap) b.markMap={};
+      pc.known.forEach(function(en){ b.markMap[_mk(en)]=1; });        // 아는 단어 = 외움 처리
+      if(!b.preCheck) b.preCheck={};
+      b.preCheck[pc.chIdx]=true;                                       // 이 챕터는 체크 완료
+      if(typeof sv==='function') sv();
+    }
+  }catch(e){}
+  var known=pc.known.length, unknown=pc.unknown.length, bn=pc.bookName, ci=pc.chIdx;
+  S._pc=null;
+  var mr=document.getElementById('mr'); if(!mr) return;
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:340px;text-align:center">'
+    +'<div style="font-size:40px;margin-bottom:6px">🎯</div>'
+    +'<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:10px">체크 완료!</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:14px">'
+      +'<div style="flex:1;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:20px;font-weight:900;color:#16A34A">'+known+'</div><div style="font-size:10px;color:#16A34A;font-weight:700">이미 아는 단어</div></div>'
+      +'<div style="flex:1;background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:12px"><div style="font-size:20px;font-weight:900;color:#DC2626">'+unknown+'</div><div style="font-size:10px;color:#DC2626;font-weight:700">외울 단어</div></div>'
+    +'</div>'
+    +'<div style="font-size:11.5px;color:#6B7280;line-height:1.7;margin-bottom:14px">'+(known>0?('아는 단어 '+known+'개는 건너뛰고<br><b style="color:#111">'+unknown+'개만</b> 학습해요.'):'모든 단어를 학습해요.')+'</div>'
+    +'<button class="btn bb" style="width:100%" onclick="cm();_studyChapterDirect(\''+bn.replace(/'/g,"\\'")+'\','+ci+')">학습 시작 🚀</button>'
+    +'</div></div>';
+}
+// 사전 체크 없이 바로 학습(기존 동작)
+function _studyChapterDirect(bookName, chIdx){
   try{ if(typeof switchBook==='function') switchBook(bookName); S._studyChapterIdx=chIdx; if(typeof go==='function') go('learn'); }catch(e){}
+}
+function _studyChapter(bookName, chIdx){
+  try{
+    var b=(S.books||[]).find(function(x){return x.name===bookName;});
+    if(b && _shouldPrecheck(b, chIdx)){ startChapterPrecheck(bookName, chIdx); return; }
+    _studyChapterDirect(bookName, chIdx);
+  }catch(e){ _studyChapterDirect(bookName, chIdx); }
 }
 function _showCourseHelp(){
   var mr=document.getElementById('mr'); if(!mr) return;
@@ -16626,6 +16718,8 @@ function _mergeBookProgress(dst, src){
   // chPass: OR(한쪽이라도 통과면 통과)
   var dc=Array.isArray(dst.chPass)?dst.chPass:[], sc=Array.isArray(src.chPass)?src.chPass:[];
   if(dc.length || sc.length){ var n=Math.max(dc.length, sc.length), outC=[]; for(var i=0;i<n;i++) outC.push(!!dc[i] || !!sc[i]); dst.chPass=outC; }
+  // preCheck(챕터별 사전체크 완료): 합집합
+  if(src.preCheck){ dst.preCheck=Object.assign({}, src.preCheck, dst.preCheck||{}); }
   // 진도성 수치 필드: 큰 값 채택
   ['learned','studied','chIdx','lastCh'].forEach(function(f){ if(typeof src[f]==='number' && (typeof dst[f]!=='number' || src[f]>dst[f])) dst[f]=src[f]; });
   // 로컬에 없는 메타는 서버 값 보완

@@ -1,4 +1,4 @@
-<!-- build: 20260709-srs-wrongnote -->
+<!-- build: 20260709-growth-chart -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -929,6 +929,19 @@ const ok = () => {
   // SRS: 복습 퀴즈에서 맞히면 다음 단계로(간격 증가), 5단계면 졸업
   if(S._srsSession){ var _cw=S.gWords?.[S.gIdx]; if(_cw && typeof _wrongPass==='function') _wrongPass(_cw.en); }
 };
+// ── 레벨테스트 성장 이력 병합: 합집합(기기별 이력 보존). 같은 날짜+레벨은 1건으로 본다. ──
+function _mergeTHistory(local, srv){
+  try{
+    var out=[], seen=Object.create(null);
+    [].concat(Array.isArray(local)?local:[], Array.isArray(srv)?srv:[]).forEach(function(h){
+      if(!h || !h.date) return;
+      var k=h.date+'|'+(h.level!=null?h.level:(h.lid||''))+'|'+(h.qTotal||h.totalQ||0);
+      if(seen[k]) return; seen[k]=1; out.push(h);
+    });
+    out.sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); });
+    return out.slice(-50);
+  }catch(e){ return Array.isArray(local)?local:[]; }
+}
 // ── 오답 노트 SRS(간격 반복) ──────────────────────────────
 // 각 오답에 box(0~5)와 due(다음 복습 시각)를 부여한다. 맞히면 box+1(간격 증가), 틀리면 box=0(내일 다시).
 // 간격(일): box0=0(오늘) 1=1 2=3 3=7 4=14 5=30
@@ -4616,6 +4629,7 @@ function sv() {
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       deletedButterflies:(typeof _bfGetTomb==='function'?_bfGetTomb():JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]')),
       bfCoupons: S.bfCoupons||0,
+      tHistory: (S.tHistory||[]).slice(-50),   // 레벨테스트 성장 이력(최근 50회)
       email:(S.user&&S.user.email)||'',
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
       deletedCollection:(typeof _colTombGet==='function'?_colTombGet():JSON.parse(localStorage.getItem('bw-col-tomb')||'[]')),
@@ -11566,11 +11580,74 @@ function _deleteCurriculum(){
     if(typeof go==='function') go('mybooks','list');
   }catch(e){}
 }
+// ── 레벨 성장 그래프 ──────────────────────────────────────
+// tHistory 중 새 레벨테스트 기록(level 필드)만 사용. 재테스트할수록 성장이 눈에 보이게 한다.
+function _growthData(){
+  try{ return (S.tHistory||[]).filter(function(h){ return h && h.level!=null && h.date; }).slice(-12); }
+  catch(e){ return []; }
+}
+// 헤더용 미니 추이: "Lv.1 → Lv.3  ▲2"
+function _growthBadgeHtml(){
+  var g=_growthData();
+  if(g.length<2) return '';
+  var first=g[0].level, last=g[g.length-1].level, d=last-first;
+  var col = d>0 ? '#16A34A' : (d<0 ? '#DC2626' : '#9CA3AF');
+  var arrow = d>0 ? '▲' : (d<0 ? '▼' : '=');
+  return '<span onclick="event.stopPropagation();showGrowthChart()" style="font-size:10px;background:#fff;border:1px solid '+col+'33;color:'+col+';padding:2px 7px;border-radius:8px;font-weight:800;cursor:pointer">Lv.'+first+' → Lv.'+last+' '+arrow+Math.abs(d)+'</span>';
+}
+function showGrowthChart(){
+  var g=_growthData();
+  var mr=document.getElementById('mr'); if(!mr) return;
+  if(g.length<1){
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
+      +'<div style="font-size:34px;margin-bottom:6px">📈</div>'
+      +'<div style="font-size:15px;font-weight:900;color:#111;margin-bottom:4px">아직 성장 기록이 없어요</div>'
+      +'<div style="font-size:12px;color:#6B7280;line-height:1.7;margin-bottom:14px">레벨테스트를 보면 내 레벨이 기록돼요.<br>다시 볼 때마다 성장이 그래프로 쌓입니다.</div>'
+      +'<button class="btn bgr" onclick="cm()">닫기</button></div></div>';
+    return;
+  }
+  var W=280, H=120, pad=22;
+  var maxL=Math.max(10, Math.max.apply(null,g.map(function(h){return h.level;})));
+  var minL=Math.max(1, Math.min.apply(null,g.map(function(h){return h.level;}))-1);
+  var span=Math.max(1,maxL-minL);
+  var stepX = g.length>1 ? (W-pad*2)/(g.length-1) : 0;
+  function X(i){ return pad + i*stepX; }
+  function Y(l){ return H-pad - ((l-minL)/span)*(H-pad*2); }
+  var pts=g.map(function(h,i){ return X(i)+','+Y(h.level); }).join(' ');
+  var dots=g.map(function(h,i){
+    return '<circle cx="'+X(i)+'" cy="'+Y(h.level)+'" r="4" fill="#1E5FA5" stroke="#fff" stroke-width="2"/>'
+      +'<text x="'+X(i)+'" y="'+(Y(h.level)-9)+'" text-anchor="middle" font-size="9" font-weight="800" fill="#1E5FA5">'+h.level+'</text>';
+  }).join('');
+  var first=g[0].level, last=g[g.length-1].level, d=last-first;
+  var dTxt = d>0 ? ('레벨 '+d+' 상승 🎉') : (d<0 ? ('레벨 '+Math.abs(d)+' 하락') : '레벨 유지');
+  var dCol = d>0 ? '#16A34A' : (d<0 ? '#DC2626' : '#6B7280');
+  var rows=g.slice().reverse().slice(0,6).map(function(h){
+    var acc=(h.qTotal&&h.correct!=null)?Math.round(h.correct/h.qTotal*100)+'%':'-';
+    return '<div style="display:flex;justify-content:space-between;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6">'
+      +'<span style="color:#6B7280">'+h.date+'</span>'
+      +'<span style="font-weight:800;color:#1E5FA5">레벨 '+h.level+'</span>'
+      +'<span style="color:#9CA3AF">정답률 '+acc+'</span></div>';
+  }).join('');
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:360px;text-align:left">'
+    +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">📈 내 레벨 성장</div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">레벨테스트 '+g.length+'회 · <b style="color:'+dCol+'">'+dTxt+'</b></div>'
+    +'<div style="background:#F8F9FA;border:1px solid #E5E7EB;border-radius:12px;padding:6px;margin-bottom:12px">'
+      +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'
+        +'<polyline points="'+pts+'" fill="none" stroke="#1E5FA5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+        +dots
+      +'</svg></div>'
+    +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:4px">최근 기록</div>'
+    +rows
+    +'<button class="btn bb" style="width:100%;margin-top:12px" onclick="cm();startInitialLevelExam()">다시 진단하기</button>'
+    +'<button class="btn bgr" style="width:100%;margin-top:6px" onclick="cm()">닫기</button>'
+    +'</div></div>';
+}
 function _curriculumGroupHtml(){
   try{
     var cur=(S.books||[]).filter(function(b){return b.isCurriculum && b.level;}).sort(function(a,b){return (a.tier||0)-(b.tier||0);});
     if(!S._myLevel && cur[0] && cur[0].level) S._myLevel=cur[0].level;  // 렌더 시점 파생(동기화 후 books 반영)
-    var head='<div style="display:flex;align-items:center;gap:7px;padding:11px 2px 4px"><span style="font-size:14px">🎯</span><span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937)">내 레벨업 코스</span><span onclick="event.stopPropagation();_showCourseHelp()" style="width:17px;height:17px;border-radius:50%;background:#EEF0F3;color:#9CA3AF;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer">?</span>';
+    var head='<div style="display:flex;align-items:center;gap:7px;padding:11px 2px 4px"><span style="font-size:14px">🎯</span><span style="font-size:13px;font-weight:800;color:var(--text1,#1F2937)">내 레벨업 코스</span><span onclick="event.stopPropagation();_showCourseHelp()" style="width:17px;height:17px;border-radius:50%;background:#EEF0F3;color:#9CA3AF;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer">?</span>'
+      + ((typeof _growthBadgeHtml==='function')?_growthBadgeHtml():'');
     if(!cur.length){
       return '<div style="background:var(--theme-tint,#EEF3FA);border:1.5px solid var(--theme-soft,#BFD7F0);border-radius:16px;padding:6px 12px 16px">'
         + head + '</div>'
@@ -16889,6 +16966,10 @@ auth.onAuthStateChanged(async user => {
             // 합집합(획득 손실 방지) − 묘비(삭제 전파). _bfMerge가 LS·Firebase·S 모두 갱신.
             if(typeof _bfMerge==='function') _bfMerge(_data.myButterflies, _data.deletedButterflies);
           }
+          if(Array.isArray(_data.tHistory) && typeof _mergeTHistory==='function'){
+            S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory);      // 성장 이력 합집합(기기별 보존)
+            try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+          }
           if(Array.isArray(_data.collection) || Array.isArray(_data.deletedCollection)) {
             // 합집합(수집 손실 방지) − 묘비(삭제 전파). _colMerge가 LS·Firebase·S 갱신.
             if(typeof _colMerge==='function') _colMerge(_data.collection, _data.deletedCollection);
@@ -17063,6 +17144,10 @@ auth.onAuthStateChanged(async user => {
           }
           if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
+        if(Array.isArray(_data.tHistory) && typeof _mergeTHistory==='function'){
+          S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory);
+          try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+        }
         if(Array.isArray(_data.myButterflies) || Array.isArray(_data.deletedButterflies)) {
           if(typeof _bfMerge==='function') _bfMerge(_data.myButterflies, _data.deletedButterflies);
         } else {

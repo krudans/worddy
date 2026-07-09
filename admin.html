@@ -325,6 +325,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('an')" id="ni-an"><span class="ic">📈</span>이용 분석</div>
       <div class="ss">콘텐츠</div>
       <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어 관리</div>
+      <div class="ni" onclick="T('px')" id="ni-px"><span class="ic">📦</span>팩 확장</div>
       <div class="ni" onclick="T('dict')" id="ni-dict"><span class="ic">📖</span>Butterfly Dic<span id="dict-new-badge" style="display:none;margin-left:auto;background:#EF4444;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px"></span></div>
       <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
       <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
@@ -2433,9 +2434,9 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',px:'팩 확장',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,px:rPX,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -3008,6 +3009,524 @@ async function saveAG(wj){
 
 // ── 마켓 팩 관리 ──
 let selPack = null; // 현재 선택된 팩 ID
+
+// ════════════════════════════════════════════════════════════
+// 팩 확장 도구 (Pack Expander)
+//   ① 후보 뽑기  ② AI로 뜻·발음·예문 채우기  ③ 검수 후 저장
+//   각 단계에서 멈출 수 있게 분리 — 한 번에 저장하지 않는다.
+// ════════════════════════════════════════════════════════════
+
+// 3단계 팩 정의: 기존 1단계 + 신규 2·3단계
+const PX_TIERS = {
+  toeic: {
+    base: 'toeic', name: '토익', emoji: '🏢', cat: 'exam',
+    tiers: [
+      { n: 1, label: '기초 비즈니스', theme: '사무실 기본 업무, 이메일, 회의, 일정, 채용' },
+      { n: 2, label: '사무·계약·회계', theme: '계약서, 회계, 재무제표, 송장, 감사, 예산, 조달' },
+      { n: 3, label: '고난도·Part 7', theme: 'Part 7 장문 독해 빈출 추상어, 공지문·기사·정책 문서 어휘' }
+    ]
+  },
+  toefl: {
+    base: 'toefl', name: '토플', emoji: '🎓', cat: 'exam',
+    tiers: [
+      { n: 1, label: '학술 기초', theme: '강의·논문에 쓰이는 기본 학술 어휘' },
+      { n: 2, label: '전공별 학술어', theme: '생물학·지질학·심리학·경제학·천문학 전공 용어' },
+      { n: 3, label: '고난도 논증·추상어', theme: '논증 구조, 인과·대조·양보를 나타내는 추상 어휘' }
+    ]
+  },
+  suneung: {
+    base: 'suneung', name: '수능', emoji: '📝', cat: 'exam',
+    tiers: [
+      { n: 1, label: '기출 필수', theme: '수능·모평 기출 최빈출 어휘' },
+      { n: 2, label: '빈출 확장', theme: '기출 주변부 빈출어, 어법·어휘 문항 단골 표현' },
+      { n: 3, label: '고난도·EBS 연계', theme: 'EBS 연계 지문 고난도 추상어·학술어' }
+    ]
+  },
+  travel_basic: {
+    base: 'travel_basic', name: '여행', emoji: '✈️', cat: 'conversation',
+    tiers: [
+      { n: 1, label: '공항·숙소', theme: '출입국, 탑승, 수하물, 호텔 체크인' },
+      { n: 2, label: '식당·교통·쇼핑', theme: '주문·결제, 대중교통·렌터카, 면세점·흥정' },
+      { n: 3, label: '응급·문화·트러블', theme: '병원·약국, 분실·도난·항공 지연, 현지 문화·팁 문화' }
+    ]
+  }
+};
+
+// 팩 문서 id 규칙: 1단계는 기존 id 유지(사용자 단어장 연결 보존), 2·3단계는 _2/_3
+function pxDocId(baseId, tier) { return tier === 1 ? baseId : baseId + '_' + tier; }
+
+// ── 굴절형 판정: 원형이 사전에 있으면 굴절형으로 간주 ──
+function pxIsInflected(w) {
+  const c = [];
+  // 길이 하한을 낮춰 pods/beds 같은 짧은 복수형도 잡는다(원형이 사전에 있을 때만 굴절형 판정)
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length >= 4) c.push(w.slice(0, -1), w.slice(0, -2));
+  if (w.endsWith('ed') && w.length >= 5) c.push(w.slice(0, -2), w.slice(0, -1));
+  if (w.endsWith('ing') && w.length >= 6) c.push(w.slice(0, -3), w.slice(0, -3) + 'e');
+  if (w.endsWith('ies') && w.length >= 5) c.push(w.slice(0, -3) + 'y');
+  for (const b of c) if (b.length >= 3 && window.BWD_DICT && BWD_DICT[b]) return true;
+  return false;
+}
+
+// ── 이미 어떤 팩에든 들어 있는 단어(중복 방지용) ──
+function pxExistingWords(baseId) {
+  const packs = window._adminPacks || [];
+  const set = new Set();
+  for (const p of packs) {
+    if (!p.id.startsWith(baseId)) continue;   // 같은 계열(toeic, toeic_2, toeic_3)
+    for (const w of (p.words || [])) set.add((w.en || '').trim().toLowerCase());
+  }
+  return set;
+}
+
+// ── ① 후보 뽑기: 사전 풀에서 CEFR·중복·굴절형 필터 ──
+// tier가 높을수록 어려운 등급대를 잡는다.
+const PX_CEFR_BY_TIER = { 1: ['A2', 'B1'], 2: ['B1', 'B2'], 3: ['B2', 'C1', 'C2'] };
+
+function pxCandidates(baseId, tier) {
+  if (!window.BWD_META || !window.BWD_DICT) { toast('사전(BWD_DICT/BWD_META)이 로드되지 않았습니다', 'err'); return []; }
+  const want = new Set(PX_CEFR_BY_TIER[tier] || ['B1', 'B2']);
+  const used = pxExistingWords(baseId);
+  const out = [];
+  for (const w of Object.keys(BWD_META)) {
+    const m = BWD_META[w], d = BWD_DICT[w];
+    if (!m || !want.has(m.cefr)) continue;
+    if (!d || /고유/.test(d.pos || '')) continue;   // 고유명사 제외(사전 pos 활용)
+    if (used.has(w)) continue;
+    if (/[\s-]/.test(w) || w.length < 4) continue;
+    if (pxIsInflected(w)) continue;
+    out.push(w);
+  }
+  return out;
+}
+
+// 알파벳 편중을 막기 위해 풀 전체에서 균등 간격으로 샘플링
+function pxSpread(arr, n) {
+  const step = Math.max(1, Math.floor(arr.length / n));
+  const o = [];
+  for (let i = 0; i < arr.length && o.length < n; i += step) o.push(arr[i]);
+  return o;
+}
+
+// ── ② AI로 주제에 맞는 단어 선별 + 뜻·발음·예문 채우기 ──
+async function pxGenerateBatch(cfg, tier, candidates, count, onStatus) {
+  const t = cfg.tiers.find(x => x.n === tier);
+  const sample = pxSpread(candidates, 400).join(', ');
+  const phraseNote = '반드시 한 단어(single word)만. 구(phrase)나 고유명사(도시·인명·브랜드)는 제외.';
+
+  const prompt = `너는 영어 어휘 교재 편집자다.
+[목표] "${cfg.name} ${tier}단계 — ${t.label}" 단어장에 넣을 단어 ${count}개를 고르고 정보를 채운다.
+[주제] ${t.theme}
+[규칙]
+- ${phraseNote}
+- 고유명사(Aachen, Abba 같은 지명·인명·브랜드)는 절대 넣지 마라.
+- 굴절형(abandoned, abandoning, pods, equipped) 대신 원형(abandon, pod, equip)을 써라.\n- 후보 풀에 굴절형이 섞여 있어도 원형으로 바꿔서 넣어라.
+- 주제와 무관한 단어는 넣지 마라.
+[후보 풀] 아래에서 우선 고르되, 주제에 더 맞는 단어가 있으면 추가해도 된다.
+${sample}
+
+[출력] JSON 배열만. 설명·마크다운 금지.
+[{"en":"invoice","kr":"송장, 청구서","ph":"[ˈɪnvɔɪs]","ex":"Please send the invoice by Friday.","exKr":"금요일까지 송장을 보내주세요.","img":"🧾"}]
+- kr: 한국어 뜻 (쉼표로 2~3개)
+- ph: IPA 발음기호, 대괄호 포함
+- ex: 주제에 맞는 자연스러운 영어 예문 1개
+- exKr: ex의 한국어 번역
+- img: 단어를 나타내는 이모지 1개`;
+
+  const text = await callAI(prompt, 8000, 0, onStatus);
+  const m = text.match(/\[[\s\S]*\]/);
+  if (!m) throw new Error('AI 응답에서 JSON 배열을 찾지 못했습니다');
+  let arr;
+  try { arr = JSON.parse(m[0]); }
+  catch (e) { throw new Error('JSON 파싱 실패: ' + e.message); }
+  if (!Array.isArray(arr)) throw new Error('배열이 아닙니다');
+  return arr;
+}
+
+// ── 생성 결과 정제: 중복·형식 오류 제거 ──
+function pxCleanBatch(arr, baseId, allowPhrase) {
+  allowPhrase = false;   // 모든 팩이 단일어 기준 (여행 포함)
+  const used = pxExistingWords(baseId);
+  const seen = new Set();
+  const good = [], bad = [];
+  for (const w of arr) {
+    const en = String(w.en || '').trim();
+    const lo = en.toLowerCase();
+    if (!en || !w.kr) { bad.push({ w, why: '필수값 누락' }); continue; }
+    if (seen.has(lo)) { bad.push({ w, why: '이번 배치 내 중복' }); continue; }
+    if (used.has(lo)) { bad.push({ w, why: '기존 팩에 있음' }); continue; }
+    if (!allowPhrase && /[\s-]/.test(en)) { bad.push({ w, why: '구(phrase)' }); continue; }
+    if (/^[A-Z]/.test(en) && !allowPhrase) { bad.push({ w, why: '고유명사 의심' }); continue; }
+    seen.add(lo);
+    good.push({
+      en, kr: String(w.kr).trim(),
+      ph: String(w.ph || '').trim(),
+      ex: String(w.ex || '').trim(),
+      exKr: String(w.exKr || '').trim(),
+      img: String(w.img || '📘').trim()
+    });
+  }
+  return { good, bad };
+}
+
+
+// HTML 속성 이스케이프 (팩 확장 검수 화면용)
+function _esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+
+// ── 구(phrase)를 단어로 분해 ──
+// "boarding pass" → boarding, pass  (사전에 있고 고유명사가 아닌 것만)
+// 기존 팩의 구를 버리지 않고 어휘로 살린다.
+const PX_GENERIC = new Set(['first','time','found','round','one','two','way','get','make','take',
+  'stand','check','pass','carry','direct','class','desk','free','open','close','long','short',
+  'last','next','back','down','over','under','good','best','more','most','very','much','many']);
+
+function pxExplodePhrases(words) {
+  const single = new Set();
+  for (const w of words) {
+    const en = (w.en || '').trim();
+    if (en && !/[\s-]/.test(en)) single.add(en.toLowerCase());
+  }
+  const out = [];
+  const seen = new Set(single);
+  for (const w of words) {
+    const en = (w.en || '').trim();
+    if (!en || !/[\s-]/.test(en)) continue;
+    for (let tok of en.toLowerCase().split(/[\s-]+/)) {
+      tok = tok.replace(/[^a-z]/g, '');
+      if (tok.length < 4 || seen.has(tok) || PX_GENERIC.has(tok)) continue;
+      const d = window.BWD_DICT && BWD_DICT[tok];
+      if (!d || /고유/.test(d.pos || '')) continue;
+      if (pxIsInflected(tok)) continue;
+      seen.add(tok);
+      out.push({ en: tok, kr: String(d.kr || '').split(';')[0].trim(), ph: '', ex: d.ex || '', exKr: '', img: '📘', _from: en });
+    }
+  }
+  return out;
+}
+
+// ── 재구성: 구를 빼고 단어만 남긴 뒤, 분해어를 더하고, 부족분은 AI로 ──
+async function pxRebuild(baseId, tier) {
+  const cfg = PX_TIERS[baseId];
+  const id = pxDocId(baseId, tier);
+  const packs = window._adminPacks || [];
+  const existing = packs.find(x => x.id === id);
+  if (!existing) { toast('팩이 없습니다', 'err'); return; }
+  if (!getGeminiKey()) { pxAskKey(baseId, tier); return; }
+
+  const all = existing.words || [];
+  const kept = all.filter(w => { const e = (w.en || '').trim(); return e && !/[\s-]/.test(e); });
+  const exploded = pxExplodePhrases(all);
+  const phraseCount = all.length - kept.length;
+
+  if (!confirm(
+    `${cfg.name} ${tier}단계 재구성\n\n` +
+    `현재 ${all.length}개 (단어 ${kept.length} · 구 ${phraseCount})\n` +
+    `구를 분해해 단어 ${exploded.length}개 확보\n` +
+    `→ ${kept.length + exploded.length}개, 부족분 ${Math.max(0, 1000 - kept.length - exploded.length)}개를 AI로 생성\n\n` +
+    `구 ${phraseCount}개는 제거됩니다. 계속할까요?`
+  )) return;
+
+  const base = [...kept, ...exploded].slice(0, 1000);
+  const need = 1000 - base.length;
+
+  window._pxState = { baseId, tier, id, have: 0, need: Math.max(need, 0), generated: [],
+    rejected: [], stopped: false, rebuild: true, baseWords: base };
+
+  if (need <= 0) { pxReview(); return; }
+
+  // 분해어까지 중복 대상에 포함시키기 위해 임시로 팩 갱신
+  const snapshot = existing.words;
+  existing.words = base;
+
+  pxRenderWork('준비 중...');
+  const candidates = pxCandidates(baseId, tier);
+  const BATCH = 20;
+  let round = 0;
+  while (window._pxState.generated.length < need && !window._pxState.stopped) {
+    round++;
+    const want = Math.min(BATCH, need - window._pxState.generated.length);
+    const st = m => pxRenderWork(`${round}회차 · ${window._pxState.generated.length}/${need}개 · ${m}`);
+    try {
+      const arr = await pxGenerateBatch(cfg, tier, candidates, want, st);
+      const seenNow = new Set(window._pxState.generated.map(w => w.en.toLowerCase()));
+      const { good, bad } = pxCleanBatch(arr, baseId, false);
+      for (const w of good) {
+        if (seenNow.has(w.en.toLowerCase())) { window._pxState.rejected.push({ w, why: '생성분 중복' }); continue; }
+        if (window._pxState.generated.length >= need) break;
+        seenNow.add(w.en.toLowerCase());
+        window._pxState.generated.push(w);
+      }
+      window._pxState.rejected.push(...bad);
+      pxRenderWork(`${round}회차 완료 · ${window._pxState.generated.length}/${need}개`);
+    } catch (e) {
+      pxRenderWork(`⚠️ ${round}회차 실패: ${e.message}`);
+      await new Promise(r => setTimeout(r, 3000));
+      if (round > 200) break;
+    }
+    await new Promise(r => setTimeout(r, 4500));
+  }
+  existing.words = snapshot;   // 원복(저장 시 새로 씀)
+  pxReview();
+}
+
+// ── 팩 확장 화면 진입 ──
+window._pxState = null;   // { baseId, tier, need, generated:[], rejected:[] }
+
+function pxOpen() {
+  const packs = window._adminPacks || [];
+  const rows = Object.keys(PX_TIERS).map(baseId => {
+    const cfg = PX_TIERS[baseId];
+    const cells = cfg.tiers.map(t => {
+      const id = pxDocId(baseId, t.n);
+      const p = packs.find(x => x.id === id);
+      const words = p ? (p.words || []) : [];
+      const n = words.length;
+      const phrases = words.filter(w => /[\s-]/.test((w.en || '').trim())).length;
+      const need = 1000 - n;
+      const done = need <= 0 && n > 0 && phrases === 0;
+      const color = n === 0 ? '#9CA3AF' : (done ? '#16A34A' : '#D97706');
+      const label = n === 0 ? '없음' : (phrases ? `${n} (구 ${phrases})` : (done ? '완료 1000' : n + ' (+' + need + ')'));
+      // 구가 섞여 있으면 재구성, 아니면 생성/채우기
+      const btn = phrases > 0
+        ? `<button onclick="pxRebuild('${baseId}',${t.n})" style="font-size:10px;font-weight:700;padding:4px 9px;border-radius:6px;cursor:pointer;border:1px solid #FBBF24;background:#FFFBEB;color:#B45309">재구성</button>`
+        : `<button onclick="pxStart('${baseId}',${t.n})" ${done ? 'disabled' : ''}
+            style="font-size:10px;font-weight:700;padding:4px 9px;border-radius:6px;cursor:${done ? 'default' : 'pointer'};
+            border:1px solid ${done ? '#F1F3F5' : '#D1D5DB'};background:${done ? '#F8F9FA' : '#fff'};
+            color:${done ? '#D1D5DB' : '#374151'}">${done ? '—' : (n === 0 ? '생성' : '채우기')}</button>`;
+      return `<td style="padding:8px 6px;text-align:center;border-left:1px solid #F1F3F5">
+        <div style="font-size:11px;font-weight:800;color:${color}">${label}</div>
+        <div style="font-size:9.5px;color:#9CA3AF;margin:2px 0 5px">${t.label}</div>
+        ${btn}
+      </td>`;
+    }).join('');
+    return `<tr><td style="padding:8px 10px;font-size:12px;font-weight:800;white-space:nowrap">${cfg.emoji} ${cfg.name}</td>${cells}</tr>`;
+  }).join('');
+
+  const mi = document.getElementById('main-inner');
+  mi.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:900;margin-bottom:4px">📦 팩 확장 — 3단계 구성</div>
+      <div style="font-size:11.5px;color:#6B7280;line-height:1.6;margin-bottom:14px">
+        각 단계를 1,000<b>단어</b>로 채웁니다. AI가 생성한 뒤 <b>반드시 검수 화면</b>에서 확인하고 저장합니다.<br>
+        1단계는 기존 팩 ID를 유지하므로 이미 담은 사용자의 단어장이 끊기지 않습니다.<br>
+        <span style="color:#B45309">구(phrase)가 섞인 팩은 <b>재구성</b> — 구를 단어로 분해해 살리고 부족분만 생성합니다.</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:#F8F9FA">
+          <th style="padding:7px;text-align:left;font-size:10.5px;color:#6B7280">팩</th>
+          <th style="padding:7px;font-size:10.5px;color:#6B7280;border-left:1px solid #F1F3F5">1단계</th>
+          <th style="padding:7px;font-size:10.5px;color:#6B7280;border-left:1px solid #F1F3F5">2단계</th>
+          <th style="padding:7px;font-size:10.5px;color:#6B7280;border-left:1px solid #F1F3F5">3단계</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div id="px-work"></div>`;
+}
+
+// ── 생성 시작 ──
+async function pxStart(baseId, tier) {
+  const cfg = PX_TIERS[baseId];
+  const id = pxDocId(baseId, tier);
+  const packs = window._adminPacks || [];
+  const existing = packs.find(x => x.id === id);
+  const have = existing ? (existing.words || []).length : 0;
+  const need = 1000 - have;
+  if (need <= 0) { toast('이미 1,000단어입니다', 'ok'); return; }
+
+  if (!getGeminiKey()) { pxAskKey(baseId, tier); return; }
+
+  window._pxState = { baseId, tier, id, have, need, generated: [], rejected: [], stopped: false };
+  pxRenderWork('준비 중...');
+
+  const candidates = pxCandidates(baseId, tier);
+  if (!cfg.allowPhrase && candidates.length < need) {
+    toast(`후보 부족: ${candidates.length}개 (필요 ${need}개)`, 'err');
+  }
+
+  const BATCH = 20;
+  let round = 0;
+  while (window._pxState.generated.length < need && !window._pxState.stopped) {
+    round++;
+    const want = Math.min(BATCH, need - window._pxState.generated.length);
+    const st = s => pxRenderWork(`${round}회차 · ${window._pxState.generated.length}/${need}개 · ${s}`);
+    try {
+      const arr = await pxGenerateBatch(cfg, tier, candidates, want, st);
+      // 이번 배치 + 지금까지 생성분 기준으로 중복 제거
+      const seenNow = new Set(window._pxState.generated.map(w => w.en.toLowerCase()));
+      const { good, bad } = pxCleanBatch(arr, baseId, !!cfg.allowPhrase);
+      for (const w of good) {
+        if (seenNow.has(w.en.toLowerCase())) { window._pxState.rejected.push({ w, why: '생성분 중복' }); continue; }
+        if (window._pxState.generated.length >= need) break;
+        seenNow.add(w.en.toLowerCase());
+        window._pxState.generated.push(w);
+      }
+      window._pxState.rejected.push(...bad);
+      pxRenderWork(`${round}회차 완료 · ${window._pxState.generated.length}/${need}개`);
+    } catch (e) {
+      pxRenderWork(`⚠️ ${round}회차 실패: ${e.message}`);
+      await new Promise(r => setTimeout(r, 3000));
+      if (round > 200) { toast('반복 실패로 중단합니다', 'err'); break; }
+    }
+    await new Promise(r => setTimeout(r, 4500));   // 15 RPM 여유
+  }
+  pxReview();
+}
+
+function pxStop() {
+  if (window._pxState) window._pxState.stopped = true;
+  toast('중단 요청 — 현재 배치까지 마치고 멈춥니다', 'ok');
+}
+
+function pxRenderWork(status) {
+  const s = window._pxState;
+  if (!s) return;
+  const pct = Math.round(s.generated.length / s.need * 100);
+  document.getElementById('px-work').innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="flex:1;font-size:13px;font-weight:800">${PX_TIERS[s.baseId].name} ${s.tier}단계 생성 중</div>
+        <button onclick="pxStop()" style="font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid #FECDD3;background:#FEF2F2;color:#DC2626;cursor:pointer">⏹ 중단</button>
+      </div>
+      <div style="height:7px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin-bottom:8px">
+        <div style="height:100%;width:${pct}%;background:#4285F4;border-radius:20px;transition:width .3s"></div>
+      </div>
+      <div style="font-size:11.5px;color:#6B7280">${status}</div>
+      <div style="font-size:10.5px;color:#9CA3AF;margin-top:5px">거른 단어 ${s.rejected.length}개 (중복·구·고유명사)</div>
+    </div>`;
+}
+
+// ── 검수 화면 (저장 전 필수) ──
+function pxReview() {
+  const s = window._pxState;
+  if (!s) return;
+  const rows = s.generated.map((w, i) => `
+    <tr id="px-row-${i}" style="border-bottom:1px solid #F8F9FA">
+      <td style="padding:5px 6px;font-size:11px;color:#9CA3AF;text-align:right">${i + 1}</td>
+      <td style="padding:5px 6px"><input value="${_esc(w.en)}" onchange="pxEdit(${i},'en',this.value)" style="width:100%;border:none;font-size:11.5px;font-weight:700;background:transparent"></td>
+      <td style="padding:5px 6px"><input value="${_esc(w.kr)}" onchange="pxEdit(${i},'kr',this.value)" style="width:100%;border:none;font-size:11.5px;background:transparent"></td>
+      <td style="padding:5px 6px"><input value="${_esc(w.ph)}" onchange="pxEdit(${i},'ph',this.value)" style="width:100%;border:none;font-size:10.5px;color:#6B7280;background:transparent"></td>
+      <td style="padding:5px 6px"><input value="${_esc(w.ex)}" onchange="pxEdit(${i},'ex',this.value)" style="width:100%;border:none;font-size:10.5px;color:#6B7280;background:transparent"></td>
+      <td style="padding:5px 6px;text-align:center">
+        <button onclick="pxDrop(${i})" style="width:22px;height:22px;border:none;border-radius:5px;background:#F3F4F6;color:#9CA3AF;font-size:11px;cursor:pointer">✕</button>
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('px-work').innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:18px">
+      <div style="font-size:14px;font-weight:900;margin-bottom:3px">🔍 검수 — ${PX_TIERS[s.baseId].name} ${s.tier}단계</div>
+      <div style="font-size:11.5px;color:#6B7280;margin-bottom:12px">
+        생성 <b>${s.generated.length}</b>개 · 거름 ${s.rejected.length}개 · 저장 후 <b>${s.have + s.generated.length}</b>개
+        <br>잘못된 단어는 ✕로 지우고, 값은 직접 고칠 수 있습니다.
+      </div>
+      <div style="max-height:420px;overflow-y:auto;border:1px solid #F1F3F5;border-radius:10px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:#F8F9FA;z-index:1">
+            <tr style="font-size:10px;color:#6B7280">
+              <th style="padding:6px 4px;width:34px"></th>
+              <th style="padding:6px;text-align:left;width:110px">영어</th>
+              <th style="padding:6px;text-align:left;width:150px">뜻</th>
+              <th style="padding:6px;text-align:left;width:110px">발음</th>
+              <th style="padding:6px;text-align:left">예문</th>
+              <th style="padding:6px;width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="px-rows">${rows}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button onclick="pxOpen()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;font-size:12px;font-weight:700;cursor:pointer">취소</button>
+        <button onclick="pxShowRejected()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;font-size:12px;font-weight:700;cursor:pointer">거른 단어 보기</button>
+        <button onclick="pxSave()" style="flex:2;padding:11px;border-radius:10px;border:none;background:#16A34A;color:#fff;font-size:12px;font-weight:800;cursor:pointer">💾 ${s.rebuild ? `재구성 저장 (${(s.baseWords||[]).length + s.generated.length}개)` : `저장 (${s.generated.length}개)`}</button>
+      </div>
+    </div>`;
+}
+
+function pxEdit(i, field, val) {
+  if (!window._pxState) return;
+  window._pxState.generated[i][field] = String(val).trim();
+}
+function pxDrop(i) {
+  if (!window._pxState) return;
+  window._pxState.generated.splice(i, 1);
+  pxReview();
+}
+function pxShowRejected() {
+  const s = window._pxState;
+  if (!s || !s.rejected.length) { toast('거른 단어가 없습니다', 'ok'); return; }
+  const list = s.rejected.slice(0, 200).map(r => `${_esc(r.w.en || '?')} — ${r.why}`).join('<br>');
+  alert(`거른 단어 ${s.rejected.length}개 (최대 200개 표시)\n\n` + list.replace(/<br>/g, '\n'));
+}
+
+// ── ③ 저장 ──
+async function pxSave() {
+  const s = window._pxState;
+  if (!s || !s.generated.length) { toast('저장할 단어가 없습니다', 'err'); return; }
+  const cfg = PX_TIERS[s.baseId];
+  const t = cfg.tiers.find(x => x.n === s.tier);
+  const finalCount = s.rebuild ? (s.baseWords || []).length + s.generated.length : s.have + s.generated.length;
+  if (!confirm(
+    s.rebuild
+      ? `${cfg.name} ${s.tier}단계를 재구성합니다.\n기존 구(phrase)는 제거되고 단어 ${finalCount}개로 교체됩니다.\n계속할까요?`
+      : `${cfg.name} ${s.tier}단계에 ${s.generated.length}개를 저장합니다.\n저장 후 총 ${finalCount}개.\n계속할까요?`
+  )) return;
+
+  try {
+    const packs = window._adminPacks || [];
+    const existing = packs.find(x => x.id === s.id);
+    // 재구성 모드: 구를 뺀 단어 + 분해어 + 생성어로 통째 교체
+    const merged = s.rebuild
+      ? [...(s.baseWords || []), ...s.generated]
+      : [...(existing ? existing.words || [] : []), ...s.generated];
+
+    if (existing) {
+      await db.collection('packs').doc(s.id).update({ words: merged, count: merged.length, updatedAt: Date.now() });
+    } else {
+      await db.collection('packs').doc(s.id).set({
+        name: `${cfg.name} ${s.tier}단계 — ${t.label}`,
+        words: merged, count: merged.length,
+        emoji: cfg.emoji, category: cfg.cat, cat: cfg.cat,
+        categoryOrder: s.tier, price: 0, active: true, hidden: false,
+        createdAt: Date.now(), updatedAt: Date.now()
+      });
+    }
+    toast(`✅ ${s.generated.length}개 저장 완료`, 'ok');
+    window._pxState = null;
+    await rPK();          // 팩 목록 새로고침
+    setTimeout(pxOpen, 300);
+  } catch (e) {
+    toast('저장 실패: ' + e.message, 'err');
+  }
+}
+
+// ── Gemini 키 입력 ──
+function pxAskKey(baseId, tier) {
+  const o = document.createElement('div');
+  o.id = '_px_key';
+  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20000;display:flex;align-items:center;justify-content:center';
+  o.innerHTML = `<div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:400px;width:90%">
+    <div style="font-size:16px;font-weight:800;margin-bottom:7px">🔑 Gemini API 키</div>
+    <div style="font-size:11.5px;color:#6B7280;margin-bottom:13px;line-height:1.6">단어 생성에 필요합니다. 한 번 입력하면 저장됩니다.<br>
+      <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#4285F4;font-weight:700">Google AI Studio에서 무료 발급 →</a></div>
+    <input id="_px_key_in" type="password" placeholder="AIzaSy..." style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;margin-bottom:13px;box-sizing:border-box">
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('_px_key').remove()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer">취소</button>
+      <button onclick="const k=document.getElementById('_px_key_in').value.trim();if(!k){alert('키를 입력해주세요');return;}window._geminiApiKey=k;localStorage.setItem('gemini_api_key',k);document.getElementById('_px_key').remove();pxStart('${baseId}',${tier});" style="flex:2;padding:11px;background:#4285F4;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;color:#fff">저장 후 생성</button>
+    </div></div>`;
+  document.body.appendChild(o);
+}
+
+
+// 팩 확장 탭 진입: 팩 목록을 먼저 로드해야 현재 개수를 알 수 있다
+async function rPX(){
+  const mi=document.getElementById('main-inner');
+  mi.innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
+  try{
+    const snap=await db.collection('packs').get();
+    window._adminPacks=snap.docs.map(d=>({id:d.id,...d.data(),_fromFirebase:true}));
+  }catch(e){ window._adminPacks=[]; toast('팩 로드 실패: '+e.message,'err'); }
+  pxOpen();
+}
 
 async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
@@ -5057,72 +5576,45 @@ function _mgGenRender(){
 
 // ── 레벨 관리 ──
 async function rLV(){
-  const nlv=[
-    {id:'egg',n:'알',e:'🥚',desc:'성장 시작',c:'#F9A825',curr:1},
-    {id:'baby',n:'아기 벌거지',e:'🐛',desc:'첫 걸음마',c:'#43A047',curr:2},
-    {id:'crown',n:'왕관 벌거지',e:'🐌',desc:'실력 쌓는 중',c:'#2E7D32',curr:3},
-    {id:'coco',n:'번데기',e:'🪺',desc:'변신 준비 중',c:'#5D4037',curr:4},
-    {id:'shine',n:'빛나는 번데기',e:'🫧',desc:'날개 펴는 중',c:'#E65100',curr:6},
-    {id:'small',n:'작은 나비',e:'🦋',desc:'나비로 깨어남',c:'#1565C0',curr:7},
-    {id:'big',n:'큰 나비',e:'🌸',desc:'하늘을 나는 중',c:'#6A1B9A',curr:9},
-    {id:'god',n:'나비의 신',e:'🦚',desc:'전설의 나비',c:'#B71C1C',curr:10}
-  ];
+  const lvs=[{id:'egg',n:'알',e:'🥚',desc:'초등 저학년',basis:'Dolch + 교육부 초등 3~4학년',c:'#F9A825'},{id:'baby',n:'아기 벌거지',e:'🐛',desc:'초등 중학년',basis:'교육부 5~6학년 + Cambridge YL',c:'#43A047'},{id:'crown',n:'왕관 벌거지',e:'🐌',desc:'초등 고학년',basis:'중학교 기본어휘 + Oxford 3000',c:'#2E7D32'},{id:'coco',n:'번데기',e:'🪺',desc:'중등',basis:'중학교 교육과정 + Cambridge KET',c:'#5D4037'},{id:'shine',n:'빛나는 번데기',e:'🫧',desc:'고등',basis:'수능 15개년 기출 + EBS',c:'#E65100'},{id:'small',n:'작은 나비',e:'🦋',desc:'대학',basis:'토익 ETS 공식 빈출',c:'#1565C0'},{id:'big',n:'큰 나비',e:'🌸',desc:'교수',basis:'토플 + AWL',c:'#6A1B9A'},{id:'god',n:'나비의 신',e:'🦚',desc:'God',basis:"GRE + Barron's 3500",c:'#B71C1C'}];
   const LV_XP_DEFAULT={egg:150,baby:300,crown:450,coco:600,shine:750,small:900,big:1050,god:9999};
   let lvCfg={};
   try{const d=await db.collection('settings').doc('levelConfig').get();if(d.exists)lvCfg=d.data()||{};}catch(e){}
   const lvXp=id=>(lvCfg[id]!=null?lvCfg[id]:LV_XP_DEFAULT[id]);
-  const curr=[
-    {lv:1,cefr:'A1',band:'1 ~ 1,000',grp:'입문',c:'#16A34A'},
-    {lv:2,cefr:'A1~A2',band:'1,001 ~ 2,000',grp:'입문',c:'#16A34A'},
-    {lv:3,cefr:'A2',band:'2,001 ~ 3,000',grp:'기초',c:'#0891B2'},
-    {lv:4,cefr:'A2',band:'3,001 ~ 4,000',grp:'기초',c:'#0891B2'},
-    {lv:5,cefr:'A2~B1',band:'4,001 ~ 5,000',grp:'중급',c:'#2563EB'},
-    {lv:6,cefr:'B1',band:'5,001 ~ 6,000',grp:'중급',c:'#2563EB'},
-    {lv:7,cefr:'B1',band:'6,001 ~ 7,000',grp:'중상급',c:'#7C3AED'},
-    {lv:8,cefr:'B1',band:'7,001 ~ 8,000',grp:'중상급',c:'#7C3AED'},
-    {lv:9,cefr:'B1~B2',band:'8,001 ~ 9,000',grp:'고급',c:'#B91C1C'},
-    {lv:10,cefr:'B2',band:'9,001 ~ 10,000',grp:'고급',c:'#B91C1C'}
-  ];
   document.getElementById('main-inner').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:22px;font-weight:900">🎓 레벨 관리</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h2 style="font-size:22px;font-weight:900">🦋 레벨 관리</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+      ${lvs.map(l=>`<div style="background:#fff;border-radius:16px;border:2px solid ${l.c}40;padding:18px;text-align:center;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.06)"
+        onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.12)'"
+        onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,.06)'"
+        onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)">
+        <div style="width:64px;height:64px;margin:0 auto 8px">${charAdminImg(l.id,64)}</div>
+        <div style="font-size:12px;font-weight:800;color:${l.c}">${l.n}</div>
+        <div style="font-size:10px;color:#9CA3AF;margin-top:2px">${l.desc}</div>
+        <div id="lc-${l.id}" style="font-size:22px;font-weight:900;color:${l.c};margin-top:10px;letter-spacing:-1px">-</div>
+        <div style="font-size:10px;color:#9CA3AF">단어</div>
+      </div>`).join('')}
     </div>
     <div class="card">
-      <div class="ct">📚 커리큘럼 레벨 (1~10) · 레벨테스트 & 레벨업 코스</div>
-      <div style="font-size:12.5px;color:#6B7280;line-height:1.7;margin-bottom:14px">
-        앱 사전의 <b>상위 10,000단어</b>를 CEFR 난이도 + 빈도순으로 정렬해 <b>1,000단어씩 10개 밴드</b>로 자동 구성합니다.
-        레벨테스트가 사용자 실력을 이 <b>1~10 중 하나</b>로 판정하고, [내 레벨·+1·+2]의 <b>3단계 코스(3,000단어)</b>를 자동 생성해요.
-        사전 기반 자동 구성이라 <b>레벨별 수동 단어 등록은 필요 없습니다.</b>
-      </div>
+      <div class="ct">📋 레벨 기준표</div>
       <div class="tw"><table>
-        <tr><th>레벨</th><th>난이도(CEFR)</th><th>사전 밴드(빈도순위)</th><th>단어수</th><th>구분</th></tr>
-        ${curr.map(r=>`<tr>
-          <td style="text-align:center"><span style="display:inline-flex;width:30px;height:30px;border-radius:50%;background:${r.c}18;color:${r.c};font-weight:900;align-items:center;justify-content:center">${r.lv}</span></td>
-          <td><span style="background:${r.c}14;color:${r.c};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">${r.cefr}</span></td>
-          <td style="font-family:monospace;font-size:12px;color:#374151">${r.band}</td>
-          <td style="font-weight:800;color:#1E5FA5">1,000</td>
-          <td style="font-size:12px;color:#6B7280">${r.grp}</td>
+        <tr><th>레벨</th><th>이름</th><th>대상</th><th>선정 기준</th><th>단어 관리</th></tr>
+        ${lvs.map(l=>`<tr>
+          <td style="text-align:center">${charAdminImg(l.id,40)}</td>
+          <td><span style="font-weight:700;color:${l.c}">${l.n}</span></td>
+          <td><span style="background:${l.c}18;color:${l.c};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">${l.desc}</span></td>
+          <td style="font-size:12px;color:#6B7280">${l.basis}</td>
+          <td><button class="btn bb" style="font-size:11px;padding:5px 12px" onclick="T('wd');setTimeout(()=>{selLv='${l.id}';document.querySelectorAll('.lb').forEach(b=>{const li=LI[b.dataset.l];b.style.background=b.dataset.l==='${l.id}'?li.c:'#F3F4F6';b.style.color=b.dataset.l==='${l.id}'?'#fff':'#6B7280';});loadW('${l.id}');},200)">단어 관리 →</button></td>
         </tr>`).join('')}
       </table></div>
-      <div style="font-size:11px;color:#9CA3AF;margin-top:10px">※ CEFR 분포는 현재 사전 기준 실측값입니다(상위 1만은 A1~B2 범위). 사전이 커지면 밴드 구성도 자동 갱신됩니다.</div>
     </div>
     <div class="card">
-      <div class="ct">🦋 나비 캐릭터 ↔ 커리큘럼 레벨</div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:12px">나비 성장 캐릭터(경험치 기반)와 학습 커리큘럼 레벨(1~10)은 <b>별개 체계</b>입니다. 학습 배치는 레벨테스트가 결정하며, 아래는 캐릭터별 대략 대응 레벨입니다.</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-        ${nlv.map(l=>`<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:12px;text-align:center">
-          <div style="width:48px;height:48px;margin:0 auto 6px">${charAdminImg(l.id,48)}</div>
-          <div style="font-size:12px;font-weight:800;color:${l.c}">${l.n}</div>
-          <div style="font-size:10px;color:#9CA3AF;margin-top:1px">${l.desc}</div>
-          <div style="font-size:10px;color:#1E5FA5;font-weight:700;margin-top:4px">≈ 레벨 ${l.curr}</div>
-        </div>`).join('')}
-      </div>
-    </div>
-    <div class="card">
-      <div class="ct">⚡ 나비 성장 레벨 XP 설정 (캐릭터)</div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:14px">나비 캐릭터가 <b>다음 단계로 진화</b>하는 데 필요한 XP입니다. 앱의 'XP 안내'와 레벨업 판정에 실시간 반영됩니다(settings/levelConfig). <b>커리큘럼 레벨(1~10)과는 별개</b>입니다. (나비의 신은 최종 단계)</div>
+      <div class="ct">⚡ 레벨업 경험치(XP) 설정</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:14px">각 단계에서 <b>다음 단계로 진화</b>하는 데 필요한 XP입니다. 앱의 'XP 안내'와 레벨업 판정에 실시간 반영됩니다. (나비의 신은 최종 단계)</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-        ${nlv.map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px">
+        ${lvs.map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px">
           <span style="font-size:20px;flex:none">${l.e}</span>
           <span style="flex:1;font-size:13px;font-weight:700;color:${l.c}">${l.n}</span>
           <input type="number" id="lvxp-${l.id}" value="${lvXp(l.id)}" min="1" ${l.id==='god'?'disabled style="width:90px;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;text-align:center;font-weight:700;background:#F1F5F9;color:#9CA3AF"':'style="width:90px;padding:8px;border-radius:8px;border:1.5px solid #E5E7EB;text-align:center;font-weight:700"'}>
@@ -5131,6 +5623,7 @@ async function rLV(){
       </div>
       <button class="btn bb" onclick="saveLevelConfig()" style="margin-top:16px">💾 레벨업 XP 저장</button>
     </div>`;
+  lvs.forEach(async l=>{try{const snap=await db.collection('system_words').where('level','==',l.id).get();const e=document.getElementById('lc-'+l.id);if(e){e.textContent=snap.size;e.style.color=snap.size>0?l.c:'#9CA3AF';}}catch(e){}});
 }
 async function saveLevelConfig(){
   const ids=['egg','baby','crown','coco','shine','small','big','god'];
@@ -5343,8 +5836,7 @@ async function rUS(){
             +'<td><span style="background:'+(u.banned?'#FEF2F2':'#ECFDF5')+';color:'+(u.banned?'#DC2626':'#059669')+';border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(u.banned?'정지':'정상')+'</span></td>'
             +'<td><div style="display:flex;gap:4px">'
             +'<button class="btn bb" style="font-size:10px;padding:4px 8px" onclick="editUS(\''+u.id+'\',\''+u.lid+'\',\''+u.nick+'\')">수정</button>'
-            +'<button class="btn" style="font-size:10px;padding:4px 8px;background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE" onclick="grantCouponUI(\''+u.id+'\')">🎫 쿠폰</button>'
-            +'<button class="btn '+(u.banned?'bg':'br')+'" style="font-size:10px;padding:4px 8px" onclick="toggleBan(\''+u.id+'\','+(!u.banned)+')">'+(u.banned?'해제':'정지')+'</button>'
+            +'<button class="btn '+(u.banned?'bg':'br')+'" style="font-size:10px;padding:4px 8px" onclick="banUS(\''+u.id+'\','+(!u.banned)+')">'+(u.banned?'해제':'정지')+'</button>'
             +'</div></td>'
             +'</tr>';
         }).join('')}
@@ -5380,31 +5872,6 @@ async function showUserDetail(uid) {
 }
 async function saveUS(id){try{await db.collection('users').doc(id).update({nick:document.getElementById('un').value.trim(),lid:document.getElementById('ul').value});toast('✅ 수정 완료','ok');cm();rUS();}catch(e){toast('오류: '+e.message,'err');}}
 async function toggleBan(id,ban){try{await db.collection('users').doc(id).update({banned:ban});toast(ban?'🚫 정지 처리':'✅ 정지 해제','ok');rUS();}catch(e){toast('오류','err');}}
-// ── 나비 쿠폰 지급 (앱 사용자 선택 → 임의 지급/회수) ──
-async function grantCouponUI(id){
-  let u={};
-  try{ const d=await db.collection('users').doc(id).get(); if(d.exists) u=d.data()||{}; }catch(e){}
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mt">🎫 나비 쿠폰 지급</div>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:12px">${(u.nick||String(id).slice(0,8))} · 현재 <b style="color:#6D28D9">${u.bfCoupons||0}장</b></div>
-    <div class="fg"><label>지급 수량 <span style="color:#9CA3AF;font-weight:400">(음수면 회수)</span></label><input id="cq" type="number" value="1"></div>
-    <div style="display:flex;gap:6px;margin-bottom:12px">
-      <button class="btn bg" style="flex:1" onclick="document.getElementById('cq').value=1">+1</button>
-      <button class="btn bg" style="flex:1" onclick="document.getElementById('cq').value=5">+5</button>
-      <button class="btn bg" style="flex:1" onclick="document.getElementById('cq').value=10">+10</button>
-    </div>
-    <div style="display:flex;gap:8px"><button class="btn bb" style="flex:1" onclick="grantCoupon('${id}')">지급</button><button class="btn bgr" onclick="cm()">취소</button></div>
-    <div style="font-size:10px;color:#9CA3AF;margin-top:8px;line-height:1.5">앱 사용자가 다음 접속(백그라운드 동기화) 시 반영됩니다. 사용자가 앱을 켜둔 상태면 반영이 늦거나 덮어써질 수 있어요.</div>
-  </div></div>`;
-}
-async function grantCoupon(id){
-  const amt=parseInt(document.getElementById('cq').value)||0;
-  if(!amt){ toast('수량을 입력하세요','err'); return; }
-  try{
-    await db.collection('users').doc(id).update({bfCoupons: firebase.firestore.FieldValue.increment(amt)});
-    toast('🎫 쿠폰 '+(amt>0?'+':'')+amt+'장 처리 완료','ok'); cm(); rUS();
-  }catch(e){ toast('오류: '+e.message,'err'); }
-}
 
 // ── 콕 찌르기 ──
 async function rPO(){

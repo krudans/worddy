@@ -1,4 +1,4 @@
-<!-- build: 20260709-show-20 -->
+<!-- build: 20260709-chart-pager -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -933,7 +933,7 @@ const ok = () => {
 // 로컬/서버/병합의 상한이 다르면 뒤쪽 기록이 반복해서 사라졌다 살아난다 → 한 곳에서 관리.
 const _TH_MAX = 50;     // 성장 기록 보관 개수(서버·로컬·병합 공통 상한)
 const _TH_TOMB_MAX = 200;  // 삭제 묘비 보관 개수(그 이상은 오래된 것부터 버림)
-const _TH_SHOW = 20;   // 차트·최근기록 목록에 보여줄 개수(저장은 _TH_MAX 유지)
+const _TH_SHOW = 10;   // 차트·최근기록 목록에 보여줄 개수(저장은 _TH_MAX 유지)
 const _TH_BARS = 5;    // 홈 카드 추이 막대 개수(좁아서 5개가 한계)
 // 성장 카드 축 라벨: '2026-07-09' → '7/9'
 function _fmtThDate(d){ try{ var p=String(d).split('-'); return p.length>=3 ? (parseInt(p[1],10)+'/'+parseInt(p[2],10)) : String(d); }catch(e){ return String(d||''); } }
@@ -11881,8 +11881,14 @@ function _deleteCurriculum(){
 }
 // ── 레벨 성장 그래프 ──────────────────────────────────────
 // tHistory 중 새 레벨테스트 기록(level 필드)만 사용. 재테스트할수록 성장이 눈에 보이게 한다.
+// 저장된 성장 기록 전체(최대 _TH_MAX). 차트는 여기서 창(window)을 잘라 본다.
+function _growthAll(){
+  try{ return (S.tHistory||[]).filter(function(h){ return h && h.level!=null && h.date; }); }
+  catch(e){ return []; }
+}
+// 홈 카드·배지용: 최근 _TH_SHOW건
 function _growthData(){
-  try{ return (S.tHistory||[]).filter(function(h){ return h && h.level!=null && h.date; }).slice(-_TH_SHOW); }
+  try{ return _growthAll().slice(-_TH_SHOW); }
   catch(e){ return []; }
 }
 // 헤더용 미니 추이: "Lv.1 → Lv.3  ▲2"
@@ -11894,18 +11900,28 @@ function _growthBadgeHtml(){
   var arrow = d>0 ? '▲' : (d<0 ? '▼' : '=');
   return '<span onclick="event.stopPropagation();showGrowthChart()" style="font-size:10px;background:#fff;border:1px solid '+col+'33;color:'+col+';padding:2px 7px;border-radius:8px;font-weight:800;cursor:pointer">Lv.'+first+' → Lv.'+last+' '+arrow+Math.abs(d)+'</span>';
 }
-function showGrowthChart(){
-  var g=_growthData();
-  var mr=document.getElementById('mr'); if(!mr) return;
-  if(g.length<1){
-    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
-      +'<div style="font-size:34px;margin-bottom:6px">📈</div>'
-      +'<div style="font-size:15px;font-weight:900;color:#111;margin-bottom:4px">아직 성장 기록이 없어요</div>'
-      +'<div style="font-size:12px;color:#6B7280;line-height:1.7;margin-bottom:14px">레벨테스트를 보면 내 레벨이 기록돼요.<br>다시 볼 때마다 성장이 그래프로 쌓입니다.</div>'
-      +'<button class="btn bgr" onclick="cm()">닫기</button></div></div>';
-    return;
-  }
-  var W=Math.max(280, Math.min(560, 40+g.length*26)), H=120, pad=22;   // 기록이 많으면 가로로 넓혀 점이 겹치지 않게
+// ── 성장 차트: 저장된 전체(최대 _TH_MAX)를 _TH_SHOW개씩 창(window)으로 본다 ──
+// 화살표 또는 드래그로 과거 기록 탐색. S._gcOff = 오른쪽 끝에서 뒤로 밀린 개수.
+function _gcWindow(){
+  var all=_growthAll();
+  var n=all.length, w=Math.min(_TH_SHOW, n);
+  var maxOff=Math.max(0, n-w);
+  var off=Math.max(0, Math.min(maxOff, S._gcOff|0));
+  S._gcOff=off;
+  var end=n-off, start=Math.max(0,end-w);
+  return { all:all, n:n, w:w, off:off, maxOff:maxOff, start:start, end:end, g:all.slice(start,end) };
+}
+function _gcShift(delta){
+  var wnd=_gcWindow();
+  S._gcOff = Math.max(0, Math.min(wnd.maxOff, wnd.off + delta));
+  _gcRender();
+}
+// 차트 영역만 다시 그림(모달 재생성 없음 → 스크롤 위치 유지)
+function _gcRender(){
+  var host=document.getElementById('gcChart'); if(!host) return;
+  var wnd=_gcWindow(), g=wnd.g;
+  if(!g.length){ host.innerHTML=''; return; }
+  var W=300, H=120, pad=22;
   var maxL=Math.max(10, Math.max.apply(null,g.map(function(h){return h.level;})));
   var minL=Math.max(1, Math.min.apply(null,g.map(function(h){return h.level;}))-1);
   var span=Math.max(1,maxL-minL);
@@ -11913,16 +11929,80 @@ function showGrowthChart(){
   function X(i){ return pad + i*stepX; }
   function Y(l){ return H-pad - ((l-minL)/span)*(H-pad*2); }
   var pts=g.map(function(h,i){ return X(i)+','+Y(h.level); }).join(' ');
-  var _showNum = stepX>=20;   // 점 간격이 좁으면 레벨 숫자 생략(겹침 방지)
-  var _r = g.length>12 ? 3 : 4;
   var dots=g.map(function(h,i){
-    return '<circle cx="'+X(i)+'" cy="'+Y(h.level)+'" r="'+_r+'" fill="#1E5FA5" stroke="#fff" stroke-width="2"/>'
-      +(_showNum?('<text x="'+X(i)+'" y="'+(Y(h.level)-9)+'" text-anchor="middle" font-size="9" font-weight="800" fill="#1E5FA5">'+h.level+'</text>'):'');
+    return '<circle cx="'+X(i)+'" cy="'+Y(h.level)+'" r="4" fill="#1E5FA5" stroke="#fff" stroke-width="2"/>'
+      +'<text x="'+X(i)+'" y="'+(Y(h.level)-9)+'" text-anchor="middle" font-size="9" font-weight="800" fill="#1E5FA5">'+h.level+'</text>';
   }).join('');
-  var first=g[0].level, last=g[g.length-1].level, d=last-first;
+  // 축 라벨(날짜). 같은 날만 있으면 가운데 한 번.
+  var lbl='';
+  if(g.length>1){
+    var same=g.every(function(h){ return h.date===g[0].date; });
+    if(same) lbl='<div style="text-align:center;font-size:9px;color:#9CA3AF;margin-top:2px">'+_thAxisLabel(g[0])+'</div>';
+    else {
+      var md=g[Math.floor((g.length-1)/2)];
+      lbl='<div style="display:flex;justify-content:space-between;font-size:9px;color:#9CA3AF;margin-top:2px">'
+        +'<span>'+_thAxisLabel(g[0])+'</span>'+(g.length>2?'<span>'+_thAxisLabel(md)+'</span>':'')
+        +'<span>'+_thAxisLabel(g[g.length-1])+'</span></div>';
+    }
+  }
+  var canOld = wnd.off < wnd.maxOff;    // 더 과거로
+  var canNew = wnd.off > 0;             // 더 최근으로
+  var range = wnd.n>wnd.w ? ((wnd.start+1)+'–'+wnd.end+' / '+wnd.n+'회') : (wnd.n+'회');
+  var btn='background:#fff;border:1px solid #E5E7EB;border-radius:8px;width:28px;height:28px;font-size:13px;cursor:pointer;flex-shrink:0;color:#374151';
+  var btnOff='background:#F8F9FA;border:1px solid #F1F3F5;border-radius:8px;width:28px;height:28px;font-size:13px;flex-shrink:0;color:#D1D5DB;cursor:default';
+  host.innerHTML=
+     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+      +'<button '+(canOld?'onclick="_gcShift(1)"':'disabled')+' style="'+(canOld?btn:btnOff)+'">‹</button>'
+      +'<div style="flex:1;text-align:center;font-size:10px;color:#9CA3AF;font-weight:700">'+range+'</div>'
+      +'<button '+(canNew?'onclick="_gcShift(-1)"':'disabled')+' style="'+(canNew?btn:btnOff)+'">›</button>'
+    +'</div>'
+    +'<div id="gcDrag" style="background:#F8F9FA;border:1px solid #E5E7EB;border-radius:12px;padding:6px;touch-action:pan-y;cursor:'+(wnd.n>wnd.w?'grab':'default')+'">'
+      +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;pointer-events:none">'
+        +'<polyline points="'+pts+'" fill="none" stroke="#1E5FA5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+        +dots
+      +'</svg>'+lbl
+    +'</div>'
+    +(wnd.n>wnd.w?'<div style="text-align:center;font-size:9.5px;color:#C4C4C4;margin-top:4px">← 좌우로 밀어 과거 기록 보기 →</div>':'');
+  _gcBindDrag();
+}
+// 드래그(마우스·터치)로 창 이동. 한 칸 ≈ 28px.
+function _gcBindDrag(){
+  var el=document.getElementById('gcDrag'); if(!el || el._bound) return;
+  el._bound=true;
+  var x0=null, off0=0, moved=false;
+  function start(x){ var w=_gcWindow(); if(w.n<=w.w) return; x0=x; off0=S._gcOff|0; moved=false; el.style.cursor='grabbing'; }
+  function move(x){
+    if(x0==null) return;
+    var dx=x-x0; if(Math.abs(dx)>4) moved=true;
+    var steps=Math.round(dx/28);           // 오른쪽으로 끌면 과거(off 증가)
+    var w=_gcWindow();
+    var next=Math.max(0, Math.min(w.maxOff, off0+steps));
+    if(next!==(S._gcOff|0)){ S._gcOff=next; _gcRender(); }
+  }
+  function end(){ x0=null; var e2=document.getElementById('gcDrag'); if(e2) e2.style.cursor='grab'; }
+  el.addEventListener('mousedown', function(e){ start(e.clientX); e.preventDefault(); });
+  window.addEventListener('mousemove', function(e){ move(e.clientX); });
+  window.addEventListener('mouseup', end);
+  el.addEventListener('touchstart', function(e){ start(e.touches[0].clientX); }, {passive:true});
+  el.addEventListener('touchmove', function(e){ move(e.touches[0].clientX); }, {passive:true});
+  el.addEventListener('touchend', end);
+}
+function showGrowthChart(){
+  S._gcOff=0;   // 항상 최신 구간부터
+  var all=_growthAll();
+  var mr=document.getElementById('mr'); if(!mr) return;
+  if(all.length<1){
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
+      +'<div style="font-size:34px;margin-bottom:6px">📈</div>'
+      +'<div style="font-size:15px;font-weight:900;color:#111;margin-bottom:4px">아직 성장 기록이 없어요</div>'
+      +'<div style="font-size:12px;color:#6B7280;line-height:1.7;margin-bottom:14px">레벨테스트를 보면 내 레벨이 기록돼요.<br>다시 볼 때마다 성장이 그래프로 쌓입니다.</div>'
+      +'<button class="btn bgr" onclick="cm()">닫기</button></div></div>';
+    return;
+  }
+  var first=all[0].level, last=all[all.length-1].level, d=last-first;
   var dTxt = d>0 ? ('레벨 '+d+' 상승 🎉') : (d<0 ? ('레벨 '+Math.abs(d)+' 하락') : '레벨 유지');
   var dCol = d>0 ? '#16A34A' : (d<0 ? '#DC2626' : '#6B7280');
-  var rows=g.slice().reverse().slice(0,_TH_SHOW).map(function(h){
+  var rows=all.slice().reverse().map(function(h){
     var acc=(h.qTotal&&h.correct!=null)?Math.round(h.correct/h.qTotal*100)+'%':'-';
     var k=_thKey(h).replace(/'/g,"\\'");
     return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6">'
@@ -11934,19 +12014,17 @@ function showGrowthChart(){
   }).join('');
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:360px;text-align:left">'
     +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">📈 내 레벨 성장</div>'
-    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">레벨테스트 '+g.length+'회 · <b style="color:'+dCol+'">'+dTxt+'</b></div>'
-    +'<div style="background:#F8F9FA;border:1px solid #E5E7EB;border-radius:12px;padding:6px;margin-bottom:12px">'
-      +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'
-        +'<polyline points="'+pts+'" fill="none" stroke="#1E5FA5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
-        +dots
-      +'</svg></div>'
-    +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:4px">최근 기록 <span style="font-weight:600;color:#9CA3AF">('+Math.min(g.length,_TH_SHOW)+'건)</span></div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">레벨테스트 '+all.length+'회 · <b style="color:'+dCol+'">'+dTxt+'</b></div>'
+    +'<div id="gcChart" style="margin-bottom:12px"></div>'
+    +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:4px">전체 기록 <span style="font-weight:600;color:#9CA3AF">('+all.length+'건)</span></div>'
     +'<div style="max-height:190px;overflow-y:auto;-webkit-overflow-scrolling:touch">'+rows+'</div>'
     +'<button class="btn bb" style="width:100%;margin-top:12px" onclick="cm();startInitialLevelExam()">다시 진단하기</button>'
     +'<button onclick="_thClearAll()" style="width:100%;margin-top:6px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3;border-radius:12px;padding:10px;font-size:12px;font-weight:700;cursor:pointer">🗑️ 성장 기록 전체 삭제</button>'
     +'<button class="btn bgr" style="width:100%;margin-top:6px" onclick="cm()">닫기</button>'
     +'</div></div>';
+  _gcRender();
 }
+
 function _curriculumGroupHtml(){
   try{
     var cur=(S.books||[]).filter(function(b){return b.isCurriculum && b.level;}).sort(function(a,b){return (a.tier||0)-(b.tier||0);});

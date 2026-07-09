@@ -3063,7 +3063,7 @@ function pxIsInflected(w) {
   if (w.endsWith('ed') && w.length >= 5) c.push(w.slice(0, -2), w.slice(0, -1));
   if (w.endsWith('ing') && w.length >= 6) c.push(w.slice(0, -3), w.slice(0, -3) + 'e');
   if (w.endsWith('ies') && w.length >= 5) c.push(w.slice(0, -3) + 'y');
-  for (const b of c) if (b.length >= 3 && window.BWD_DICT && BWD_DICT[b]) return true;
+  for (const b of c) if (b.length >= 3 && typeof BWD_DICT !== 'undefined' && BWD_DICT[b]) return true;
   return false;
 }
 
@@ -3083,7 +3083,7 @@ function pxExistingWords(baseId) {
 const PX_CEFR_BY_TIER = { 1: ['A2', 'B1'], 2: ['B1', 'B2'], 3: ['B2', 'C1', 'C2'] };
 
 function pxCandidates(baseId, tier) {
-  if (!window.BWD_META || !window.BWD_DICT) { toast('사전(BWD_DICT/BWD_META)이 로드되지 않았습니다', 'err'); return []; }
+  if (typeof BWD_META === 'undefined' || typeof BWD_DICT === 'undefined') { toast('사전(BWD_DICT/BWD_META)이 로드되지 않았습니다', 'err'); return []; }
   const want = new Set(PX_CEFR_BY_TIER[tier] || ['B1', 'B2']);
   const used = pxExistingWords(baseId);
   const out = [];
@@ -3132,7 +3132,9 @@ ${sample}
 - exKr: ex의 한국어 번역
 - img: 단어를 나타내는 이모지 1개`;
 
-  const text = await callAI(prompt, 8000, 0, onStatus);
+  // Butterfly Dic의 AI 호출 재사용: 키 N개 × 모델 5개 회전, 429/503 시 즉시 다음 조합으로 전환
+  const text = await _aiGenCall(prompt, onStatus);
+  if (!text) throw new Error('AI 응답이 비었습니다 (모든 키·모델 한도)');
   const m = text.match(/\[[\s\S]*\]/);
   if (!m) throw new Error('AI 응답에서 JSON 배열을 찾지 못했습니다');
   let arr;
@@ -3176,9 +3178,21 @@ function _esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g
 // ── 구(phrase)를 단어로 분해 ──
 // "boarding pass" → boarding, pass  (사전에 있고 고유명사가 아닌 것만)
 // 기존 팩의 구를 버리지 않고 어휘로 살린다.
-const PX_GENERIC = new Set(['first','time','found','round','one','two','way','get','make','take',
-  'stand','check','pass','carry','direct','class','desk','free','open','close','long','short',
-  'last','next','back','down','over','under','good','best','more','most','very','much','many']);
+// 구에서 분해했을 때 원래 의미를 잃거나 학습 가치가 없는 일반어·기능어.
+// (seat/window/office/baggage 같은 A1이라도 주제 어휘면 남긴다 — 등급이 아니라 의미로 판단)
+const PX_GENERIC = new Set([
+  // 기능어·지시어
+  'from','into','onto','with','without','about','over','under','down','back','next','last',
+  'more','most','very','much','many','some','other','same','such','than','then','both','each',
+  // 맥락 없이 떨어지면 무의미한 일반어
+  'first','second','third','one','two','time','year','day','week','month',
+  'way','get','make','take','give','come','keep','find','found','look','show','tell',
+  'good','best','well','real','main','high','hard','long','short','free','full','open','close',
+  'line','part','side','kind','sort','type','case','fact','idea','thing','stuff','word',
+  'round','stand','pass','carry','direct','class','desk','check','left','right',
+  'paper','note','write','face','house','home','school','public','real','list','name',
+  'cash','flow','leave','clip','copy','flat','chain','stream','value','state','course'
+]);
 
 function pxExplodePhrases(words) {
   const single = new Set();
@@ -3194,7 +3208,7 @@ function pxExplodePhrases(words) {
     for (let tok of en.toLowerCase().split(/[\s-]+/)) {
       tok = tok.replace(/[^a-z]/g, '');
       if (tok.length < 4 || seen.has(tok) || PX_GENERIC.has(tok)) continue;
-      const d = window.BWD_DICT && BWD_DICT[tok];
+      const d = (typeof BWD_DICT !== 'undefined') && BWD_DICT[tok];
       if (!d || /고유/.test(d.pos || '')) continue;
       if (pxIsInflected(tok)) continue;
       seen.add(tok);
@@ -3211,7 +3225,7 @@ async function pxRebuild(baseId, tier) {
   const packs = window._adminPacks || [];
   const existing = packs.find(x => x.id === id);
   if (!existing) { toast('팩이 없습니다', 'err'); return; }
-  if (!getGeminiKey()) { pxAskKey(baseId, tier); return; }
+  if (!getGeminiKeys().length) { showAiKeys(); return; }
 
   const all = existing.words || [];
   const kept = all.filter(w => { const e = (w.en || '').trim(); return e && !/[\s-]/.test(e); });
@@ -3263,7 +3277,7 @@ async function pxRebuild(baseId, tier) {
       await new Promise(r => setTimeout(r, 3000));
       if (round > 200) break;
     }
-    await new Promise(r => setTimeout(r, 4500));
+    await new Promise(r => setTimeout(r, 1200));
   }
   existing.words = snapshot;   // 원복(저장 시 새로 씀)
   pxReview();
@@ -3334,7 +3348,7 @@ async function pxStart(baseId, tier) {
   const need = 1000 - have;
   if (need <= 0) { toast('이미 1,000단어입니다', 'ok'); return; }
 
-  if (!getGeminiKey()) { pxAskKey(baseId, tier); return; }
+  if (!getGeminiKeys().length) { showAiKeys(); return; }
 
   window._pxState = { baseId, tier, id, have, need, generated: [], rejected: [], stopped: false };
   pxRenderWork('준비 중...');
@@ -3368,7 +3382,7 @@ async function pxStart(baseId, tier) {
       await new Promise(r => setTimeout(r, 3000));
       if (round > 200) { toast('반복 실패로 중단합니다', 'err'); break; }
     }
-    await new Promise(r => setTimeout(r, 4500));   // 15 RPM 여유
+    await new Promise(r => setTimeout(r, 1200));   // 키·모델 회전이 한도를 처리하므로 짧게
   }
   pxReview();
 }
@@ -3499,22 +3513,6 @@ async function pxSave() {
   }
 }
 
-// ── Gemini 키 입력 ──
-function pxAskKey(baseId, tier) {
-  const o = document.createElement('div');
-  o.id = '_px_key';
-  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20000;display:flex;align-items:center;justify-content:center';
-  o.innerHTML = `<div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:400px;width:90%">
-    <div style="font-size:16px;font-weight:800;margin-bottom:7px">🔑 Gemini API 키</div>
-    <div style="font-size:11.5px;color:#6B7280;margin-bottom:13px;line-height:1.6">단어 생성에 필요합니다. 한 번 입력하면 저장됩니다.<br>
-      <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#4285F4;font-weight:700">Google AI Studio에서 무료 발급 →</a></div>
-    <input id="_px_key_in" type="password" placeholder="AIzaSy..." style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;margin-bottom:13px;box-sizing:border-box">
-    <div style="display:flex;gap:8px">
-      <button onclick="document.getElementById('_px_key').remove()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer">취소</button>
-      <button onclick="const k=document.getElementById('_px_key_in').value.trim();if(!k){alert('키를 입력해주세요');return;}window._geminiApiKey=k;localStorage.setItem('gemini_api_key',k);document.getElementById('_px_key').remove();pxStart('${baseId}',${tier});" style="flex:2;padding:11px;background:#4285F4;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;color:#fff">저장 후 생성</button>
-    </div></div>`;
-  document.body.appendChild(o);
-}
 
 
 // 팩 확장 탭 진입: 팩 목록을 먼저 로드해야 현재 개수를 알 수 있다

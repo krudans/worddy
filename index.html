@@ -1,4 +1,4 @@
-<!-- build: 20260709-google-only -->
+<!-- build: 20260709-th-limits -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -929,6 +929,10 @@ const ok = () => {
   // SRS: 복습 퀴즈에서 맞히면 다음 단계로(간격 증가), 5단계면 졸업
   if(S._srsSession){ var _cw=S.gWords?.[S.gIdx]; if(_cw && typeof _wrongPass==='function') _wrongPass(_cw.en); }
 };
+// 성장 이력 보관 상한. 기록 1건 ≈ 63바이트라 크기는 문제없지만,
+// 로컬/서버/병합의 상한이 다르면 뒤쪽 기록이 반복해서 사라졌다 살아난다 → 한 곳에서 관리.
+const _TH_MAX = 50;     // 성장 기록 보관 개수
+const _TH_TOMB_MAX = 200;  // 삭제 묘비 보관 개수(그 이상은 오래된 것부터 버림)
 // 성장 카드 축 라벨: '2026-07-09' → '7/9'
 function _fmtThDate(d){ try{ var p=String(d).split('-'); return p.length>=3 ? (parseInt(p[1],10)+'/'+parseInt(p[2],10)) : String(d); }catch(e){ return String(d||''); } }
 // 같은 날 여러 번 본 경우 날짜가 전부 같아 축이 무의미해진다 → 그때는 응시 시각(HH:MM)으로.
@@ -944,6 +948,7 @@ function _thGetTomb(){ try{ return S.thTomb || JSON.parse(localStorage.getItem('
 function _thSetTomb(arr){
   try{
     arr=Array.from(new Set(arr||[]));
+    if(arr.length>_TH_TOMB_MAX) arr=arr.slice(-_TH_TOMB_MAX);   // 묘비 무한 증가 방지
     S.thTomb=arr;
     localStorage.setItem('wd-th-tomb', JSON.stringify(arr));
     if(S.user && typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({deletedTHistory:arr},{merge:true}).catch(function(){}); }
@@ -951,8 +956,13 @@ function _thSetTomb(arr){
   }catch(e){ return arr||[]; }
 }
 // ── 레벨테스트 성장 이력 병합: 합집합(기기별 이력 보존) − 묘비(삭제 전파) ──
+// [중요] 로그인 병합이 load()보다 먼저 돌 수 있다. 그때 S.tHistory는 아직 비어 있어
+//        서버값만 남고 로컬 기록이 사라진다 → local이 비면 localStorage를 직접 읽어 보강한다.
 function _mergeTHistory(local, srv, tomb){
   try{
+    if(!Array.isArray(local) || !local.length){
+      try{ var _lsTh=JSON.parse(localStorage.getItem('wd-th')||'[]'); if(Array.isArray(_lsTh) && _lsTh.length) local=_lsTh; }catch(e){}
+    }
     var tset=new Set(tomb || _thGetTomb() || []);
     var out=[], seen=Object.create(null);
     [].concat(Array.isArray(local)?local:[], Array.isArray(srv)?srv:[]).forEach(function(h){
@@ -966,7 +976,7 @@ function _mergeTHistory(local, srv, tomb){
       if(dc!==0) return dc;
       return (a.ts||0)-(b.ts||0);   // 같은 날짜면 실제 응시 시각 순
     });
-    return out.slice(-50);
+    return out.slice(-_TH_MAX);
   }catch(e){ return Array.isArray(local)?local:[]; }
 }
 // 개별 삭제
@@ -4682,7 +4692,7 @@ function sv() {
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       deletedButterflies:(typeof _bfGetTomb==='function'?_bfGetTomb():JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]')),
       bfCoupons: S.bfCoupons||0,
-      tHistory: (S.tHistory||[]).slice(-50),   // 레벨테스트 성장 이력(최근 50회)
+      tHistory: (S.tHistory||[]).slice(-(typeof _TH_MAX!=='undefined'?_TH_MAX:50)),   // 레벨테스트 성장 이력(최근 N회)
       deletedTHistory: (typeof _thGetTomb==='function'?_thGetTomb():[]),   // 삭제된 이력(묘비)
       email:(S.user&&S.user.email)||'',
       collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
@@ -7177,7 +7187,9 @@ function _ltFinish(){
     try{ _generateCurriculum(placement); }catch(e){}
     try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
     try{ localStorage.setItem('wd-tested','1'); }catch(e){}
-    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal}); localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal});
+      if(S.tHistory.length>_TH_MAX) S.tHistory=S.tHistory.slice(-_TH_MAX);   // 서버·병합과 동일한 상한 유지
+      localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
     if(typeof addXP==='function') addXP(correctTotal*2);
     if(typeof sv==='function') sv();
     var _lvStats=lt.levelStats||{}, _wrong=(lt.wrongWords||[]);
@@ -10115,14 +10127,14 @@ function rHome() {
       var _bars=_rc.map(function(h,bi){
         var _hp=Math.max(18, Math.round(h.level/Math.max(1,_mx)*100));
         var _bg=(bi===_rc.length-1)?'var(--theme,#3B82F6)':'var(--theme-soft,#BFDBFE)';
-        return '<i style="flex:1;height:'+_hp+'%;background:'+_bg+';border-radius:3px 3px 0 0;display:block"></i>';
+        return '<i style="flex:1;max-width:34px;height:'+_hp+'%;background:'+_bg+';border-radius:3px 3px 0 0;display:block"></i>';
       }).join('');
       var _lbl='';
       if(_rc.length>1){
         // 표시 구간의 날짜가 전부 같으면(오늘 여러 번 응시) 시각으로 축을 그린다.
         var _sameDay=_rc.every(function(h){ return h.date===_rc[0].date; });
         var _md=_rc[Math.floor((_rc.length-1)/2)];
-        _lbl='<div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:7px">'
+        _lbl='<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3,#9CA3AF);margin-top:5px">'
           +'<span>'+_thAxisLabel(_rc[0],_sameDay)+'</span>'
           +(_rc.length>2?'<span>'+_thAxisLabel(_md,_sameDay)+'</span>':'')
           +'<span>'+_thAxisLabel(_rc[_rc.length-1],_sameDay)+'</span></div>';
@@ -10130,11 +10142,14 @@ function rHome() {
       parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
         +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 레벨 성장</span><span style="'+_MORE+'">그래프 ›</span></div>'
         +'<div style="display:flex;align-items:center;gap:14px">'
-          +'<div style="text-align:center;flex-shrink:0"><div style="font-size:26px;font-weight:900;color:var(--theme,#3B82F6);line-height:1">'+_l+'</div>'
-            +'<div style="font-size:9.5px;font-weight:800;margin-top:3px;color:'+_c+'">'+_dt+'</div></div>'
-          +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex-shrink:0"></div>'
-          +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:flex-end;gap:4px;height:36px">'+_bars+'</div></div>'
-        +'</div>'+_lbl
+          +'<div style="text-align:center;flex:0 0 auto;min-width:52px"><div style="font-size:26px;font-weight:900;color:var(--theme,#3B82F6);line-height:1">'+_l+'</div>'
+            +'<div style="font-size:9.5px;font-weight:800;margin-top:3px;color:'+_c+';white-space:nowrap">'+_dt+'</div></div>'
+          +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex:0 0 auto"></div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="display:flex;align-items:flex-end;justify-content:flex-start;gap:5px;height:36px">'+_bars+'</div>'
+            +_lbl
+          +'</div>'
+        +'</div>'
         +'</div>');
     } else if(_gh.length===1){
       var _h0=_gh[0];

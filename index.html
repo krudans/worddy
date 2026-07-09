@@ -1,4 +1,4 @@
-<!-- build: 20260709-chart-pager -->
+<!-- build: 20260709-homecard-fill -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -934,7 +934,7 @@ const ok = () => {
 const _TH_MAX = 50;     // 성장 기록 보관 개수(서버·로컬·병합 공통 상한)
 const _TH_TOMB_MAX = 200;  // 삭제 묘비 보관 개수(그 이상은 오래된 것부터 버림)
 const _TH_SHOW = 10;   // 차트·최근기록 목록에 보여줄 개수(저장은 _TH_MAX 유지)
-const _TH_BARS = 5;    // 홈 카드 추이 막대 개수(좁아서 5개가 한계)
+const _TH_BARS = 10;   // 홈 카드 추이 막대 개수(적으면 폭·간격을 넓혀 카드를 채운다)
 // 성장 카드 축 라벨: '2026-07-09' → '7/9'
 function _fmtThDate(d){ try{ var p=String(d).split('-'); return p.length>=3 ? (parseInt(p[1],10)+'/'+parseInt(p[2],10)) : String(d); }catch(e){ return String(d||''); } }
 // 축 라벨은 항상 날짜(7/9). 같은 날 여러 건이면 중복 표기를 피하려고 호출부에서 중간 라벨을 생략한다.
@@ -10121,10 +10121,17 @@ function rHome() {
       // 추이 막대(최근 5회) + 날짜 라벨(처음/중간/마지막)
       var _rc=_gh.slice(-_TH_BARS);
       var _mx=Math.max.apply(null,_rc.map(function(h){return h.level;}));
+      // 기록이 적으면 막대가 왼쪽에 몰려 카드가 비어 보인다.
+      // → 개수에 따라 간격과 막대 폭 상한을 키워 가로를 채운다(3건 이상이면 거의 100% 채움).
+      //   1~2건은 늘려도 남으므로 가운데 정렬.
+      var _nb=_rc.length;
+      var _gap = _nb<=2 ? 18 : (_nb<=4 ? 14 : (_nb<=6 ? 10 : 6));
+      var _cap = 88;                                   // 막대 하나가 지나치게 뚱뚱해지지 않도록
+      var _just = _nb<=2 ? 'center' : 'space-between';
       var _bars=_rc.map(function(h,bi){
         var _hp=Math.max(18, Math.round(h.level/Math.max(1,_mx)*100));
         var _bg=(bi===_rc.length-1)?'var(--theme,#3B82F6)':'var(--theme-soft,#BFDBFE)';
-        return '<i style="flex:1;max-width:34px;height:'+_hp+'%;background:'+_bg+';border-radius:3px 3px 0 0;display:block"></i>';
+        return '<i style="flex:1;max-width:'+_cap+'px;height:'+_hp+'%;background:'+_bg+';border-radius:3px 3px 0 0;display:block"></i>';
       }).join('');
       var _lbl='';
       if(_rc.length>1){
@@ -10147,7 +10154,7 @@ function rHome() {
             +'<div style="font-size:9.5px;font-weight:800;margin-top:3px;color:'+_c+';white-space:nowrap">'+_dt+'</div></div>'
           +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex:0 0 auto"></div>'
           +'<div style="flex:1;min-width:0">'
-            +'<div style="display:flex;align-items:flex-end;justify-content:flex-start;gap:5px;height:36px">'+_bars+'</div>'
+            +'<div style="display:flex;align-items:flex-end;justify-content:'+_just+';gap:'+_gap+'px;height:36px">'+_bars+'</div>'
             +_lbl
           +'</div>'
         +'</div>'
@@ -11952,9 +11959,9 @@ function _gcRender(){
   var btnOff='background:#F8F9FA;border:1px solid #F1F3F5;border-radius:8px;width:28px;height:28px;font-size:13px;flex-shrink:0;color:#D1D5DB;cursor:default';
   host.innerHTML=
      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
-      +'<button '+(canOld?'onclick="_gcShift(1)"':'disabled')+' style="'+(canOld?btn:btnOff)+'">‹</button>'
-      +'<div style="flex:1;text-align:center;font-size:10px;color:#9CA3AF;font-weight:700">'+range+'</div>'
-      +'<button '+(canNew?'onclick="_gcShift(-1)"':'disabled')+' style="'+(canNew?btn:btnOff)+'">›</button>'
+      +'<button id="gcPrev" aria-label="이전 기록" '+(canOld?'onclick="_gcShift(1)"':'disabled')+' style="'+(canOld?btn:btnOff)+'">‹</button>'
+      +'<div id="gcRange" style="flex:1;text-align:center;font-size:10px;color:#9CA3AF;font-weight:700">'+range+'</div>'
+      +'<button id="gcNext" aria-label="다음 기록" '+(canNew?'onclick="_gcShift(-1)"':'disabled')+' style="'+(canNew?btn:btnOff)+'">›</button>'
     +'</div>'
     +'<div id="gcDrag" style="background:#F8F9FA;border:1px solid #E5E7EB;border-radius:12px;padding:6px;touch-action:pan-y;cursor:'+(wnd.n>wnd.w?'grab':'default')+'">'
       +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;pointer-events:none">'
@@ -11966,29 +11973,47 @@ function _gcRender(){
   _gcBindDrag();
 }
 // 드래그(마우스·터치)로 창 이동. 한 칸 ≈ 28px.
+// [주의] _gcRender()가 gcDrag를 새로 만들기 때문에, window 리스너를 매번 붙이면 누적된다.
+//        window 리스너는 최초 1회만 등록하고 드래그 상태는 _gcDrag 전역에 둔다.
+var _gcDrag={x0:null, off0:0, active:false};
+function _gcDragStart(x){
+  var w=_gcWindow(); if(w.n<=w.w) return;
+  _gcDrag.x0=x; _gcDrag.off0=S._gcOff|0; _gcDrag.active=true;
+  var el=document.getElementById('gcDrag'); if(el) el.style.cursor='grabbing';
+}
+function _gcDragMove(x){
+  if(!_gcDrag.active || _gcDrag.x0==null) return;
+  var steps=Math.round((x-_gcDrag.x0)/28);   // 오른쪽으로 끌면 과거(off 증가)
+  var w=_gcWindow();
+  var next=Math.max(0, Math.min(w.maxOff, _gcDrag.off0+steps));
+  if(next!==(S._gcOff|0)){ S._gcOff=next; _gcRender(); }
+}
+function _gcDragEnd(){
+  _gcDrag.active=false; _gcDrag.x0=null;
+  var el=document.getElementById('gcDrag'); if(el) el.style.cursor='grab';
+}
 function _gcBindDrag(){
-  var el=document.getElementById('gcDrag'); if(!el || el._bound) return;
-  el._bound=true;
-  var x0=null, off0=0, moved=false;
-  function start(x){ var w=_gcWindow(); if(w.n<=w.w) return; x0=x; off0=S._gcOff|0; moved=false; el.style.cursor='grabbing'; }
-  function move(x){
-    if(x0==null) return;
-    var dx=x-x0; if(Math.abs(dx)>4) moved=true;
-    var steps=Math.round(dx/28);           // 오른쪽으로 끌면 과거(off 증가)
-    var w=_gcWindow();
-    var next=Math.max(0, Math.min(w.maxOff, off0+steps));
-    if(next!==(S._gcOff|0)){ S._gcOff=next; _gcRender(); }
+  var el=document.getElementById('gcDrag'); if(!el) return;
+  // 요소 리스너는 새로 만들어진 요소마다(중복 없음)
+  if(!el._bound){
+    el._bound=true;
+    el.addEventListener('mousedown', function(e){ _gcDragStart(e.clientX); e.preventDefault(); });
+    el.addEventListener('touchstart', function(e){ _gcDragStart(e.touches[0].clientX); }, {passive:true});
+    el.addEventListener('touchmove', function(e){ _gcDragMove(e.touches[0].clientX); }, {passive:true});
+    el.addEventListener('touchend', _gcDragEnd);
+    el.addEventListener('touchcancel', _gcDragEnd);
   }
-  function end(){ x0=null; var e2=document.getElementById('gcDrag'); if(e2) e2.style.cursor='grab'; }
-  el.addEventListener('mousedown', function(e){ start(e.clientX); e.preventDefault(); });
-  window.addEventListener('mousemove', function(e){ move(e.clientX); });
-  window.addEventListener('mouseup', end);
-  el.addEventListener('touchstart', function(e){ start(e.touches[0].clientX); }, {passive:true});
-  el.addEventListener('touchmove', function(e){ move(e.touches[0].clientX); }, {passive:true});
-  el.addEventListener('touchend', end);
+  // window 리스너는 앱 전체에서 1회만
+  if(!window._gcWinBound){
+    window._gcWinBound=true;
+    window.addEventListener('mousemove', function(e){ _gcDragMove(e.clientX); });
+    window.addEventListener('mouseup', _gcDragEnd);
+    window.addEventListener('blur', _gcDragEnd);
+  }
 }
 function showGrowthChart(){
   S._gcOff=0;   // 항상 최신 구간부터
+  try{ _gcDragEnd(); }catch(e){}   // 이전 드래그 잔상 제거
   var all=_growthAll();
   var mr=document.getElementById('mr'); if(!mr) return;
   if(all.length<1){

@@ -1,4 +1,4 @@
-<!-- build: 20260709-landing-leveltest -->
+<!-- build: 20260709-axis-time -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -931,6 +931,13 @@ const ok = () => {
 };
 // 성장 카드 축 라벨: '2026-07-09' → '7/9'
 function _fmtThDate(d){ try{ var p=String(d).split('-'); return p.length>=3 ? (parseInt(p[1],10)+'/'+parseInt(p[2],10)) : String(d); }catch(e){ return String(d||''); } }
+// 같은 날 여러 번 본 경우 날짜가 전부 같아 축이 무의미해진다 → 그때는 응시 시각(HH:MM)으로.
+function _thAxisLabel(h, sameDay){
+  try{
+    if(sameDay && h && h.ts){ var d=new Date(h.ts); return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); }
+    return _fmtThDate(h && h.date);
+  }catch(e){ return _fmtThDate(h && h.date); }
+}
 // 성장 이력 항목의 고유 키(묘비·중복제거 공용)
 function _thKey(h){ if(!h||!h.date) return ''; return h.date+'|'+(h.level!=null?h.level:(h.lid||''))+'|'+(h.qTotal||h.totalQ||0); }
 function _thGetTomb(){ try{ return S.thTomb || JSON.parse(localStorage.getItem('wd-th-tomb')||'[]'); }catch(e){ return []; } }
@@ -10118,11 +10125,13 @@ function rHome() {
       }).join('');
       var _lbl='';
       if(_rc.length>1){
+        // 표시 구간의 날짜가 전부 같으면(오늘 여러 번 응시) 시각으로 축을 그린다.
+        var _sameDay=_rc.every(function(h){ return h.date===_rc[0].date; });
         var _md=_rc[Math.floor((_rc.length-1)/2)];
         _lbl='<div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:7px">'
-          +'<span>'+_fmtThDate(_rc[0].date)+'</span>'
-          +(_rc.length>2?'<span>'+_fmtThDate(_md.date)+'</span>':'')
-          +'<span>'+_fmtThDate(_rc[_rc.length-1].date)+'</span></div>';
+          +'<span>'+_thAxisLabel(_rc[0],_sameDay)+'</span>'
+          +(_rc.length>2?'<span>'+_thAxisLabel(_md,_sameDay)+'</span>':'')
+          +'<span>'+_thAxisLabel(_rc[_rc.length-1],_sameDay)+'</span></div>';
       }
       parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
         +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 레벨 성장</span><span style="'+_MORE+'">그래프 ›</span></div>'
@@ -11905,7 +11914,7 @@ function showGrowthChart(){
     var acc=(h.qTotal&&h.correct!=null)?Math.round(h.correct/h.qTotal*100)+'%':'-';
     var k=_thKey(h).replace(/'/g,"\\'");
     return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6">'
-      +'<span style="color:#6B7280;flex:1">'+h.date+'</span>'
+      +'<span style="color:#6B7280;flex:1">'+h.date+(h.ts?(' <span style="color:#C4C4C4;font-size:10px">'+_thAxisLabel(h,true)+'</span>'):'')+'</span>'
       +'<span style="font-weight:800;color:#1E5FA5;width:52px;text-align:center">레벨 '+h.level+'</span>'
       +'<span style="color:#9CA3AF;width:62px;text-align:right">정답률 '+acc+'</span>'
       +'<button onclick="event.stopPropagation();_thDelete(\''+k+'\')" title="이 기록 삭제" style="background:#F3F4F6;border:none;border-radius:7px;width:24px;height:24px;font-size:11px;color:#9CA3AF;cursor:pointer;flex-shrink:0">✕</button>'

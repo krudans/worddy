@@ -7353,6 +7353,24 @@ function bwdExport(){
 (function(){
   if(window.__bwdBulkV1) return; window.__bwdBulkV1 = true;
 
+  /* ---------- Gemini 키: 앱(index.html)에 저장된 _geminiKey 도 인정 ---------- */
+  (function(){
+    var origKeys = window.getGeminiKeys, origKey = window.getGeminiKey;
+    function appKey(){ try{ return (localStorage.getItem('_geminiKey')||'').trim(); }catch(e){ return ''; } }
+    if(typeof origKeys === 'function'){
+      window.getGeminiKeys = function(){
+        var ks = origKeys.apply(this, arguments) || [];
+        if(ks.length) return ks;
+        var a = appKey(); return a ? [a] : [];
+      };
+    }
+    if(typeof origKey === 'function'){
+      window.getGeminiKey = function(){
+        return origKey.apply(this, arguments) || appKey();
+      };
+    }
+  })();
+
   /* ---------- 작업 사본 ---------- */
   function PW(){ if(!window._pronWork){ window._pronWork = (typeof BWD_PRON!=='undefined') ? Object.assign({}, BWD_PRON) : {}; } return window._pronWork; }
   window._bwdPronWork = PW;
@@ -7597,7 +7615,11 @@ function bwdExport(){
 
   window.bulkRegister = async function(){
     if(G.running) return;
-    if(!getGeminiKeys().length){ toast('Gemini API 키가 없습니다','err'); return; }
+    if(!getGeminiKeys().length){
+      toast('Gemini API 키가 없습니다 — 키를 입력하세요','err');
+      try{ showAiKeys(); }catch(e){}
+      return;
+    }
     var L = window._bulkList.filter(function(x){ return x.sel !== false; });
     if(!L.length){ toast('선택된 단어가 없어요','err'); return; }
     if(!confirm('선택한 ' + L.length + '개를 AI로 등록할까요?\n뜻·품사·발음·이모지·예문5개·메타를 채웁니다.')) return;
@@ -7640,7 +7662,8 @@ function bwdExport(){
         + '<span style="font-weight:800;font-size:15px">✨ 새 단어 등록</span>'
         + '<button class="btn bp" id="bulk-run" onclick="bulkRegister()" style="background:#7C3AED">✨ 0개 등록</button>'
       + '</div>'
-      + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">미등록 단어가 자동으로 채워집니다. 체크한 것만 등록되고, 다시 안 볼 단어는 🗑 삭제하세요.</div>'
+      + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">미등록 단어가 자동으로 채워집니다. 체크한 것만 등록되고, 다시 안 볼 단어는 🗑 삭제하세요.'
+        + ' · <span id="bulk-key"></span></div>'
       + '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#4B5563;padding:8px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;margin-bottom:8px;cursor:pointer">'
         + '<input type="checkbox" id="bulk-all" checked style="width:16px;height:16px;cursor:pointer" onchange="bulkToggleAll(this.checked)">'
         + '<span id="bulk-sel-label">전체 선택</span></label>'
@@ -7686,6 +7709,13 @@ function bwdExport(){
           host.parentNode.insertBefore(b2, host.nextSibling);
         }
       }
+      var kk = document.getElementById('bulk-key');
+      if(kk){
+        var n = getGeminiKeys().length;
+        kk.innerHTML = n
+          ? '<span style="color:#16A34A">🔑 Gemini 키 ' + n + '개</span>'
+          : '<span style="color:#DC2626">🔑 키 없음</span> <button class="btn bg" style="font-size:10px;padding:2px 7px" onclick="showAiKeys()">키 입력</button>';
+      }
       bulkRender(); renderDirty();
     }catch(e){}
     return r;
@@ -7695,7 +7725,7 @@ function bwdExport(){
   hook('bwdDelEntry',    function(){ D.dict++; renderDirty(); });
   hook('missAiRegister', function(){ D.dict++; renderDirty(); });
 
-  console.log('[bwd] bulk-register-v5 20260710 loaded');
+  console.log('[bwd] bulk-register-v6 20260710 loaded');
 })();
 </script>
 </body>

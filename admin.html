@@ -7349,140 +7349,136 @@ function bwdExport(){
 </script>
 
 <script>
-/* === Butterfly Dic 일괄 등록 + 미저장 추적 + bwd-pron 내보내기 (20260710-bulk-register) === */
+/* === Butterfly Dic 일괄 등록 v2 (20260710-bulk-register-v2) === */
 (function(){
   if(window.__bwdBulkV1) return; window.__bwdBulkV1 = true;
 
-  /* ---------- 작업 사본 (메모리) ---------- */
+  /* ---------- 작업 사본 ---------- */
   function PW(){ if(!window._pronWork){ window._pronWork = (typeof BWD_PRON!=='undefined') ? Object.assign({}, BWD_PRON) : {}; } return window._pronWork; }
   window._bwdPronWork = PW;
-  window._bwdPron = function(w){ return PW()[w] || ''; };            // 기존 함수 대체(작업 사본 참조)
+  window._bwdPron = function(w){ return PW()[w] || ''; };
   function EX5(){ if(!window.BWD_EX5) window.BWD_EX5={}; return window.BWD_EX5; }
   function MG(){ if(!window.BWD_META) window.BWD_META={}; return window.BWD_META; }
 
-  /* ---------- 미저장 변경 카운터 ---------- */
+  /* ---------- 미저장 변경 ---------- */
   var D = window._bwdDirty = {dict:0, pron:0, ex5:0, meta:0};
-  window._bwdResolveQueue = [];   // dict_missing 에서 해결 처리할 단어(내보내기 후 반영)
-
+  window._bwdResolveQueue = [];
   function dirtyTotal(){ return D.dict + D.pron + D.ex5 + D.meta; }
+
   function renderDirty(){
     var el = document.getElementById('bwd-dirty'); if(!el) return;
     if(!dirtyTotal()){ el.style.display='none'; el.innerHTML=''; return; }
-    var need = [];
-    if(D.dict) need.push('bwd-dict.js');
-    if(D.pron) need.push('bwd-pron.js');
-    if(D.ex5)  need.push('bwd-ex5-1·2.js');
-    if(D.meta) need.push('bwd-meta-1·2.js');
     el.style.display='block';
     el.innerHTML = '<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#92400E;line-height:1.7">'
-      + '<b>⚠️ 미저장 변경 ' + dirtyTotal() + '건</b> — 브라우저 메모리에만 있습니다. 새로고침하면 사라집니다.<br>'
-      + '<span style="font-size:12px">뜻 ' + D.dict + ' · 발음 ' + D.pron + ' · 예문 ' + D.ex5 + ' · 메타 ' + D.meta + '</span><br>'
-      + '<span style="font-size:12px">내보내야 할 파일: <b>' + need.join(' , ') + '</b> → 다운로드 후 GitHub <code>js/</code> 에 업로드</span>'
+      + '<b>⚠️ 저장 안 된 단어 ' + D.dict + '개</b> — 브라우저 메모리에만 있습니다. 새로고침하면 사라집니다.<br>'
+      + '<button class="btn bb" style="margin-top:6px" onclick="bwdExportAll()">📥 사전 파일 내려받기</button>'
+      + ' <span style="font-size:12px">→ 받은 파일 전부 GitHub <code>js/</code> 에 업로드</span>'
       + '</div>';
   }
   window._bwdRenderDirty = renderDirty;
+  window.addEventListener('beforeunload', function(e){ if(dirtyTotal()){ e.preventDefault(); e.returnValue=''; return ''; } });
 
-  window.addEventListener('beforeunload', function(e){
-    if(dirtyTotal()){ e.preventDefault(); e.returnValue = ''; return ''; }
-  });
-
-  /* ---------- bwd-pron.js 내보내기 (신규) ---------- */
+  /* ---------- bwd-pron.js 내보내기 ---------- */
   window.bwdExportPron = function(){
     var p = PW(), keys = Object.keys(p).sort();
     if(!keys.length){ toast('내보낼 발음 데이터가 없어요','err'); return; }
     var lines = keys.map(function(k){ return '  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ','; });
     lines[lines.length-1] = lines[lines.length-1].replace(/,\s*$/,'');
     var content = '// \u2500\u2500 ButterFly Word Dictionary : \ubc1c\uc74c\uae30\ud638(IPA) \uc0ac\uc804 \u2500\u2500\n'
-      + '// key=\uc601\ub2e8\uc5b4, value=IPA \ubb38\uc790\uc5f4. \uad00\ub9ac\uc790 \ucf58\uc194\uc5d0\uc11c \ub0b4\ubcf4\ub0c4.\n'
       + 'const BWD_PRON = {\n' + lines.join('\n') + '\n};\n';
     var url = URL.createObjectURL(new Blob([content],{type:'text/javascript;charset=utf-8'}));
     var a = document.createElement('a'); a.href=url; a.download='bwd-pron.js'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
     D.pron = 0; renderDirty();
-    toast('bwd-pron.js 내보내기 완료 (' + keys.length + '개) — js/ 에 올리세요','ok');
   };
 
-  /* ---------- 내보내기 훅: 카운터 리셋 + dict_missing 해결 처리 ---------- */
+  /* ---------- 한 번에 내려받기 ---------- */
+  window.bwdExportAll = function(){
+    if(!dirtyTotal()){ toast('내보낼 변경사항이 없어요','err'); return; }
+    var jobs = [];
+    if(D.dict) jobs.push(bwdExport);
+    if(D.pron) jobs.push(bwdExportPron);
+    if(D.ex5)  jobs.push(bwdExportEx5);
+    if(D.meta) jobs.push(bwdExportMG);
+    jobs.forEach(function(f,i){ setTimeout(function(){ try{ f(); }catch(e){} }, i*900); });
+    setTimeout(function(){ toast('내려받은 파일을 전부 js/ 에 업로드하세요','ok'); }, jobs.length*900);
+  };
+
+  /* ---------- 내보내기 훅 ---------- */
   function hook(name, after){
-    var orig = window[name];
-    if(typeof orig !== 'function') return;
+    var orig = window[name]; if(typeof orig !== 'function') return;
     window[name] = function(){ var r = orig.apply(this, arguments); try{ after(); }catch(e){} return r; };
   }
-  hook('bwdExport', function(){ D.dict = 0; renderDirty(); flushResolved(); });
-  hook('bwdExportEx5', function(){ D.ex5 = 0; renderDirty(); });
-  hook('bwdExportMG', function(){ D.meta = 0; renderDirty(); });
+  hook('bwdExport',    function(){ D.dict = 0; renderDirty(); flushResolved(); });
+  hook('bwdExportEx5', function(){ D.ex5  = 0; renderDirty(); });
+  hook('bwdExportMG',  function(){ D.meta = 0; renderDirty(); });
 
   async function flushResolved(){
-    var q = window._bwdResolveQueue.slice();
-    if(!q.length) return;
+    var q = window._bwdResolveQueue.slice(); if(!q.length) return;
     window._bwdResolveQueue = [];
     var n = 0;
     for(var i=0;i<q.length;i++){
-      try{
-        await db.collection('dict_missing').doc(q[i]).set({resolved:true, resolvedAt:new Date().toISOString(), resolvedBy:'bulk'}, {merge:true});
-        n++;
-      }catch(e){}
+      try{ await db.collection('dict_missing').doc(q[i]).set({resolved:true, resolvedAt:new Date().toISOString(), resolvedBy:'bulk'}, {merge:true}); n++; }catch(e){}
     }
-    if(n){ toast('미등록 목록에서 ' + n + '개 해결 처리됨','ok'); try{ await _updateMissBadge(); rDICT(); }catch(e){} }
+    if(n){ try{ await _updateMissBadge(); }catch(e){} }
   }
 
-  /* ---------- 등록 대기 목록 ---------- */
-  window._bulkList = window._bulkList || [];   // [{en, kr}]
+  /* ---------- 목록 ---------- */
+  window._bulkList = window._bulkList || [];
+  var killed = {};          // 사용자가 🗑 삭제한 단어 (재시딩 방지)
+  var missLoaded = false;   // dict_missing 로드 완료 여부
 
-  function bulkAdd(items){
+  function add(items){
     var seen = {}; window._bulkList.forEach(function(x){ seen[x.en]=1; });
-    var added = 0;
+    var n = 0;
     items.forEach(function(it){
       var en = String(it.en||'').trim().toLowerCase();
-      if(!en || seen[en]) return;
-      seen[en] = 1; window._bulkList.push({en:en, kr:String(it.kr||'').trim()}); added++;
+      if(!en || seen[en] || killed[en] || _bwdDict()[en]) return;
+      seen[en]=1; window._bulkList.push({en:en, kr:String(it.kr||'').trim()}); n++;
     });
-    return added;
+    return n;
   }
   window.bulkRemove = function(en){
+    killed[en] = 1;
     window._bulkList = window._bulkList.filter(function(x){ return x.en !== en; });
     bulkRender();
-  };
-  window.bulkClear = function(){
-    if(!window._bulkList.length) return;
-    if(!confirm('대기 목록 ' + window._bulkList.length + '개를 모두 비울까요? (사전은 그대로)')) return;
-    window._bulkList = []; bulkRender();
+    if((window.__missWords||[]).some(function(x){ return x.id === en; })){
+      db.collection('dict_missing').doc(en).set({dismissed:true, resolved:true, resolvedAt:new Date().toISOString(), resolvedBy:'delete'}, {merge:true})
+        .then(function(){ window.__missWords = (window.__missWords||[]).filter(function(x){ return x.id !== en; }); try{ _updateMissBadge(); }catch(e){} })
+        .catch(function(){});
+    }
   };
 
-  /* 붙여넣기 파싱: "word" 또는 "word<탭|콤마|2칸+>뜻" */
-  window.bulkParse = function(){
-    var raw = (document.getElementById('bulk-paste')||{}).value || '';
-    var lines = raw.split('\n'), items = [], bad = 0;
-    lines.forEach(function(ln){
+  /* 붙여넣기 → 자동으로 목록에 들어감 (버튼 없음) */
+  window.bulkAbsorb = function(){
+    var ta = document.getElementById('bulk-paste'); if(!ta) return;
+    var raw = ta.value || ''; if(!raw.trim()) return;
+    var items = [], bad = 0, dup = 0;
+    raw.split('\n').forEach(function(ln){
       ln = ln.trim(); if(!ln) return;
       var m = ln.split(/\t|,|\s{2,}/);
       var en = (m[0]||'').trim().toLowerCase();
       var kr = m.slice(1).join(' ').trim();
       if(!/^[a-z][a-z'\-]*$/.test(en)){ bad++; return; }
+      if(_bwdDict()[en]){ dup++; return; }
       items.push({en:en, kr:kr});
     });
-    var already = items.filter(function(it){ return !!_bwdDict()[it.en]; }).length;
-    var fresh = items.filter(function(it){ return !_bwdDict()[it.en]; });
-    var n = bulkAdd(fresh);
-    document.getElementById('bulk-paste').value = '';
+    var n = add(items);
+    ta.value = '';
     bulkRender();
-    toast('추가 ' + n + '개' + (already?(' · 이미 등록 ' + already + '개 제외'):'') + (bad?(' · 형식오류 ' + bad + '줄 무시'):''), n?'ok':'err');
-  };
-
-  /* 미등록 알림(dict_missing) 전체를 대기 목록으로 */
-  window.bulkFromMissing = function(){
-    var arr = window.__missWords || [];
-    if(!arr.length){ toast('미등록 단어가 없어요','err'); return; }
-    var n = bulkAdd(arr.map(function(m){ return {en:m.id, kr:m.kr||''}; }));
-    bulkRender();
-    toast('미등록 ' + n + '개를 대기 목록에 담았어요','ok');
+    if(n || dup || bad) toast('추가 ' + n + '개' + (dup?(' · 이미 등록 ' + dup):'') + (bad?(' · 형식오류 ' + bad):''), n?'ok':'err');
   };
 
   function bulkRender(){
     var el = document.getElementById('bulk-list'); if(!el) return;
     var L = window._bulkList;
-    var cnt = document.getElementById('bulk-count'); if(cnt) cnt.textContent = L.length;
-    if(!L.length){ el.innerHTML = '<div style="padding:14px;color:#9CA3AF;font-size:13px">대기 목록이 비어 있습니다.</div>'; return; }
+    var btn = document.getElementById('bulk-run');
+    if(btn && !G.running) btn.textContent = '✨ ' + L.length + '개 등록';
+    if(!L.length){
+      el.innerHTML = '<div style="padding:16px;color:#9CA3AF;font-size:13px">'
+        + (missLoaded ? '등록할 단어가 없습니다.' : '⏳ 미등록 단어를 불러오는 중...') + '</div>';
+      return;
+    }
     el.innerHTML = L.map(function(x){
       var e = _bwdHesc(x.en), k = _bwdHesc(x.kr||'');
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #F3F4F6">'
@@ -7495,61 +7491,71 @@ function bwdExport(){
   }
   window._bulkRender = bulkRender;
 
-  /* ---------- AI 일괄 등록 ---------- */
+  function seedMiss(){
+    var arr = window.__missWords || [];
+    if(!arr.length) return 0;
+    return add(arr.map(function(m){ return {en:m.id, kr:m.kr||''}; }));
+  }
+  (function(){
+    var origLoad = window._loadMissDict;
+    if(typeof origLoad !== 'function') return;
+    window._loadMissDict = function(){
+      return Promise.resolve(origLoad.apply(this, arguments)).then(function(r){
+        missLoaded = true;
+        try{ seedMiss(); bulkRender(); }catch(e){}
+        return r;
+      });
+    };
+  })();
+
+  /* ---------- AI 등록 ---------- */
   var G = window._bulkGen = {running:false, stop:false, total:0, done:0, ok:0, fail:0, failed:[]};
+  window.bulkStop = function(){ G.stop = true; };
 
-  window.bulkStop = function(){ G.stop = true; toast('정지 요청 — 현재 묶음 후 멈춥니다','ok'); };
-
-  function bulkStatus(msg){
+  function status(msg){
     var el = document.getElementById('bulk-status'); if(!el) return;
-    if(!G.running && !G.done){ el.innerHTML=''; return; }
+    if(!G.running && !G.total){ el.innerHTML=''; return; }
     var pct = G.total ? Math.round(G.done / G.total * 100) : 0;
     el.innerHTML = '<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px 14px;margin:10px 0;font-size:12px;color:#5B21B6;line-height:1.8">'
       + '<div style="height:8px;background:#EDE9FE;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + pct + '%;background:#7C3AED"></div></div>'
-      + '<b>' + (G.running ? '진행 중' : '종료') + '</b> · ' + G.done + '/' + G.total + ' (' + pct + '%) · 성공 ' + G.ok + ' · 실패 ' + G.fail
+      + (G.running ? '진행 중' : '종료') + ' · ' + G.done + '/' + G.total + ' · 성공 ' + G.ok + ' · 보류 ' + G.fail
+      + (G.running ? ' <button class="btn br" style="font-size:11px;padding:3px 9px;margin-left:8px" onclick="bulkStop()">정지</button>' : '')
       + (msg ? '<br><span style="color:#7C3AED">' + _bwdHesc(msg) + '</span>' : '')
       + (G.failed.length ? '<br><span style="color:#B91C1C">보류: ' + _bwdHesc(G.failed.slice(0,12).join(', ')) + (G.failed.length>12?' 외 ' + (G.failed.length-12) + '개':'') + '</span>' : '')
       + '</div>';
   }
 
-  function bulkPrompt(words){
+  function prompt(words){
     return '다음 영어 단어들의 사전 정보를 JSON 객체 하나로만 반환하세요. 설명·코드펜스 없이 JSON만.\n'
       + '형식: {"단어":{"kr":"뜻1, 뜻2","pos":"품사","ph":"[IPA]","img":"이모지1개","ex5":[{"en":"영어예문","kr":"한국어번역"}],"cefr":"A1~C2","origin":"어원 한 줄","syn":["유의어"],"ant":["반의어"]}}\n'
-      + '규칙:\n'
-      + '- ph: 미국식 IPA, 반드시 대괄호 포함. 예 [ˈæpəl]\n'
-      + '- pos: 명사/동사/형용사/부사/전치사 등 한국어. 여러 개면 가운뎃점(·)으로 연결\n'
+      + '규칙:\n- ph: 미국식 IPA, 반드시 대괄호 포함. 예 [ˈæpəl]\n'
+      + '- pos: 명사/동사/형용사/부사 등 한국어. 여러 개면 가운뎃점(·)으로 연결\n'
       + '- img: 그 단어를 떠올리게 하는 이모지 정확히 1개\n'
       + '- ex5: 그 단어를 포함한 짧은 영어 예문 5개(쉬운 것→어려운 것)와 한국어 번역\n'
       + '- syn/ant: 각 0~4개, 없으면 빈 배열\n'
-      + '- 확실하지 않은 단어는 {"skip":true} 로 표시\n'
+      + '- 확실하지 않은 단어는 {"skip":true}\n'
       + '단어: ' + words.join(', ');
   }
-
   function verify(e){
-    if(!e || typeof e !== 'object') return '형식';
-    if(!e.kr || !String(e.kr).trim()) return '뜻없음';
-    var ph = String(e.ph||'').trim();
-    if(!/^\[.+\]$/.test(ph)) return '발음형식';
-    if(!Array.isArray(e.ex5) || e.ex5.length < 3) return '예문부족';
-    for(var i=0;i<e.ex5.length;i++){ if(!e.ex5[i] || !e.ex5[i].en) return '예문형식'; }
-    if(!e.img || String(e.img).length > 6) return '이모지';
-    return null;
+    if(!e || typeof e !== 'object') return 1;
+    if(!e.kr || !String(e.kr).trim()) return 1;
+    if(!/^\[.+\]$/.test(String(e.ph||'').trim())) return 1;
+    if(!Array.isArray(e.ex5) || e.ex5.length < 3) return 1;
+    for(var i=0;i<e.ex5.length;i++){ if(!e.ex5[i] || !e.ex5[i].en) return 1; }
+    if(!e.img || String(e.img).length > 6) return 1;
+    return 0;
   }
-
   function clean(a){ return (Array.isArray(a)?a:[]).map(function(x){ return String(x||'').trim(); }).filter(Boolean).slice(0,5); }
 
-  async function bulkBatch(batch){
+  async function batchRun(batch){
     var raw;
-    try{ raw = await _aiGenCall(bulkPrompt(batch), bulkStatus); }
-    catch(err){ return {ok:{}, fail:batch.slice()}; }
-    var obj = _aiGenParse(raw);
-    var norm = {}; if(obj) Object.keys(obj).forEach(function(k){ norm[k.toLowerCase().trim()] = obj[k]; });
+    try{ raw = await _aiGenCall(prompt(batch), status); }catch(err){ return {ok:{}, fail:batch.slice()}; }
+    var obj = _aiGenParse(raw), norm = {};
+    if(obj) Object.keys(obj).forEach(function(k){ norm[k.toLowerCase().trim()] = obj[k]; });
     var ok = {}, fail = [];
     batch.forEach(function(w){
       var e = norm[w];
-      if(!e){ fail.push(w); return; }
-      if(e.skip === true){ fail.push(w); return; }
-      if(verify(e)){ fail.push(w); return; }
+      if(!e || e.skip === true || verify(e)){ fail.push(w); return; }
       ok[w] = e;
     });
     return {ok:ok, fail:fail};
@@ -7558,73 +7564,62 @@ function bwdExport(){
   function commit(en, e, krHint){
     var kr = String(e.kr||'').trim() || String(krHint||'').trim();
     var list = e.ex5.slice(0,5).map(function(s,i){ return {t:i+1, en:String(s.en||''), kr:String(s.kr||'')}; });
-    _bwdDict()[en] = {kr:kr, ex:list[0].en, pos:String(e.pos||'')};   D.dict++;
-    PW()[en] = String(e.ph).trim();                                    D.pron++;
-    EX5()[en] = {img:String(e.img), ex5:list};                         D.ex5++;
+    _bwdDict()[en] = {kr:kr, ex:list[0].en, pos:String(e.pos||'')};  D.dict++;
+    PW()[en] = String(e.ph).trim();                                   D.pron++;
+    EX5()[en] = {img:String(e.img), ex5:list};                        D.ex5++;
     MG()[en] = {cefr:String(e.cefr||''), origin:String(e.origin||''), syn:clean(e.syn), ant:clean(e.ant)};  D.meta++;
     if((window.__missWords||[]).some(function(x){ return x.id === en; })) window._bwdResolveQueue.push(en);
   }
 
   window.bulkRegister = async function(){
-    if(G.running){ toast('이미 실행 중이에요','err'); return; }
+    if(G.running) return;
     if(!getGeminiKeys().length){ toast('Gemini API 키가 없습니다','err'); return; }
     var L = window._bulkList.slice();
-    if(!L.length){ toast('대기 목록이 비어 있어요','err'); return; }
-    if(!confirm(L.length + '개를 AI로 일괄 등록할까요?\n(뜻·품사·발음·이모지·예문5개·메타를 채웁니다)')) return;
+    if(!L.length){ toast('등록할 단어가 없어요','err'); return; }
+    if(!confirm(L.length + '개를 AI로 등록할까요?\n뜻·품사·발음·이모지·예문5개·메타를 채웁니다.')) return;
 
     var krMap = {}; L.forEach(function(x){ krMap[x.en] = x.kr; });
     var queue = L.map(function(x){ return x.en; });
-    G.running = true; G.stop = false; G.total = queue.length; G.done = 0; G.ok = 0; G.fail = 0; G.failed = [];
-    var btn = document.getElementById('bulk-run'); if(btn){ btn.disabled = true; btn.textContent = '⏳ 실행 중...'; }
-    bulkStatus('시작');
+    G.running=true; G.stop=false; G.total=queue.length; G.done=0; G.ok=0; G.fail=0; G.failed=[];
+    var btn = document.getElementById('bulk-run'); if(btn){ btn.disabled=true; btn.textContent='⏳ 등록 중...'; }
+    status('시작');
 
-    var BATCH = 6, RETRY = 2, THROTTLE = 3000;
     while(queue.length && !G.stop){
-      var batch = queue.splice(0, BATCH);
-      var pending = batch.slice(), attempt = 0;
-      while(pending.length && attempt <= RETRY && !G.stop){
-        bulkStatus('생성 중: ' + pending.slice(0,4).join(', ') + (pending.length>4 ? ' 외 ' + (pending.length-4) + '개' : ''));
-        var r = await bulkBatch(pending);
+      var batch = queue.splice(0, 6), pending = batch.slice(), attempt = 0;
+      while(pending.length && attempt <= 2 && !G.stop){
+        status(pending.slice(0,4).join(', ') + (pending.length>4 ? ' 외 ' + (pending.length-4) + '개' : ''));
+        var r = await batchRun(pending);
         Object.keys(r.ok).forEach(function(w){
           try{ commit(w, r.ok[w], krMap[w]); G.ok++; G.done++; window._bulkList = window._bulkList.filter(function(x){ return x.en !== w; }); }
           catch(err){ G.fail++; G.done++; G.failed.push(w); }
         });
-        pending = r.fail;
-        attempt++;
-        if(pending.length && attempt <= RETRY && !G.stop) await _aiSleep(THROTTLE);
+        pending = r.fail; attempt++;
+        if(pending.length && attempt <= 2 && !G.stop) await _aiSleep(3000);
       }
       pending.forEach(function(w){ G.fail++; G.done++; G.failed.push(w); });
-      bulkRender(); renderDirty(); bulkStatus('');
-      if(queue.length && !G.stop) await _aiSleep(THROTTLE);
+      bulkRender(); renderDirty(); status('');
+      if(queue.length && !G.stop) await _aiSleep(3000);
     }
 
     G.running = false;
-    if(btn){ btn.disabled = false; btn.textContent = '✨ 대기 목록 일괄 등록'; }
-    bulkStatus(G.stop ? '사용자 정지' : '완료');
+    if(btn){ btn.disabled = false; }
+    status(G.stop ? '정지됨' : '완료');
     bulkRender(); renderDirty();
-    toast('일괄 등록 종료 · 성공 ' + G.ok + ' / 보류 ' + G.fail + ' — 📥 4개 파일 내보내기 후 js/에 업로드하세요', G.ok?'ok':'err');
+    toast('등록 ' + G.ok + '개 · 보류 ' + G.fail + '개 — 📥 사전 파일 내려받기를 누르세요', G.ok?'ok':'err');
   };
 
-  /* ---------- UI 주입 (rDICT 이후) ---------- */
+  /* ---------- UI ---------- */
   function panelHTML(){
     return '<div id="bwd-dirty" style="display:none"></div>'
       + '<div class="card" style="margin-bottom:20px;border:2px solid #C4B5FD"><div style="padding:16px 20px">'
-      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
-        + '<span style="font-weight:800;font-size:15px">✨ 일괄 등록</span>'
-        + '<span style="font-size:11px;color:#9CA3AF">대기 목록에 담고 → 필요 없는 건 🗑 삭제 → 남은 것 한 번에 AI 등록 (뜻·품사·발음·이모지·예문5개·메타)</span>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px">'
+        + '<span style="font-weight:800;font-size:15px">✨ 새 단어 등록</span>'
+        + '<button class="btn bp" id="bulk-run" onclick="bulkRegister()" style="background:#7C3AED">✨ 0개 등록</button>'
       + '</div>'
-      + '<textarea id="bulk-paste" rows="4" placeholder="한 줄에 한 단어. 뜻이 있으면 탭/콤마로 구분&#10;예)&#10;serendipity&#10;ubiquitous, 어디에나 있는" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;line-height:1.6;padding:10px;border:1px solid #E5E7EB;border-radius:10px"></textarea>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'
-        + '<button class="btn bb" onclick="bulkParse()">➕ 목록에 담기</button>'
-        + '<button class="btn bg" onclick="bulkFromMissing()">📥 미등록 알림 전체 담기</button>'
-        + '<button class="btn bgr" onclick="bulkClear()">🗑 목록 비우기</button>'
-        + '<div style="flex:1"></div>'
-        + '<button class="btn bp" id="bulk-run" onclick="bulkRegister()" style="background:#7C3AED">✨ 대기 목록 일괄 등록</button>'
-        + '<button class="btn br" onclick="bulkStop()">⏹ 정지</button>'
-      + '</div>'
+      + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">미등록 단어가 자동으로 채워집니다. 필요 없는 건 🗑 삭제하고 등록을 누르세요.</div>'
+      + '<textarea id="bulk-paste" rows="2" placeholder="단어를 붙여넣으면 아래 목록에 자동 추가됩니다 (한 줄에 하나 · 뜻은 콤마로 구분)" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;line-height:1.6;padding:10px;border:1px solid #E5E7EB;border-radius:10px"></textarea>'
       + '<div id="bulk-status"></div>'
-      + '<div style="margin-top:10px;font-size:12px;color:#6B7280">대기 <b id="bulk-count">0</b>개</div>'
-      + '<div id="bulk-list" style="max-height:320px;overflow:auto;border:1px solid #F3F4F6;border-radius:10px;margin-top:6px"></div>'
+      + '<div id="bulk-list" style="max-height:340px;overflow:auto;border:1px solid #F3F4F6;border-radius:10px;margin-top:10px"></div>'
       + '</div></div>';
   }
 
@@ -7638,17 +7633,30 @@ function bwdExport(){
         var box = document.createElement('div');
         box.innerHTML = panelHTML();
         if(miss) mi.insertBefore(box, miss); else mi.appendChild(box);
+        var ta = document.getElementById('bulk-paste');
+        if(ta){
+          ta.addEventListener('change', bulkAbsorb);
+          ta.addEventListener('blur', bulkAbsorb);
+          ta.addEventListener('paste', function(){ setTimeout(bulkAbsorb, 60); });
+          ta.addEventListener('keydown', function(ev){ if(ev.key==='Enter' && (ev.metaKey||ev.ctrlKey)) bulkAbsorb(); });
+        }
       }
-      // bwd-pron.js 내보내기 버튼 추가
-      if(!document.getElementById('bwd-export-pron')){
-        var anchor = mi && mi.querySelector('button[onclick="bwdExportEx5()"]');
-        if(anchor){
-          var b = document.createElement('button');
-          b.id = 'bwd-export-pron'; b.className = 'btn bg';
-          b.style.background = '#0EA5E9';
-          b.textContent = '🔊 bwd-pron.js 내보내기';
-          b.onclick = function(){ bwdExportPron(); };
-          anchor.parentNode.insertBefore(b, anchor.nextSibling);
+      // 미등록 단어 자동 시딩 후, 중복 카드는 숨김 (로드가 끝났으면 즉시, 아니면 _loadMissDict 훅이 채움)
+      seedMiss();
+      if(miss) miss.style.display = 'none';
+      // 개별 내보내기 버튼 숨기고 통합 버튼 하나만
+      ['bwdExport()','bwdExportEx5()'].forEach(function(oc){
+        var b = mi && mi.querySelector('button[onclick="' + oc + '"]');
+        if(b) b.style.display = 'none';
+      });
+      if(mi && !document.getElementById('bwd-export-all')){
+        var host = mi.querySelector('button[onclick="showMgGen()"]');
+        if(host){
+          var b2 = document.createElement('button');
+          b2.id = 'bwd-export-all'; b2.className = 'btn bg'; b2.style.background = '#0EA5E9';
+          b2.textContent = '📥 사전 파일 내려받기';
+          b2.onclick = function(){ bwdExportAll(); };
+          host.parentNode.insertBefore(b2, host.nextSibling);
         }
       }
       bulkRender(); renderDirty();
@@ -7656,12 +7664,11 @@ function bwdExport(){
     return r;
   };
 
-  /* 단건 등록/AI등록/삭제도 카운터에 반영 */
-  hook('bwdAddEntry', function(){ D.dict++; renderDirty(); });
-  hook('bwdDelEntry', function(){ D.dict++; renderDirty(); });
+  hook('bwdAddEntry',    function(){ D.dict++; renderDirty(); });
+  hook('bwdDelEntry',    function(){ D.dict++; renderDirty(); });
   hook('missAiRegister', function(){ D.dict++; renderDirty(); });
 
-  console.log('[bwd] bulk-register 20260710 loaded');
+  console.log('[bwd] bulk-register-v4 20260710 loaded');
 })();
 </script>
 </body>

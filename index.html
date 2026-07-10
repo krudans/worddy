@@ -1,4 +1,4 @@
-<!-- build: 20260710-chapter-mk-fix -->
+<!-- build: 20260710-book-lock -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2776,6 +2776,7 @@ function _pkOpen(bookName) {
   try {
     const b = (S.books || []).find(x => x && x.name === bookName);
     if (!b) { toast('단어장을 찾을 수 없어요'); return; }
+    if (typeof _bookLocked === 'function' && _bookLocked(b)) { toast('🔒 ' + _bookLockMsg(b)); return; }
     if (!Array.isArray(b.chPass)) b.chPass = new Array(CH_N).fill(false);
     if (typeof switchBook === 'function') switchBook(b.name);
     else if (typeof _selectBook === 'function') _selectBook(b.name);
@@ -10454,6 +10455,7 @@ function _bookColor(name){
   return 'hsl('+h+',66%,46%)';
 }
 function _studyGoalInner(){
+  try{ if(typeof _fixLockedSelection==='function') _fixLockedSelection(); }catch(e){}
   try{ localStorage.setItem('wd-plan-scope', S.currentBook||'내 단어장'); window._planCtx=null; }catch(e){}
   var ctx=window._planCtx=_planScopeData();
   var sel=_planScopeSel();
@@ -10467,7 +10469,7 @@ function _studyGoalInner(){
   var tPct=daily>0?Math.min(100,Math.round(pace.todayMemo/daily*100)):0;
   var B='var(--theme)';
   var open=!!window._planAutoOpen; try{ window._planAutoOpen=false; }catch(e){}
-  var allBooks=[{name:'내 단어장', words:_myBookWords(), markMap:_myBookMM()}].concat((S.books||[]).map(function(b){return {name:b.name, words:getBookWords(b), markMap:b.markMap||{}};}));
+  var allBooks=[{name:'내 단어장', words:_myBookWords(), markMap:_myBookMM()}].concat((S.books||[]).filter(function(b){return !_bookLocked(b);}).map(function(b){return {name:b.name, words:getBookWords(b), markMap:b.markMap||{}};}));
   var cur=S.currentBook||'내 단어장';
   var SC=_bookColor(sel && sel!=='__all__' ? sel : cur);
   var ob=(typeof _orderBooks==='function')?_orderBooks(allBooks):allBooks;
@@ -11085,6 +11087,14 @@ function _reRegisterDefaultGroup(){
 
 // 드롭다운용: 화면 이동 없이 현재 책을 안전하게 전환 (활성 단어 동기화)
 function _selectBook(name) {
+  // 잠긴 코스 단어장은 선택 불가 (앞 권을 마쳐야 열린다)
+  try{
+    var _lb=(S.books||[]).find(function(b){return b && b.name===name;});
+    if(_lb && typeof _bookLocked==='function' && _bookLocked(_lb)){
+      if(typeof toast==='function') toast('🔒 '+_bookLockMsg(_lb));
+      return;
+    }
+  }catch(e){}
   try{ localStorage.setItem('wd-plan-scope', name); window._planCtx=null; }catch(e){}
   // 같은 책 재선택이라도 커리큘럼이면 활성 챕터 스코프를 보정한다(스코프 미설정 상태 방지).
   try{ var _sb=(S.books||[]).find(function(b){return b.name===name;});
@@ -11140,6 +11150,14 @@ function _activeChapterIdx(book){
   }catch(e){ return null; }
 }
 function switchBook(name) {
+  // 잠긴 코스 단어장은 어떤 경로로도 열리지 않는다
+  try{
+    var _lk=(S.books||[]).find(function(b){return b && b.name===name;});
+    if(_lk && typeof _bookLocked==='function' && _bookLocked(_lk)){
+      if(typeof toast==='function') toast('🔒 '+_bookLockMsg(_lk));
+      return;
+    }
+  }catch(e){}
   S._studyChapterIdx=null; // 책 전환 시 챕터 스코프 해제
   try{ var _b=(S.books||[]).find(function(b){return b.name===name;});
     if(_b && _b.isCurriculum){ var _ci=_activeChapterIdx(_b); if(_ci!=null) S._studyChapterIdx=_ci; }
@@ -12698,6 +12716,53 @@ function _curriculumGroupHtml(){
 // ── 담은 코스(팩) 그룹 ──
 // 마켓에서 팩을 담으면 단어장 3권이 한 그룹으로 묶여 보인다.
 // 앞 단어장을 마스터해야 다음이 열린다 (커리큘럼과 같은 규칙).
+// ── 코스 단어장 잠금 판정 ──
+// 팩(코스)에 속한 단어장은 앞 권을 마스터해야 열린다.
+// 단어장 탭·홈 드롭다운·학습 진입 어디서든 같은 규칙을 쓴다.
+function _bookLocked(book) {
+  try {
+    if (!book || !book.packId) return false;
+    const packs = S._marketPacks || [];
+    const pk = packs.find(p => p.id === book.packId);
+    if (!pk || !pk.courseId) return false;
+    const tier = pk.tierIdx || 1;
+    if (tier <= 1) return false;
+    // 앞 단계 팩을 찾아 그 단어장이 마스터됐는지 본다
+    const prevPk = packs.find(p => p.courseId === pk.courseId && (p.tierIdx || 0) === tier - 1);
+    if (!prevPk) return false;
+    const prevBook = (S.books || []).find(b => b && b.packId === prevPk.id);
+    if (!prevBook) return true;               // 앞 권을 아직 안 담았으면 잠김
+    return !_bookMastered(prevBook);
+  } catch (e) { return false; }
+}
+
+// 현재 선택된 단어장이 잠겼으면 '내 단어장'으로 되돌린다
+// (팩을 담기만 하고 앞 권을 안 끝낸 채 뒤 권이 선택돼 있던 경우)
+function _fixLockedSelection() {
+  try {
+    const cur = S.currentBook;
+    if (!cur || cur === '내 단어장') return false;
+    const b = (S.books || []).find(x => x && x.name === cur);
+    if (!b || !_bookLocked(b)) return false;
+    S.currentBook = '내 단어장';
+    S._studyChapterIdx = null;
+    try { localStorage.setItem('wd-plan-scope', '내 단어장'); window._planCtx = null; } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+
+// 잠긴 이유 문구
+function _bookLockMsg(book) {
+  try {
+    const packs = S._marketPacks || [];
+    const pk = packs.find(p => p.id === book.packId);
+    if (!pk) return '아직 열리지 않았어요';
+    const prevPk = packs.find(p => p.courseId === pk.courseId && (p.tierIdx || 0) === (pk.tierIdx || 1) - 1);
+    const nm = prevPk ? (prevPk.tierLabel || prevPk.name) : '앞 단어장';
+    return `${nm}을(를) 먼저 마쳐야 열려요`;
+  } catch (e) { return '아직 열리지 않았어요'; }
+}
+
 function _ownedCourses() {
   const packs = S._marketPacks || [];
   // 초·중·고는 '기본 제공' 그룹에서 이미 보여주므로 코스 그룹에서 제외한다
@@ -12886,6 +12951,7 @@ function selectBookAndLearn(bookName) {
 }
 
 function rStudyMode() {
+  try{ if(typeof _fixLockedSelection==='function') _fixLockedSelection(); }catch(e){}
   const bookName = S.currentBook || '내 단어장';
   const allBooks = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;

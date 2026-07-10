@@ -1,5 +1,8 @@
 /* Butterfly Word — bwd-meta-2.js (개념별 BWD_META: cefr/origin/syn/ant · 분할 2/2 · 자동생성) */
 window.BWD_META = Object.assign(window.BWD_META||{}, {
+  "koreans": {cefr:"A1",syn:[],ant:[]},
+  "kosher": {cefr:"B2",origin:"히브리어 kasher(적합한)에서",syn:["pure","clean"],ant:["treif"]},
+  "kosovo": {cefr:"A2",syn:[],ant:[]},
   "kowloon": {cefr:"B1",syn:[],ant:[]},
   "kpop": {cefr:"A2",syn:["korean pop"],ant:[]},
   "kraken": {cefr:"C1",origin:"노르웨이어 krake(뒤틀린 나무/괴물)에서",syn:["sea monster","beast"],ant:[]},
@@ -5933,6 +5936,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "pleasures": {cefr:"B1",origin:"라틴어 placere(기쁘게 하다)에서 유래",syn:["delights","enjoyments"],ant:["displeasures","pains"]},
   "pleat": {cefr:"C1",origin:"고대 프랑스어 plier(접다)에서",syn:["fold","tuck"],ant:[]},
   "pleated": {cefr:"C1",origin:"고대 프랑스어 plier(접다)에서",syn:["folded","tucked"],ant:[]},
+  "plebeian": {cefr:"C1",origin:"From Latin 'plebeius', from 'plebs' (the common people).",syn:["common","lowborn","vulgar"],ant:["aristocratic","noble","patrician"]},
   "plebiscite": {cefr:"C2",origin:"라틴어 plebs(평민)와 scitum(결정)에서",syn:["referendum","vote"],ant:[]},
   "pledge": {cefr:"B2",origin:"중세 영어 plege(보증)에서",syn:["promise","vow","oath"],ant:[]},
   "pledged": {cefr:"B2",origin:"중세 영어 plege(보증)에서",syn:["promised","vowed","swore"],ant:[]},
@@ -10691,6 +10695,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "serenely": {cefr:"C1",origin:"라틴어 serenus(맑은)에서 유래",syn:["calmly","peacefully"],ant:["anxiously"]},
   "serengeti": {cefr:"B2",origin:"마사이어 siringet(끝없는 평원)에서",syn:[],ant:[]},
   "serenity": {cefr:"C1",origin:"라틴어 serenitas(맑음)에서",syn:["calmness","peace","tranquility"],ant:["agitation"]},
+  "serfdom": {cefr:"C1",origin:"From 'serf' + 'dom' (state of being).",syn:["bondage","servitude","slavery"],ant:["freedom"]},
   "serge": {cefr:"C2",origin:"그리스어 serikos(비단의)에서",syn:["fabric","cloth"],ant:[]},
   "sergeant": {cefr:"B1",origin:"라틴어 serviens(봉사하는)에서",syn:["officer","nco"],ant:[]},
   "sergeants": {cefr:"B1",origin:"라틴어 serviens(봉사하는)에서",syn:["officers","ncos"],ant:[]},

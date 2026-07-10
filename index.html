@@ -1,4 +1,4 @@
-<!-- build: 20260710-banner-c-list -->
+<!-- build: 20260710-course-group -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -12695,6 +12695,40 @@ function _curriculumGroupHtml(){
       + rows + footer + '</div>';
   }catch(e){ return ''; }
 }
+// ── 담은 코스(팩) 그룹 ──
+// 마켓에서 팩을 담으면 단어장 3권이 한 그룹으로 묶여 보인다.
+// 앞 단어장을 마스터해야 다음이 열린다 (커리큘럼과 같은 규칙).
+function _ownedCourses() {
+  const packs = S._marketPacks || [];
+  // 초·중·고는 '기본 제공' 그룹에서 이미 보여주므로 코스 그룹에서 제외한다
+  const DEF = (typeof _defGroupPacks === 'function') ? _defGroupPacks() : ['초등학교_8129','중학생_단어_3982','고등학생_수준_단어_7519'];
+  const owned = (S.books || []).filter(b => b && b.packId && !DEF.includes(b.packId));
+  const map = {};
+  owned.forEach(b => {
+    const pk = packs.find(p => p.id === b.packId);
+    if (!pk || !pk.courseId) return;
+    const c = map[pk.courseId] || (map[pk.courseId] = {
+      id: pk.courseId,
+      name: pk.courseName || pk.name,
+      emoji: pk.courseEmoji || '📚',
+      order: pk.courseOrder || 99,
+      total: pk.tierTotal || 3,
+      books: []
+    });
+    c.books.push({ book: b, pack: pk, tier: pk.tierIdx || 1 });
+  });
+  const list = Object.values(map);
+  list.forEach(c => c.books.sort((a, b) => a.tier - b.tier));
+  return list.sort((a, b) => a.order - b.order);
+}
+
+// 코스 안에서 이 단어장이 열렸는가 — 앞 권을 마스터해야 열린다
+function _courseBookUnlocked(c, idx) {
+  if (idx === 0) return true;
+  const prev = c.books[idx - 1];
+  return !!(prev && _bookMastered(prev.book));
+}
+
 function rStudyBooks() {
   const DEFGRP = (typeof _defGroupPacks==='function') ? _defGroupPacks() : ['초등학교_8129','중학생_단어_3982','고등학생_수준_단어_7519'];
   const books = S.books||[];
@@ -12776,14 +12810,59 @@ function rStudyBooks() {
   // ② 내 단어장 (내 단어장 + 사용자 제작) + 새 단어장
   const myRows=[_row(myOpts,true)].concat(myMadeBooks.map(bk=>_row(_bookOpts(bk),false))).join('');
   const g2=_groupCard('📝','내 단어장','', myRows, _addRow("showBooksModal&&showBooksModal()", '새 단어장 만들기', true));
-  // ③ 마켓 단어장 + 마켓에서 가져오기
-  let g3;
-  const mktAdd=_addRow("S.stab='market';go('mybooks','market')", '마켓에서 가져오기', marketBooks.length>0);
-  if(marketBooks.length){
-    g3=_groupCard('🛒','마켓 단어장','', marketBooks.map((bk,i)=>_row(_bookOpts(bk),i===0)).join(''), mktAdd);
-  } else {
-    g3=_groupCard('🛒','마켓 단어장','', _emptyNote('아직 가져온 마켓 단어장이 없어요'), mktAdd);
+  // ③ 담은 코스(팩) — 팩 하나가 그룹 하나
+  const _oc = (typeof _ownedCourses==='function') ? _ownedCourses() : [];
+  const _ocIds = _oc.reduce((a,c)=>a.concat(c.books.map(x=>x.book.packId)),[]);
+  const looseMarket = marketBooks.filter(b=>!_ocIds.includes(b.packId));
+
+  function _courseGroupRow(c, o, i){
+    const bk=o.book, pk=o.pack;
+    const bw=getBookWords(bk)||[];
+    const bm=bw.filter(w=>(bk.markMap||{})[_mk(w.en)]===1).length;
+    const bp=bw.length?Math.min(100,Math.round(bm/bw.length*100)):0;
+    const chN=(typeof _chapterCount==='function')?_chapterCount(bk):5;
+    const chPass=(bk.chPass||[]).filter(Boolean).length;
+    const unlocked=_courseBookUnlocked(c,i);
+    const sn=String(bk.name).replace(/'/g,"\\'");
+    const border = i===0?'':'border-top:1px solid var(--border,#ECEEF1)';
+
+    if(!unlocked){
+      return '<div style="display:flex;align-items:center;gap:11px;padding:11px 2px;opacity:.45;'+border+'">'
+        +'<div style="width:30px;height:30px;border-radius:9px;background:var(--bg-sub,#F3F4F6);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🔒</div>'
+        +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text1,#1F2937)">'+(pk.tierLabel||bk.name)+'</div>'
+        +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">앞 단어장을 마치면 열려요</div></div></div>';
+    }
+    const ring='<div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(var(--theme,#475569) '+(bp*3.6)+'deg, var(--bg-sub,#EDE7D6) 0);display:flex;align-items:center;justify-content:center;flex-shrink:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-card,#fff);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--text1,#1F2937)">'+bp+'%</div></div>';
+    return '<div onclick="_pkOpen(\''+sn+'\')" style="display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer;'+border+'">'
+      +'<div style="width:30px;height:30px;border-radius:9px;background:var(--theme,#475569);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">'+(i+1)+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text1,#1F2937);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(pk.tierLabel||bk.name)+'</div>'
+      +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">외운 '+bm+'/'+bw.length+' · 🦋 '+chPass+'/'+chN+'</div></div>'
+      +ring
+      +'<span onclick="event.stopPropagation();showBookMenu&&showBookMenu(\''+sn+'\',\'extra\')" style="font-size:16px;color:#B8AE96;padding:4px 2px 4px 4px;cursor:pointer;flex-shrink:0">⋯</span>'
+    +'</div>';
   }
+
+  const courseCards = _oc.map(function(c){
+    const rows=c.books.map((o,i)=>_courseGroupRow(c,o,i)).join('');
+    const have=c.books.length, all=c.total;
+    const badge = have<all ? (have+'/'+all+'권') : '팩';
+    const more = have<all
+      ? '<div onclick="S._pkDetail=\''+c.id+'\';go(\'mybooks\',\'detail\')" style="display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer;border-top:1px solid var(--border,#ECEEF1)"><span style="font-size:18px;width:30px;text-align:center;color:var(--theme,#475569);flex-shrink:0">＋</span><div style="flex:1;font-size:13px;font-weight:700;color:var(--theme,#475569)">나머지 '+(all-have)+'권 담기</div><span style="color:#B8AE96;flex-shrink:0">›</span></div>'
+      : '';
+    return _groupCard(c.emoji, c.name, badge, rows, more);
+  }).join('');
+
+  // ④ 코스에 속하지 않은 마켓 단어장 (도서·드라마)
+  let g3;
+  const mktAdd=_addRow("S.stab='market';go('mybooks','market')", '마켓에서 가져오기', looseMarket.length>0);
+  if(looseMarket.length){
+    g3=_groupCard('🛒','마켓 단어장','', looseMarket.map((bk,i)=>_row(_bookOpts(bk),i===0)).join(''), mktAdd);
+  } else if(!_oc.length){
+    g3=_groupCard('🛒','마켓 단어장','', _emptyNote('아직 가져온 마켓 단어장이 없어요'), mktAdd);
+  } else {
+    g3=_groupCard('🛒','마켓 단어장','', '', mktAdd);
+  }
+  g3 = courseCards + g3;
 
   let html = '<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA)">';
   html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';

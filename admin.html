@@ -3924,73 +3924,210 @@ async function saveNewPack() {
 }
 
 // 팩 수정
+// ════════════════════════════════════════════════════════════
+// 단어장 수정 (A형 · 단일 컬럼)
+// 자주 고치는 것 → 드물게 고치는 것 순서.
+// 코스 소속이면 카테고리는 코스가 정하므로 잠근다.
+// 한 줄 소개·구성 기준은 코스 3권이 함께 쓰므로 [팩 문구]로 넘긴다.
+// ════════════════════════════════════════════════════════════
 function showEditPack(packId) {
-  const packs=window._adminPacks||(typeof WORD_PACKS!=="undefined"?WORD_PACKS:[]);
-  const p=packs.find(x=>x.id===packId);
-  if(!p) return;
-  const cats = window._adminCats||['📺 영미드라마','💬 회화·표현','🎯 주제별','✏️ 시험대비','📚 수준별','📖 도서'];
-  const catOpts = cats.map(c=>'<option '+(p.cat===c?'selected':'')+'>'+c+'</option>').join('')+'<option value="__new__">직접 입력...</option>';
-  const imgHtml = p.imageUrl
-    ? '<img id="ep-img-prev" src="'+p.imageUrl+'" style="width:70px;height:70px;object-fit:cover;border-radius:12px;border:2px solid #1E5FA5">'
-    : '<div id="ep-img-prev" style="width:70px;height:70px;border-radius:12px;border:2px dashed #E5E7EB;display:flex;align-items:center;justify-content:center;font-size:32px">'+(p.emoji||'📚')+'</div>';
-  const pid = packId;
-  document.getElementById('ma').innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">'
-    +'<div class="mt">✏️ 팩 수정: '+p.name+'</div>'
-    +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">'
-      +'<div style="flex-shrink:0;text-align:center">'+imgHtml
-        +'<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">'
-          +'<input type="file" id="ep-file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="pkImgUpload(this,\'ep-img-prev\',\'ep-imageUrl\')">'
-          +'<button type="button" onclick="document.getElementById(\'ep-file\').click()" style="background:#EFF6FF;color:#1E5FA5;border:none;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer">📷 이미지 교체</button>'
-          +'<button onclick="pkImgClear(\'ep-img-prev\',\'ep-imageUrl\',(window._adminPacks||[]).find(x=>x.id==\''+pid+'\')?.emoji||\'\uD83D\uDCDA\')" style="background:#FEF2F2;color:#DC2626;border:none;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer">🗑 제거</button>'
-        +'</div>'
-      +'</div>'
-      +'<div style="flex:1">'
-        +'<div class="fg" style="margin-bottom:8px"><label>팩 이름</label><input id="ep-name" value="'+p.name+'"></div>'
-        +'<div class="fg"><label>이모지 (이미지 없을 때)</label><input id="ep-emoji" value="'+(p.emoji||'📚')+'" style="font-size:20px;text-align:center"></div>'
-      +'</div>'
-    +'</div>'
-    +'<input type="hidden" id="ep-imageUrl" value="'+(p.imageUrl||'')+'">'
-    +'<div class="fg" style="margin-bottom:10px"><label>카테고리</label>'
-      +'<div style="display:flex;gap:6px">'
-        +'<select id="ep-cat" onchange="document.getElementById(\'ep-cat-new\').style.display=this.value===\'__new__\'?\'block\':\'none\'" style="flex:1">'+catOpts+'</select>'
-        +'<input id="ep-cat-new" placeholder="새 카테고리" style="flex:1;display:none;padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none">'
-      +'</div></div>'
-    +'<div style="background:#F8F9FA;border-radius:10px;padding:12px 13px;margin-bottom:10px">'
-      +'<div style="font-size:11.5px;font-weight:800;color:#374151;margin-bottom:8px">🛒 마켓 카드 문구</div>'
-      +'<div class="fg" style="margin-bottom:8px"><label>한 줄 소개 <span style="font-weight:400;color:#9CA3AF;font-size:11px">무엇을 배우는 팩인지</span></label>'
-        +'<input id="ep-desc" oninput="epPreview()" placeholder="수능 지문의 토대가 되는 기초 1,000단어" value="'+esc(p.desc||'')+'"></div>'
-      +'<div class="fg" style="margin-bottom:10px"><label>구성 기준 <span style="font-weight:400;color:#9CA3AF;font-size:11px">어떤 근거로 이 단어들을 골랐는지</span></label>'
-        +'<input id="ep-basis" oninput="epPreview()" placeholder="교육부 2022 개정 교육과정 [별표 3] 기본어휘 · 초등 권장 800" value="'+esc(p.basis||'')+'"></div>'
-      +'<div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">미리보기</div>'
-      +'<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:12px;padding:11px 13px;display:flex;gap:11px;align-items:center">'
-        +'<div style="font-size:30px">'+(p.emoji||'📚')+'</div>'
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="font-size:13.5px;font-weight:800;color:#111">'+esc(p.name)+'</div>'
-          +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">'+esc(p.cat||'기타')+' · '+((p.words||[]).length)+'개 단어</div>'
-          +'<div id="ep-pv-desc" style="font-size:11px;color:#374151;margin-top:3px;font-weight:600;line-height:1.4">'+esc(p.desc||'')+'</div>'
-          +'<div id="ep-pv-basis" style="font-size:9.5px;color:#3B82F6;margin-top:3px">'+(p.basis?('📐 '+esc(p.basis)):'')+'</div>'
-        +'</div>'
-        +'<div style="background:#3B82F6;color:#fff;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:700">+ 담기</div>'
-      +'</div>'
-    +'</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-      +'<div class="fg"><label>목표 단어 수</label><input id="ep-count" type="number" value="'+(p.count||100)+'"></div>'
-      +'<div class="fg"><label>마켓 노출</label><select id="ep-active"><option value="true" '+(p.active!==false?'selected':'')+'>\u2705 활성</option><option value="false" '+(p.active===false?'selected':'')+'>\uD83D\uDEAB 비활성</option></select></div>'
-    +'</div>'
-    +'<div style="display:flex;gap:12px;margin-bottom:14px">'
-      +'<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ep-popular" '+(p.isPopular?'checked':'')+'>\uD83D\uDD25 인기</label>'
-      +'<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ep-new" '+(p.addedAt?'checked':'')+'>\u2728 NEW</label>'
-    +'</div>'
-    +'<div style="display:flex;gap:8px">'
-      +'<button class="btn bb" onclick="saveEditPack(\''+pid+'\')" style="flex:1">저장</button>'
-      +'<button class="btn bgr" onclick="cm()">취소</button>'
-    +'</div>'
-  +'</div></div>';
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === packId);
+  if (!p) return;
+
+  const course = p.courseId ? _adminCourses(packs).find(c => c.id === p.courseId) : null;
+  const words = p.words || [];
+  const ch = _bookChapters(p);
+  const chSize = ch ? Math.ceil(words.length / ch) : 0;
+
+  const cats = (window._adminCats || []).filter(c => c !== '🎯 목표별 코스');
+  const catOpts = cats.map(c => `<option ${p.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')
+    + '<option value="__new__">직접 입력...</option>';
+
+  const thumb = p.imageUrl
+    ? `<img id="ep-img-prev" src="${p.imageUrl}" style="width:62px;height:62px;object-fit:cover;border-radius:14px;border:1.5px solid #E8EBEF">`
+    : `<div id="ep-img-prev" style="width:62px;height:62px;border-radius:14px;border:1.5px dashed #E8EBEF;background:#F8FAFB;display:flex;align-items:center;justify-content:center;font-size:28px">${p.emoji || '📚'}</div>`;
+
+  const sw = (id, on, lb, ds) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #F2F4F6">
+      <div><div style="font-size:12px;font-weight:700">${lb}</div>
+        <div style="font-size:10.5px;color:#94A3B8;margin-top:1px">${ds}</div></div>
+      <div id="${id}" data-on="${on ? 1 : 0}" onclick="epToggle('${id}')" style="width:40px;height:23px;border-radius:20px;position:relative;cursor:pointer;flex-shrink:0;transition:.15s;background:${on ? '#16A34A' : '#DDE2E8'}">
+        <div style="position:absolute;top:2.5px;left:${on ? '19px' : '2.5px'};width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div>
+      </div></div>`;
+
+  document.getElementById('ma').innerHTML = `<div class="mbg" onclick="cm()">
+    <div class="modal" onclick="event.stopPropagation()" style="padding:0;max-width:520px;width:94vw;max-height:90vh;display:flex;flex-direction:column">
+
+      <div style="padding:15px 20px;border-bottom:1px solid #E8EBEF;display:flex;align-items:center;flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10.5px;color:#94A3B8">${course ? `${course.emoji} ${esc(course.name)} › 단어장 ${p.tierIdx || ''}` : esc(p.cat || '낱개 단어장')}</div>
+          <div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-top:1px">${esc(p.tierLabel || p.name)}</div>
+        </div>
+        <button onclick="cm()" style="background:none;border:none;font-size:18px;color:#94A3B8;cursor:pointer">✕</button>
+      </div>
+
+      <div style="padding:18px 20px;overflow-y:auto">
+        <input type="hidden" id="ep-imageUrl" value="${p.imageUrl || ''}">
+
+        <!-- 단어장 -->
+        <div style="margin-bottom:22px">
+          <div style="font-size:10px;font-weight:800;color:#94A3B8;letter-spacing:.5px;margin-bottom:10px">단어장</div>
+          <div style="display:flex;gap:13px;align-items:center;margin-bottom:12px">
+            ${thumb}
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <input type="file" id="ep-file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="pkImgUpload(this,'ep-img-prev','ep-imageUrl')">
+              <button type="button" onclick="document.getElementById('ep-file').click()" style="background:none;border:none;color:#1E5FA5;font-size:10.5px;font-weight:700;cursor:pointer;padding:0;text-align:left">이미지 올리기</button>
+              ${p.imageUrl ? `<button onclick="pkImgClear('ep-img-prev','ep-imageUrl','${esc(p.emoji || '📚')}')" style="background:none;border:none;color:#DC2626;font-size:10.5px;font-weight:700;cursor:pointer;padding:0;text-align:left">이미지 제거</button>` : ''}
+              <input id="ep-emoji" value="${esc(p.emoji || '📚')}" style="width:74px;padding:5px;border:1.5px solid #E8EBEF;border-radius:8px;font-size:15px;text-align:center;outline:none">
+            </div>
+          </div>
+          <div class="fg">
+            <label>이름</label>
+            <input id="ep-name" value="${esc(p.tierLabel || p.name)}">
+            ${course ? `<div style="font-size:10px;color:#94A3B8;margin-top:4px">마켓에서는 <b>${esc(course.name)} › ${esc(p.tierLabel || p.name)}</b> 로 보입니다</div>` : ''}
+          </div>
+        </div>
+
+        <!-- 소속 -->
+        <div style="margin-bottom:22px">
+          <div style="font-size:10px;font-weight:800;color:#94A3B8;letter-spacing:.5px;margin-bottom:10px">소속</div>
+          ${course ? `
+            <div style="background:#F8FAFB;border:1px solid #E8EBEF;border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:10px">
+              <div style="font-size:20px">${course.emoji}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:800">${esc(course.name)} · ${p.tierIdx || 1}단계</div>
+                <div style="font-size:10.5px;color:#94A3B8;margin-top:1px">🎯 목표별 코스 · ${words.length.toLocaleString()}단어 · ${chSize}단어씩 ${ch}챕터</div>
+              </div>
+              <span style="font-size:10px;color:#94A3B8">🔒 코스에서 관리</span>
+            </div>
+            <div style="font-size:10px;color:#94A3B8;margin-top:7px;line-height:1.6">
+              한 줄 소개와 구성 기준은 코스 ${course.books.length}권이 함께 씁니다 →
+              <button onclick="cm();showCoursCopy('${course.id}')" style="background:none;border:none;color:#1E5FA5;font-size:10.5px;font-weight:700;cursor:pointer;padding:0">팩 문구 편집</button>
+            </div>
+            <div style="font-size:10px;color:#94A3B8;margin-top:5px">
+              코스에서 빼려면 <button onclick="epUncourse('${p.id}')" style="background:none;border:none;color:#B45309;font-size:10.5px;font-weight:700;cursor:pointer;padding:0">낱개 단어장으로</button>
+            </div>
+          ` : `
+            <div class="fg" style="margin-bottom:10px">
+              <label>카테고리</label>
+              <div style="display:flex;gap:6px">
+                <select id="ep-cat" onchange="document.getElementById('ep-cat-new').style.display=this.value==='__new__'?'block':'none'" style="flex:1">${catOpts}</select>
+                <input id="ep-cat-new" placeholder="새 카테고리" style="flex:1;display:none">
+              </div>
+            </div>
+            <div style="background:#F8FAFB;border-radius:10px;padding:11px 13px">
+              <div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:8px">🛒 마켓 카드 문구</div>
+              <div class="fg" style="margin-bottom:8px">
+                <label>한 줄 소개 <span style="font-weight:400;color:#94A3B8;font-size:10.5px">무엇을 배우는 단어장인지</span></label>
+                <input id="ep-desc" oninput="epPreview()" value="${esc(p.desc || '')}" placeholder="원서를 읽어내는 어휘 873개">
+              </div>
+              <div class="fg">
+                <label>구성 기준 <span style="font-weight:400;color:#94A3B8;font-size:10.5px">어떤 근거로 골랐는지</span></label>
+                <input id="ep-basis" oninput="epPreview()" value="${esc(p.basis || '')}" placeholder="원서 본문 빈도 분석">
+              </div>
+            </div>
+          `}
+        </div>
+
+        <!-- 마켓 노출 -->
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#94A3B8;letter-spacing:.5px;margin-bottom:2px">마켓 노출</div>
+          ${sw('ep-active', p.active !== false, '마켓에 보이기', '끄면 이미 담은 사람만 학습합니다')}
+          ${sw('ep-popular', !!p.isPopular, '🔥 인기', '배너에 인기 배지')}
+          ${sw('ep-new', !!p.addedAt, '✨ NEW', '배너에 신규 배지')}
+        </div>
+      </div>
+
+      <div style="padding:12px 20px;border-top:1px solid #E8EBEF;display:flex;gap:8px;align-items:center;flex-shrink:0">
+        <button class="btn bgr" style="font-size:11px;padding:7px 11px" onclick="cm();deletePack('${p.id}')">단어장 삭제</button>
+        <span style="flex:1"></span>
+        <button class="btn bgr" onclick="cm()">취소</button>
+        <button class="btn bb" onclick="saveEditPack('${p.id}')">저장</button>
+      </div>
+    </div></div>`;
 }
 
+function epToggle(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const on = el.dataset.on === '1';
+  el.dataset.on = on ? '0' : '1';
+  el.style.background = on ? '#DDE2E8' : '#16A34A';
+  el.firstElementChild.style.left = on ? '2.5px' : '19px';
+}
+function _epOn(id) {
+  const el = document.getElementById(id);
+  return el ? el.dataset.on === '1' : false;
+}
 
+// 코스에서 빼기 — 단어는 그대로, 낱개 단어장이 된다
+async function epUncourse(packId) {
+  const p = (window._adminPacks || []).find(x => x.id === packId);
+  if (!p) return;
+  if (!confirm(`"${p.tierLabel || p.name}" 을(를) 코스에서 뺍니다.\n\n단어 ${(p.words || []).length}개는 그대로 남고 낱개 단어장이 됩니다.\n계속할까요?`)) return;
+  try {
+    const D = firebase.firestore.FieldValue.delete();
+    await db.collection('packs').doc(packId).update({
+      courseId: D, courseName: D, courseEmoji: D, courseDesc: D, courseBasis: D,
+      courseOrder: D, tierIdx: D, tierLabel: D, tierTotal: D, categoryOrder: D, category: D,
+      cat: '📚 수준별', updatedAt: Date.now()
+    });
+    cm();
+    toast('✅ 낱개 단어장으로 옮겼습니다', 'ok');
+    rPK();
+  } catch (e) { toast('실패: ' + e.message, 'err'); }
+}
 
-// 팩 수정 화면 — 마켓 카드 문구 실시간 미리보기
+async function saveEditPack(packId) {
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === packId);
+  if (!p) return;
+
+  const name = (document.getElementById('ep-name') || {}).value;
+  const emoji = (document.getElementById('ep-emoji') || {}).value;
+  const patch = { updatedAt: Date.now() };
+
+  if (emoji) patch.emoji = emoji.trim();
+  if (name && name.trim()) {
+    if (p.courseId) patch.tierLabel = name.trim();     // 코스 안 단어장은 단계 이름
+    else patch.name = name.trim();
+  }
+
+  // 카테고리·문구는 낱개 단어장에서만
+  if (!p.courseId) {
+    const catSel = (document.getElementById('ep-cat') || {}).value;
+    const catNew = ((document.getElementById('ep-cat-new') || {}).value || '').trim();
+    if (catSel === '__new__' && catNew) {
+      patch.cat = catNew;
+      if (!(window._adminCats || []).includes(catNew)) {
+        window._adminCats = [...(window._adminCats || []), catNew];
+        db.collection('config').doc('pack_categories').set({ cats: window._adminCats }, { merge: true }).catch(() => {});
+      }
+    } else if (catSel) patch.cat = catSel;
+    patch.desc = (document.getElementById('ep-desc') || {}).value || '';
+    patch.basis = (document.getElementById('ep-basis') || {}).value || '';
+  }
+
+  patch.active = _epOn('ep-active');
+  patch.isPopular = _epOn('ep-popular');
+  patch.addedAt = _epOn('ep-new') ? (p.addedAt || new Date().toISOString().slice(0, 10)) : null;
+
+  const imgUrl = ((document.getElementById('ep-imageUrl') || {}).value || '').trim();
+  if (imgUrl) patch.imageUrl = imgUrl;
+  else if (p.imageUrl) patch.imageUrl = firebase.firestore.FieldValue.delete();
+
+  try {
+    await db.collection('packs').doc(packId).update(patch);
+    Object.assign(p, patch);
+    if (patch.imageUrl && patch.imageUrl.constructor !== String) delete p.imageUrl;
+    cm();
+    toast('✅ 저장했습니다', 'ok');
+    rPK();
+  } catch (e) {
+    toast('저장 실패: ' + e.message, 'err');
+  }
+}
+
 function epPreview() {
   const d = (document.getElementById('ep-desc') || {}).value || '';
   const b = (document.getElementById('ep-basis') || {}).value || '';
@@ -4000,287 +4137,7 @@ function epPreview() {
   if (pb) pb.textContent = b ? ('📐 ' + b) : '';
 }
 
-async function saveEditPack(packId) {
-  const packs=window._adminPacks||(typeof WORD_PACKS!=="undefined"?WORD_PACKS:[]);
-  const p=packs.find(x=>x.id===packId);
-  if(!p) return;
-  p.emoji = document.getElementById('ep-emoji')?.value||p.emoji;
-  p.name = document.getElementById('ep-name')?.value.trim()||p.name;
-  const catSel = document.getElementById('ep-cat')?.value;
-  const catNew = document.getElementById('ep-cat-new')?.value.trim();
-  p.cat = (catSel==='__new__' && catNew) ? catNew : (catSel||p.cat);
-  p.desc = document.getElementById('ep-desc')?.value||p.desc;
-  p.basis = document.getElementById('ep-basis')?.value ?? (p.basis||'');
-  p.count = +(document.getElementById('ep-count')?.value||p.count);
-  p.isPopular = document.getElementById('ep-popular')?.checked||false;
-  p.addedAt = document.getElementById('ep-new')?.checked ? (p.addedAt||new Date().toISOString().slice(0,10)) : null;
-  p.active = document.getElementById('ep-active')?.value !== 'false';
-  const imgUrl = document.getElementById('ep-imageUrl')?.value.trim();
-  if(imgUrl) p.imageUrl = imgUrl; else delete p.imageUrl;
-  if(catSel==='__new__' && catNew && !(window._adminCats||[]).includes(catNew)) {
-    window._adminCats = [...(window._adminCats||[]), catNew];
-    db.collection('config').doc('pack_categories').set({cats:window._adminCats},{merge:true}).catch(()=>{});
-  }
-  try {
-    await db.collection('packs').doc(packId).set({...p, updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    toast('✅ "'+p.name+'" 수정 완료!','ok');
-  } catch(e) { toast('저장 오류: '+e.message,'err'); }
-  cm(); rPK();
-}
-
-// 팩 삭제
-async function deletePack(packId) {
-  if(typeof db==='undefined'||!db) { toast('Firebase 연결 중입니다. 잠시 후 다시 시도해주세요','err'); return; }
-  const packs = window._adminPacks||[];
-  const p = packs.find(x=>x.id===packId);
-  const packName = p ? p.name : packId;
-  const wordCount = p ? (p.words?.length||0) : 0;
-
-  // confirm 대신 커스텀 모달
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
-  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:360px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-    <div style="font-size:32px;margin-bottom:12px">🗑️</div>
-    <div style="font-size:17px;font-weight:800;margin-bottom:8px">"${packName}" 삭제</div>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:24px">단어 ${wordCount}개가 모두 삭제됩니다.<br>이 작업은 되돌릴 수 없습니다.</div>
-    <div style="display:flex;gap:10px">
-      <button id="_del_cancel" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button id="_del_confirm" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-  document.getElementById('_del_cancel').onclick = () => overlay.remove();
-  document.getElementById('_del_confirm').onclick = async () => {
-    overlay.remove();
-    try {
-      console.log('[삭제] 시작:', packId, packName);
-      await db.collection('packs').doc(packId).delete();
-      // 삭제된 팩 ID를 config에 기록
-      try {
-        const delRef = db.collection('config').doc('deleted_packs');
-        const delDoc = await delRef.get();
-        const existingIds = delDoc.exists ? (delDoc.data()?.ids || []) : [];
-        if(!existingIds.includes(packId)) {
-          await delRef.set({ ids: [...existingIds, packId] });
-        }
-      } catch(e2) { console.warn('deleted_packs 기록 실패:', e2.message); }
-      console.log('[삭제] Firebase 완료');
-      const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
-      if(i>=0) window._adminPacks.splice(i,1);
-      toast('✅ "'+packName+'" 삭제 완료','ok');
-      rPK();
-    } catch(e) {
-      console.error('[삭제] 실패:', e.code, e.message);
-      if(e.code==='permission-denied') toast('권한 없음: 관리자 계정으로 로그인해주세요','err');
-      else if(e.code==='not-found') {
-        const i = window._adminPacks ? window._adminPacks.findIndex(x=>x.id===packId) : -1;
-        if(i>=0) window._adminPacks.splice(i,1);
-        toast('Firebase에 없어 목록에서만 제거했어요','ok');
-        rPK();
-      }
-      else { toast('삭제 오류: '+e.message,'err'); }
-    }
-  };
-}
-async function generateExamples(packId) {
-  const packs = window._adminPacks||[];
-  const p = packs.find(x=>x.id===packId);
-  if(!p||!p.words||!p.words.length){ toast('단어가 없어요','err'); return; }
-  const total = p.words.length;
-
-  // Gemini API 키 확인 - 없으면 입력 모달
-  let apiKey = getGeminiKey();
-  if(!apiKey) {
-    const _overlay = document.createElement('div');
-    _overlay.id = '_gemini_key_overlay';
-    _overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20000;display:flex;align-items:center;justify-content:center';
-    _overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:400px;width:90%" onclick="event.stopPropagation()">
-      <div style="font-size:17px;font-weight:800;margin-bottom:8px">🔑 Gemini API 키 입력</div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:14px">예문 생성에 필요합니다. 한 번 입력하면 저장됩니다.<br><a href="https://aistudio.google.com/apikey" target="_blank" style="color:#4285F4;font-weight:700">Google AI Studio에서 무료 발급 →</a></div>
-      <input id="_api_key_input" type="password" placeholder="AIzaSy..." style="width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
-      <div style="display:flex;gap:8px">
-        <button onclick="document.getElementById('_gemini_key_overlay').remove()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">취소</button>
-        <button onclick="const k=document.getElementById('_api_key_input').value.trim();if(!k){alert('키를 입력해주세요');return;}window._geminiApiKey=k;localStorage.setItem('gemini_api_key',k);document.getElementById('_gemini_key_overlay').remove();generateExamples('${packId}');" style="flex:2;padding:12px;background:#4285F4;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:#fff">💾 저장 후 생성</button>
-      </div>
-    </div>`;
-    document.body.appendChild(_overlay);
-    return;
-  }
-
-  const progressEl = document.createElement('div');
-  progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1E3A5F;color:#fff;padding:14px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:200px';
-  document.body.appendChild(progressEl);
-  const upd = (cur,msg) => {
-    progressEl.innerHTML = '<div>'+(msg||'📖 예문 생성 중...')+'</div><div style="margin-top:6px;background:rgba(255,255,255,.2);border-radius:4px;height:6px"><div style="height:100%;background:#60A5FA;border-radius:4px;width:'+Math.round(cur/total*100)+'%;transition:width .3s"></div></div><div style="font-size:11px;margin-top:4px;opacity:.7">'+cur+'/'+total+'</div>';
-  };
-  upd(0);
-  let done=0,failed=0;
-  const batchSize=5;
-
-  for(let i=0;i<p.words.length;i+=batchSize){
-    const batch=p.words.slice(i,i+batchSize);
-    const wordList=batch.map(w=>w.en+' ('+w.kr+')').join('\n');
-    try{
-      const text = await callAI('다음 영단어 각각에 영어 예문을 3개씩 만들어줘.\n\n단어 목록:\n'+wordList+'\n\n규칙:\n- 각 예문에 해당 단어 포함\n- 짧고 자연스러운 문장\n- JSON만 반환\n\n형식: {"단어":["예문1","예문2","예문3"],...}', 3000);
-      const jm=text.match(/\{[\s\S]+\}/);
-      if(!jm) throw new Error('JSON 없음');
-      const result=JSON.parse(jm[0]);
-      for(const w of batch){
-        const exArr=result[w.en]||result[w.en.toLowerCase()];
-        if(exArr&&Array.isArray(exArr)&&exArr.length>=1){w.exList=exArr.slice(0,3);w.ex=w.exList[0];done++;}
-        else failed++;
-      }
-    }catch(e){console.error('배치 실패:',e.message);failed+=batch.length;}
-    upd(Math.min(i+batchSize,total));
-    await new Promise(r=>setTimeout(r,1000));
-  }
-  upd(total,'💾 Firebase 저장 중...');
-  try{
-    // words 배열만 명시적으로 업데이트 (전체 팩 spread 대신)
-    await db.collection('packs').doc(packId).update({
-      words: p.words,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    progressEl.remove();
-    toast('✅ 완료! '+done+'개 성공 / '+failed+'개 실패','ok');
-    showPackWordTab('list');
-  }catch(e){progressEl.remove();toast('저장 오류: '+e.message,'err');}
-}
-
-// ── AI로 팩 단어 1000개 자동 채우기 (Gemini) ──
-async function aiFillPack(packId) {
-  const apiKey = getGeminiKey();
-  if(!apiKey) { toast('Gemini API 키가 필요합니다. 설정에서 입력해주세요.','err'); return; }
-
-  const packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const p = packs.find(x=>x.id===packId);
-  if(!p) { toast('팩 없음','err'); return; }
-
-  const currentCount = (p.words||[]).length;
-  const need = Math.max(0, 1000 - currentCount);
-  if(need === 0) { toast('이미 1000개 이상입니다.','ok'); return; }
-
-  const btn = document.getElementById('ai-btn-'+packId);
-  if(btn) { btn.disabled=true; btn.textContent='⏳ 생성 중...'; btn.style.opacity='0.7'; }
-
-  const existSet = new Set((p.words||[]).map(w=>w.en.toLowerCase()));
-  let added = 0;
-  const batchSize = 100; // 요청 횟수 최소화 (1000개 = 10회)
-
-  try {
-    while(added < need) {
-      const cnt = Math.min(batchSize, need - added);
-      if(btn) btn.textContent = `📡 ${currentCount+added}/${1000} 생성 중...`;
-      const existList = [...existSet].slice(-50).join(', ');
-
-      const prompt = `영어 단어 ${cnt}개를 JSON 배열로만 반환. 다른 텍스트 없이 순수 JSON만.
-팩 테마: "${p.name}" (카테고리: ${p.cat})
-설명: ${p.desc||''}
-중복 금지(이미 있는 단어): ${existList||'없음'}
-형식: [{"en":"word","kr":"한국어뜻","ph":"[발음기호]","ex":"영어예문","img":"관련이모지"}]`;
-
-      let text;
-      const onStatus = (msg) => { if(btn) btn.textContent = msg; };
-      try { text = await callAI(prompt, 8192, 0, onStatus); } catch(e) { console.warn('callAI 실패:', e.message); break; }
-
-      let ws;
-      try { ws = JSON.parse(text); }
-      catch(e) { const m=text.match(/\[[\s\S]*\]/); try{ ws=m?JSON.parse(m[0]):[] }catch(e2){ws=[];} }
-
-      let batchAdded = 0;
-      (ws||[]).forEach(w=>{
-        if(!w.en||!w.kr) return;
-        const key=w.en.toLowerCase();
-        if(existSet.has(key)) return;
-        existSet.add(key);
-        if(!p.words) p.words=[];
-        p.words.push({en:w.en,kr:w.kr,ph:w.ph||'',ex:w.ex||'',img:w.img||'📝',meanings:[w.kr]});
-        batchAdded++;
-      });
-      added += batchAdded;
-
-      // 진행률 UI 업데이트
-      const wcEl = document.getElementById('wc-'+packId);
-      if(wcEl) wcEl.textContent = currentCount+added;
-      if(btn) btn.textContent = `⏳ ${currentCount+added}/1000`;
-
-      if(batchAdded === 0) break;
-      await new Promise(r=>setTimeout(r,6000)); // 6초 간격 (무료 RPM: 15회/분 = 4초/회)
-    }
-
-    // Firebase 저장
-    p.count = p.words?.length||0;
-    try {
-      await db.collection('packs').doc(packId).set({...p, updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    } catch(e) { console.warn('FB 저장 실패:', e.message); }
-
-    const finalCount = p.words?.length||0;
-    toast(`✅ "${p.name}" ${finalCount}개 완료!`,'ok');
-    const wcEl2 = document.getElementById('wc-'+packId);
-    if(wcEl2) { wcEl2.textContent=finalCount; wcEl2.style.color='#16A34A'; wcEl2.style.background='#F0FDF4'; }
-    if(btn) { btn.textContent='✅ 완료'; btn.style.background='#16A34A'; btn.style.opacity='1'; }
-  } catch(e) {
-    toast('AI 채우기 실패: '+e.message,'err');
-    if(btn) { btn.disabled=false; btn.textContent='🤖 AI채우기'; btn.style.opacity='1'; }
-    console.error(e);
-  }
-}
-
-// ── 전체 팩 일괄 AI 채우기 ──
-async function aiFillAllPacks() {
-  const apiKey = getGeminiKey();
-  if(!apiKey) { toast('Gemini API 키가 필요합니다.','err'); return; }
-  const packs = (window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[])).filter(p=>(p.words||[]).length < 1000);
-  if(!packs.length) { toast('모든 팩이 1000개 이상입니다.','ok'); return; }
-  if(!confirm(`단어가 부족한 팩 ${packs.length}개를 순서대로 AI로 채울까요?\n시간이 오래 걸릴 수 있습니다.`)) return;
-
-  const prog = document.getElementById('ai-fill-progress');
-  const bar = document.getElementById('ai-fill-bar');
-  const cntEl = document.getElementById('ai-fill-count');
-  const statusEl = document.getElementById('ai-fill-status');
-  if(prog) prog.style.display='block';
-
-  for(let i=0;i<packs.length;i++) {
-    const p = packs[i];
-    if(cntEl) cntEl.textContent = `(${i+1}/${packs.length})`;
-    if(bar) bar.style.width = Math.round((i/packs.length)*100)+'%';
-    if(statusEl) statusEl.textContent = `진행: ${p.emoji||''} ${p.name} (현재 ${p.words?.length||0}개)`;
-    await aiFillPack(p.id);
-    await new Promise(r=>setTimeout(r,500));
-  }
-
-  if(bar) bar.style.width='100%';
-  if(statusEl) statusEl.textContent=`✅ 전체 완료! ${packs.length}개 팩 처리됨`;
-  if(cntEl) cntEl.textContent=`(${packs.length}/${packs.length})`;
-  toast(`✅ 전체 ${packs.length}개 팩 AI채우기 완료!`,'ok');
-}
-
-async function uploadLocalPackToFirebase(packId) {
-  const packs = window._adminPacks||[];
-  const p = packs.find(x=>x.id===packId);
-  if(!p) { toast('팩 없음','err'); return; }
-  if(!confirm('"'+p.name+'" 팩을 Firebase에 업로드할까요?')) return;
-  try {
-    const {id, _fromFirebase, _builtin, ...data} = p;
-    await db.collection('packs').doc(packId).set({...data, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
-    p._fromFirebase = true;
-    toast('✅ "'+p.name+'" Firebase 업로드 완료','ok');
-    rPK();
-  } catch(e) {
-    toast('업로드 실패: '+e.message,'err');
-  }
-}
-
-
-// ── 팩 단어 관리 ──
-// ════════════════════════════════════════════════════════════
-// 단어 화면 (A형 · 밀도형 표)
-// 사전이 가진 필드를 전부 보여준다: 이모지·발음·CEFR·품사·뜻·예문5
-// 빠진 필드는 붉게 표시해 1,000단어에서 구멍을 바로 찾는다.
-// ════════════════════════════════════════════════════════════
-const PW_CEFR_COL = { A1:'#34D399', A2:'#6EE7B7', B1:'#60A5FA', B2:'#3B82F6', C1:'#A78BFA', C2:'#8B5CF6' };
-
-function _pwMeta(en) {
+async function _pwMeta(en) {
   const k = String(en || '').toLowerCase();
   const M = (typeof BWD_META !== 'undefined') ? BWD_META : {};
   return M[k] || {};

@@ -1,4 +1,4 @@
-<!-- build: 20260710-book-lock -->
+<!-- build: 20260710-books-order -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -12907,15 +12907,15 @@ function rStudyBooks() {
     +'</div>';
   }
 
-  const courseCards = _oc.map(function(c){
+  const courseCardList = _oc.map(function(c){
     const rows=c.books.map((o,i)=>_courseGroupRow(c,o,i)).join('');
     const have=c.books.length, all=c.total;
     const badge = have<all ? (have+'/'+all+'권') : '팩';
     const more = have<all
       ? '<div onclick="S._pkDetail=\''+c.id+'\';go(\'mybooks\',\'detail\')" style="display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer;border-top:1px solid var(--border,#ECEEF1)"><span style="font-size:18px;width:30px;text-align:center;color:var(--theme,#475569);flex-shrink:0">＋</span><div style="flex:1;font-size:13px;font-weight:700;color:var(--theme,#475569)">나머지 '+(all-have)+'권 담기</div><span style="color:#B8AE96;flex-shrink:0">›</span></div>'
       : '';
-    return _groupCard(c.emoji, c.name, badge, rows, more);
-  }).join('');
+    return { name:String(c.name||''), html:_groupCard(c.emoji, c.name, badge, rows, more) };
+  });
 
   // ④ 코스에 속하지 않은 마켓 단어장 (도서·드라마)
   let g3;
@@ -12927,14 +12927,18 @@ function rStudyBooks() {
   } else {
     g3=_groupCard('🛒','마켓 단어장','', '', mktAdd);
   }
-  g3 = courseCards + g3;
 
   let html = '<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA)">';
   html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';
   const _allBooksTab = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
   const _curName = S.currentBook||'내 단어장';
   html += renderStudyGoalCard('mybooks');
-  html += g1 + _curriculumGroupHtml() + g2 + g3;
+  // [20260710-books-order] ① 내 단어장 ② 기본 제공 ③ 나머지 그룹 가나다순
+  const _rest = courseCardList.slice();
+  _rest.push({ name:'내 레벨업 코스', html:_curriculumGroupHtml() });
+  _rest.push({ name:'마켓 단어장',   html:g3 });
+  _rest.sort(function(a,b){ return String(a.name).localeCompare(String(b.name), 'ko'); });
+  html += g2 + g1 + _rest.map(function(x){ return x.html; }).join('');
   html += '</div></div>';
   return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }

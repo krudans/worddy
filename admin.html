@@ -4923,6 +4923,36 @@ async function saveAIPackWords(wsJson) {
   }
 }
 
+// [20260710-deletepack] 호출부만 있고 정의가 없어 삭제 버튼이 죽어 있었음
+async function deletePack(packId) {
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === packId);
+  if (!p) { toast('팩을 찾을 수 없어요: ' + packId, 'err'); return; }
+  const wc = (p.words || []).length;
+  if (p.courseId) {
+    const sibs = packs.filter(x => x.courseId === p.courseId).length;
+    if (!confirm('⚠️ 「' + p.name + '」은(는) 코스 「' + (p.courseName || p.courseId) + '」의 ' + sibs + '권 중 하나입니다.\n삭제하면 코스가 깨질 수 있어요.\n\n정말 삭제할까요?')) return;
+  }
+  if (!confirm('「' + p.name + '」 (' + packId + ')\n단어 ' + wc.toLocaleString() + '개를 삭제합니다.\n삭제 전 packs_backup_deleted 에 복사됩니다.\n\n진행할까요?')) return;
+  try {
+    const snap = await db.collection('packs').doc(packId).get();
+    if (snap.exists) {
+      await db.collection('packs_backup_deleted').doc(packId).set(
+        Object.assign({}, snap.data(), { _deletedAt: new Date().toISOString() })
+      );
+    }
+    await db.collection('packs').doc(packId).delete();
+    const chk = await db.collection('packs').doc(packId).get();
+    if (chk.exists) { toast('삭제 실패: 서버에 아직 남아 있어요', 'err'); return; }
+    window._adminPacks = packs.filter(x => x.id !== packId);
+    toast('「' + p.name + '」 삭제 완료 (백업됨)', 'ok');
+    if (typeof cm === 'function') cm();
+    await rPK();
+  } catch (e) {
+    toast('삭제 실패: ' + e.message, 'err');
+  }
+}
+
 async function deletePackWord(packId, idx) {
   const packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
   const p=packs.find(x=>x.id===packId);

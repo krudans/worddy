@@ -7434,10 +7434,33 @@ function bwdExport(){
     items.forEach(function(it){
       var en = String(it.en||'').trim().toLowerCase();
       if(!en || seen[en] || killed[en] || _bwdDict()[en]) return;
-      seen[en]=1; window._bulkList.push({en:en, kr:String(it.kr||'').trim()}); n++;
+      seen[en]=1; window._bulkList.push({en:en, kr:String(it.kr||'').trim(), sel:true}); n++;
     });
     return n;
   }
+  function selCount(){ return window._bulkList.filter(function(x){ return x.sel !== false; }).length; }
+  window._bulkSelCount = selCount;
+
+  function syncBtn(){
+    var b = document.getElementById('bulk-run');
+    if(b && !G.running) b.textContent = '✨ ' + selCount() + '개 등록';
+    var all = document.getElementById('bulk-all');
+    if(all){ var L = window._bulkList; all.checked = L.length>0 && selCount()===L.length; }
+    var lbl = document.getElementById('bulk-sel-label');
+    if(lbl) lbl.textContent = '전체 선택 (' + selCount() + '/' + window._bulkList.length + ')';
+  }
+  window.bulkToggle = function(en, on){
+    var it = window._bulkList.find(function(x){ return x.en === en; });
+    if(it) it.sel = !!on;
+    syncBtn();
+  };
+  window.bulkToggleAll = function(on){
+    window._bulkList.forEach(function(x){ x.sel = !!on; });
+    var boxes = document.querySelectorAll('#bulk-list input[type=checkbox]');
+    for(var i=0;i<boxes.length;i++) boxes[i].checked = !!on;
+    syncBtn();
+  };
+
   window.bulkRemove = function(en){
     killed[en] = 1;
     window._bulkList = window._bulkList.filter(function(x){ return x.en !== en; });
@@ -7472,22 +7495,23 @@ function bwdExport(){
   function bulkRender(){
     var el = document.getElementById('bulk-list'); if(!el) return;
     var L = window._bulkList;
-    var btn = document.getElementById('bulk-run');
-    if(btn && !G.running) btn.textContent = '✨ ' + L.length + '개 등록';
     if(!L.length){
       el.innerHTML = '<div style="padding:16px;color:#9CA3AF;font-size:13px">'
         + (missLoaded ? '등록할 단어가 없습니다.' : '⏳ 미등록 단어를 불러오는 중...') + '</div>';
+      syncBtn();
       return;
     }
     el.innerHTML = L.map(function(x){
       var e = _bwdHesc(x.en), k = _bwdHesc(x.kr||'');
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #F3F4F6">'
+        + '<input type="checkbox"' + (x.sel===false?'':' checked') + ' style="width:16px;height:16px;cursor:pointer" onchange="bulkToggle(\'' + _missJsq(x.en) + '\', this.checked)">'
         + '<strong style="font-family:monospace;font-size:14px;min-width:150px">' + e + '</strong>'
         + (k ? '<span style="font-size:12px;color:#6B7280;flex:1">' + k + '</span>'
              : '<span style="font-size:12px;color:#D1D5DB;flex:1">뜻 없음 (AI가 채웁니다)</span>')
         + '<button class="btn br" style="font-size:11px;padding:4px 9px" onclick="bulkRemove(\'' + _missJsq(x.en) + '\')">🗑 삭제</button>'
         + '</div>';
     }).join('');
+    syncBtn();
   }
   window._bulkRender = bulkRender;
 
@@ -7574,9 +7598,9 @@ function bwdExport(){
   window.bulkRegister = async function(){
     if(G.running) return;
     if(!getGeminiKeys().length){ toast('Gemini API 키가 없습니다','err'); return; }
-    var L = window._bulkList.slice();
-    if(!L.length){ toast('등록할 단어가 없어요','err'); return; }
-    if(!confirm(L.length + '개를 AI로 등록할까요?\n뜻·품사·발음·이모지·예문5개·메타를 채웁니다.')) return;
+    var L = window._bulkList.filter(function(x){ return x.sel !== false; });
+    if(!L.length){ toast('선택된 단어가 없어요','err'); return; }
+    if(!confirm('선택한 ' + L.length + '개를 AI로 등록할까요?\n뜻·품사·발음·이모지·예문5개·메타를 채웁니다.')) return;
 
     var krMap = {}; L.forEach(function(x){ krMap[x.en] = x.kr; });
     var queue = L.map(function(x){ return x.en; });
@@ -7616,7 +7640,10 @@ function bwdExport(){
         + '<span style="font-weight:800;font-size:15px">✨ 새 단어 등록</span>'
         + '<button class="btn bp" id="bulk-run" onclick="bulkRegister()" style="background:#7C3AED">✨ 0개 등록</button>'
       + '</div>'
-      + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">미등록 단어가 자동으로 채워집니다. 필요 없는 건 🗑 삭제하고 등록을 누르세요.</div>'
+      + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">미등록 단어가 자동으로 채워집니다. 체크한 것만 등록되고, 다시 안 볼 단어는 🗑 삭제하세요.</div>'
+      + '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#4B5563;padding:8px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;margin-bottom:8px;cursor:pointer">'
+        + '<input type="checkbox" id="bulk-all" checked style="width:16px;height:16px;cursor:pointer" onchange="bulkToggleAll(this.checked)">'
+        + '<span id="bulk-sel-label">전체 선택</span></label>'
       + '<textarea id="bulk-paste" rows="2" placeholder="단어를 붙여넣으면 아래 목록에 자동 추가됩니다 (한 줄에 하나 · 뜻은 콤마로 구분)" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;line-height:1.6;padding:10px;border:1px solid #E5E7EB;border-radius:10px"></textarea>'
       + '<div id="bulk-status"></div>'
       + '<div id="bulk-list" style="max-height:340px;overflow:auto;border:1px solid #F3F4F6;border-radius:10px;margin-top:10px"></div>'
@@ -7668,7 +7695,7 @@ function bwdExport(){
   hook('bwdDelEntry',    function(){ D.dict++; renderDirty(); });
   hook('missAiRegister', function(){ D.dict++; renderDirty(); });
 
-  console.log('[bwd] bulk-register-v4 20260710 loaded');
+  console.log('[bwd] bulk-register-v5 20260710 loaded');
 })();
 </script>
 </body>

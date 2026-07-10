@@ -1332,6 +1332,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "animations": {cefr:"B1",origin:"라틴어 anima(생명)에서",syn:["cartoons","motion graphics"],ant:[]},
   "animator": {cefr:"B2",origin:"라틴어 anima(생명)에서",syn:["cartoonist","illustrator"],ant:[]},
   "anime": {cefr:"B1",origin:"일본어 애니메이션(animation)에서",syn:["animation","cartoons"],ant:[]},
+  "animist": {cefr:"C2",origin:"Latin 'anima' (soul, spirit)",syn:["shamanist"],ant:[]},
   "animosity": {cefr:"C1",origin:"라틴어 animus(마음, 정신)에서",syn:["hostility","animosity","rancor","hatred"],ant:["friendliness","goodwill"]},
   "anion": {cefr:"C2",origin:"그리스어 ana(위로) + ion(가는 것)에서",syn:["negative ion"],ant:["cation"]},
   "anise": {cefr:"C2",origin:"그리스어 anison(식물 이름)에서",syn:["aniseed"],ant:[]},
@@ -7575,6 +7576,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "cowl": {cefr:"C2",origin:"라틴어 cucullus(두건)에서",syn:["hood","cowl neck"],ant:[]},
   "coworker": {cefr:"B1",origin:"co-(함께)와 worker(일하는 사람)의 합성어",syn:["colleague","associate","teammate"],ant:[]},
   "coworkers": {cefr:"B1",origin:"co-(함께)와 worker(일하는 사람)의 합성어",syn:["colleagues","associates","teammates"],ant:[]},
+  "cowry": {cefr:"C1",origin:"Hindi 'kauri'",syn:["shell money"],ant:[]},
   "cows": {cefr:"A1",origin:"고대영어 cu(소)에서",syn:["cattle","livestock"],ant:[]},
   "cox": {cefr:"B2",origin:"중세 라틴어 coccus(조타수)에서",syn:["leader","manager","director"],ant:[]},
   "coy": {cefr:"B1",origin:"고대 영어 cōh에서",syn:["shy","modest","reserved","demure"],ant:["bold","forward","shameless"]},
@@ -10283,6 +10285,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "dsp": {cefr:"C1",origin:"영어 digital signal processing의 약어",syn:["digital signal processor"],ant:[]},
   "dual": {cefr:"B2",origin:"라틴어 dualis(둘의)에서",syn:["double","binary","twofold"],ant:["single","unitary"]},
   "dualism": {cefr:"C2",origin:"라틴어 dualis(둘의)에서",syn:["dichotomy","duality"],ant:[]},
+  "dualist": {cefr:"C1",origin:"From 'dual' (two) + '-ist' (one who believes in).",syn:[],ant:[]},
   "duality": {cefr:"C1",origin:"라틴어 duo(둘)에서",syn:["dichotomy","duality","ambivalence"],ant:[]},
   "duane": {cefr:"A2",syn:[],ant:[]},
   "dub": {cefr:"B2",origin:"고대영어 dubbian(치다)에서",syn:["overdub","name","designate"],ant:[]},
@@ -18151,5 +18154,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "komodo": {cefr:"B2",origin:"인도네시아 지명 Komodo에서",syn:["lizard","dragon"],ant:[]},
   "koran": {cefr:"B2",origin:"아랍어 qur'an(낭송)에서",syn:["quran","scripture"],ant:[]},
   "korea": {cefr:"A1",syn:[],ant:[]},
-  "korean": {cefr:"A1",syn:[],ant:[]}
+  "korean": {cefr:"A1",syn:[],ant:[]},
+  "koreans": {cefr:"A1",syn:[],ant:[]},
+  "kosher": {cefr:"B2",origin:"히브리어 kasher(적합한)에서",syn:["pure","clean"],ant:["treif"]}
 });

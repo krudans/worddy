@@ -1,4 +1,4 @@
-<!-- build: 20260710-chapter-generalize -->
+<!-- build: 20260710-course-packs -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2787,10 +2787,14 @@ function _pkOpen(bookName) {
 
 // 담기 후에도 상세 페이지에 머문다 (보유 중으로 갱신)
 function _pkBuy(packId) {
-  const keep = packId;
+  const keep = S._pkDetail;
+  S._silentBuy = true;
   _doBuyPack(packId);
+  S._silentBuy = false;
+  const pk = (S._marketPacks || []).find(p => p.id === packId);
+  if (pk) toast('✅ ' + pk.name + ' 담기 완료');
   S._pkDetail = keep;
-  go('market', 'detail');
+  go('mybooks', 'detail');
 }
 
 function showPackDetail(packId) {
@@ -2798,7 +2802,7 @@ function showPackDetail(packId) {
   const pk = packs.find(p => p.id === packId);
   if (!pk) { toast('팩을 찾을 수 없어요'); return; }
   S._pkDetail = packId;
-  go('market', 'detail');
+  go('mybooks', 'detail');
 }
 
 function rPackDetail() {
@@ -2823,7 +2827,7 @@ function rPackDetail() {
   // 히어로
   html += `<div style="position:relative;border-radius:0 0 22px 22px;overflow:hidden;background:${grad};padding:16px 18px 22px">
     <div style="position:absolute;right:-10px;bottom:-16px;font-size:120px;opacity:.15;line-height:1">${pk.emoji || '📚'}</div>
-    <button onclick="S._pkDetail=null;go('market')" style="position:relative;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:13px;font-weight:700;padding:7px 12px;border-radius:20px;cursor:pointer;margin-bottom:14px">‹ 마켓</button>
+    <button onclick="S._pkDetail=null;go('mybooks','market')" style="position:relative;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:13px;font-weight:700;padding:7px 12px;border-radius:20px;cursor:pointer;margin-bottom:14px">‹ 마켓</button>
     <div style="position:relative">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">
         ${owned ? `<span style="background:#fff;color:${petCol.main};font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px">보유 중</span>` : ''}
@@ -2945,6 +2949,240 @@ function rPackDetail() {
   return html;
 }
 
+// ── 코스(팩) 묶기 ──
+// 마켓의 최소 선택 단위는 코스다. 코스 하나 = 단어장 3권 = 3,000단어 = 15챕터.
+// 단어장 하나 = 1,000단어 = 200 × 5챕터.
+function _courses(packs) {
+  const map = {};
+  (packs || []).forEach(p => {
+    if (!p.courseId) return;
+    const c = map[p.courseId] || (map[p.courseId] = {
+      id: p.courseId, name: p.courseName || p.name, emoji: p.courseEmoji || p.emoji || '📚',
+      desc: p.courseDesc || '', basis: p.courseBasis || '', order: p.courseOrder || 99,
+      cat: p.cat || '🎯 목표별 코스', books: []
+    });
+    c.books.push(p);
+  });
+  const list = Object.values(map);
+  list.forEach(c => c.books.sort((a, b) => (a.tierIdx || 0) - (b.tierIdx || 0)));
+  return list.sort((a, b) => a.order - b.order);
+}
+
+function _courseWords(c) { return c.books.reduce((s, b) => s + ((b.words || []).length), 0); }
+function _courseOwned(c) {
+  const ids = (S.books || []).map(b => b && b.packId).filter(Boolean);
+  return c.books.filter(b => ids.includes(b.id)).length;   // 보유한 단어장 수
+}
+
+// 코스 난이도 = 첫 단어장 기준 (뒤로 갈수록 어려워지므로)
+function _courseLevel(c) { return c.books.length ? _pkLevel(c.books[0]) : ''; }
+
+// ── 코스 배너 ──
+function _courseBanner(c, petCol) {
+  const n = _courseWords(c);
+  const own = _courseOwned(c);
+  const total = c.books.length;
+  const lv = _courseLevel(c);
+  const lvTxt = _PK_LV_TXT[lv] || '';
+  const grad = _pkGrad(c.id);
+  const chapters = c.books.reduce((s, b) => s + Math.max(1, Math.min(5, Math.floor(((b.words || []).length) / 5))), 0);
+
+  return `<div onclick="showCourseDetail('${c.id}')" style="
+      position:relative;border-radius:18px;overflow:hidden;cursor:pointer;background:${grad};
+      min-height:142px;box-shadow:0 2px 10px rgba(0,0,0,.06);
+      border:${own ? '2px solid ' + petCol.main : '1.5px solid transparent'}">
+    <div style="position:absolute;right:-6px;bottom:-12px;font-size:104px;opacity:.16;line-height:1;pointer-events:none">${c.emoji}</div>
+    <div style="position:relative;padding:15px 16px;display:flex;flex-direction:column;justify-content:space-between;height:100%">
+      <div>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px">
+          ${own ? `<span style="background:rgba(255,255,255,.94);color:${petCol.main};font-size:9.5px;font-weight:800;padding:2.5px 7px;border-radius:20px">단어장 ${own}/${total} 보유</span>` : ''}
+          ${lvTxt ? `<span style="background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-weight:700;padding:2.5px 7px;border-radius:20px">${lv}부터 · ${lvTxt}</span>` : ''}
+          <span style="background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-weight:700;padding:2.5px 7px;border-radius:20px">${n.toLocaleString()}단어</span>
+        </div>
+        <div style="font-size:18px;font-weight:900;color:#fff;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.18)">${c.emoji} ${c.name}</div>
+        ${c.desc ? `<div style="font-size:11.5px;color:rgba(255,255,255,.9);margin-top:4px;line-height:1.45;font-weight:500">${c.desc}</div>` : ''}
+      </div>
+
+      <div style="display:flex;align-items:center;gap:5px;margin-top:9px;flex-wrap:wrap">
+        ${c.books.map(b => `<span style="background:rgba(0,0,0,.16);color:#fff;font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:7px">${b.tierLabel || ''}</span>`).join('')}
+        <span style="flex:1"></span>
+        <div style="background:rgba(255,255,255,.95);color:#111;font-size:11.5px;font-weight:800;padding:6px 13px;border-radius:20px;white-space:nowrap">자세히 ›</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function showCourseDetail(courseId) {
+  S._pkDetail = courseId;
+  go('mybooks', 'detail');
+}
+
+// ── 코스 상세 페이지 ──
+function rCourseDetail() {
+  const list = _courses(S._marketPacks || []);
+  const c = list.find(x => x.id === S._pkDetail);
+  if (!c) { S._pkDetail = null; return rMarket(); }
+
+  const petCol = PET_COLORS[getPetColor()] || PET_COLORS.green;
+  const n = _courseWords(c);
+  const total = c.books.length;
+  const own = _courseOwned(c);
+  const grad = _pkGrad(c.id);
+  const lv = _courseLevel(c);
+  const lvTxt = _PK_LV_TXT[lv] || '';
+  const chPer = 5;
+  const chTotal = total * chPer;
+  const days20 = _pkDays(n, 20);
+
+  let html = `<div style="padding:0 0 92px">`;
+
+  // 히어로
+  html += `<div style="position:relative;border-radius:0 0 22px 22px;overflow:hidden;background:${grad};padding:16px 18px 22px">
+    <div style="position:absolute;right:-10px;bottom:-16px;font-size:126px;opacity:.15;line-height:1">${c.emoji}</div>
+    <button onclick="S._pkDetail=null;go('mybooks','market')" style="position:relative;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:13px;font-weight:700;padding:7px 12px;border-radius:20px;cursor:pointer;margin-bottom:14px">‹ 마켓</button>
+    <div style="position:relative">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">
+        ${own ? `<span style="background:#fff;color:${petCol.main};font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px">단어장 ${own}/${total} 보유</span>` : ''}
+        ${lvTxt ? `<span style="background:rgba(255,255,255,.22);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">${lv}부터 · ${lvTxt}</span>` : ''}
+        <span style="background:rgba(255,255,255,.22);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">${c.cat}</span>
+      </div>
+      <div style="font-size:23px;font-weight:900;color:#fff;line-height:1.25;text-shadow:0 1px 5px rgba(0,0,0,.2)">${c.name}</div>
+      ${c.desc ? `<div style="font-size:12.5px;color:rgba(255,255,255,.92);margin-top:6px;line-height:1.55">${c.desc}</div>` : ''}
+    </div>
+  </div>`;
+
+  const card = (inner, mt) => `<div style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:16px;padding:15px 16px;margin:${mt || 12}px 14px 0">${inner}</div>`;
+  const h = t => `<div style="font-size:13px;font-weight:900;color:var(--text1,#111);margin-bottom:9px">${t}</div>`;
+
+  // 숫자 3분할
+  html += card(`
+    <div style="display:flex">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:21px;font-weight:900;color:var(--text1,#111)">${total}</div>
+        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">단어장</div>
+      </div>
+      <div style="width:1px;background:var(--border,#ECEEF1)"></div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:21px;font-weight:900;color:var(--text1,#111)">${chTotal}</div>
+        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">챕터</div>
+      </div>
+      <div style="width:1px;background:var(--border,#ECEEF1)"></div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:21px;font-weight:900;color:var(--text1,#111)">${n.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">단어</div>
+      </div>
+    </div>`, 14);
+
+  // ★ 단어장 3권 — 여기서 개별로 담는다
+  html += card(`${h(`📗 단어장 ${total}권`)}
+    <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin:-4px 0 11px;line-height:1.6">
+      한 권이 1,000단어 · 200단어씩 5챕터입니다. 필요한 권만 담아도 됩니다.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${c.books.map((b, i) => {
+        const bn = (b.words || []).length;
+        const bown = (S.books || []).some(x => x && x.packId === b.id);
+        const blv = _pkLevel(b);
+        return `<div style="border:1.5px solid ${bown ? petCol.main + '55' : 'var(--border,#ECEEF1)'};border-radius:13px;padding:11px 12px;background:${bown ? petCol.main + '0C' : 'var(--bg-sub,#F8F9FA)'}">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div style="width:26px;height:26px;border-radius:8px;background:${_pkGrad(b.id)};color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12.5px;font-weight:800;color:var(--text1,#111)">${b.tierLabel || b.name}</div>
+              <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:1px">${bn.toLocaleString()}단어 · 5챕터 ${blv ? '· ' + blv : ''}</div>
+            </div>
+            ${bown
+              ? `<button onclick="_pkOpen('${String(b.name).replace(/'/g, "\\'")}')" style="background:${petCol.main};color:#fff;border:none;border-radius:9px;padding:7px 12px;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0">챕터 ›</button>`
+              : `<button onclick="_pkBuy('${b.id}')" style="background:var(--theme,#3B82F6);color:#fff;border:none;border-radius:9px;padding:7px 12px;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0">＋ 담기</button>`}
+          </div>
+          <div style="margin-top:8px">${_pkCefrBar(b, 6)}</div>
+        </div>`;
+      }).join('')}
+    </div>`);
+
+  // 구성 기준
+  if (c.basis) {
+    html += card(`${h('📐 어떤 기준으로 모았나')}
+      <div style="font-size:12px;color:var(--text2,#374151);line-height:1.65">${c.basis}</div>`);
+  }
+
+  // 암기 과정
+  html += card(`${h('🔁 어떻게 외우나')}
+    <div style="display:flex;flex-direction:column">
+      ${[
+        ['1', '사전 체크', '챕터마다 200단어 — 시작 전에 이미 아는 단어를 걸러냅니다'],
+        ['2', '학습', '플래시카드·게임 5종으로 반복합니다'],
+        ['3', '오답 노트', '틀린 단어는 1·3·7·14·30일 간격으로 다시 나옵니다'],
+        ['4', '챕터 시험', '최대 50문항 · 90점을 넘어야 다음 챕터가 열립니다 · 🦋 나비 1마리'],
+        ['5', '단어장 완주', `5챕터를 마치면 다음 단어장으로 — ${total}권을 마치면 코스 완주`]
+      ].map(([num, t, d], i) => `
+        <div style="display:flex;gap:11px">
+          <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+            <div style="width:22px;height:22px;border-radius:50%;background:var(--theme,#3B82F6);color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center">${num}</div>
+            ${i < 4 ? `<div style="width:1.5px;flex:1;background:var(--border,#ECEEF1);min-height:16px;margin:2px 0"></div>` : ''}
+          </div>
+          <div style="flex:1;padding-bottom:${i < 4 ? '8px' : '0'}">
+            <div style="font-size:12px;font-weight:800;color:var(--text1,#111)">${t}</div>
+            <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:2px;line-height:1.5">${d}</div>
+          </div>
+        </div>`).join('')}
+    </div>`);
+
+  // 효과
+  html += card(`${h('🎯 끝내면 무엇이 남나')}
+    <div style="display:flex;flex-direction:column;gap:9px">
+      ${[
+        ['📖', `${n.toLocaleString()}단어를 뜻·발음·예문까지`, '단어마다 예문 5개와 이모지가 붙어 있습니다'],
+        ['🦋', `나비 ${chTotal}마리`, '챕터를 통과할 때마다 한 마리씩 모입니다'],
+        ['📈', '성장 그래프에 기록', '레벨 변화와 정확도가 곡선으로 남습니다'],
+        ['🔄', '오답은 사라질 때까지', 'SRS가 잊을 때쯤 다시 꺼내 보여줍니다']
+      ].map(([ic, t, d]) => `
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div style="font-size:17px;flex-shrink:0;width:22px;text-align:center">${ic}</div>
+          <div style="flex:1">
+            <div style="font-size:12px;font-weight:700;color:var(--text1,#111)">${t}</div>
+            <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:1px;line-height:1.5">${d}</div>
+          </div>
+        </div>`).join('')}
+    </div>`);
+
+  // 예상 기간
+  html += card(`${h('⏱ 하루 몇 개씩 하면')}
+    <div style="display:flex;gap:8px">
+      ${[[10, '느긋하게'], [20, '보통'], [30, '집중해서']].map(([per, label]) => `
+        <div style="flex:1;background:var(--bg-sub,#F8F9FA);border-radius:11px;padding:11px 8px;text-align:center">
+          <div style="font-size:10px;color:var(--text3,#9CA3AF)">${label}</div>
+          <div style="font-size:15px;font-weight:900;color:var(--text1,#111);margin:3px 0 1px">${_pkDays(n, per)}일</div>
+          <div style="font-size:9.5px;color:var(--text3,#9CA3AF)">하루 ${per}개</div>
+        </div>`).join('')}
+    </div>`);
+
+  html += `</div>`;
+
+  // 하단 고정 — 코스 통째로 담기
+  const rest = c.books.filter(b => !(S.books || []).some(x => x && x.packId === b.id));
+  html += `<div style="position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:var(--bg-card,#fff);border-top:1px solid var(--border,#ECEEF1);z-index:40;max-width:520px;margin:0 auto">
+    ${rest.length
+      ? `<button onclick="_courseBuy('${c.id}')" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--theme,#3B82F6);color:#fff;font-size:14px;font-weight:800;cursor:pointer">＋ 단어장 ${rest.length}권 모두 담기 (${rest.reduce((s, b) => s + (b.words || []).length, 0).toLocaleString()}단어)</button>`
+      : `<button onclick="S._pkDetail=null;go('mybooks','books')" style="width:100%;padding:14px;border-radius:14px;border:none;background:${petCol.main};color:#fff;font-size:14px;font-weight:800;cursor:pointer">단어장에서 이어서 학습 ›</button>`}
+  </div>`;
+
+  return html;
+}
+
+// 코스 전체 담기 — 아직 없는 단어장만
+function _courseBuy(courseId) {
+  const c = _courses(S._marketPacks || []).find(x => x.id === courseId);
+  if (!c) return;
+  const rest = c.books.filter(b => !(S.books || []).some(x => x && x.packId === b.id));
+  if (!rest.length) { toast('이미 모두 담았어요'); return; }
+  S._silentBuy = true;
+  rest.forEach(b => { try { _doBuyPack(b.id); } catch (e) {} });
+  S._silentBuy = false;
+  S._pkDetail = courseId;
+  toast(`✅ ${c.name} 단어장 ${rest.length}권 담기 완료`);
+  go('mybooks', 'detail');
+}
+
 function rMarket() {
   const _allPacks = S._marketPacks||[];
   // 중복 제거 (id 기준)
@@ -2997,11 +3235,12 @@ function rMarket() {
   } else {
     // 카테고리 탭 중복 제거 (상단 줄바꿈 카테고리 바로 일원화)
 
-    // 팩 배너 (리스트 대신 — 클릭 유도)
+    // 코스는 묶어서 배너 1개, 나머지(도서·드라마 등)는 팩별 배너
     html += `<div style="display:flex;flex-direction:column;gap:11px">`;
-    filtered.forEach(pk => {
-      const owned = ownedPacks.includes(pk.id);
-      html += _pkBanner(pk, owned, petCol);
+    const _courseList = _courses(filtered);
+    _courseList.forEach(c => { html += _courseBanner(c, petCol); });
+    filtered.filter(pk => !pk.courseId).forEach(pk => {
+      html += _pkBanner(pk, ownedPacks.includes(pk.id), petCol);
     });
     html += `</div>`;
   }
@@ -3056,10 +3295,12 @@ function _doBuyPack(packId) {
     db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
   }
   sv();
-  toast('✅ '+pk.name+' 추가! 단어장에서 확인하세요 📚');
   vib([100,50,100]);
   SFX.play('levelup');
-  go('mybooks','market');
+  if(!S._silentBuy){
+    toast('✅ '+pk.name+' 추가! 단어장에서 확인하세요 📚');
+    go('mybooks','market');
+  }
 }
 
 /* downloadPack: js/features.js 단일 정의로 통합 (중복 제거) */
@@ -11813,6 +12054,7 @@ function rStudy() {
   if(S.stab==='learn') return booksBar+tabs+rLearn();
   if(S.stab==='quiz3') return booksBar+tabs+rQuiz3();
   if(S.stab==='modes') return booksBar+tabs+rModes();
+  if(S.stab==='detail' && S._pkDetail) return rCourseDetail();
   if(S.stab==='market') {
     if(S._marketPacks == null) {  // 로드 전(null/undefined)일 때만 로딩화면. 빈 배열([])=로드됐으나 0개 → rMarket 빈상태로 표시(무한 재로드 루프 방지)
       if(!S._mktLoading) {
@@ -11834,7 +12076,6 @@ function rStudy() {
     }
     S._mktLoading = false;
     S._mktLoadStart = null;
-    if(S.stab==='detail' && S._pkDetail) return rPackDetail();
     return rMarket();
   }
   if(S.stab==='add')   return booksBar+tabs+rAdd();

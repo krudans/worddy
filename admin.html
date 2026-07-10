@@ -3152,7 +3152,7 @@ function pwFillReview() {
       <td style="padding:6px 8px;font-size:10.5px;color:#D1D5DB;text-align:right">${i + 1}</td>
       <td style="padding:6px 8px;font-size:16px;text-align:center">${w.img}</td>
       <td style="padding:6px 8px;font-size:12px;font-weight:700">${w.en}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#6B7280">${_esc(String(w.kr).slice(0, 28))}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#6B7280">${esc(String(w.kr).slice(0, 28))}</td>
       <td style="padding:6px 8px;font-size:10px;color:#9CA3AF">${w.ph}</td>
       <td style="padding:6px 8px;font-size:10px;color:#4285F4;text-align:center">${pxCefr(w.en) || '-'}</td>
       <td style="padding:6px 8px;text-align:center"><button onclick="pwFillDrop(${i})" style="border:none;background:none;color:#DC2626;cursor:pointer;font-size:12px">✕</button></td>
@@ -3170,7 +3170,7 @@ function pwFillReview() {
       ${f.missing.length ? `
       <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:10px 12px;margin-bottom:12px">
         <div style="font-size:11.5px;font-weight:800;color:#B91C1C;margin-bottom:4px">사전에 없어 제외되는 단어 ${f.missing.length}개</div>
-        <div style="font-size:11px;color:#7F1D1D;line-height:1.7;word-break:break-all">${f.missing.slice(0, 50).map(_esc).join(', ')}${f.missing.length > 50 ? ' …' : ''}</div>
+        <div style="font-size:11px;color:#7F1D1D;line-height:1.7;word-break:break-all">${f.missing.slice(0, 50).map(esc).join(', ')}${f.missing.length > 50 ? ' …' : ''}</div>
         <div style="font-size:10px;color:#9CA3AF;margin-top:5px">Butterfly Dic에 등록하면 다음 저장부터 포함됩니다</div>
       </div>` : ''}
 
@@ -3406,6 +3406,200 @@ async function pkApplyCopy() {
   rPK();
 }
 
+// ════════════════════════════════════════════════════════════
+// 팩(코스) 단위 관리
+// 팩 = 코스. 코스 하나 = 단어장 3권 = 3,000단어 = 15챕터.
+// 단어장 하나 = 1,000단어 = 200단어 × 5챕터.
+// 도서·드라마처럼 코스에 속하지 않는 팩은 낱개 단어장으로 따로 묶는다.
+// ════════════════════════════════════════════════════════════
+function _adminCourses(packs) {
+  const map = {};
+  (packs || []).forEach(p => {
+    if (!p.courseId) return;
+    const c = map[p.courseId] || (map[p.courseId] = {
+      id: p.courseId,
+      name: p.courseName || p.name,
+      emoji: p.courseEmoji || p.emoji || '📚',
+      desc: p.courseDesc || '',
+      basis: p.courseBasis || '',
+      order: p.courseOrder || 99,
+      cat: p.cat || '🎯 목표별 코스',
+      books: []
+    });
+    c.books.push(p);
+  });
+  const list = Object.values(map);
+  list.forEach(c => c.books.sort((a, b) => (a.tierIdx || 0) - (b.tierIdx || 0)));
+  return list.sort((a, b) => a.order - b.order);
+}
+
+function _courseStat(c) {
+  let n = 0, phrases = 0, incomplete = 0;
+  c.books.forEach(b => {
+    const st = pxStats(b.words || []);
+    n += st.n; phrases += st.phrases; incomplete += st.incomplete;
+  });
+  return { n, phrases, incomplete };
+}
+
+// 단어장 한 권의 챕터 수 (1,000단어 → 200×5)
+function _bookChapters(b) {
+  const n = (b.words || []).length;
+  if (!n) return 0;
+  return Math.max(1, Math.min(5, Math.floor(n / 5)));
+}
+
+function _courseRow(c) {
+  const st = _courseStat(c);
+  const chapters = c.books.reduce((s, b) => s + _bookChapters(b), 0);
+  const open = (window._pkOpenCourse === c.id);
+
+  const warn = st.phrases || st.incomplete;
+  const badge = warn
+    ? `<span style="background:#FFFBEB;color:#B45309;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">점검</span>`
+    : `<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">정상</span>`;
+
+  // 코스 헤더 행
+  let html = `<tr onclick="pkToggleCourse('${c.id}')" style="cursor:pointer;background:${open ? '#F8FAFC' : '#fff'}">
+    <td style="padding:12px 12px;width:52px"><div style="font-size:26px;text-align:center">${c.emoji}</div></td>
+    <td style="padding:12px 12px">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="font-size:14px;font-weight:800;color:#111">${esc(c.name)}</span>
+        <span style="background:#EFF6FF;color:#1E5FA5;border-radius:6px;padding:1.5px 6px;font-size:10px;font-weight:800">팩</span>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:2px">
+        단어장 ${c.books.length}권 · ${chapters}챕터
+        ${st.phrases ? ` · <span style="color:#B45309;font-weight:700">구 ${st.phrases}</span>` : ''}
+        ${st.incomplete ? ` · <span style="color:#DC2626;font-weight:700">불완전 ${st.incomplete}</span>` : ''}
+      </div>
+      ${c.desc ? `<div style="font-size:10.5px;color:#6B7280;margin-top:3px">${esc(c.desc)}</div>` : ''}
+    </td>
+    <td style="padding:12px 12px;font-size:11px;color:#9CA3AF">${esc(c.cat)}</td>
+    <td style="padding:12px 12px;font-weight:900;color:#1E5FA5;text-align:center;font-size:15px">${st.n.toLocaleString()}</td>
+    <td style="padding:12px 6px;text-align:center">
+      ${c.basis
+        ? `<span title="${esc(c.basis)}" style="font-size:14px">📐</span>`
+        : `<span title="구성 기준 없음" style="font-size:13px;opacity:.22">📐</span>`}
+    </td>
+    <td style="padding:12px 12px;text-align:center">${badge}</td>
+    <td style="padding:12px 12px" onclick="event.stopPropagation()">
+      <button class="btn bg" style="font-size:11px;padding:5px 10px" onclick="showCoursCopy('${c.id}')">팩 문구</button>
+      <span style="color:#D1D5DB;font-size:15px;margin-left:6px">${open ? '▾' : '▸'}</span>
+    </td>
+  </tr>`;
+
+  if (!open) return html;
+
+  // 펼침: 단어장 3권
+  html += `<tr><td colspan="7" style="padding:0;background:#F8FAFC">
+    <div style="padding:6px 16px 14px 62px;border-top:2px solid #DBEAFE">
+      <div style="font-size:10.5px;color:#9CA3AF;margin:8px 0 8px">
+        📗 단어장 ${c.books.length}권 — 한 권이 1,000단어, 200단어씩 5챕터입니다
+      </div>
+      ${c.books.map((b, i) => {
+        const st2 = pxStats(b.words || []);
+        const ch = _bookChapters(b);
+        return `<div style="background:#fff;border:1.5px solid #ECEEF1;border-radius:12px;padding:11px 13px;margin-bottom:7px">
+          <div style="display:flex;align-items:center;gap:11px">
+            <div style="width:26px;height:26px;border-radius:8px;background:#1E5FA5;color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12.5px;font-weight:800;color:#111">${esc(b.tierLabel || b.name)}</div>
+              <div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">
+                ${st2.n.toLocaleString()}단어 · ${ch}챕터 · <span style="color:#D1D5DB">${b.id}</span>
+                ${st2.phrases ? ` · <span style="color:#B45309;font-weight:700">구 ${st2.phrases}</span>` : ''}
+                ${st2.incomplete ? ` · <span style="color:#DC2626;font-weight:700">불완전 ${st2.incomplete}</span>` : ''}
+              </div>
+            </div>
+            <div style="width:150px;flex-shrink:0">${pxCefrBar(st2.cefr, st2.n)}</div>
+            <div style="display:flex;gap:5px;flex-shrink:0">
+              <button class="btn bb" style="font-size:11px;padding:5px 11px" onclick="showPackWords('${b.id}')">단어</button>
+              <button class="btn bp" style="font-size:11px;padding:5px 11px" onclick="showEditPack('${b.id}')">수정</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </td></tr>`;
+  return html;
+}
+
+function pkToggleCourse(id) {
+  window._pkOpenCourse = (window._pkOpenCourse === id) ? null : id;
+  rPK();
+}
+
+// 코스(팩) 단위 마케팅 문구 — 3권 전체에 반영된다
+function showCoursCopy(courseId) {
+  const c = _adminCourses(window._adminPacks || []).find(x => x.id === courseId);
+  if (!c) return;
+  document.getElementById('ma').innerHTML = `
+    <div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px;width:95vw">
+      <div style="font-size:16px;font-weight:800;margin-bottom:3px">${c.emoji} ${esc(c.name)} — 팩 문구</div>
+      <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:14px">
+        마켓 배너에 보이는 문구입니다. 단어장 ${c.books.length}권 전체에 함께 저장됩니다.
+      </div>
+      <div class="fg" style="margin-bottom:9px">
+        <label>한 줄 소개 <span style="font-weight:400;color:#9CA3AF;font-size:11px">무엇을 배우는 팩인지</span></label>
+        <input id="cc-desc" oninput="ccPreview()" value="${esc(c.desc)}" placeholder="수능 지문을 읽어내는 3,000단어">
+      </div>
+      <div class="fg" style="margin-bottom:12px">
+        <label>구성 기준 <span style="font-weight:400;color:#9CA3AF;font-size:11px">어떤 근거로 이 단어들을 골랐는지</span></label>
+        <input id="cc-basis" oninput="ccPreview()" value="${esc(c.basis)}" placeholder="교육부 2022 개정 교육과정 [별표 3] 기본어휘 3,000">
+      </div>
+
+      <div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">마켓 배너 미리보기</div>
+      <div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#3B82F6,#1E40AF);padding:14px 15px;position:relative;margin-bottom:14px">
+        <div style="position:absolute;right:-6px;bottom:-12px;font-size:88px;opacity:.16;line-height:1">${c.emoji}</div>
+        <div style="position:relative">
+          <div style="display:flex;gap:5px;margin-bottom:5px">
+            <span style="background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-weight:700;padding:2.5px 7px;border-radius:20px">${_courseStat(c).n.toLocaleString()}단어</span>
+          </div>
+          <div style="font-size:17px;font-weight:900;color:#fff">${c.emoji} ${esc(c.name)}</div>
+          <div id="cc-pv-desc" style="font-size:11.5px;color:rgba(255,255,255,.9);margin-top:4px">${esc(c.desc)}</div>
+          <div style="display:flex;align-items:center;gap:5px;margin-top:9px">
+            ${c.books.map(b => `<span style="background:rgba(0,0,0,.16);color:#fff;font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:7px">${esc(b.tierLabel || '')}</span>`).join('')}
+            <span style="flex:1"></span>
+            <span style="background:rgba(255,255,255,.95);color:#111;font-size:11px;font-weight:800;padding:5px 12px;border-radius:20px">자세히 ›</span>
+          </div>
+          <div id="cc-pv-basis" style="font-size:9.5px;color:rgba(255,255,255,.78);margin-top:8px">${c.basis ? '📐 ' + esc(c.basis) : ''}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn bgr" style="flex:1" onclick="cm()">취소</button>
+        <button class="btn bb" style="flex:2" onclick="saveCourseCopy('${c.id}')">💾 단어장 ${c.books.length}권에 저장</button>
+      </div>
+    </div></div>`;
+}
+
+function ccPreview() {
+  const d = (document.getElementById('cc-desc') || {}).value || '';
+  const b = (document.getElementById('cc-basis') || {}).value || '';
+  const pd = document.getElementById('cc-pv-desc');
+  const pb = document.getElementById('cc-pv-basis');
+  if (pd) pd.textContent = d;
+  if (pb) pb.textContent = b ? ('📐 ' + b) : '';
+}
+
+async function saveCourseCopy(courseId) {
+  const c = _adminCourses(window._adminPacks || []).find(x => x.id === courseId);
+  if (!c) return;
+  const desc = (document.getElementById('cc-desc') || {}).value || '';
+  const basis = (document.getElementById('cc-basis') || {}).value || '';
+  try {
+    toast('저장 중...', 'ok');
+    for (const b of c.books) {
+      await db.collection('packs').doc(b.id).update({ courseDesc: desc, courseBasis: basis, updatedAt: Date.now() });
+      b.courseDesc = desc; b.courseBasis = basis;
+    }
+    cm();
+    toast(`✅ ${c.name} 문구 저장 (단어장 ${c.books.length}권)`, 'ok');
+    rPK();
+  } catch (e) {
+    toast('저장 실패: ' + e.message, 'err');
+  }
+}
+
 async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
@@ -3434,27 +3628,50 @@ async function rPK(){
     return '<button onclick="window._adminSelCat='+setSel+';rPK()" style="padding:5px 14px;border-radius:20px;border:1.5px solid '+(active?'#1E5FA5':'#E5E7EB')+';background:'+(active?'#1E5FA5':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:12px;font-weight:'+(active?700:500)+';cursor:pointer;white-space:nowrap">'+esc(c)+' <span style="opacity:.65;font-size:11px">'+cnt+'</span></button>';
   }).join('');
 
-  const packRows = filtered.map(function(p){
-    const wc = (p.words||[]).length||p.count||0;
+  // 🎯 코스(팩)는 묶어서 1행, 나머지(도서·드라마)는 낱개 단어장
+  const _courseList = _adminCourses(filtered);
+  const _loose = filtered.filter(p => !p.courseId);
+
+  const courseRows = _courseList.map(_courseRow).join('');
+
+  const looseRows = _loose.map(function(p){
+    const st = pxStats(p.words||[]);
+    const wc = st.n || p.count || 0;
     const imgHtml = p.imageUrl
       ? '<img src="'+p.imageUrl+'" style="width:36px;height:36px;object-fit:cover;border-radius:8px">'
       : '<div style="font-size:26px;text-align:center;line-height:36px">'+(p.emoji||'📚')+'</div>';
     const badge = p.active===false
       ? '<span style="background:#FEF2F2;color:#DC2626;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">비활성</span>'
-      : '<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">활성</span>';
+      : (st.phrases||st.incomplete
+        ? '<span style="background:#FFFBEB;color:#B45309;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">점검</span>'
+        : '<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">활성</span>');
     return '<tr>'
-      +'<td style="padding:10px 12px"><div style="width:36px;height:36px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;margin:0 auto">'+imgHtml+'</div></td>'
-      +'<td style="padding:10px 12px"><div style="font-weight:700">'+(p.name||'')+'</div><div style="font-size:10px;color:#9CA3AF">'+p.id+'</div></td>'
-      +'<td style="padding:10px 12px"><span style="background:#EFF6FF;color:#1E5FA5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(p.cat||'')+'</span></td>'
+      +'<td style="padding:10px 12px;width:52px"><div style="width:36px;height:36px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;margin:0 auto">'+imgHtml+'</div></td>'
+      +'<td style="padding:10px 12px"><div style="font-size:13px;font-weight:700;color:#111">'+esc(p.name)+'</div>'
+        +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">'+esc(p.id)
+        +(st.phrases?' · <span style="color:#B45309;font-weight:700">구 '+st.phrases+'</span>':'')
+        +(st.incomplete?' · <span style="color:#DC2626;font-weight:700">불완전 '+st.incomplete+'</span>':'')
+        +'</div></td>'
+      +'<td style="padding:10px 12px;font-size:11px;color:#9CA3AF">'+esc(p.cat||'기타')+'</td>'
       +'<td style="padding:10px 12px;font-weight:800;color:#1E5FA5;text-align:center">'+wc.toLocaleString()+'</td>'
-      +'<td style="padding:10px 6px;text-align:center">'+(p.basis?'<span title="'+_esc(p.basis)+'" style="font-size:13px">📐</span>':'<span title="구성 기준 없음" style="font-size:12px;opacity:.25">📐</span>')+'</td>'
+      +'<td style="padding:10px 6px;text-align:center">'+(p.basis?'<span title="'+esc(p.basis)+'" style="font-size:13px">📐</span>':'<span title="구성 기준 없음" style="font-size:12px;opacity:.22">📐</span>')+'</td>'
       +'<td style="padding:10px 12px;text-align:center">'+badge+'</td>'
-      +'<td style="padding:10px 12px"><div style="display:flex;gap:5px">'
-        +'<button class="btn bb" style="font-size:11px;padding:4px 9px" onclick="showPackWords(\''+p.id+'\')">단어</button>'
-        +'<button class="btn bp" style="font-size:11px;padding:4px 9px" onclick="showEditPack(\''+p.id+'\')">수정</button>'
-        +'<button class="btn bgr" style="font-size:11px;padding:4px 9px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
-      +'</div></td></tr>';
+      +'<td style="padding:10px 12px">'
+        +'<button class="btn bb" style="font-size:11px;padding:5px 10px" onclick="showPackWords(\''+p.id+'\')">단어</button> '
+        +'<button class="btn bp" style="font-size:11px;padding:5px 10px" onclick="showEditPack(\''+p.id+'\')">수정</button> '
+        +'<button class="btn bgr" style="font-size:11px;padding:5px 10px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
+      +'</td>'
+    +'</tr>';
   }).join('');
+
+  const secHdr = (t, sub) => '<tr><td colspan="7" style="padding:14px 12px 7px;background:#fff">'
+    +'<div style="font-size:12.5px;font-weight:900;color:#111">'+t+'</div>'
+    +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:2px">'+sub+'</div></td></tr>';
+
+  const packRows =
+    (courseRows ? secHdr('🎯 목표별 코스 — '+_courseList.length+'개 팩',
+        '팩 하나가 단어장 3권. 한 권이 1,000단어(200단어 × 5챕터)입니다. 행을 누르면 단어장이 펼쳐집니다.') + courseRows : '')
+    + (looseRows ? secHdr('📦 낱개 단어장 — '+_loose.length+'개', '코스에 속하지 않은 팩입니다 (도서·드라마 등)') + looseRows : '');
 
   document.getElementById('main-inner').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -3468,7 +3685,7 @@ async function rPK(){
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
-      <div style="background:#EFF6FF;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">🛒 전체 팩</div><div style="font-size:26px;font-weight:900;color:#1E5FA5">${packs.length}</div></div>
+      <div style="background:#EFF6FF;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">🎯 코스 팩</div><div style="font-size:26px;font-weight:900;color:#1E5FA5">${_adminCourses(packs).length}</div><div style="font-size:10px;color:#9CA3AF;margin-top:2px">단어장 ${packs.filter(p=>p.courseId).length}권 · 낱개 ${packs.filter(p=>!p.courseId).length}</div></div>
       <div style="background:#F0FDF4;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">📖 총 단어수</div><div style="font-size:26px;font-weight:900;color:#16A34A">${packs.reduce((a,p)=>a+((p.words||[]).length||p.count||0),0).toLocaleString()}</div></div>
       <div style="background:#FFFBEB;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">📂 카테고리</div><div style="font-size:26px;font-weight:900;color:#D97706">${cats.length}</div></div>
       <div style="background:#FDF4FF;border-radius:14px;padding:16px 20px"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">✅ 활성</div><div style="font-size:26px;font-weight:900;color:#7C3AED">${packs.filter(p=>p.active!==false).length}</div></div>
@@ -3480,7 +3697,7 @@ async function rPK(){
         <span style="font-size:12px;color:#9CA3AF;white-space:nowrap">${filtered.length}개</span>
       </div>
       <div class="tw"><table id="pk-table">
-        <tr><th style="width:50px"></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th style="width:44px" title="구성 기준 입력 여부">기준</th><th>상태</th><th>작업</th></tr>
+        <tr><th style="width:52px"></th><th>팩 / 단어장</th><th style="width:120px">카테고리</th><th style="width:80px">단어수</th><th style="width:44px" title="구성 기준">기준</th><th style="width:64px">상태</th><th style="width:210px">작업</th></tr>
         ${packRows}
       </table></div>
     </div>`;
@@ -3562,7 +3779,7 @@ function pkImgClear(prevId, hiddenId, emoji) {
 // 카테고리 이름에 작은따옴표(') 등 특수문자가 들어가도 onclick/HTML이 깨지지 않도록:
 //  - onclick에는 카테고리 문자열을 인라인하지 말고 _adminCats 인덱스를 넘긴다
 //  - 화면 표시 텍스트는 esc()로 이스케이프
-function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function renameCatByIndex(i){ const c=(window._adminCats||[])[i]; if(c!=null) renameCat(c); }
 function deleteCatByIndex(i){ const c=(window._adminCats||[])[i]; if(c!=null) deleteCat(c); }
 function showManageCats() {
@@ -3741,17 +3958,17 @@ function showEditPack(packId) {
     +'<div style="background:#F8F9FA;border-radius:10px;padding:12px 13px;margin-bottom:10px">'
       +'<div style="font-size:11.5px;font-weight:800;color:#374151;margin-bottom:8px">🛒 마켓 카드 문구</div>'
       +'<div class="fg" style="margin-bottom:8px"><label>한 줄 소개 <span style="font-weight:400;color:#9CA3AF;font-size:11px">무엇을 배우는 팩인지</span></label>'
-        +'<input id="ep-desc" oninput="epPreview()" placeholder="수능 지문의 토대가 되는 기초 1,000단어" value="'+_esc(p.desc||'')+'"></div>'
+        +'<input id="ep-desc" oninput="epPreview()" placeholder="수능 지문의 토대가 되는 기초 1,000단어" value="'+esc(p.desc||'')+'"></div>'
       +'<div class="fg" style="margin-bottom:10px"><label>구성 기준 <span style="font-weight:400;color:#9CA3AF;font-size:11px">어떤 근거로 이 단어들을 골랐는지</span></label>'
-        +'<input id="ep-basis" oninput="epPreview()" placeholder="교육부 2022 개정 교육과정 [별표 3] 기본어휘 · 초등 권장 800" value="'+_esc(p.basis||'')+'"></div>'
+        +'<input id="ep-basis" oninput="epPreview()" placeholder="교육부 2022 개정 교육과정 [별표 3] 기본어휘 · 초등 권장 800" value="'+esc(p.basis||'')+'"></div>'
       +'<div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">미리보기</div>'
       +'<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:12px;padding:11px 13px;display:flex;gap:11px;align-items:center">'
         +'<div style="font-size:30px">'+(p.emoji||'📚')+'</div>'
         +'<div style="flex:1;min-width:0">'
-          +'<div style="font-size:13.5px;font-weight:800;color:#111">'+_esc(p.name)+'</div>'
-          +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">'+_esc(p.cat||'기타')+' · '+((p.words||[]).length)+'개 단어</div>'
-          +'<div id="ep-pv-desc" style="font-size:11px;color:#374151;margin-top:3px;font-weight:600;line-height:1.4">'+_esc(p.desc||'')+'</div>'
-          +'<div id="ep-pv-basis" style="font-size:9.5px;color:#3B82F6;margin-top:3px">'+(p.basis?('📐 '+_esc(p.basis)):'')+'</div>'
+          +'<div style="font-size:13.5px;font-weight:800;color:#111">'+esc(p.name)+'</div>'
+          +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">'+esc(p.cat||'기타')+' · '+((p.words||[]).length)+'개 단어</div>'
+          +'<div id="ep-pv-desc" style="font-size:11px;color:#374151;margin-top:3px;font-weight:600;line-height:1.4">'+esc(p.desc||'')+'</div>'
+          +'<div id="ep-pv-basis" style="font-size:9.5px;color:#3B82F6;margin-top:3px">'+(p.basis?('📐 '+esc(p.basis)):'')+'</div>'
         +'</div>'
         +'<div style="background:#3B82F6;color:#fff;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:700">+ 담기</div>'
       +'</div>'
@@ -4074,7 +4291,7 @@ function showPackWords(packId) {
           ${_pwStat.incomplete ? ` · <span style="color:#DC2626;font-weight:700">불완전 ${_pwStat.incomplete}개</span>` : ''}
         </div>
         ${_pwStat.n ? `<div style="max-width:340px;margin-top:4px">${pxCefrBar(_pwStat.cefr, _pwStat.n)}</div>` : ''}
-        ${p.basis ? `<div style="font-size:10px;color:#3B82F6;margin-top:5px">📐 ${_esc(p.basis)}</div>` : `<div style="font-size:10px;color:#D1D5DB;margin-top:5px">📐 구성 기준 없음 — [수정]에서 입력하세요</div>`}
+        ${p.basis ? `<div style="font-size:10px;color:#3B82F6;margin-top:5px">📐 ${esc(p.basis)}</div>` : `<div style="font-size:10px;color:#D1D5DB;margin-top:5px">📐 구성 기준 없음 — [수정]에서 입력하세요</div>`}
       </div>
       <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕ 닫기</button>
     </div>

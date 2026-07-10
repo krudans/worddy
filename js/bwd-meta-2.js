@@ -1,5 +1,7 @@
 /* Butterfly Word — bwd-meta-2.js (개념별 BWD_META: cefr/origin/syn/ant · 분할 2/2 · 자동생성) */
 window.BWD_META = Object.assign(window.BWD_META||{}, {
+  "knowledgeable": {cefr:"B2",origin:"고대영어 cnawan(알다)에서",syn:["informed","educated","well-informed"],ant:["ignorant","uninformed"]},
+  "known": {cefr:"A2",origin:"고대영어 cnawan(알다)에서",syn:["famous","recognized","familiar"],ant:["unknown","obscure"]},
   "knows": {cefr:"A1",origin:"고대영어 cnawan(알다)에서",syn:["understands","recognizes"],ant:["ignores"]},
   "knuckle": {cefr:"B2",origin:"중세 영어 knokel(손가락 관절)에서",syn:["joint","finger joint"],ant:[]},
   "knuckles": {cefr:"B2",origin:"중세 영어 knokel(손가락 관절)의 복수형",syn:["joints"],ant:[]},

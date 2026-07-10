@@ -141,6 +141,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "abstracts": {cefr:"C1",origin:"라틴어 abstractus(추출된)에서",syn:["summaries","synopses","outlines"],ant:[]},
   "abstruse": {cefr:"C2",origin:"라틴어 abstrusus(감추어진)에서",syn:["obscure","esoteric","arcane"],ant:["clear","simple","obvious"]},
   "absurd": {cefr:"B2",origin:"라틴어 absurdus(조화되지 않는)에서",syn:["ridiculous","preposterous","ludicrous"],ant:["sensible","logical","reasonable"]},
+  "absurdist": {cefr:"C1",origin:"From French 'absurde' (absurd).",syn:["surrealist","irrationalist"],ant:["rationalist","realist"]},
   "absurdity": {cefr:"C1",origin:"라틴어 absurditas(불합리)에서",syn:["foolishness","ridiculousness"],ant:["logic","sense"]},
   "absurdly": {cefr:"C1",origin:"라틴어 absurdus(조화되지 않는)에서",syn:["ridiculously","preposterously"],ant:["sensibly"]},
   "abu": {cefr:"B1",syn:[],ant:[]},
@@ -1018,6 +1019,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "alter": {cefr:"B2",origin:"라틴어 alter(다른)에서",syn:["change","modify","adjust"],ant:["maintain","preserve"]},
   "alteration": {cefr:"C1",origin:"라틴어 alter(다른)에서",syn:["change","modification","adjustment"],ant:["stagnation"]},
   "alterations": {cefr:"C1",origin:"라틴어 alter(다른)에서",syn:["modifications","adjustments","changes"],ant:[]},
+  "altercate": {cefr:"B2",origin:"From Latin 'altercare', from 'altercari' (to contend), from 'alter' (other).",syn:["argue","dispute","quarrel"],ant:["agree","concede","concur"]},
   "altercation": {cefr:"C2",origin:"라틴어 altercari(논쟁하다)에서",syn:["argument","quarrel","dispute"],ant:["agreement","harmony"]},
   "altered": {cefr:"B2",origin:"라틴어 alter(다른)에서",syn:["changed","modified","adjusted"],ant:["unchanged"]},
   "altering": {cefr:"B2",origin:"라틴어 alter(다른)에서",syn:["changing","modifying","adjusting"],ant:[]},
@@ -3569,6 +3571,7 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "blows": {cefr:"A2",origin:"고대영어 blawan(바람이 불다)에서",syn:["gusts","breezes"],ant:[]},
   "blubber": {cefr:"C1",origin:"중세영어 blubber(거품)에서",syn:["fat","insulation"],ant:[]},
   "blue": {cefr:"A1",origin:"고대프랑스어 bleu(파란색)에서",syn:["azure","cerulean"],ant:[]},
+  "blue-chip": {cefr:"B2",origin:"From poker, where blue chips were the highest value.",syn:["top-tier","leading","prime"],ant:["speculative","penny","low-grade"]},
   "bluebell": {cefr:"B2",origin:"영어 blue(파란색) + bell(종)에서",syn:["flower"],ant:[]},
   "blueberries": {cefr:"A2",origin:"영어 blue(파란색) + berry(열매)에서",syn:["fruit"],ant:[]},
   "blueberry": {cefr:"A2",origin:"영어 blue(파란색) + berry(열매)에서",syn:["fruit"],ant:[]},
@@ -3990,6 +3993,8 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "breadth": {cefr:"B2",origin:"고대 영어 brædu(넓이)에서",syn:["width","extent","scope"],ant:["narrowness"]},
   "breadwinner": {cefr:"C1",origin:"bread(빵) + winner(얻는 사람)에서",syn:["provider"],ant:[]},
   "break": {cefr:"A1",origin:"고대 영어 brecan(부수다)에서",syn:["shatter","smash","fracture"],ant:["repair","mend"]},
+  "break-up": {cefr:"A2",origin:"From the verb 'break up'.",syn:["split","dissolution","separation"],ant:["union","marriage","reconciliation"]},
+  "breakable": {cefr:"A2",origin:"break + -able",syn:["fragile","delicate","brittle"],ant:["unbreakable","durable","strong"]},
   "breakage": {cefr:"B2",origin:"고대영어 brecan(부수다)에서",syn:["damage","destruction"],ant:[]},
   "breakaway": {cefr:"C1",origin:"고대영어 brecan(부수다) + away(떨어져)에서",syn:["escape","separation","defection"],ant:["reunion"]},
   "breakdown": {cefr:"B1",origin:"고대영어 brecan(부수다) + down(아래로)에서",syn:["failure","collapse","malfunction"],ant:[]},
@@ -18081,7 +18086,5 @@ window.BWD_META = Object.assign(window.BWD_META||{}, {
   "know": {cefr:"A1",origin:"고대영어 cnawan(알다)에서",syn:["understand","recognize","perceive"],ant:["ignore","forget"]},
   "knowing": {cefr:"B2",origin:"고대영어 cnawan(알다)에서",syn:["aware","conscious","informed"],ant:["ignorant","unaware"]},
   "knowingly": {cefr:"C1",origin:"고대영어 cnawan(알다)에서",syn:["deliberately","intentionally","purposely"],ant:["unintentionally","accidentally"]},
-  "knowledge": {cefr:"A2",origin:"고대영어 cnawan(알다)에서",syn:["wisdom","understanding","insight"],ant:["ignorance"]},
-  "knowledgeable": {cefr:"B2",origin:"고대영어 cnawan(알다)에서",syn:["informed","educated","well-informed"],ant:["ignorant","uninformed"]},
-  "known": {cefr:"A2",origin:"고대영어 cnawan(알다)에서",syn:["famous","recognized","familiar"],ant:["unknown","obscure"]}
+  "knowledge": {cefr:"A2",origin:"고대영어 cnawan(알다)에서",syn:["wisdom","understanding","insight"],ant:["ignorance"]}
 });

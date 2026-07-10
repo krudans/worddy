@@ -1,4 +1,4 @@
-<!-- build: 20260710-course-packs -->
+<!-- build: 20260710-banner-c-list -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2977,37 +2977,78 @@ function _courseOwned(c) {
 // 코스 난이도 = 첫 단어장 기준 (뒤로 갈수록 어려워지므로)
 function _courseLevel(c) { return c.books.length ? _pkLevel(c.books[0]) : ''; }
 
-// ── 코스 배너 ──
+// ── 코스 배너 (C형: 단계 내장 · 앱 토큰만 사용) ──
+// 흰 카드 + 얇은 테두리. 색은 코스 구분 악센트로만.
+function _courseAccent(id) {
+  const M = {
+    basic:    '#5B8DEF',
+    suneung:  '#E8875A',
+    toeic:    '#4AA3A2',
+    toefl:    '#7C6CD9',
+    business: '#4F7A5B',
+    travel:   '#D9736E'
+  };
+  if (M[id]) return M[id];
+  let h = 0;
+  for (let i = 0; i < String(id).length; i++) h = (h * 31 + String(id).charCodeAt(i)) % 360;
+  return `hsl(${h},42%,52%)`;
+}
+
 function _courseBanner(c, petCol) {
   const n = _courseWords(c);
-  const own = _courseOwned(c);
   const total = c.books.length;
+  const ac = _courseAccent(c.id);
   const lv = _courseLevel(c);
-  const lvTxt = _PK_LV_TXT[lv] || '';
-  const grad = _pkGrad(c.id);
-  const chapters = c.books.reduce((s, b) => s + Math.max(1, Math.min(5, Math.floor(((b.words || []).length) / 5))), 0);
+  const chTotal = c.books.reduce((s, b) => s + Math.max(1, Math.min(5, Math.floor(((b.words || []).length) / 5))), 0);
 
-  return `<div onclick="showCourseDetail('${c.id}')" style="
-      position:relative;border-radius:18px;overflow:hidden;cursor:pointer;background:${grad};
-      min-height:142px;box-shadow:0 2px 10px rgba(0,0,0,.06);
-      border:${own ? '2px solid ' + petCol.main : '1.5px solid transparent'}">
-    <div style="position:absolute;right:-6px;bottom:-12px;font-size:104px;opacity:.16;line-height:1;pointer-events:none">${c.emoji}</div>
-    <div style="position:relative;padding:15px 16px;display:flex;flex-direction:column;justify-content:space-between;height:100%">
-      <div>
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px">
-          ${own ? `<span style="background:rgba(255,255,255,.94);color:${petCol.main};font-size:9.5px;font-weight:800;padding:2.5px 7px;border-radius:20px">단어장 ${own}/${total} 보유</span>` : ''}
-          ${lvTxt ? `<span style="background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-weight:700;padding:2.5px 7px;border-radius:20px">${lv}부터 · ${lvTxt}</span>` : ''}
-          <span style="background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-weight:700;padding:2.5px 7px;border-radius:20px">${n.toLocaleString()}단어</span>
+  const ownedIds = (S.books || []).map(b => b && b.packId).filter(Boolean);
+  const ownCnt = c.books.filter(b => ownedIds.includes(b.id)).length;
+  const rest = c.books.filter(b => !ownedIds.includes(b.id));
+  const restWords = rest.reduce((s, b) => s + (b.words || []).length, 0);
+
+  const steps = c.books.map((b, i) => {
+    const done = ownedIds.includes(b.id);
+    const bn = (b.words || []).length;
+    const bch = Math.max(1, Math.min(5, Math.floor(bn / 5)));
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+      <div style="width:17px;height:17px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;
+        background:${done ? petCol.main : 'var(--bg-sub,#F8F9FA)'};color:${done ? '#fff' : 'var(--text3,#9CA3AF)'}">${done ? '✓' : (i + 1)}</div>
+      <div style="flex:1;font-size:11.5px;font-weight:700;color:var(--text2,#374151);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.tierLabel || b.name}</div>
+      <div style="font-size:10px;color:var(--text3,#9CA3AF);flex-shrink:0">${bn.toLocaleString()}단어 · ${bch}챕터</div>
+    </div>`;
+  }).join('');
+
+  return `<div style="background:var(--bg-card,#fff);border:1.5px solid ${ownCnt ? petCol.main : 'var(--border,#ECEEF1)'};border-radius:16px;margin-bottom:9px;overflow:hidden">
+    <div onclick="showCourseDetail('${c.id}')" style="padding:14px 15px 11px;cursor:pointer">
+      <div style="display:flex;align-items:center;gap:11px">
+        <div style="font-size:24px;width:30px;text-align:center;flex-shrink:0">${c.emoji}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:14.5px;font-weight:800;color:var(--text1,#111);letter-spacing:-.2px">${c.name}</span>
+            ${ownCnt === total ? `<span style="background:#FDF2F6;color:${petCol.main};font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:20px">보유</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">
+            ${n.toLocaleString()}단어 · ${chTotal}챕터${lv ? ' · ' + lv + '부터' : ''}
+          </div>
         </div>
-        <div style="font-size:18px;font-weight:900;color:#fff;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.18)">${c.emoji} ${c.name}</div>
-        ${c.desc ? `<div style="font-size:11.5px;color:rgba(255,255,255,.9);margin-top:4px;line-height:1.45;font-weight:500">${c.desc}</div>` : ''}
+        <span style="color:var(--text4,#D1D5DB);font-size:15px;flex-shrink:0">›</span>
       </div>
 
-      <div style="display:flex;align-items:center;gap:5px;margin-top:9px;flex-wrap:wrap">
-        ${c.books.map(b => `<span style="background:rgba(0,0,0,.16);color:#fff;font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:7px">${b.tierLabel || ''}</span>`).join('')}
-        <span style="flex:1"></span>
-        <div style="background:rgba(255,255,255,.95);color:#111;font-size:11.5px;font-weight:800;padding:6px 13px;border-radius:20px;white-space:nowrap">자세히 ›</div>
-      </div>
+      <div style="margin-top:11px;padding-top:10px;border-top:1px solid var(--border,#ECEEF1)">${steps}</div>
+
+      ${ownCnt ? `<div style="height:3px;border-radius:2px;background:var(--bg-sub,#F8F9FA);margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${ownCnt / total * 100}%;background:${petCol.main}"></div>
+      </div>` : ''}
+    </div>
+
+    <div style="padding:0 15px 13px">
+      ${rest.length
+        ? `<button onclick="event.stopPropagation();_courseBuy('${c.id}',true)" style="width:100%;padding:10px;border-radius:11px;border:1.5px solid ${ac}44;background:${ac}0F;color:${ac};font-size:12px;font-weight:800;cursor:pointer">
+             ＋ 팩 전체 담기 · 단어장 ${rest.length}권 (${restWords.toLocaleString()}단어)
+           </button>`
+        : `<button onclick="event.stopPropagation();S._pkDetail='${c.id}';go('mybooks','detail')" style="width:100%;padding:10px;border-radius:11px;border:1.5px solid var(--border,#ECEEF1);background:var(--bg-sub,#F8F9FA);color:var(--text2,#374151);font-size:12px;font-weight:800;cursor:pointer">
+             전체 보유 중 · 코스 열기
+           </button>`}
     </div>
   </div>`;
 }
@@ -3027,7 +3068,7 @@ function rCourseDetail() {
   const n = _courseWords(c);
   const total = c.books.length;
   const own = _courseOwned(c);
-  const grad = _pkGrad(c.id);
+  const ac = _courseAccent(c.id);
   const lv = _courseLevel(c);
   const lvTxt = _PK_LV_TXT[lv] || '';
   const chPer = 5;
@@ -3037,17 +3078,18 @@ function rCourseDetail() {
   let html = `<div style="padding:0 0 92px">`;
 
   // 히어로
-  html += `<div style="position:relative;border-radius:0 0 22px 22px;overflow:hidden;background:${grad};padding:16px 18px 22px">
-    <div style="position:absolute;right:-10px;bottom:-16px;font-size:126px;opacity:.15;line-height:1">${c.emoji}</div>
-    <button onclick="S._pkDetail=null;go('mybooks','market')" style="position:relative;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:13px;font-weight:700;padding:7px 12px;border-radius:20px;cursor:pointer;margin-bottom:14px">‹ 마켓</button>
-    <div style="position:relative">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">
-        ${own ? `<span style="background:#fff;color:${petCol.main};font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px">단어장 ${own}/${total} 보유</span>` : ''}
-        ${lvTxt ? `<span style="background:rgba(255,255,255,.22);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">${lv}부터 · ${lvTxt}</span>` : ''}
-        <span style="background:rgba(255,255,255,.22);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">${c.cat}</span>
+  html += `<div style="background:var(--bg-card,#fff);border-bottom:1px solid var(--border,#ECEEF1);padding:12px 16px 18px">
+    <button onclick="S._pkDetail=null;go('mybooks','market')" style="background:none;border:none;color:var(--text3,#9CA3AF);font-size:13px;font-weight:700;padding:6px 0;cursor:pointer;margin-bottom:8px">‹ 마켓</button>
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="width:48px;height:48px;border-radius:14px;background:${ac}14;color:${ac};font-size:25px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${c.emoji}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:4px">
+          ${own ? `<span style="background:#FDF2F6;color:${petCol.main};font-size:9.5px;font-weight:800;padding:2.5px 7px;border-radius:20px">단어장 ${own}/${total} 보유</span>` : ''}
+          ${lvTxt ? `<span style="background:var(--bg-sub,#F8F9FA);color:var(--text3,#9CA3AF);font-size:9.5px;font-weight:700;padding:2.5px 7px;border-radius:20px">${lv}부터 · ${lvTxt}</span>` : ''}
+        </div>
+        <div style="font-size:19px;font-weight:900;color:var(--text1,#111);line-height:1.3;letter-spacing:-.3px">${c.name}</div>
+        ${c.desc ? `<div style="font-size:12px;color:var(--text3,#9CA3AF);margin-top:4px;line-height:1.55">${c.desc}</div>` : ''}
       </div>
-      <div style="font-size:23px;font-weight:900;color:#fff;line-height:1.25;text-shadow:0 1px 5px rgba(0,0,0,.2)">${c.name}</div>
-      ${c.desc ? `<div style="font-size:12.5px;color:rgba(255,255,255,.92);margin-top:6px;line-height:1.55">${c.desc}</div>` : ''}
     </div>
   </div>`;
 
@@ -3085,7 +3127,7 @@ function rCourseDetail() {
         const blv = _pkLevel(b);
         return `<div style="border:1.5px solid ${bown ? petCol.main + '55' : 'var(--border,#ECEEF1)'};border-radius:13px;padding:11px 12px;background:${bown ? petCol.main + '0C' : 'var(--bg-sub,#F8F9FA)'}">
           <div style="display:flex;align-items:center;gap:9px">
-            <div style="width:26px;height:26px;border-radius:8px;background:${_pkGrad(b.id)};color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
+            <div style="width:26px;height:26px;border-radius:8px;background:${bown ? petCol.main : ac};color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">${bown ? '✓' : (i + 1)}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:12.5px;font-weight:800;color:var(--text1,#111)">${b.tierLabel || b.name}</div>
               <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:1px">${bn.toLocaleString()}단어 · 5챕터 ${blv ? '· ' + blv : ''}</div>
@@ -3170,7 +3212,8 @@ function rCourseDetail() {
 }
 
 // 코스 전체 담기 — 아직 없는 단어장만
-function _courseBuy(courseId) {
+// stay=true면 지금 화면 유지(마켓 배너에서 담을 때), 아니면 코스 상세로
+function _courseBuy(courseId, stay) {
   const c = _courses(S._marketPacks || []).find(x => x.id === courseId);
   if (!c) return;
   const rest = c.books.filter(b => !(S.books || []).some(x => x && x.packId === b.id));
@@ -3178,9 +3221,9 @@ function _courseBuy(courseId) {
   S._silentBuy = true;
   rest.forEach(b => { try { _doBuyPack(b.id); } catch (e) {} });
   S._silentBuy = false;
-  S._pkDetail = courseId;
   toast(`✅ ${c.name} 단어장 ${rest.length}권 담기 완료`);
-  go('mybooks', 'detail');
+  if (stay) { go('mybooks', 'market'); }
+  else { S._pkDetail = courseId; go('mybooks', 'detail'); }
 }
 
 function rMarket() {
@@ -3235,14 +3278,70 @@ function rMarket() {
   } else {
     // 카테고리 탭 중복 제거 (상단 줄바꿈 카테고리 바로 일원화)
 
-    // 코스는 묶어서 배너 1개, 나머지(도서·드라마 등)는 팩별 배너
-    html += `<div style="display:flex;flex-direction:column;gap:11px">`;
+    // 🎯 목표별 코스는 배너, 나머지(도서·드라마)는 기존 리스트 그대로
     const _courseList = _courses(filtered);
-    _courseList.forEach(c => { html += _courseBanner(c, petCol); });
-    filtered.filter(pk => !pk.courseId).forEach(pk => {
-      html += _pkBanner(pk, ownedPacks.includes(pk.id), petCol);
+    const _loosePacks = filtered.filter(pk => !pk.courseId);
+
+    if(_courseList.length){
+      html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 8px">
+        <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">🎯 목표별 코스</div>
+        <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_courseList.length}개 코스</div></div>`;
+      _courseList.forEach(c => { html += _courseBanner(c, petCol); });
+    }
+
+    if(_loosePacks.length){
+      if(_courseList.length){
+        html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:16px 2px 8px">
+          <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">📚 단어장</div>
+          <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_loosePacks.length}개</div></div>`;
+      }
+      html += `<div style="display:flex;flex-direction:column;gap:10px">`;
+    _loosePacks.forEach(pk => {
+      const owned = ownedPacks.includes(pk.id);
+      const wordCount = (pk.words||[]).length;
+      const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
+      const pkIcon = pk.imageUrl
+        ? `<img src="${pk.imageUrl}" style="width:46px;height:46px;border-radius:12px;object-fit:cover;flex-shrink:0">`
+        : `<div style="font-size:36px;flex-shrink:0">${pk.emoji||'📚'}</div>`;
+      html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:14px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
+          ${pkIcon}
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:800;color:var(--text1,var(--text1,#111111))">${pk.name}</div>
+            <div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">
+              ${pk.cat||'기타'} · ${wordCount}개 단어
+            </div>
+            ${pk.desc?`<div style="font-size:11.5px;color:var(--text2,#374151);margin-top:3px;font-weight:600;line-height:1.4">${pk.desc}</div>`:''}
+            ${pk.basis?`<div style="font-size:10px;color:var(--theme,#3B82F6);margin-top:3px;display:flex;align-items:center;gap:3px"><span style="opacity:.7">📐</span>${pk.basis}</div>`:''}
+            ${(!pk.desc&&preview)?`<div style="font-size:11px;color:var(--text3,var(--text3,#9CA3AF));margin-top:2px">${preview}...</div>`:''}
+          </div>
+          ${owned
+            ? `<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700">✅ 보유</span>
+            </div>`
+            : `<button onclick="_doBuyPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
+        </div>
+        ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
+        <div id="preview-${pk.id}" style="display:none;margin-top:10px">
+          <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">영어</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">한국어</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
+              </tr></thead>
+              <tbody>
+${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}"> <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td> <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td> <td style="padding:6px 8px;color:#6B7280;max-width:200px"> ${(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.map(e=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px">${e}</div>`).join('');})()} </td> </tr>`).join('')}
+              ${wordCount>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${wordCount-10}개 더</td></tr>`:''}
+              </tbody>
+            </table>
+          </div>
+        </div>`:''}
+      </div>`;
     });
-    html += `</div>`;
+
+      html += `</div>`;
+    }
   }
 
   html += `<button onclick="S.stab='books';go('mybooks')" style="width:100%;background:none;border:none;color:var(--text3,var(--text3,#9CA3AF));font-size:13px;cursor:pointer;padding:12px 0 0">← 단어장으로</button>`;

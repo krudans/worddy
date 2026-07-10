@@ -4273,41 +4273,197 @@ async function uploadLocalPackToFirebase(packId) {
 
 
 // ── 팩 단어 관리 ──
+// ════════════════════════════════════════════════════════════
+// 단어 화면 (A형 · 밀도형 표)
+// 사전이 가진 필드를 전부 보여준다: 이모지·발음·CEFR·품사·뜻·예문5
+// 빠진 필드는 붉게 표시해 1,000단어에서 구멍을 바로 찾는다.
+// ════════════════════════════════════════════════════════════
+const PW_CEFR_COL = { A1:'#34D399', A2:'#6EE7B7', B1:'#60A5FA', B2:'#3B82F6', C1:'#A78BFA', C2:'#8B5CF6' };
+
+function _pwMeta(en) {
+  const k = String(en || '').toLowerCase();
+  const M = (typeof BWD_META !== 'undefined') ? BWD_META : {};
+  return M[k] || {};
+}
+function _pwEx(w) {
+  if (Array.isArray(w.exList) && w.exList.length) return w.exList;
+  return w.ex ? [w.ex] : [];
+}
+// 빠진 항목이 있는 단어인가
+function _pwBad(w) {
+  return !w.kr || !w.img || !w.ph || _pwEx(w).length < 5;
+}
+
+// 단어 추가 — 영단어만 입력하면 사전에서 전부 채운다 (AI 없음)
+function showAddWordModal() {
+  const p = (window._adminPacks || []).find(x => x.id === selPack);
+  if (!p) return;
+  document.getElementById('ma2') || (function(){
+    const d = document.createElement('div'); d.id = 'ma2'; document.body.appendChild(d);
+  })();
+  document.getElementById('ma2').innerHTML = `<div class="mbg" onclick="document.getElementById('ma2').innerHTML=''" style="z-index:120">
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;width:92vw">
+      <div style="font-size:15px;font-weight:900;margin-bottom:3px">단어 추가</div>
+      <div style="font-size:11px;color:#94A3B8;margin-bottom:13px">
+        영단어만 넣으면 뜻·발음·품사·예문 5개·이모지를 앱 사전에서 채웁니다.
+      </div>
+      <div class="fg" style="margin-bottom:10px">
+        <label>영단어</label>
+        <input id="aw-en" placeholder="invoice" oninput="awPreview()" autocomplete="off">
+      </div>
+      <div id="aw-pv" style="min-height:74px"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn bgr" style="flex:1" onclick="document.getElementById('ma2').innerHTML=''">취소</button>
+        <button class="btn bb" style="flex:2" id="aw-save" onclick="awSave()" disabled>추가</button>
+      </div>
+    </div></div>`;
+  setTimeout(() => { const el = document.getElementById('aw-en'); if (el) el.focus(); }, 60);
+}
+
+function awPreview() {
+  const en = (document.getElementById('aw-en').value || '').trim().toLowerCase();
+  const pv = document.getElementById('aw-pv');
+  const btn = document.getElementById('aw-save');
+  if (!en) { pv.innerHTML = ''; btn.disabled = true; return; }
+
+  const p = (window._adminPacks || []).find(x => x.id === selPack);
+  if (p && (p.words || []).find(w => String(w.en).toLowerCase() === en)) {
+    pv.innerHTML = `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:11px 13px;font-size:11.5px;color:#B45309;font-weight:700">이미 이 단어장에 있는 단어입니다</div>`;
+    btn.disabled = true; return;
+  }
+  const w = (typeof pxBuildWord === 'function') ? pxBuildWord(en) : null;
+  if (!w) {
+    pv.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:11px 13px">
+      <div style="font-size:11.5px;font-weight:800;color:#B91C1C">사전에 없는 단어입니다</div>
+      <div style="font-size:10.5px;color:#7F1D1D;margin-top:3px;line-height:1.6">Butterfly Dic에 먼저 등록해주세요.</div></div>`;
+    btn.disabled = true; return;
+  }
+  const m = _pwMeta(en);
+  const cef = m.cefr ? `<span style="font-size:9px;font-weight:900;padding:1.5px 5px;border-radius:4px;color:#fff;background:${PW_CEFR_COL[m.cefr] || '#94A3B8'}">${m.cefr}</span>` : '';
+  pv.innerHTML = `<div style="background:#F8FAFB;border:1px solid #E8EBEF;border-radius:11px;padding:12px 13px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="font-size:22px">${w.img || '📘'}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px;font-weight:800">${esc(w.en)}</span>${cef}
+          <span style="font-size:9.5px;color:#94A3B8;background:#fff;padding:1.5px 6px;border-radius:5px">${esc(w.pos || '–')}</span>
+        </div>
+        <div style="font-size:10.5px;color:#94A3B8;font-family:ui-monospace,Menlo,monospace;margin-top:1px">${esc(w.ph || '')}</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#475569;margin-top:8px;font-weight:600">${esc(w.kr)}</div>
+    <div style="font-size:10.5px;color:#94A3B8;font-style:italic;margin-top:5px">${esc((w.exList || [])[0] || '')}</div>
+    <div style="font-size:10px;color:#16A34A;margin-top:6px;font-weight:700">예문 ${(w.exList || []).length}개 · 자동으로 채웁니다</div>
+  </div>`;
+  btn.disabled = false;
+}
+
+function awSave() {
+  const en = (document.getElementById('aw-en').value || '').trim().toLowerCase();
+  const p = (window._adminPacks || []).find(x => x.id === selPack);
+  if (!p || !en) return;
+  const w = pxBuildWord(en);
+  if (!w) { toast('사전에 없는 단어입니다', 'err'); return; }
+  if (!p.words) p.words = [];
+  p.words.push(w);
+  db.collection('packs').doc(p.id).update({ words: p.words, updatedAt: Date.now() })
+    .then(() => {
+      document.getElementById('ma2').innerHTML = '';
+      toast('✅ ' + en + ' 추가', 'ok');
+      showPackWords(p.id);
+    })
+    .catch(e => toast('저장 실패: ' + e.message, 'err'));
+}
+
 function showPackWords(packId) {
   selPack = packId;
-  const _packs = window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  const p = _packs.find(x=>x.id===packId);
-  if(!p) { toast('팩을 찾을 수 없어요','err'); return; }
-  const words = p.words||[];
-  const _pwStat = pxStats(words);
+  const _packs = window._adminPacks || [];
+  const p = _packs.find(x => x.id === packId);
+  if (!p) { toast('단어장을 찾을 수 없어요', 'err'); return; }
 
-  document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:92vh;display:flex;flex-direction:column;max-width:900px;width:95vw">
-    <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:16px;font-weight:800">${p.emoji} ${p.name}</div>
-        <div style="font-size:11.5px;color:#9CA3AF;margin-top:2px">
-          ${_pwStat.n}단어
-          ${_pwStat.phrases ? ` · <span style="color:#B45309;font-weight:700">구 ${_pwStat.phrases}개</span>` : ''}
-          ${_pwStat.incomplete ? ` · <span style="color:#DC2626;font-weight:700">불완전 ${_pwStat.incomplete}개</span>` : ''}
+  const words = p.words || [];
+  const st = pxStats(words);
+  const course = p.courseId
+    ? _adminCourses(_packs).find(c => c.id === p.courseId)
+    : null;
+  const ch = _bookChapters(p);
+  const chSize = ch ? Math.ceil(words.length / ch) : 0;
+  const bad = words.filter(_pwBad).length;
+  const noMeta = words.filter(w => !_pwMeta(w.en).cefr).length;
+
+  window.__pwFilter = '';
+  window.__pwPage = 0;
+  window.__pwOnly = '';      // '' | 'bad' | 'ch0'..'ch4'
+  window.__pwChap = -1;
+
+  document.getElementById('ma').innerHTML = `<div class="mbg" onclick="cm()">
+    <div class="modal" onclick="event.stopPropagation()" style="padding:0;max-width:1000px;width:96vw;max-height:92vh;display:flex;flex-direction:column">
+
+      <div style="padding:14px 20px;border-bottom:1px solid #E8EBEF;flex-shrink:0">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div style="font-size:28px;line-height:1">${p.emoji || '📚'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10.5px;color:#94A3B8">
+              ${course ? `${course.emoji} ${esc(course.name)} › 단어장 ${p.tierIdx || ''}` : esc(p.cat || '낱개 단어장')}
+            </div>
+            <div style="font-size:15.5px;font-weight:900;letter-spacing:-.2px;margin-top:1px">
+              ${esc(p.tierLabel || p.name)}
+              <span style="font-weight:400;color:#94A3B8;font-size:11px;margin-left:4px">${esc(p.id)}</span>
+            </div>
+          </div>
+          <button onclick="cm()" style="background:none;border:none;font-size:19px;cursor:pointer;color:#94A3B8">✕</button>
         </div>
-        ${_pwStat.n ? `<div style="max-width:340px;margin-top:4px">${pxCefrBar(_pwStat.cefr, _pwStat.n)}</div>` : ''}
-        ${p.basis ? `<div style="font-size:10px;color:#3B82F6;margin-top:5px">📐 ${esc(p.basis)}</div>` : `<div style="font-size:10px;color:#D1D5DB;margin-top:5px">📐 구성 기준 없음 — [수정]에서 입력하세요</div>`}
+
+        <div style="display:flex;margin-top:11px">
+          <div style="flex:1;text-align:center">
+            <div style="font-size:16px;font-weight:900">${st.n.toLocaleString()}</div>
+            <div style="font-size:9.5px;color:#94A3B8;margin-top:1px">단어</div>
+          </div>
+          <div style="width:1px;background:#E8EBEF"></div>
+          <div style="flex:1;text-align:center">
+            <div style="font-size:16px;font-weight:900">${ch}</div>
+            <div style="font-size:9.5px;color:#94A3B8;margin-top:1px">챕터 · ${chSize}씩</div>
+          </div>
+          <div style="width:1px;background:#E8EBEF"></div>
+          <div style="flex:1;text-align:center">
+            <div style="font-size:16px;font-weight:900;color:#16A34A">${(st.n - noMeta).toLocaleString()}</div>
+            <div style="font-size:9.5px;color:#94A3B8;margin-top:1px">사전 등록</div>
+          </div>
+          <div style="width:1px;background:#E8EBEF"></div>
+          <div style="flex:1;text-align:center">
+            <div style="font-size:16px;font-weight:900;color:${bad ? '#DC2626' : '#94A3B8'}">${bad}</div>
+            <div style="font-size:9.5px;color:#94A3B8;margin-top:1px">빠진 항목</div>
+          </div>
+        </div>
+
+        ${st.n ? `<div style="margin-top:9px">${pxCefrBar(st.cefr, st.n)}</div>` : ''}
+        ${(course && course.basis)
+          ? `<div style="font-size:10px;color:#1E5FA5;margin-top:7px">📐 ${esc(course.basis)}</div>`
+          : (p.basis ? `<div style="font-size:10px;color:#1E5FA5;margin-top:7px">📐 ${esc(p.basis)}</div>`
+                     : `<div style="font-size:10px;color:#CBD5E1;margin-top:7px">📐 구성 기준 없음</div>`)}
       </div>
-      <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕ 닫기</button>
-    </div>
 
-    <!-- 탭 -->
-    <div style="display:flex;border-bottom:1px solid #E5E7EB;flex-shrink:0">
-      <div id="pwt-add" onclick="showPackWordTab('add')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#1E5FA5;border-bottom:2px solid #1E5FA5">➕ 단어 추가</div>
-      <div id="pwt-list" onclick="showPackWordTab('list')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">📋 단어 목록</div>
-      <div id="pwt-dup" onclick="showPackWordTab('dup')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">🔍 중복 필터</div>
-      <div id="pwt-fill" onclick="showPackWordTab('fill')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">📖 사전에서 채우기</div>
-    </div>
+      <div style="display:flex;border-bottom:1px solid #E8EBEF;flex-shrink:0;padding:0 10px">
+        <div id="pwt-list" onclick="showPackWordTab('list')" style="padding:11px 14px;font-size:12px;font-weight:800;cursor:pointer;color:#1E5FA5;border-bottom:2px solid #1E5FA5;margin-bottom:-1px">📋 단어 ${st.n.toLocaleString()}</div>
+        <div id="pwt-fill" onclick="showPackWordTab('fill')" style="padding:11px 14px;font-size:12px;font-weight:800;cursor:pointer;color:#94A3B8;border-bottom:2px solid transparent;margin-bottom:-1px">📖 사전에서 채우기</div>
+        <div id="pwt-dup" onclick="showPackWordTab('dup')" style="padding:11px 14px;font-size:12px;font-weight:800;cursor:pointer;color:#94A3B8;border-bottom:2px solid transparent;margin-bottom:-1px">🔍 중복</div>
+      </div>
 
-    <div id="pw-content" style="flex:1;overflow-y:auto;padding:16px"></div>
-  </div></div>`;
+      <div id="pw-content" style="flex:1;overflow-y:auto;padding:14px 18px"></div>
+    </div></div>`;
 
-  showPackWordTab('add');
+  showPackWordTab('list');
+}
+
+function _pwFilterSet(kind) {
+  window.__pwOnly = (window.__pwOnly === kind) ? '' : kind;
+  window.__pwPage = 0;
+  _renderPackList();
+}
+function _pwChapSet(c) {
+  window.__pwChap = (window.__pwChap === c) ? -1 : c;
+  window.__pwPage = 0;
+  _renderPackList();
 }
 
 function showPackWordTab(tab) {
@@ -4317,7 +4473,7 @@ function showPackWordTab(tab) {
   const words = p.words||[];
 
   // 탭 활성화
-  ['add','list','dup','fill'].forEach(t=>{
+  ['list','fill','dup'].forEach(t=>{
     const el = document.getElementById('pwt-'+t);
     if(!el) return;
     el.style.color = t===tab ? '#1E5FA5' : '#9CA3AF';
@@ -4327,29 +4483,17 @@ function showPackWordTab(tab) {
   const cont = document.getElementById('pw-content');
   if(!cont) return;
 
-  if(tab==='add') {
-    cont.innerHTML=`
-      <!-- 방법 탭 -->
-      <div style="display:flex;gap:6px;margin-bottom:14px;background:#F3F4F6;border-radius:10px;padding:4px">
-        <button onclick="showAddMethod('single')" id="am-single" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#1E5FA5">✏️ 직접 입력</button>
-        <button onclick="showAddMethod('bulk')" id="am-bulk" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">📋 대량 입력</button>
-        <button onclick="showAddMethod('csv')" id="am-csv" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">📄 CSV</button>
-        <button onclick="showAddMethod('ai')" id="am-ai" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">✨ AI</button>
-      </div>
-      <div id="add-method-content"></div>`;
-    showAddMethod('single');
-  }
-
-  else if(tab==='list') {
+  if(tab==='list') {
     if(!words.length) {
-      cont.innerHTML='<div style="text-align:center;padding:40px;color:#9CA3AF"><div style="font-size:36px">📭</div><p>단어가 없어요</p></div>';
+      cont.innerHTML='<div style="text-align:center;padding:44px;color:#94A3B8"><div style="font-size:34px">📭</div>'
+        +'<div style="font-size:12.5px;font-weight:800;margin:9px 0 5px;color:#0F172A">단어가 없습니다</div>'
+        +'<div style="font-size:11px;line-height:1.7">📖 사전에서 채우기 로 단어를 넣어주세요</div></div>';
       return;
     }
-    window.__pwFilter=''; window.__pwPage=0;
     cont.innerHTML=
-      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap;position:sticky;top:0;background:#fff;padding-bottom:4px;z-index:2">'
-      +'<input id="pw-search" placeholder="🔍 영어/뜻 검색..." oninput="filterPackWords(this.value)" style="flex:1;min-width:160px;font-size:13px;padding:9px 12px;border:1px solid #E5E7EB;border-radius:10px;outline:none">'
-      +'<button onclick="generateExamples(selPack)" style="background:#7C3AED;color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer">📖 예문 생성</button>'
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:11px;position:sticky;top:-14px;background:#fff;padding:6px 0 8px;z-index:3">'
+      +'<input id="pw-search" placeholder="🔍 영어 · 뜻 · 예문 검색" oninput="filterPackWords(this.value)" style="flex:1;font-size:12.5px;padding:9px 12px;border:1.5px solid #E8EBEF;border-radius:10px;outline:none">'
+      +'<button class="btn bb" style="font-size:11.5px;padding:8px 13px" onclick="showAddWordModal()">＋ 단어</button>'
       +'</div>'
       +'<div id="pw-listwrap"></div>';
     _renderPackList();
@@ -4438,28 +4582,106 @@ ${crossDups.slice(0,20).map(w=>{ const inPacks = otherPacks.filter(op=>(op.words
 
 function filterPackWords(v) { window.__pwFilter=v||''; window.__pwPage=0; _renderPackList(); }
 function _pwGo(d){ window.__pwPage=Math.max(0,(window.__pwPage||0)+d); _renderPackList(); var w=document.getElementById('pw-content'); if(w) w.scrollTop=0; }
-function _renderPackList(){
-  var wrap=document.getElementById('pw-listwrap'); if(!wrap) return;
-  var _packs=window._adminPacks||(typeof WORD_PACKS!=='undefined'?WORD_PACKS:[]);
-  var p=_packs.find(function(x){return x.id===selPack;}); if(!p) return;
-  var words=p.words||[];
-  var f=(window.__pwFilter||'').toLowerCase().trim();
-  var idxed=words.map(function(w,i){return {w:w,i:i};});
-  var filt=f? idxed.filter(function(o){var w=o.w; return (w.en&&w.en.toLowerCase().indexOf(f)>=0)||(w.kr&&String(w.kr).toLowerCase().indexOf(f)>=0);}) : idxed;
-  var per=30, page=window.__pwPage||0, pages=Math.max(1,Math.ceil(filt.length/per));
-  if(page>=pages) page=pages-1; if(page<0) page=0; window.__pwPage=page;
-  var slice=filt.slice(page*per,(page+1)*per);
-  var pager='<span style="display:flex;align-items:center;gap:6px">'
-    +'<button onclick="_pwGo(-1)" style="border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:4px 11px;cursor:pointer'+(page<=0?';opacity:.35':'')+'">‹</button>'
-    +'<span style="min-width:54px;text-align:center">'+(page+1)+' / '+pages+'</span>'
-    +'<button onclick="_pwGo(1)" style="border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:4px 11px;cursor:pointer'+(page>=pages-1?';opacity:.35':'')+'">›</button>'
-    +'</span>';
-  var D2=(typeof BWD_DICT!=='undefined')?BWD_DICT:{}, P2=(typeof BWD_PRON!=='undefined')?BWD_PRON:{}, E2=(window.BWD_EX5||{});
-  var syncedN=0, dictN=0;
-  words.forEach(function(w){ var en=String(w.en||'').toLowerCase().trim(); if(D2[en]||E2[en]||P2[en]){ dictN++; if((w.img&&w.img!=='📝')&&(w.exList&&w.exList.length)) syncedN++; } });
-  var head='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;color:#6B7280;flex-wrap:wrap;gap:6px"><span><b style="color:#111;font-size:13px">'+filt.length.toLocaleString()+'</b>개'+(f?' · 검색결과':'')+(dictN?' · <span style="color:#16A34A;font-weight:700">✓ 보강 '+syncedN.toLocaleString()+'</span>/<span style="color:#B45309">'+dictN.toLocaleString()+'</span>':'')+'</span>'+pager+'</div>';
-  wrap.innerHTML=head+'<div style="display:flex;flex-direction:column;gap:8px">'+(slice.length?slice.map(function(o){return _pwCard(o.w,o.i);}).join(''):'<div style="text-align:center;color:#9CA3AF;padding:30px">검색 결과 없음</div>')+'</div>'+(pages>1?'<div style="display:flex;justify-content:center;margin-top:12px">'+pager+'</div>':'');
+function _renderPackList() {
+  const wrap = document.getElementById('pw-listwrap');
+  if (!wrap) return;
+  const p = (window._adminPacks || []).find(x => x.id === selPack);
+  if (!p) return;
+  const words = p.words || [];
+  const ch = _bookChapters(p);
+  const chSize = ch ? Math.ceil(words.length / ch) : 0;
+
+  const f = (window.__pwFilter || '').toLowerCase().trim();
+  let rows = words.map((w, i) => ({ w, i }));
+
+  if (window.__pwChap >= 0 && chSize) {
+    const a = window.__pwChap * chSize, b = a + chSize;
+    rows = rows.filter(o => o.i >= a && o.i < b);
+  }
+  if (window.__pwOnly === 'bad') rows = rows.filter(o => _pwBad(o.w));
+  if (f) rows = rows.filter(o => {
+    const w = o.w;
+    return (w.en || '').toLowerCase().includes(f)
+        || String(w.kr || '').toLowerCase().includes(f)
+        || _pwEx(w).some(e => String(e).toLowerCase().includes(f));
+  });
+
+  const per = 30;
+  const pages = Math.max(1, Math.ceil(rows.length / per));
+  let page = Math.min(Math.max(0, window.__pwPage || 0), pages - 1);
+  window.__pwPage = page;
+  const slice = rows.slice(page * per, (page + 1) * per);
+
+  const miss = t => `<span style="color:#DC2626;font-size:10px;font-weight:700">${t}</span>`;
+
+  const body = slice.map(({ w, i }) => {
+    const m = _pwMeta(w.en);
+    const ex = _pwEx(w);
+    const cef = m.cefr
+      ? `<span style="font-size:9px;font-weight:900;padding:1.5px 5px;border-radius:4px;color:#fff;background:${PW_CEFR_COL[m.cefr] || '#94A3B8'}">${m.cefr}</span>`
+      : `<span style="color:#CBD5E1">–</span>`;
+    return `<tr style="border-bottom:1px solid #F2F4F6">
+      <td style="padding:8px;text-align:center;font-size:17px">${w.img || miss('✕')}</td>
+      <td style="padding:8px">
+        <div style="font-weight:800;font-size:12.5px">${esc(w.en)}</div>
+        <div style="font-size:10.5px;color:#94A3B8;font-family:ui-monospace,Menlo,monospace">${w.ph ? esc(w.ph) : miss('발음 없음')}</div>
+      </td>
+      <td style="padding:8px;text-align:center">${cef}</td>
+      <td style="padding:8px">
+        ${w.kr
+          ? `<div style="font-size:12px;color:#475569">${esc(String(w.kr).slice(0, 26))}</div>
+             <span style="font-size:9.5px;color:#94A3B8;background:#F4F6F8;padding:1.5px 6px;border-radius:5px">${esc(w.pos || '–')}</span>`
+          : miss('사전 미등록')}
+      </td>
+      <td style="padding:8px;font-size:10.5px;color:#94A3B8;font-style:italic;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${ex[0] ? esc(ex[0]) : miss('예문 없음')}
+      </td>
+      <td style="padding:8px;text-align:center;font-size:11px;font-weight:800;color:${ex.length === 5 ? '#16A34A' : '#DC2626'}">${ex.length}/5</td>
+      <td style="padding:8px;text-align:right;white-space:nowrap">
+        <button class="btn bp" style="font-size:10.5px;padding:4px 9px" onclick="editPackWord(${i})">수정</button>
+        <button class="btn bgr" style="font-size:10.5px;padding:4px 9px" onclick="deletePackWord(${i})">삭제</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const chips = [];
+  for (let c = 0; c < ch; c++) {
+    const on = window.__pwChap === c;
+    chips.push(`<button onclick="_pwChapSet(${c})" style="border:1px solid ${on ? '#1E5FA5' : '#E8EBEF'};background:${on ? '#1E5FA5' : '#fff'};color:${on ? '#fff' : '#475569'};border-radius:20px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer">챕터 ${c + 1}</button>`);
+  }
+  const badN = words.filter(_pwBad).length;
+  const onBad = window.__pwOnly === 'bad';
+
+  wrap.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:11px;flex-wrap:wrap">
+      <button onclick="window.__pwOnly='';window.__pwChap=-1;window.__pwPage=0;_renderPackList()"
+        style="border:1px solid ${(!window.__pwOnly && window.__pwChap < 0) ? '#1E5FA5' : '#E8EBEF'};background:${(!window.__pwOnly && window.__pwChap < 0) ? '#1E5FA5' : '#fff'};color:${(!window.__pwOnly && window.__pwChap < 0) ? '#fff' : '#475569'};border-radius:20px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer">전체</button>
+      ${badN ? `<button onclick="_pwFilterSet('bad')" style="border:1px solid ${onBad ? '#B45309' : '#FDE68A'};background:${onBad ? '#B45309' : '#FFFBEB'};color:${onBad ? '#fff' : '#B45309'};border-radius:20px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer">빠진 항목 ${badN}</button>` : ''}
+      ${chips.join('')}
+      <span style="flex:1"></span>
+      <span style="font-size:11px;color:#94A3B8">${rows.length.toLocaleString()}개</span>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="width:34px"></th>
+        <th style="width:150px;font-size:10px;color:#94A3B8;text-align:left;padding:7px 8px;border-bottom:1px solid #E8EBEF">단어 · 발음</th>
+        <th style="width:46px;font-size:10px;color:#94A3B8;padding:7px 8px;border-bottom:1px solid #E8EBEF">CEFR</th>
+        <th style="width:160px;font-size:10px;color:#94A3B8;text-align:left;padding:7px 8px;border-bottom:1px solid #E8EBEF">뜻 · 품사</th>
+        <th style="font-size:10px;color:#94A3B8;text-align:left;padding:7px 8px;border-bottom:1px solid #E8EBEF">예문</th>
+        <th style="width:52px;font-size:10px;color:#94A3B8;padding:7px 8px;border-bottom:1px solid #E8EBEF">예문</th>
+        <th style="width:120px;border-bottom:1px solid #E8EBEF"></th>
+      </tr></thead>
+      <tbody>${body || '<tr><td colspan="7" style="padding:40px;text-align:center;color:#94A3B8">해당하는 단어가 없어요</td></tr>'}</tbody>
+    </table>
+
+    ${pages > 1 ? `<div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:14px">
+      <button onclick="_pwGo(-1)" style="border:1px solid #E8EBEF;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer${page <= 0 ? ';opacity:.35' : ''}">‹</button>
+      <span style="min-width:60px;text-align:center;font-size:12px;color:#475569">${page + 1} / ${pages}</span>
+      <button onclick="_pwGo(1)" style="border:1px solid #E8EBEF;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer${page >= pages - 1 ? ';opacity:.35' : ''}">›</button>
+    </div>` : ''}`;
 }
+
 function _pwEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function _pwCard(w,i){
   var en=String(w.en||'').toLowerCase().trim();

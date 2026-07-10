@@ -3016,40 +3016,6 @@ let selPack = null; // 현재 선택된 팩 ID
 // ════════════════════════════════════════════════════════════
 
 // 3단계 팩 정의: 기존 1단계 + 신규 2·3단계
-const PX_TIERS = {
-  suneung: { name: '수능', emoji: '📝', base: 'suneung', tiers: [
-    { n: 1, label: '기초',  theme: '교육부 기본어휘 · 초등 권장' },
-    { n: 2, label: '핵심',  theme: '중·고 공통과목 권장' },
-    { n: 3, label: '심화',  theme: '고교 선택과목 권장' } ] },
-  toeic: { name: '토익', emoji: '🏢', base: 'toeic', tiers: [
-    { n: 1, label: '사무·인사', theme: 'TSL 최빈출' },
-    { n: 2, label: '재무·계약', theme: 'TSL 잔여 + BSL' },
-    { n: 3, label: '물류·시설', theme: 'ETS 주제영역' } ] },
-  toefl: { name: '토플', emoji: '🎓', base: 'toefl', tiers: [
-    { n: 1, label: '기초', theme: 'AWL 서브리스트 1~3' },
-    { n: 2, label: '핵심', theme: 'AWL 서브리스트 4~7' },
-    { n: 3, label: '심화', theme: 'AWL 서브리스트 8~10' } ] },
-  business_basic: { name: '비즈니스', emoji: '💼', base: 'business_basic', tiers: [
-    { n: 1, label: '기초', theme: 'BSL 빈도 1~1000' },
-    { n: 2, label: '실무', theme: 'BSL 잔여 + 도메인' },
-    { n: 3, label: '심화', theme: '재무·법무·물류' } ] },
-  travel_basic: { name: '여행', emoji: '✈️', base: 'travel_basic', tiers: [
-    { n: 1, label: '필수', theme: '출입국·숙박·응급' },
-    { n: 2, label: '회화', theme: 'NGSL 일반 고빈도' },
-    { n: 3, label: '확장', theme: '일상 회화 A2~B2' } ] }
-};
-
-// 2·3단계는 `_2`, `_3` 문서. 1단계는 기존 ID 유지 → 담아둔 사용자 단어장이 끊기지 않는다.
-function pxDocId(base, tier) { return tier === 1 ? base : base + '_' + tier; }
-
-// 어떤 팩이 3단계 대상인지 (toeic_2 → toeic)
-function _pxBase(packId) {
-  for (const b of Object.keys(PX_TIERS)) {
-    if (packId === b || packId === b + '_2' || packId === b + '_3') return b;
-  }
-  return null;
-}
-
 // ── 사전 조회로 단어 하나를 완성한다 (AI 불필요) ──
 // 뜻·발음·예문5개·이모지·품사가 모두 앱 사전에 있다.
 function pxBuildWord(en) {
@@ -3146,247 +3112,134 @@ function pxCefrBar(c, n) {
     `</div>`;
 }
 
-// ── 팩 확장 패널 (마켓 팩 안에서 모달로) ──
-function pxPanel(baseId) {
-  const cfg = PX_TIERS[baseId];
-  if (!cfg) { toast('3단계 대상 팩이 아닙니다', 'err'); return; }
-  const packs = window._adminPacks || [];
 
-  const cards = cfg.tiers.map(t => {
-    const id = pxDocId(baseId, t.n);
-    const p = packs.find(x => x.id === id);
-    const st = pxStats(p ? p.words : []);
-    const exploded = (p && st.phrases) ? pxExplodePhrases(p.words).length : 0;
-
-    let status, color, actions;
-    if (st.n === 0) {
-      status = '아직 없음'; color = '#9CA3AF';
-      actions = `<button onclick="pxImport('${baseId}',${t.n})" style="width:100%;padding:9px;border-radius:9px;border:none;background:#4285F4;color:#fff;font-size:12px;font-weight:800;cursor:pointer">＋ 단어 목록 입력</button>`;
-    } else if (st.phrases > 0) {
-      status = `단어 ${st.singles} · 구 ${st.phrases}`; color = '#B45309';
-      actions = `<button onclick="pxRebuild('${baseId}',${t.n})" style="width:100%;padding:9px;border-radius:9px;border:none;background:#F59E0B;color:#fff;font-size:12px;font-weight:800;cursor:pointer;margin-bottom:5px">🔄 구를 단어로 분해 (+${exploded})</button>
-                 <button onclick="pxImport('${baseId}',${t.n})" style="width:100%;padding:8px;border-radius:9px;border:1px solid #E5E7EB;background:#fff;font-size:11.5px;font-weight:700;cursor:pointer">목록으로 교체</button>`;
-    } else {
-      status = `${st.n}단어`; color = st.n >= 1000 ? '#16A34A' : '#D97706';
-      actions = `<button onclick="pxImport('${baseId}',${t.n})" style="width:100%;padding:9px;border-radius:9px;border:1px solid #D1D5DB;background:#fff;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:5px">목록 입력·교체</button>
-                 <button onclick="pxPreview('${baseId}',${t.n})" style="width:100%;padding:8px;border-radius:9px;border:1px solid #E5E7EB;background:#F8F9FA;font-size:11.5px;font-weight:700;cursor:pointer">단어 보기</button>`;
-    }
-    const warn = st.incomplete ? `<div style="font-size:10px;color:#DC2626;margin-top:4px">⚠️ 불완전 ${st.incomplete}개</div>` : '';
-
-    return `<div style="flex:1;min-width:0;background:#fff;border:1.5px solid #ECEEF1;border-radius:12px;padding:13px">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
-        <span style="width:20px;height:20px;border-radius:6px;background:#EFF6FF;color:#4285F4;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center">${t.n}</span>
-        <span style="font-size:12px;font-weight:800">${t.label}</span>
-      </div>
-      <div style="font-size:10px;color:#9CA3AF;margin-bottom:6px;line-height:1.5;min-height:26px">${t.theme}</div>
-      <div style="font-size:11.5px;font-weight:800;color:${color}">${status}</div>
-      ${st.n ? pxCefrBar(st.cefr, st.n) : ''}
-      ${warn}
-      <div style="margin-top:9px">${actions}</div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('ma').innerHTML = `
-    <div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-width:880px;width:95vw;max-height:92vh;display:flex;flex-direction:column">
-      <div style="padding:15px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-        <div>
-          <div style="font-size:16px;font-weight:800">${cfg.emoji} ${cfg.name} — 3단계 구성</div>
-          <div style="font-size:11.5px;color:#9CA3AF;margin-top:2px">단어 목록만 넣으면 뜻·발음·예문·이모지는 앱 사전에서 자동으로 채웁니다</div>
-        </div>
-        <button class="btn bgr" onclick="cm()" style="font-size:12px;padding:7px 13px">✕ 닫기</button>
-      </div>
-      <div style="padding:16px 20px;overflow-y:auto">
-        <div style="display:flex;gap:10px;align-items:stretch">${cards}</div>
-        <div style="font-size:10.5px;color:#9CA3AF;margin-top:12px;line-height:1.7">
-          · 1단계는 기존 팩 ID를 유지해 이미 담은 사용자의 단어장이 끊기지 않습니다<br>
-          · 사전에 없는 단어는 저장 전에 목록으로 보여드립니다 (AI 생성 없음)
-        </div>
-      </div>
-    </div></div>`;
-}
-
-// ── 단어 목록 입력 ──
-function pxImport(baseId, tier) {
-  const cfg = PX_TIERS[baseId];
-  const t = cfg.tiers.find(x => x.n === tier);
-  const id = pxDocId(baseId, tier);
-  const p = (window._adminPacks || []).find(x => x.id === id);
-  const cur = p ? (p.words || []).length : 0;
-
-  document.getElementById('ma').innerHTML = `
-    <div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-width:760px;width:95vw;max-height:92vh;display:flex;flex-direction:column">
-      <div style="padding:15px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0">
-        <div style="font-size:15px;font-weight:800">${cfg.emoji} ${cfg.name} ${tier}단계 · ${t.label}</div>
-        <div style="font-size:11.5px;color:#6B7280;margin-top:3px">
-          단어만 붙여넣으세요. 쉼표·줄바꿈·공백 모두 구분자로 인식합니다.
-          ${cur ? `<br>현재 <b>${cur}개</b> → 저장하면 <b style="color:#DC2626">통째로 교체</b>됩니다.` : ''}
-        </div>
-      </div>
-      <div style="padding:14px 20px;overflow-y:auto;flex:1">
-        <textarea id="px-in" rows="12" placeholder="invoice, contract, audit, itinerary
-hypothesis
-paradigm ..." style="width:100%;padding:11px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace;outline:none;box-sizing:border-box;resize:vertical;line-height:1.6"></textarea>
-        <div id="px-msg" style="font-size:11.5px;color:#6B7280;margin-top:8px"></div>
-      </div>
-      <div style="padding:13px 20px;border-top:1px solid #E5E7EB;display:flex;gap:8px;flex-shrink:0">
-        <button onclick="pxPanel('${baseId}')" style="flex:1;padding:11px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;font-size:12px;font-weight:700;cursor:pointer">취소</button>
-        <button onclick="pxCheck('${baseId}',${tier})" style="flex:2;padding:11px;border-radius:10px;border:none;background:#4285F4;color:#fff;font-size:12.5px;font-weight:800;cursor:pointer">사전에서 채우기 →</button>
-      </div>
-    </div></div>`;
-  setTimeout(() => { const el = document.getElementById('px-in'); if (el) el.focus(); }, 60);
-}
-
-// ── 사전 조회 + 검수 ──
-function pxCheck(baseId, tier) {
-  const raw = (document.getElementById('px-in') || {}).value || '';
+// ════════════════════════════════════════════════════════════
+// 팩 단어 — 사전에서 채우기 (AI 불필요)
+// 뜻·발음·예문5개·이모지가 모두 앱 사전에 있다.
+// ════════════════════════════════════════════════════════════
+function pwFillCheck() {
+  const raw = (document.getElementById('pw-fill-in') || {}).value || '';
+  const mode = (document.querySelector('input[name="pw-mode"]:checked') || {}).value || 'replace';
   const toks = raw.split(/[\s,;]+/).map(x => x.replace(/[^a-zA-Z-]/g, '').toLowerCase()).filter(Boolean);
   if (!toks.length) { toast('단어를 입력하세요', 'err'); return; }
 
-  const seen = new Set(), good = [], missing = [], dup = [];
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === selPack);
+  const existing = mode === 'append' ? (p.words || []).map(w => (w.en || '').toLowerCase()) : [];
+  const seen = new Set(existing);
+
+  const good = [], missing = [], dup = [];
   for (const w of toks) {
     if (seen.has(w)) { dup.push(w); continue; }
     seen.add(w);
     const built = pxBuildWord(w);
     if (built) good.push(built); else missing.push(w);
   }
-  window._pxState = { baseId, tier, id: pxDocId(baseId, tier), good, missing, dup };
-  pxReview();
+  window._pwFill = { good, missing, dup, mode };
+  pwFillReview();
 }
 
-function pxReview() {
-  const s = window._pxState;
-  const cfg = PX_TIERS[s.baseId];
-  const st = pxStats(s.good);
+function pwFillReview() {
+  const f = window._pwFill;
+  const host = document.getElementById('pw-fill-out');
+  if (!f || !host) return;
+  const st = pxStats(f.good);
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === selPack);
+  const finalN = f.mode === 'append' ? (p.words || []).length + f.good.length : f.good.length;
 
-  const rows = s.good.map((w, i) => `<tr style="border-top:1px solid #F1F3F5">
+  const rows = f.good.map((w, i) => `<tr style="border-top:1px solid #F1F3F5">
       <td style="padding:6px 8px;font-size:10.5px;color:#D1D5DB;text-align:right">${i + 1}</td>
       <td style="padding:6px 8px;font-size:16px;text-align:center">${w.img}</td>
       <td style="padding:6px 8px;font-size:12px;font-weight:700">${w.en}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#6B7280">${_esc(String(w.kr).slice(0, 30))}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#6B7280">${_esc(String(w.kr).slice(0, 28))}</td>
       <td style="padding:6px 8px;font-size:10px;color:#9CA3AF">${w.ph}</td>
       <td style="padding:6px 8px;font-size:10px;color:#4285F4;text-align:center">${pxCefr(w.en) || '-'}</td>
-      <td style="padding:6px 8px;text-align:center"><button onclick="pxDrop(${i})" style="border:none;background:none;color:#DC2626;cursor:pointer;font-size:12px">✕</button></td>
+      <td style="padding:6px 8px;text-align:center"><button onclick="pwFillDrop(${i})" style="border:none;background:none;color:#DC2626;cursor:pointer;font-size:12px">✕</button></td>
     </tr>`).join('');
 
-  const missBox = s.missing.length ? `
-    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-size:11.5px;font-weight:800;color:#B91C1C;margin-bottom:4px">사전에 없는 단어 ${s.missing.length}개 — 저장에서 제외됩니다</div>
-      <div style="font-size:11px;color:#7F1D1D;line-height:1.7;word-break:break-all">${s.missing.slice(0, 60).map(_esc).join(', ')}${s.missing.length > 60 ? ' …' : ''}</div>
-      <div style="font-size:10px;color:#9CA3AF;margin-top:5px">Butterfly Dic에 먼저 등록하면 다음 저장부터 포함됩니다</div>
-    </div>` : '';
+  host.innerHTML = `
+    <div style="border-top:1px solid #E5E7EB;padding-top:14px">
+      <div style="font-size:12.5px;font-weight:800;margin-bottom:3px">
+        사전에서 채운 <span style="color:#16A34A">${f.good.length}개</span>
+        ${f.missing.length ? ` · 사전 없음 <span style="color:#DC2626">${f.missing.length}</span>` : ''}
+        ${f.dup.length ? ` · 중복 제거 ${f.dup.length}` : ''}
+      </div>
+      ${st.n ? `<div style="max-width:330px;margin-bottom:10px">${pxCefrBar(st.cefr, st.n)}</div>` : ''}
 
-  document.getElementById('ma').innerHTML = `
-    <div class="mbg"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-width:900px;width:95vw;max-height:92vh;display:flex;flex-direction:column">
-      <div style="padding:15px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0">
-        <div style="font-size:15px;font-weight:800">🔍 검수 — ${cfg.name} ${s.tier}단계</div>
-        <div style="font-size:11.5px;color:#6B7280;margin-top:3px">
-          사전에서 채운 <b style="color:#16A34A">${s.good.length}개</b>
-          ${s.missing.length ? ` · 사전 없음 <b style="color:#DC2626">${s.missing.length}</b>` : ''}
-          ${s.dup.length ? ` · 중복 제거 ${s.dup.length}` : ''}
-        </div>
-        ${st.n ? `<div style="max-width:320px">${pxCefrBar(st.cefr, st.n)}</div>` : ''}
+      ${f.missing.length ? `
+      <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11.5px;font-weight:800;color:#B91C1C;margin-bottom:4px">사전에 없어 제외되는 단어 ${f.missing.length}개</div>
+        <div style="font-size:11px;color:#7F1D1D;line-height:1.7;word-break:break-all">${f.missing.slice(0, 50).map(_esc).join(', ')}${f.missing.length > 50 ? ' …' : ''}</div>
+        <div style="font-size:10px;color:#9CA3AF;margin-top:5px">Butterfly Dic에 등록하면 다음 저장부터 포함됩니다</div>
+      </div>` : ''}
+
+      <div style="border:1px solid #F1F3F5;border-radius:9px;max-height:340px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:#F8F9FA;z-index:1"><tr>
+            <th style="padding:7px 8px;width:36px"></th><th style="padding:7px 8px;width:32px"></th>
+            <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;text-align:left">단어</th>
+            <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;text-align:left">뜻</th>
+            <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;text-align:left">발음</th>
+            <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;width:44px">CEFR</th>
+            <th style="padding:7px 8px;width:32px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
       </div>
-      <div style="padding:14px 20px;overflow-y:auto;flex:1">
-        ${missBox}
-        <div style="border:1px solid #F1F3F5;border-radius:10px;overflow:hidden">
-          <table style="width:100%;border-collapse:collapse">
-            <thead style="position:sticky;top:0;background:#F8F9FA;z-index:1">
-              <tr>
-                <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;width:38px"></th>
-                <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;width:34px"></th>
-                <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;text-align:left">단어</th>
-                <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;text-align:left">뜻</th>
-                <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;text-align:left">발음</th>
-                <th style="padding:7px 8px;font-size:10px;color:#9CA3AF;width:44px">CEFR</th>
-                <th style="padding:7px 8px;width:34px"></th>
-              </tr>
-            </thead>
-            <tbody id="px-rows">${rows}</tbody>
-          </table>
-        </div>
-      </div>
-      <div style="padding:13px 20px;border-top:1px solid #E5E7EB;display:flex;gap:8px;flex-shrink:0">
-        <button onclick="pxImport('${s.baseId}',${s.tier})" style="flex:1;padding:11px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;font-size:12px;font-weight:700;cursor:pointer">← 다시 입력</button>
-        <button onclick="pxSave()" style="flex:2;padding:11px;border-radius:10px;border:none;background:#16A34A;color:#fff;font-size:12.5px;font-weight:800;cursor:pointer">💾 저장 — ${s.good.length}단어</button>
-      </div>
-    </div></div>`;
+
+      <button onclick="pwFillSave()" style="width:100%;margin-top:12px;padding:11px;border-radius:10px;border:none;background:#16A34A;color:#fff;font-size:12.5px;font-weight:800;cursor:pointer">
+        💾 저장 — ${f.mode === 'append' ? `추가 ${f.good.length}개 (총 ${finalN})` : `${finalN}단어로 교체`}
+      </button>
+    </div>`;
 }
 
-function pxDrop(i) {
-  const s = window._pxState;
-  if (!s) return;
-  s.good.splice(i, 1);
-  pxReview();
+function pwFillDrop(i) {
+  if (!window._pwFill) return;
+  window._pwFill.good.splice(i, 1);
+  pwFillReview();
 }
 
-// ── 구 분해 재구성 ──
-async function pxRebuild(baseId, tier) {
-  const cfg = PX_TIERS[baseId];
-  const id = pxDocId(baseId, tier);
-  const p = (window._adminPacks || []).find(x => x.id === id);
-  if (!p) { toast('팩이 없습니다', 'err'); return; }
-
+// 구(phrase)를 단어로 분해해 검수표에 올린다
+function pwExplode() {
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === selPack);
+  if (!p) return;
   const all = p.words || [];
   const kept = all.filter(w => { const e = (w.en || '').trim(); return e && !/[\s-]/.test(e); })
                   .map(w => pxBuildWord(w.en) || w);
   const exploded = pxExplodePhrases(all);
   const phraseCount = all.length - kept.length;
 
-  if (!confirm(
-    `${cfg.name} ${tier}단계 구 분해\n\n` +
-    `현재 ${all.length}개 (단어 ${kept.length} · 구 ${phraseCount})\n` +
-    `구를 분해해 단어 ${exploded.length}개 확보\n` +
-    `→ ${kept.length + exploded.length}단어로 교체됩니다.\n\n계속할까요?`
-  )) return;
+  if (!confirm(`구 ${phraseCount}개를 단어로 분해합니다.\n\n단어 ${kept.length} + 분해 ${exploded.length} = ${kept.length + exploded.length}단어\n구는 제거됩니다. 계속할까요?`)) return;
 
   const seen = new Set(), out = [];
   [...kept, ...exploded].forEach(w => { if (w && !seen.has(w.en)) { seen.add(w.en); out.push(w); } });
-  window._pxState = { baseId, tier, id, good: out, missing: [], dup: [] };
-  pxReview();
+  window._pwFill = { good: out, missing: [], dup: [], mode: 'replace' };
+  pwFillReview();
+  const host = document.getElementById('pw-fill-out');
+  if (host) host.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ── 단어 보기 ──
-function pxPreview(baseId, tier) {
-  const id = pxDocId(baseId, tier);
-  const p = (window._adminPacks || []).find(x => x.id === id);
+async function pwFillSave() {
+  const f = window._pwFill;
+  if (!f || !f.good.length) { toast('저장할 단어가 없습니다', 'err'); return; }
+  const packs = window._adminPacks || [];
+  const p = packs.find(x => x.id === selPack);
   if (!p) return;
-  window._pxState = { baseId, tier, id, good: (p.words || []).slice(), missing: [], dup: [], readonly: true };
-  pxReview();
-}
 
-// ── 저장 ──
-async function pxSave() {
-  const s = window._pxState;
-  if (!s || !s.good.length) { toast('저장할 단어가 없습니다', 'err'); return; }
-  const cfg = PX_TIERS[s.baseId];
-  const t = cfg.tiers.find(x => x.n === s.tier);
-
-  if (!confirm(`${cfg.name} ${s.tier}단계를 ${s.good.length}단어로 저장합니다.\n기존 단어는 교체됩니다. 계속할까요?`)) return;
+  const merged = f.mode === 'append' ? [...(p.words || []), ...f.good] : f.good;
+  if (!confirm(`${p.name}\n\n${f.mode === 'append' ? `${f.good.length}개를 추가합니다 (총 ${merged.length})` : `${merged.length}단어로 통째 교체합니다`}\n계속할까요?`)) return;
 
   try {
     toast('저장 중...', 'ok');
-    const packs = window._adminPacks || [];
-    const ex = packs.find(x => x.id === s.id);
-    const doc = {
-      id: s.id,
-      name: ex ? ex.name : `${cfg.name} · ${t.label}`,
-      emoji: ex ? ex.emoji : cfg.emoji,
-      desc: ex ? (ex.desc || '') : '',
-      basis: ex ? (ex.basis || '') : '',
-      cat: ex ? ex.cat : '✏️ 영어시험',
-      category: ex ? ex.category : 'exam',
-      count: s.good.length,
-      words: s.good,
-      active: true,
-      updatedAt: Date.now(),
-      addedAt: (ex && ex.addedAt) || Date.now()
-    };
-    if (ex && ex.categoryOrder !== undefined) doc.categoryOrder = ex.categoryOrder;
-    await db.collection('packs').doc(s.id).set(doc, { merge: false });
-    toast(`✅ ${s.good.length}단어 저장 완료`, 'ok');
-    window._pxState = null;
-    await rPK();
-    setTimeout(() => pxPanel(s.baseId), 250);
+    await db.collection('packs').doc(selPack).update({ words: merged, count: merged.length, updatedAt: Date.now() });
+    p.words = merged; p.count = merged.length;
+    window._pwFill = null;
+    toast(`✅ ${merged.length}단어 저장 완료`, 'ok');
+    showPackWords(selPack);
+    showPackWordTab('list');
+    rPK();
   } catch (e) {
     toast('저장 실패: ' + e.message, 'err');
   }
@@ -3594,10 +3447,10 @@ async function rPK(){
       +'<td style="padding:10px 12px"><div style="font-weight:700">'+(p.name||'')+'</div><div style="font-size:10px;color:#9CA3AF">'+p.id+'</div></td>'
       +'<td style="padding:10px 12px"><span style="background:#EFF6FF;color:#1E5FA5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+(p.cat||'')+'</span></td>'
       +'<td style="padding:10px 12px;font-weight:800;color:#1E5FA5;text-align:center">'+wc.toLocaleString()+'</td>'
+      +'<td style="padding:10px 6px;text-align:center">'+(p.basis?'<span title="'+_esc(p.basis)+'" style="font-size:13px">📐</span>':'<span title="구성 기준 없음" style="font-size:12px;opacity:.25">📐</span>')+'</td>'
       +'<td style="padding:10px 12px;text-align:center">'+badge+'</td>'
       +'<td style="padding:10px 12px"><div style="display:flex;gap:5px">'
         +'<button class="btn bb" style="font-size:11px;padding:4px 9px" onclick="showPackWords(\''+p.id+'\')">단어</button>'
-        +(_pxBase(p.id)?'<button style="font-size:11px;padding:4px 9px;border-radius:7px;border:1px solid #FBBF24;background:#FFFBEB;color:#B45309;font-weight:700;cursor:pointer" onclick="pxPanel(\''+_pxBase(p.id)+'\')">확장</button>':'')
         +'<button class="btn bp" style="font-size:11px;padding:4px 9px" onclick="showEditPack(\''+p.id+'\')">수정</button>'
         +'<button class="btn bgr" style="font-size:11px;padding:4px 9px" onclick="deletePack(\''+p.id+'\')">삭제</button>'
       +'</div></td></tr>';
@@ -3627,7 +3480,7 @@ async function rPK(){
         <span style="font-size:12px;color:#9CA3AF;white-space:nowrap">${filtered.length}개</span>
       </div>
       <div class="tw"><table id="pk-table">
-        <tr><th style="width:50px"></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th>상태</th><th>작업</th></tr>
+        <tr><th style="width:50px"></th><th>팩 이름</th><th>카테고리</th><th>단어수</th><th style="width:44px" title="구성 기준 입력 여부">기준</th><th>상태</th><th>작업</th></tr>
         ${packRows}
       </table></div>
     </div>`;
@@ -3885,10 +3738,24 @@ function showEditPack(packId) {
         +'<select id="ep-cat" onchange="document.getElementById(\'ep-cat-new\').style.display=this.value===\'__new__\'?\'block\':\'none\'" style="flex:1">'+catOpts+'</select>'
         +'<input id="ep-cat-new" placeholder="새 카테고리" style="flex:1;display:none;padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none">'
       +'</div></div>'
-    +'<div class="fg"><label>한 줄 소개 <span style="font-weight:400;color:#9CA3AF;font-size:11px">마켓 카드에 표시</span></label>'
-      +'<input id="ep-desc" placeholder="수능 15개년 기출에서 뽑은 필수 1,000단어" value="'+_esc(p.desc||'')+'"></div>'
-    +'<div class="fg"><label>구성 기준 <span style="font-weight:400;color:#9CA3AF;font-size:11px">어떤 기준으로 모았는지</span></label>'
-      +'<input id="ep-basis" placeholder="평가원 기출 분석 · CEFR B2 45%로 난이도 집중" value="'+_esc(p.basis||'')+'"></div>'
+    +'<div style="background:#F8F9FA;border-radius:10px;padding:12px 13px;margin-bottom:10px">'
+      +'<div style="font-size:11.5px;font-weight:800;color:#374151;margin-bottom:8px">🛒 마켓 카드 문구</div>'
+      +'<div class="fg" style="margin-bottom:8px"><label>한 줄 소개 <span style="font-weight:400;color:#9CA3AF;font-size:11px">무엇을 배우는 팩인지</span></label>'
+        +'<input id="ep-desc" oninput="epPreview()" placeholder="수능 지문의 토대가 되는 기초 1,000단어" value="'+_esc(p.desc||'')+'"></div>'
+      +'<div class="fg" style="margin-bottom:10px"><label>구성 기준 <span style="font-weight:400;color:#9CA3AF;font-size:11px">어떤 근거로 이 단어들을 골랐는지</span></label>'
+        +'<input id="ep-basis" oninput="epPreview()" placeholder="교육부 2022 개정 교육과정 [별표 3] 기본어휘 · 초등 권장 800" value="'+_esc(p.basis||'')+'"></div>'
+      +'<div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">미리보기</div>'
+      +'<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:12px;padding:11px 13px;display:flex;gap:11px;align-items:center">'
+        +'<div style="font-size:30px">'+(p.emoji||'📚')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:13.5px;font-weight:800;color:#111">'+_esc(p.name)+'</div>'
+          +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">'+_esc(p.cat||'기타')+' · '+((p.words||[]).length)+'개 단어</div>'
+          +'<div id="ep-pv-desc" style="font-size:11px;color:#374151;margin-top:3px;font-weight:600;line-height:1.4">'+_esc(p.desc||'')+'</div>'
+          +'<div id="ep-pv-basis" style="font-size:9.5px;color:#3B82F6;margin-top:3px">'+(p.basis?('📐 '+_esc(p.basis)):'')+'</div>'
+        +'</div>'
+        +'<div style="background:#3B82F6;color:#fff;border-radius:10px;padding:6px 13px;font-size:12px;font-weight:700">+ 담기</div>'
+      +'</div>'
+    +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
       +'<div class="fg"><label>목표 단어 수</label><input id="ep-count" type="number" value="'+(p.count||100)+'"></div>'
       +'<div class="fg"><label>마켓 노출</label><select id="ep-active"><option value="true" '+(p.active!==false?'selected':'')+'>\u2705 활성</option><option value="false" '+(p.active===false?'selected':'')+'>\uD83D\uDEAB 비활성</option></select></div>'
@@ -3904,6 +3771,17 @@ function showEditPack(packId) {
   +'</div></div>';
 }
 
+
+
+// 팩 수정 화면 — 마켓 카드 문구 실시간 미리보기
+function epPreview() {
+  const d = (document.getElementById('ep-desc') || {}).value || '';
+  const b = (document.getElementById('ep-basis') || {}).value || '';
+  const pd = document.getElementById('ep-pv-desc');
+  const pb = document.getElementById('ep-pv-basis');
+  if (pd) pd.textContent = d;
+  if (pb) pb.textContent = b ? ('📐 ' + b) : '';
+}
 
 async function saveEditPack(packId) {
   const packs=window._adminPacks||(typeof WORD_PACKS!=="undefined"?WORD_PACKS:[]);
@@ -4184,12 +4062,19 @@ function showPackWords(packId) {
   const p = _packs.find(x=>x.id===packId);
   if(!p) { toast('팩을 찾을 수 없어요','err'); return; }
   const words = p.words||[];
+  const _pwStat = pxStats(words);
 
   document.getElementById('ma').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:92vh;display:flex;flex-direction:column;max-width:900px;width:95vw">
     <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-      <div>
+      <div style="flex:1;min-width:0">
         <div style="font-size:16px;font-weight:800">${p.emoji} ${p.name}</div>
-        <div style="font-size:12px;color:#9CA3AF">${words.length}개 / 목표 ${p.count||100}개</div>
+        <div style="font-size:11.5px;color:#9CA3AF;margin-top:2px">
+          ${_pwStat.n}단어
+          ${_pwStat.phrases ? ` · <span style="color:#B45309;font-weight:700">구 ${_pwStat.phrases}개</span>` : ''}
+          ${_pwStat.incomplete ? ` · <span style="color:#DC2626;font-weight:700">불완전 ${_pwStat.incomplete}개</span>` : ''}
+        </div>
+        ${_pwStat.n ? `<div style="max-width:340px;margin-top:4px">${pxCefrBar(_pwStat.cefr, _pwStat.n)}</div>` : ''}
+        ${p.basis ? `<div style="font-size:10px;color:#3B82F6;margin-top:5px">📐 ${_esc(p.basis)}</div>` : `<div style="font-size:10px;color:#D1D5DB;margin-top:5px">📐 구성 기준 없음 — [수정]에서 입력하세요</div>`}
       </div>
       <button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF">✕ 닫기</button>
     </div>
@@ -4199,6 +4084,7 @@ function showPackWords(packId) {
       <div id="pwt-add" onclick="showPackWordTab('add')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#1E5FA5;border-bottom:2px solid #1E5FA5">➕ 단어 추가</div>
       <div id="pwt-list" onclick="showPackWordTab('list')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">📋 단어 목록</div>
       <div id="pwt-dup" onclick="showPackWordTab('dup')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">🔍 중복 필터</div>
+      <div id="pwt-fill" onclick="showPackWordTab('fill')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:#9CA3AF;border-bottom:2px solid transparent">📖 사전에서 채우기</div>
     </div>
 
     <div id="pw-content" style="flex:1;overflow-y:auto;padding:16px"></div>
@@ -4214,7 +4100,7 @@ function showPackWordTab(tab) {
   const words = p.words||[];
 
   // 탭 활성화
-  ['add','list','dup'].forEach(t=>{
+  ['add','list','dup','fill'].forEach(t=>{
     const el = document.getElementById('pwt-'+t);
     if(!el) return;
     el.style.color = t===tab ? '#1E5FA5' : '#9CA3AF';
@@ -4293,6 +4179,44 @@ ${crossDups.slice(0,20).map(w=>{ const inPacks = otherPacks.filter(op=>(op.words
           ${crossDups.length>20?`<div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:4px">외 ${crossDups.length-20}개</div>`:''}
         </div>`:'<div style="background:#F0FDF4;border-radius:10px;padding:12px;text-align:center;font-size:13px;color:#16A34A">✅ 다른 팩과 중복 없음!</div>'}`;
   }
+  if(tab==='fill') {
+    const st = pxStats(words);
+    const exploded = st.phrases ? pxExplodePhrases(words).length : 0;
+    cont.innerHTML = `
+      <div style="background:#F0F7FF;border:1px solid #DBEAFE;border-radius:10px;padding:11px 13px;margin-bottom:14px">
+        <div style="font-size:11.5px;font-weight:800;color:#1E5FA5;margin-bottom:3px">앱 사전에서 자동으로 채웁니다</div>
+        <div style="font-size:11px;color:#4B5563;line-height:1.7">
+          단어(영어)만 넣으면 <b>뜻·발음·예문 5개·이모지·품사</b>를 앱 사전에서 조회해 채웁니다. AI를 쓰지 않습니다.<br>
+          사전에 없는 단어는 저장 전에 목록으로 보여드립니다.
+        </div>
+      </div>
+
+      ${st.phrases ? `
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:11px 13px;margin-bottom:14px">
+        <div style="font-size:11.5px;font-weight:800;color:#B45309;margin-bottom:3px">구(phrase) ${st.phrases}개가 섞여 있습니다</div>
+        <div style="font-size:11px;color:#78350F;line-height:1.6;margin-bottom:8px">
+          "boarding pass" → boarding · pass 처럼 단어로 분해해 살릴 수 있습니다. (일반어·고유명사는 제외)<br>
+          분해하면 <b>${st.singles} + ${exploded} = ${st.singles + exploded}단어</b>가 됩니다.
+        </div>
+        <button onclick="pwExplode()" style="padding:7px 13px;border-radius:8px;border:none;background:#F59E0B;color:#fff;font-size:11.5px;font-weight:800;cursor:pointer">🔄 구를 단어로 분해</button>
+      </div>` : ''}
+
+      <div class="fg" style="margin-bottom:10px">
+        <label>단어 목록 <span style="font-weight:400;color:#9CA3AF;font-size:11px">쉼표·줄바꿈·공백 모두 구분자</span></label>
+        <textarea id="pw-fill-in" rows="9" placeholder="invoice, contract, audit, itinerary&#10;hypothesis&#10;paradigm ..." style="width:100%;padding:11px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace;outline:none;box-sizing:border-box;resize:vertical;line-height:1.6"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#4B5563;cursor:pointer">
+          <input type="radio" name="pw-mode" value="replace" checked> 통째로 교체
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#4B5563;cursor:pointer">
+          <input type="radio" name="pw-mode" value="append"> 기존에 추가
+        </label>
+      </div>
+      <button onclick="pwFillCheck()" style="width:100%;padding:11px;border-radius:10px;border:none;background:#4285F4;color:#fff;font-size:12.5px;font-weight:800;cursor:pointer">사전에서 채우기 →</button>
+      <div id="pw-fill-out" style="margin-top:14px"></div>`;
+  }
+
 }
 
 function filterPackWords(v) { window.__pwFilter=v||''; window.__pwPage=0; _renderPackList(); }

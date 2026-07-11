@@ -609,12 +609,26 @@ function _bookDisplayName(b){
     var nm=String(b.name||'');
     var src=b;
     // 목록/통계용 축약 객체(isCurriculum 누락)로 들어올 수 있으므로 이름으로 원본 책을 다시 찾는다.
-    if(!src.isCurriculum){ var o=(S.books||[]).find(function(x){return x.name===nm;}); if(o) src=o; }
-    if(!src.isCurriculum) return nm;
-    var base=nm.replace(/\s*_\s*Lv\.\s*\d+$/,'');   // 저장된 옛 Lv. 접미사 제거
-    var ci=(typeof _activeChapterIdx==='function')?_activeChapterIdx(src):null;
-    var lv=(ci==null?0:ci)+1;
-    return base+' _ Lv.'+lv;
+    if(!src.isCurriculum && !src.packId){ var o=(S.books||[]).find(function(x){return x.name===nm;}); if(o) src=o; }
+    // 커리큘럼·팩 책은 현재 챕터를 함께 표시 (지금 몇 챕터인지 한눈에)
+    if(src.isCurriculum || src.packId){
+      var base=nm.replace(/\s*_\s*Lv\.\s*\d+$/,'');   // 저장된 옛 Lv. 접미사 제거
+      try{
+        var chTotal=(typeof _chapterCount==='function')?_chapterCount(src):0;
+        if(chTotal>0){
+          // 활성 챕터: 커리큘럼은 _activeChapterIdx, 팩은 아직 통과 안 한 첫 챕터
+          var ci=null;
+          if(src.isCurriculum && typeof _activeChapterIdx==='function'){ ci=_activeChapterIdx(src); }
+          if(ci==null){
+            var cp=src.chPass||[]; ci=0;
+            for(var i=0;i<chTotal;i++){ if(!cp[i]){ ci=i; break; } if(i===chTotal-1) ci=chTotal-1; }
+          }
+          return base+' · '+chTotal+'챕터 중 '+(ci+1)+'챕터';
+        }
+      }catch(e){}
+      return base;
+    }
+    return nm;
   }catch(e){ return (b&&b.name)||''; }
 }
 function _bookDisplayNameByName(nm){
@@ -7728,6 +7742,86 @@ function startChapterExam(book, chIdx){
     if(typeof startGameW==='function') startGameW(games[0], groups[0]);
   }catch(e){ toast('시험 시작 실패'); }
 }
+// ── 챕터 시험 통과 후 '다음 무엇' 판정 (A~E 변곡점 안내용) ──
+// 반환: {kind, ...} — kind: nextChapter | nextStage | nextPack | courseRetest | packDone | done
+function _afterChapterPass(book, chIdx){
+  try{
+    var chCount = _chapterCount(book);
+    // A) 다음 챕터가 남았나
+    if(chIdx+1 < chCount){
+      return { kind:'nextChapter', chIdx:chIdx+1, chNo:chIdx+2, total:chCount };
+    }
+    // 여기부터는 마지막 챕터를 통과한 상황 = 이 책(단계/권)을 완주
+    // B/C) 커리큘럼(레벨업 N단계)
+    if(book.isCurriculum){
+      var curr = (S.books||[]).filter(function(b){return b.isCurriculum;}).sort(function(a,b){return (a.tier||0)-(b.tier||0);});
+      var myTier = book.tier||1;
+      var next = curr.find(function(b){return (b.tier||0)===myTier+1;});
+      if(next){
+        return { kind:'nextStage', stageName:next.name, stageNo:myTier+1, prevStageName:book.name };
+      }
+      // 다음 단계 없음 = 마지막 단계 완주 → 재테스트로 다음 코스
+      var maxLv = (typeof CW_MAXLEVEL!=='undefined')?CW_MAXLEVEL:10;
+      var reachedTop = (book.level||0) >= maxLv;
+      return { kind:'courseRetest', reachedTop:reachedTop, level:book.level||0, maxLevel:maxLv };
+    }
+    // D/E) 팩(마켓) 책
+    if(book.packId){
+      var packs = S._marketPacks||[];
+      var pk = packs.find(function(p){return p.id===book.packId;});
+      if(pk && pk.courseId){
+        // 코스형 팩: 다음 tier 팩이 있나
+        var nextPk = packs.find(function(p){return p.courseId===pk.courseId && (p.tierIdx||0)===((pk.tierIdx||1)+1);});
+        if(nextPk){
+          var alreadyHave = (S.books||[]).some(function(b){return b.packId===nextPk.id;});
+          return { kind:'nextPack', packId:nextPk.id, packName:nextPk.name, tierNo:(pk.tierIdx||1)+1, alreadyHave:alreadyHave };
+        }
+        // 코스의 마지막 tier 완주
+        return { kind:'packDone', courseName:pk.name, isCourseFinal:true };
+      }
+      // 단독 팩 완주
+      return { kind:'packDone', packName:(pk&&pk.name)||book.name, isCourseFinal:false };
+    }
+    return { kind:'done' };
+  }catch(e){ return { kind:'done' }; }
+}
+// 변곡점별 안내 화면 HTML (통과 시험 결과 모달 하단에 붙임)
+function _afterPassCta(info, bookName){
+  var bnEsc = String(bookName).replace(/'/g,"\\'");
+  var theme='var(--theme,#1E5FA5)';
+  var btn=function(label, onclick, primary){
+    return '<button onclick="'+onclick+'" style="width:100%;margin-top:8px;background:'+(primary?theme:'#F3F4F6')+';color:'+(primary?'#fff':'#6B7280')+';border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">'+label+'</button>';
+  };
+  switch(info.kind){
+    case 'nextChapter':
+      return '<div style="font-size:13px;color:#374151;margin-bottom:2px">다음 '+info.chNo+'챕터가 열렸어요!</div>'
+        + btn('▶️ '+info.chNo+'챕터 학습하기', "cm();_studyChapter('"+bnEsc+"',"+info.chIdx+")", true)
+        + btn('나중에', 'cm()', false);
+    case 'nextStage':
+      return '<div style="font-size:14px;font-weight:800;color:'+theme+';margin-bottom:2px">🏆 '+info.prevStageName+' 완주!</div>'
+        + '<div style="font-size:12.5px;color:#6B7280;margin-bottom:4px">다음 '+info.stageName+'가 열렸어요.</div>'
+        + btn('▶️ '+info.stageName+' 시작', "cm();switchBook('"+String(info.stageName).replace(/'/g,"\\'")+"')", true)
+        + btn('나중에', 'cm()', false);
+    case 'courseRetest':
+      return '<div style="font-size:15px;font-weight:900;color:'+theme+';margin-bottom:2px">🎊 코스 완주!</div>'
+        + '<div style="font-size:12.5px;color:#6B7280;line-height:1.6;margin-bottom:4px">'+(info.reachedTop?'최고 레벨까지 마스터했어요!':'실력이 늘었어요. 레벨 재테스트로 더 높은 코스를 받으세요.')+'</div>'
+        + (info.reachedTop ? '' : btn('📝 레벨 재테스트 보기', "cm();(typeof showTestIntro==='function'&&showTestIntro())", true))
+        + btn('확인', 'cm()', !info.reachedTop?false:true);
+    case 'nextPack':
+      return '<div style="font-size:14px;font-weight:800;color:'+theme+';margin-bottom:2px">📖 '+info.tierNo+'권이 열렸어요!</div>'
+        + (info.alreadyHave
+            ? btn('▶️ '+info.tierNo+'권 학습하기', "cm();switchBook('"+String(info.packName).replace(/'/g,"\\'")+"')", true)
+            : btn('➕ '+info.tierNo+'권 담으러 가기', "cm();S.tab='market';go('market')", true))
+        + btn('나중에', 'cm()', false);
+    case 'packDone':
+      return '<div style="font-size:15px;font-weight:900;color:'+theme+';margin-bottom:2px">🎉 '+(info.isCourseFinal?info.courseName+' 코스':(info.packName||''))+' 완주!</div>'
+        + '<div style="font-size:12.5px;color:#6B7280;margin-bottom:4px">모든 단어를 마스터했어요. 다른 단어장도 도전해보세요.</div>'
+        + btn('📚 단어장 더 보기', "cm();S.tab='market';go('market')", true)
+        + btn('확인', 'cm()', false);
+    default:
+      return btn('확인', 'cm()', true);
+  }
+}
 function finishChapterExam(){
   try{
     var ex=S._chExam||{}; var pct=ex.total?Math.round(ex.correct/ex.total*100):0; var passed=pct>=90;
@@ -7740,18 +7834,22 @@ function finishChapterExam(){
     }
     S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
     if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
+    // 통과 시 다음 변곡점 판정 (A~E)
+    var _afterInfo = (passed && b) ? _afterChapterPass(b, ex.chIdx) : null;
     requestAnimationFrame(function(){
       try{ if(typeof go==='function') go(S._prevTab||'learn'); }catch(e){}
       requestAnimationFrame(function(){
         var mr=document.getElementById('mr'); if(!mr) return;
+        var _cta = (passed && _afterInfo) ? _afterPassCta(_afterInfo, ex.bookName)
+                 : '<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">확인</button>';
         mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
           +'<div style="font-size:52px;margin-bottom:10px">'+(passed?'🎉':'😢')+'</div>'
-          +'<div style="font-size:20px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+';margin-bottom:4px">'+(passed?'레벨테스트 통과!':'조금 아쉬워요')+'</div>'
+          +'<div style="font-size:20px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+';margin-bottom:4px">'+(passed?'챕터 통과!':'조금 아쉬워요')+'</div>'
           +'<div style="font-size:30px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+'">'+pct+'점</div>'
           +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+ex.correct+'/'+ex.total+' 정답 (기준 90점)</div>'
-          +(gotNabi?'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🎫 나비 쿠폰 1장 획득! · 다음 챕터 열림</div>':'')
+          +(gotNabi?'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🎫 나비 쿠폰 1장 획득!</div>':'')
           +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px">틀린 단어 복습 후 다시 도전해요</div>')
-          +'<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">확인</button>'
+          +_cta
           +'</div></div>';
       });
     });

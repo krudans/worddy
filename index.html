@@ -543,19 +543,6 @@ function _curriculumBooks(){ return (typeof S!=='undefined'&&Array.isArray(S.boo
 function _bookMastered(b){ try{ if(b&&(b.isCurriculum||b.packId)&&Array.isArray(b.chPass)){ var _cn=(typeof _chapterCount==='function')?_chapterCount(b):CH_N; if(!_cn) return false; return b.chPass.slice(0,_cn).every(Boolean); } var ws=getBookWords(b); if(!ws.length) return false; var mm=b.markMap||{}; for(var i=0;i<ws.length;i++){ if(mm[ws[i].en]!==1) return false; } return true; }catch(e){ return false; } }
 function _curriculumComplete(){ var cur=_curriculumBooks(); if(!cur.length) return false; return cur.every(_bookMastered) && cur.some(function(b){return (b.level||0)>=CW_MAXLEVEL;}); }
 function _curriculumInProgress(){ var cur=_curriculumBooks(); return cur.length>0 && !cur.every(_bookMastered); }
-// 커리큘럼에 저장된 학습 진도(외운 단어·통과 챕터)가 하나라도 있는가 — 재테스트 시 덮어쓰기 확인용
-function _curriculumHasProgress(){
-  try{
-    var cur=_curriculumBooks();
-    for(var i=0;i<cur.length;i++){
-      var b=cur[i];
-      if(b && b.markMap){ for(var k in b.markMap){ if(b.markMap[k]===1) return true; } }
-      if(b && Array.isArray(b.chPass) && b.chPass.some(Boolean)) return true;
-      if(b && Array.isArray(b.learned) && b.learned.length) return true;
-    }
-    return false;
-  }catch(e){ return false; }
-}
 // 커리큘럼 단계 잠김: 2단계+ 이면서 이전 단계 80% 미만 외움
 function _curriculumStageLocked(book){
   try{
@@ -3249,11 +3236,26 @@ function rMarket() {
   const ownedPacks = (S.books||[]).map(b=>b&&b.packId).filter(Boolean); // 보유=실제 단어장에 해당 팩 책이 있을 때 (구매이력 stale 무시)
   const mktSort = S._mktSort||'kr';
   const selCat = S._mktCat||'전체';
+  const query = (S._mktSearch||'').trim().toLowerCase();
   console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
-  // 카테고리 추출
-  const cats = ['전체', ...new Set(packs.map(p=>p.cat||'기타'))];
-  let filtered = selCat==='전체' ? packs : packs.filter(p=>(p.cat||'기타')===selCat);
+  // 검색어 필터 (팩 이름·설명·카테고리·수록 단어로 검색)
+  let searchPacks = packs;
+  if(query){
+    searchPacks = packs.filter(function(p){
+      var hay = [(p.name||''),(p.desc||''),(p.cat||''),(p.tierLabel||''),(p.basis||'')].join(' ').toLowerCase();
+      if(hay.indexOf(query)!==-1) return true;
+      // 수록 단어(영어)에서도 검색
+      var ws = p.words||[];
+      for(var i=0;i<ws.length;i++){ if(ws[i]&&(ws[i].en||'').toLowerCase().indexOf(query)!==-1) return true; }
+      return false;
+    });
+  }
+
+  // 카테고리 추출 (검색 결과 기준)
+  const cats = ['전체', ...new Set(searchPacks.map(p=>p.cat||'기타'))];
+  // 검색 중에는 전체 카테고리를 대상으로 (단어장 찾기 우선), 검색이 없을 때만 카테고리 필터 적용
+  let filtered = (query || selCat==='전체') ? searchPacks : searchPacks.filter(p=>(p.cat||'기타')===selCat);
   // 정렬 적용
   if(mktSort==='name') filtered = filtered.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   else if(mktSort==='words') filtered = filtered.slice().sort((a,b)=>((b.words||[]).length||(b.count||0))-((a.words||[]).length||(a.count||0)));
@@ -3276,10 +3278,24 @@ function rMarket() {
       </div>
     </div>`;
 
-  // 새로고침 버튼
+  // 검색창 (단어장 찾기)
+  html += `<div style="position:relative;margin-bottom:8px">
+    <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:.5;pointer-events:none">🔍</span>
+    <input id="mkt-search" type="search" value="${(S._mktSearch||'').replace(/"/g,'&quot;')}" placeholder="단어장 이름·단어로 검색" autocomplete="off"
+      oninput="S._mktSearch=this.value;clearTimeout(window.__mktSearchT);window.__mktSearchT=setTimeout(function(){var c=document.getElementById('mkt-search');var pos=c?c.selectionStart:null;go();setTimeout(function(){var e=document.getElementById('mkt-search');if(e){e.focus();if(pos!=null){try{e.setSelectionRange(pos,pos);}catch(_){}}}},0);},220)"
+      style="width:100%;box-sizing:border-box;padding:10px 34px 10px 34px;border-radius:12px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;color:var(--text1,#111);outline:none">
+    ${(S._mktSearch||'') ? `<span onclick="S._mktSearch='';go()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text3,#9CA3AF);cursor:pointer;font-weight:700">✕</span>` : ''}
+  </div>`;
 
-  // 카테고리 탭 + 정렬
-  html += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+  // 검색 결과 안내
+  if(query){
+    html += `<div style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 8px">'${S._mktSearch.trim()}' 검색 결과 ${searchPacks.length}개</div>`;
+  }
+
+  // 카테고리 탭 + 정렬 (검색 중에는 카테고리 탭 숨김)
+  if(!query){
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+  }
   html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
     html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
 
@@ -3288,6 +3304,13 @@ function rMarket() {
       <div style="font-size:48px;margin-bottom:12px">📦</div>
       <div style="font-size:15px;font-weight:700;color:var(--text1,var(--text1,#111111));margin-bottom:6px">아직 단어팩이 없어요</div>
       <div style="font-size:12px;color:var(--text3,var(--text3,#9CA3AF))">관리자가 단어팩을 등록하면 여기에 표시돼요</div>
+    </div>`;
+  } else if(!filtered.length) {
+    html += `<div style="text-align:center;padding:44px 20px">
+      <div style="font-size:44px;margin-bottom:12px">🔍</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text1,#111);margin-bottom:6px">${query?'검색 결과가 없어요':'이 카테고리에 단어장이 없어요'}</div>
+      <div style="font-size:12px;color:var(--text3,#9CA3AF)">${query?'다른 검색어를 입력해 보세요':'다른 카테고리를 선택해 보세요'}</div>
+      ${query?`<button onclick="S._mktSearch='';go()" style="margin-top:14px;background:var(--theme,#3B82F6);color:#fff;border:none;border-radius:12px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer">검색 지우기</button>`:''}
     </div>`;
   } else {
     // 카테고리 탭 중복 제거 (상단 줄바꿈 카테고리 바로 일원화)
@@ -6689,16 +6712,8 @@ function finishAdaptiveTest() {
 
   S.lid = finalLv.id;
   // 레벨테스트 결과 → 레벨(1~10) → 레벨업 코스 3단계 자동 생성
-  var _newLevel = (typeof LV_TO_LEVEL!=='undefined' && LV_TO_LEVEL[finalLv.id]) || 5;
-  // [진도 보존] 기존 커리큘럼에 진도가 있으면 자동 덮어쓰지 않고 결과 화면에서 물어본다.
-  var _adHadProgress = (typeof _curriculumHasProgress==='function') && _curriculumHasProgress();
-  window.__ltPendingLevel = _newLevel;
-  window.__ltPrevLevel = S._myLevel;
-  window.__ltNeedsConfirm = _adHadProgress;
-  if(!_adHadProgress){
-    S._myLevel = _newLevel;
-    try{ _generateCurriculum(S._myLevel); }catch(e){}
-  }
+  S._myLevel = (typeof LV_TO_LEVEL!=='undefined' && LV_TO_LEVEL[finalLv.id]) || 5;
+  try{ _generateCurriculum(S._myLevel); }catch(e){}
   // 레벨테스트 XP: 맞힌 문항당 2XP + 통과한 레벨마다 10XP 보너스
   let _testCorrect = 0;
   Object.keys(S.tScore||{}).forEach(k => { _testCorrect += (S.tScore[k]||0); });
@@ -6738,11 +6753,7 @@ function finishAdaptiveTest() {
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">${resultRows}</div>
     ${charSVG(finalLv.id,60,'happy')}
-    ${window.__ltNeedsConfirm
-      ? ('<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px;font-size:12.5px;color:#92400E;line-height:1.7;margin-bottom:12px;text-align:left">이미 진행 중인 학습 코스가 있어요. 새 레벨('+window.__ltPendingLevel+')로 <b>다시 만들면 지금까지의 학습 진도가 사라져요.</b></div>'
-          +'<button class="btn bb" style="width:100%" onclick="_ltApplyNewCurriculum()">🔄 새 레벨 '+window.__ltPendingLevel+'로 다시 만들기</button>'
-          +'<button class="btn" style="width:100%;margin-top:8px;background:#EEF3FA;color:var(--theme,#1E5FA5);font-weight:800;border:1.5px solid var(--theme-soft,#BFD7F0)" onclick="_ltKeepCurriculum()">📖 기존 코스 그대로 이어서 학습</button>')
-      : '<button class="btn bb" onclick="startApp()">학습 시작하기! 🚀</button>'}
+    <button class="btn bb" onclick="startApp()">학습 시작하기! 🚀</button>
   </div>`;
 }
 
@@ -7809,17 +7820,8 @@ function _ltFinish(){
     var placement=Math.max(1, Math.min(CW_MAXLEVEL, lt.lastPassed||0)); // 직전 통과 레벨(레벨1 실패=최소 1)
     var correctTotal=lt.correctTotal||0, qTotal=lt.qTotal||0;
     S._inInitLevelTest=false;
-    // [진도 보존] 기존 커리큘럼에 학습 진도가 있으면 자동 덮어쓰기하지 않고, 결과 화면에서 사용자에게 물어본다.
-    //   진도가 없으면(최초 테스트 등) 종전대로 바로 생성한다.
-    var _hadProgress = (typeof _curriculumHasProgress==='function') && _curriculumHasProgress();
-    var _prevLevel = S._myLevel;
-    window.__ltPendingLevel = placement;      // 결과 화면에서 '예' 선택 시 이 레벨로 생성
-    window.__ltPrevLevel = _prevLevel;
-    window.__ltNeedsConfirm = _hadProgress;   // true면 결과 화면에 '다시 만들까요?' 확인 노출
-    if(!_hadProgress){
-      S._myLevel=placement;
-      try{ _generateCurriculum(placement); }catch(e){}
-    }
+    S._myLevel=placement;
+    try{ _generateCurriculum(placement); }catch(e){}
     try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
     try{ localStorage.setItem('wd-tested','1'); }catch(e){}
     try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal});
@@ -7858,48 +7860,15 @@ function _ltFinish(){
         +'</div>'
       +'</div>'
       +(_statRows?'<div style="text-align:left;margin-bottom:16px"><div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:8px">📊 레벨별 정답률</div>'+_statRows+'</div>':'')
-      +(window.__ltNeedsConfirm
-        ? ('<div style="text-align:left;margin-bottom:16px">'
-            +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 학습 코스를 어떻게 할까요?</div>'
-            +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px;font-size:12.5px;color:#92400E;line-height:1.7">이미 진행 중인 학습 코스가 있어요. 새 레벨('+placement+')로 <b>다시 만들면 지금까지의 학습 진도가 사라져요.</b> 기존 코스를 그대로 이어서 학습할 수도 있어요.</div>'
-          +'</div>'
-          +_wrongHtml
-          +'<button class="btn bb" style="width:100%" onclick="_ltApplyNewCurriculum()">🔄 새 레벨 '+placement+'로 다시 만들기</button>'
-          +'<button class="btn" style="width:100%;margin-top:8px;background:#EEF3FA;color:var(--theme,#1E5FA5);font-weight:800;border:1.5px solid var(--theme-soft,#BFD7F0)" onclick="_ltKeepCurriculum()">📖 기존 코스 그대로 이어서 학습</button>')
-        : ('<div style="text-align:left;margin-bottom:16px">'
-            +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 이 코스가 만들어졌어요</div>'
-            +courseRows
-          +'</div>'
-          +_wrongHtml
-          +'<button class="btn bb" style="width:100%" onclick="startApp()">학습 시작하기 🚀</button>'
-          +'<button class="btn" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;font-weight:700" onclick="startInitialLevelExam()">다시 진단하기</button>'))
+      +'<div style="text-align:left;margin-bottom:16px">'
+        +'<div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:7px">📚 이 코스가 만들어졌어요</div>'
+        +courseRows
+      +'</div>'
+      +_wrongHtml
+      +'<button class="btn bb" style="width:100%" onclick="startApp()">학습 시작하기 🚀</button>'
+      +'<button class="btn" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;font-weight:700" onclick="startInitialLevelExam()">다시 진단하기</button>'
       +'</div>';
   }catch(e){ S._inInitLevelTest=false; S._lt=null; try{ if(typeof startApp==='function') startApp(); }catch(e2){} }
-}
-// 레벨테스트 재응시 후 '새 레벨로 다시 만들기' 선택 → 진도 초기화하고 새 커리큘럼 생성
-function _ltApplyNewCurriculum(){
-  try{
-    var lv=window.__ltPendingLevel;
-    if(lv==null){ if(typeof startApp==='function') startApp(); return; }
-    S._myLevel=lv;
-    try{ _generateCurriculum(lv); }catch(e){}
-    try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=lv){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
-    window.__ltNeedsConfirm=false; window.__ltPendingLevel=null;
-    if(typeof sv==='function') sv();
-    if(typeof toast==='function') toast('새 레벨 '+lv+' 코스로 다시 만들었어요');
-    if(typeof startApp==='function') startApp();
-  }catch(e){ try{ if(typeof startApp==='function') startApp(); }catch(e2){} }
-}
-// 레벨테스트 재응시 후 '기존 코스 그대로' 선택 → 커리큘럼 유지, 레벨 표시만 이전 값 보존
-function _ltKeepCurriculum(){
-  try{
-    // 진도가 있는 기존 커리큘럼을 그대로 둔다. _myLevel은 기존 코스 기준(이전 값)으로 되돌린다.
-    if(window.__ltPrevLevel!=null) S._myLevel=window.__ltPrevLevel;
-    window.__ltNeedsConfirm=false; window.__ltPendingLevel=null;
-    if(typeof sv==='function') sv();
-    if(typeof toast==='function') toast('기존 학습 코스를 이어서 진행해요');
-    if(typeof startApp==='function') startApp();
-  }catch(e){ try{ if(typeof startApp==='function') startApp(); }catch(e2){} }
 }
 function showLevelUpTest() {
   const words=S._sysWords||DEFAULT_WORDS[S.lid]||[];

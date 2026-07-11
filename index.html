@@ -10770,6 +10770,38 @@ function _bookColor(name){
   var h=0; for(var i=0;i<name.length;i++){ h=(h*31+name.charCodeAt(i))%360; }
   return 'hsl('+h+',66%,46%)';
 }
+// ── [3-C] 챕터 진도바: 단계 있는 단어장을 5(이하)칸으로 나눠 현재 챕터 강조 ──
+function _chapterBar(bookName, SC){
+  try{
+    if(!bookName || bookName==='내 단어장' || bookName==='__all__') return '';
+    var b=(S.books||[]).find(function(x){return x.name===bookName;});
+    if(!b || !(b.isCurriculum||b.packId) || typeof _chapterCount!=='function') return '';
+    var n=_chapterCount(b); if(!n || n<1) return '';
+    var cp=b.chPass||[];
+    var actIdx=(typeof _activeChapterIdx==='function')?_activeChapterIdx(b):null;
+    if(actIdx==null||actIdx<0){ actIdx=0; for(var k=0;k<n;k++){ if(!cp[k]){actIdx=k;break;} if(k===n-1)actIdx=n-1; } }
+    var mm=b.markMap||{};
+    var cells='';
+    for(var i=0;i<n;i++){
+      var passed=!!cp[i], isCur=(i===actIdx), unlocked=(i===0)||!!cp[i-1];
+      var innerFill='';
+      if(isCur && typeof _chapterSlice==='function'){
+        var sl=_chapterSlice(b,i);
+        var done=sl.filter(function(w){return mm[w.en]===1;}).length;
+        var p=sl.length?Math.round(done/sl.length*100):0;
+        innerFill='<div style="position:absolute;left:0;top:0;bottom:0;width:'+p+'%;background:'+SC+';opacity:.30"></div>';
+      }
+      var bg,bd,col,label,fw;
+      if(passed){ bg=SC; bd=SC; col='#fff'; label='✓'; fw=800; }
+      else if(isCur){ bg='var(--bg-card,#fff)'; bd=SC; col=SC; label=String(i+1); fw=900; }
+      else if(unlocked){ bg='var(--bg-sub,#F3F4F6)'; bd='transparent'; col='#9CA3AF'; label=String(i+1); fw=700; }
+      else { bg='var(--bg-sub,#F3F4F6)'; bd='transparent'; col='#CBD5E1'; label='🔒'; fw=700; }
+      cells+='<div style="position:relative;flex:1;height:26px;border-radius:8px;background:'+bg+';border:2px solid '+bd+';display:flex;align-items:center;justify-content:center;overflow:hidden'+(isCur?';transform:scale(1.07)':'')+'">'+innerFill+'<span style="position:relative;font-size:12px;font-weight:'+fw+';color:'+col+'">'+label+'</span></div>';
+    }
+    return '<div style="margin-top:12px;padding:0 2px"><div style="display:flex;gap:6px;align-items:center">'+cells+'</div>'
+      +'<div style="text-align:center;font-size:11px;color:var(--text3,#9CA3AF);margin-top:7px;font-weight:700">'+n+'챕터 중 <b style="color:'+SC+'">'+(actIdx+1)+'챕터</b> 진행 중</div></div>';
+  }catch(e){ return ''; }
+}
 function _studyGoalInner(){
   try{ if(typeof _fixLockedSelection==='function') _fixLockedSelection(); }catch(e){}
   try{ localStorage.setItem('wd-plan-scope', S.currentBook||'내 단어장'); window._planCtx=null; }catch(e){}
@@ -10788,8 +10820,9 @@ function _studyGoalInner(){
   var allBooks=[{name:'내 단어장', words:_myBookWords(), markMap:_myBookMM()}].concat((S.books||[]).filter(function(b){return !_bookLocked(b);}).map(function(b){return {name:b.name, words:getBookWords(b), markMap:b.markMap||{}};}));
   var cur=S.currentBook||'내 단어장';
   var SC=_bookColor(sel && sel!=='__all__' ? sel : cur);
+  var chBar=(typeof _chapterBar==='function')?_chapterBar(sel && sel!=='__all__' ? sel : cur, SC):'';
   var ob=(typeof _orderBooks==='function')?_orderBooks(allBooks):allBooks;
-  var optsHtml=ob.map(function(b){ return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+'>'+_esc(_bookDisplayName(b))+' ('+_bookCntL(b)+'개)</option>'; }).join('');
+  var optsHtml=ob.map(function(b){ var _rb=(S.books||[]).find(function(x){return x.name===b.name;}); var _lk=!!(_rb && (((typeof _curriculumStageLocked==='function')&&_curriculumStageLocked(_rb))||((typeof _bookLocked==='function')&&_bookLocked(_rb)))); return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+(_lk?' style="color:#DC2626"':'')+'>'+_esc(_bookDisplayName(b))+' ('+_bookCntL(b)+'개)'+(_lk?' _ 사용불가':'')+'</option>'; }).join('');
   var tab=window._planTab||'learn';
   var drop='<div style="position:relative;margin-bottom:13px">'+
     '<select onchange="_selectBook(this.value);go(\''+tab+'\')" style="width:100%;padding:11px 38px 11px 14px;border:1.5px solid var(--border,#E2E8F0);border-left:5px solid '+SC+';border-radius:12px;font-size:14px;font-weight:800;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;-webkit-appearance:none;cursor:pointer;outline:none">'+optsHtml+'</select>'+
@@ -10865,9 +10898,9 @@ function _studyGoalInner(){
       _d3(tPct,''+pace.todayMemo,'오늘 외운','#16A34A','pl-l2')+
       _streakBadge+
       '</div><div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin-top:10px">'+_esc(_bookDisplayNameByName(cur))+' · 외운 '+_nf(memo)+' / 남은 '+_nf(remaining)+'</div>';
-    return drop+l3+trig;
+    return drop+l3+chBar+trig;
   }
-  return drop+rings+subline+toggle+full+trig;
+  return drop+rings+subline+chBar+toggle+full+trig;
 }
 function renderStudyGoalCard(tab){
   window._planTab=tab||'learn';

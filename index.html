@@ -10770,37 +10770,36 @@ function _bookColor(name){
   var h=0; for(var i=0;i<name.length;i++){ h=(h*31+name.charCodeAt(i))%360; }
   return 'hsl('+h+',66%,46%)';
 }
-// ── [3-C] 챕터 진도바: 단계 있는 단어장을 5(이하)칸으로 나눠 현재 챕터 강조 ──
-function _chapterBar(bookName, SC){
+// ── [3-C] 챕터 세그먼트 도넛: 진도 동그라미를 챕터 수만큼 n등분, 각 조각에 챕터번호, 현재 챕터 강조 ──
+// 챕터형(커리큘럼/팩) 책이면 세그먼트 도넛 HTML 반환, 아니면 null(호출부에서 기본 도넛으로 폴백).
+function _chapterDonut(bookName, size, sw, SC, center){
   try{
-    if(!bookName || bookName==='내 단어장' || bookName==='__all__') return '';
+    if(!bookName || bookName==='내 단어장' || bookName==='__all__') return null;
     var b=(S.books||[]).find(function(x){return x.name===bookName;});
-    if(!b || !(b.isCurriculum||b.packId) || typeof _chapterCount!=='function') return '';
-    var n=_chapterCount(b); if(!n || n<1) return '';
+    if(!b || !(b.isCurriculum||b.packId) || typeof _chapterCount!=='function') return null;
+    var n=_chapterCount(b); if(!n || n<1) return null;
     var cp=b.chPass||[];
     var actIdx=(typeof _activeChapterIdx==='function')?_activeChapterIdx(b):null;
     if(actIdx==null||actIdx<0){ actIdx=0; for(var k=0;k<n;k++){ if(!cp[k]){actIdx=k;break;} if(k===n-1)actIdx=n-1; } }
     var mm=b.markMap||{};
-    var cells='';
-    for(var i=0;i<n;i++){
-      var passed=!!cp[i], isCur=(i===actIdx), unlocked=(i===0)||!!cp[i-1];
-      var innerFill='';
-      if(isCur && typeof _chapterSlice==='function'){
-        var sl=_chapterSlice(b,i);
-        var done=sl.filter(function(w){return mm[w.en]===1;}).length;
-        var p=sl.length?Math.round(done/sl.length*100):0;
-        innerFill='<div style="position:absolute;left:0;top:0;bottom:0;width:'+p+'%;background:'+SC+';opacity:.30"></div>';
-      }
-      var bg,bd,col,label,fw;
-      if(passed){ bg=SC; bd=SC; col='#fff'; label='✓'; fw=800; }
-      else if(isCur){ bg='var(--bg-card,#fff)'; bd=SC; col=SC; label=String(i+1); fw=900; }
-      else if(unlocked){ bg='var(--bg-sub,#F3F4F6)'; bd='transparent'; col='#9CA3AF'; label=String(i+1); fw=700; }
-      else { bg='var(--bg-sub,#F3F4F6)'; bd='transparent'; col='#CBD5E1'; label='🔒'; fw=700; }
-      cells+='<div style="position:relative;flex:1;height:26px;border-radius:8px;background:'+bg+';border:2px solid '+bd+';display:flex;align-items:center;justify-content:center;overflow:hidden'+(isCur?';transform:scale(1.07)':'')+'">'+innerFill+'<span style="position:relative;font-size:12px;font-weight:'+fw+';color:'+col+'">'+label+'</span></div>';
-    }
-    return '<div style="margin-top:12px;padding:0 2px"><div style="display:flex;gap:6px;align-items:center">'+cells+'</div>'
-      +'<div style="text-align:center;font-size:11px;color:var(--text3,#9CA3AF);margin-top:7px;font-weight:700">'+n+'챕터 중 <b style="color:'+SC+'">'+(actIdx+1)+'챕터</b> 진행 중</div></div>';
-  }catch(e){ return ''; }
+    var ws=(typeof getBookWords==='function')?getBookWords(b):((b.words)||[]);
+    var totalB=ws.length||1, memoB=ws.filter(function(w){return mm[w.en]===1;}).length;
+    var ov=Math.min(1, memoB/totalB), ovPct=Math.round(ov*100);
+    var r=(size-sw)/2, c=2*Math.PI*r, cx=size/2;
+    function pt(f,rr){ var t=f*2*Math.PI - Math.PI/2, R=(rr==null?r:rr); return [cx+R*Math.cos(t), cx+R*Math.sin(t)]; }
+    function arc(f0,f1,col,w,op,cap){ if(f1<=f0) return ''; var p0=pt(f0),p1=pt(f1),lg=(f1-f0)>0.5?1:0; return '<path d="M'+p0[0].toFixed(2)+' '+p0[1].toFixed(2)+' A'+r+' '+r+' 0 '+lg+' 1 '+p1[0].toFixed(2)+' '+p1[1].toFixed(2)+'" fill="none" stroke="'+col+'" stroke-width="'+w+'" stroke-linecap="'+(cap||'round')+'" opacity="'+op+'"/>'; }
+    var s='';
+    s+=arc(0,0.9999,'var(--bg-sub,#EEF2F7)',sw,1,'butt');
+    s+=arc(actIdx/n,(actIdx+1)/n,SC,sw+(size<95?5:7),0.15,'butt');
+    if(ov>0) s+=arc(0,Math.min(ov,0.9999),SC,sw,1,'round');
+    for(var t=0;t<=n;t++){ var f=t/n, pi=pt(f,r-sw/2), po=pt(f,r+sw/2); s+='<line x1="'+pi[0].toFixed(1)+'" y1="'+pi[1].toFixed(1)+'" x2="'+po[0].toFixed(1)+'" y2="'+po[1].toFixed(1)+'" stroke="var(--bg-card,#fff)" stroke-width="2"/>'; }
+    var labels='';
+    for(var i=0;i<n;i++){ var mid=(i+0.5)/n, lp=pt(mid), covered=(mid<=ov); var lcol=covered?'#fff':(i===actIdx?SC:'var(--text2,#64748B)'); var lstroke=covered?' stroke="rgba(0,0,0,.22)" stroke-width="0.5" paint-order="stroke"':''; labels+='<text x="'+lp[0].toFixed(1)+'" y="'+(lp[1]+3.3).toFixed(1)+'" text-anchor="middle" font-size="'+(size<95?9:10)+'" font-weight="800" fill="'+lcol+'"'+lstroke+'>'+(i+1)+'</text>'; }
+    var cen='<div style="font-size:'+(size<95?15:19)+'px;font-weight:900;color:'+SC+';line-height:1">'+ovPct+'%</div><div style="font-size:9px;color:var(--text3,#9CA3AF);margin-top:2px">전체</div>';
+    return '<div style="position:relative;width:'+size+'px;height:'+size+'px;margin:0 auto">'+
+      '<svg width="'+size+'" height="'+size+'">'+s+labels+'</svg>'+
+      '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none">'+cen+'</div></div>';
+  }catch(e){ return null; }
 }
 function _studyGoalInner(){
   try{ if(typeof _fixLockedSelection==='function') _fixLockedSelection(); }catch(e){}
@@ -10820,7 +10819,7 @@ function _studyGoalInner(){
   var allBooks=[{name:'내 단어장', words:_myBookWords(), markMap:_myBookMM()}].concat((S.books||[]).filter(function(b){return !_bookLocked(b);}).map(function(b){return {name:b.name, words:getBookWords(b), markMap:b.markMap||{}};}));
   var cur=S.currentBook||'내 단어장';
   var SC=_bookColor(sel && sel!=='__all__' ? sel : cur);
-  var chBar=(typeof _chapterBar==='function')?_chapterBar(sel && sel!=='__all__' ? sel : cur, SC):'';
+  var chBook=(sel && sel!=='__all__') ? sel : cur;
   var ob=(typeof _orderBooks==='function')?_orderBooks(allBooks):allBooks;
   var optsHtml=ob.map(function(b){ var _rb=(S.books||[]).find(function(x){return x.name===b.name;}); var _lk=!!(_rb && (((typeof _curriculumStageLocked==='function')&&_curriculumStageLocked(_rb))||((typeof _bookLocked==='function')&&_bookLocked(_rb)))); return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+(_lk?' style="color:#DC2626"':'')+'>'+_esc(_bookDisplayName(b))+' ('+_bookCntL(b)+'개)'+(_lk?' _ 사용불가':'')+'</option>'; }).join('');
   var tab=window._planTab||'learn';
@@ -10830,7 +10829,7 @@ function _studyGoalInner(){
   var cAll='<div style="font-size:20px;font-weight:900;color:'+SC+';line-height:1">'+pct+'%</div><div style="font-size:9px;color:var(--text3,#9CA3AF);margin-top:2px">전체</div>';
   var cToday='<div id="pl-td-ring-lbl" style="font-size:17px;font-weight:900;color:#16A34A;line-height:1">'+pace.todayMemo+'/'+daily+'</div><div style="font-size:9px;color:var(--text3,#9CA3AF);margin-top:2px">오늘</div>';
   var rings='<div style="display:flex;justify-content:space-around;align-items:center;margin-bottom:3px">'+
-    _goalDonut(pct,104,12,'pl-ring-all',SC,cAll)+
+    (_chapterDonut(chBook,104,12,SC,cAll)||_goalDonut(pct,104,12,'pl-ring-all',SC,cAll))+
     _goalDonut(tPct,104,12,'pl-td-ring','#16A34A',cToday)+'</div>';
   var eta=_planEtaDate(remaining,daily,ctx.today);
   // [버그수정] 마켓팩 단어가 아직 로드되기 전(total=0)엔 '외운 0·남은 0 → 🎉 완료'로 오표시됐다.
@@ -10857,8 +10856,10 @@ function _studyGoalInner(){
   var _sGoal=S._dailyGoalMin||30;
   var _sMin=Math.round(S._dailyStudiedMin||0);
   var _streak=S.streak||0;
-  function _d3(p,center,sub,col,id){
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0">'+_goalDonut(Math.min(100,p),86,11,id,col,'<div style=\'font-size:14px;font-weight:900;color:'+col+';line-height:1\'>'+center+'</div>')+'<span style="font-size:11px;color:var(--text2,#64748B);font-weight:700;text-align:center">'+sub+'</span></div>';
+  function _d3(p,center,sub,col,id,bookName){
+    var _cen='<div style=\'font-size:14px;font-weight:900;color:'+col+';line-height:1\'>'+center+'</div>';
+    var _ring=((bookName&&typeof _chapterDonut==='function')?_chapterDonut(bookName,86,11,col,_cen):null)||_goalDonut(Math.min(100,p),86,11,id,col,_cen);
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0">'+_ring+'<span style="font-size:11px;color:var(--text2,#64748B);font-weight:700;text-align:center">'+sub+'</span></div>';
   }
   if(tab==='home'){
     var _wDone=_wToday>=_wGoal, _gDone=_gMin>=_gGoal, _sDone=_sMin>=_sGoal;
@@ -10877,7 +10878,7 @@ function _studyGoalInner(){
       _bar('🎮','#FEF3C7','게임 플레이',_gMin,_gGoal,'분',_gDone,'#D97706')+
       _bar('📚','#DBEAFE','공부하기',_sMin,_sGoal,'분',_sDone,'#2563EB')+
       '</div>';
-    return drop+rings+subline+chBar+toggle+full+'</div><div style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:18px;padding:15px;margin-top:12px">'+h3+trig;
+    return drop+rings+subline+toggle+full+'</div><div style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:18px;padding:15px;margin-top:12px">'+h3+trig;
   }
   if(tab==='game'){
     var _gp=_gGoal?Math.min(100,_gMin/_gGoal*100):0;
@@ -10894,13 +10895,13 @@ function _studyGoalInner(){
   if(tab==='learn'){
     var _streakBadge='<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1"><div style="width:86px;height:86px;border-radius:22px;background:var(--bg-soft,#F8FAFC);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none"><div style="font-size:10px;color:var(--text3,#9CA3AF)">연속</div><div style="font-size:30px;font-weight:900;color:#EA580C;line-height:1.05">'+_streak+'</div><div style="font-size:10px;color:var(--text3,#9CA3AF)">일째 🔥</div></div><span style="font-size:11px;color:var(--text2,#64748B);font-weight:700">연속 학습일</span></div>';
     var l3='<div style="display:flex;justify-content:space-around;align-items:flex-start;gap:6px">'+
-      _d3(pct,pct+'%','전체 진도',SC,'pl-l1')+
+      _d3(pct,pct+'%','전체 진도',SC,'pl-l1',chBook)+
       _d3(tPct,''+pace.todayMemo,'오늘 외운','#16A34A','pl-l2')+
       _streakBadge+
       '</div><div style="text-align:center;font-size:12px;color:var(--text3,#9CA3AF);margin-top:10px">'+_esc(_bookDisplayNameByName(cur))+' · 외운 '+_nf(memo)+' / 남은 '+_nf(remaining)+'</div>';
-    return drop+l3+chBar+trig;
+    return drop+l3+trig;
   }
-  return drop+rings+subline+chBar+toggle+full+trig;
+  return drop+rings+subline+toggle+full+trig;
 }
 function renderStudyGoalCard(tab){
   window._planTab=tab||'learn';

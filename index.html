@@ -623,7 +623,7 @@ function _bookDisplayName(b){
             var cp=src.chPass||[]; ci=0;
             for(var i=0;i<chTotal;i++){ if(!cp[i]){ ci=i; break; } if(i===chTotal-1) ci=chTotal-1; }
           }
-          return base+' · '+chTotal+'챕터 중 '+(ci+1)+'챕터';
+          return base+' _ '+chTotal+'챕터 중 '+(ci+1)+'챕터';
         }
       }catch(e){}
       return base;
@@ -1431,6 +1431,8 @@ window._mStudyFilter=_mStudyFilter;
 // 책 객체 → 학습언어 데이터 보유 단어/개수(드롭다운·현황·목표 공용)
 // 커리큘럼/팩 책은 챕터 단위 학습이므로 '현재 챕터' 단어만 센다(전체 1000개가 아니라).
 function _bookWordsL(b){ try{
+  // 축약 객체(isCurriculum/packId 누락)로 들어오면 이름으로 원본 책 재조회 → 드롭다운 등에서 챕터 스코프(개수) 유지
+  if(b && !b.isCurriculum && !b.packId && b.name && typeof S!=='undefined' && Array.isArray(S.books)){ var _o=S.books.find(function(x){return x.name===b.name;}); if(_o) b=_o; }
   var w;
   if(b && (b.isCurriculum || b.packId) && typeof _chapterCount==='function' && typeof _chapterSlice==='function'){
     var chTotal=_chapterCount(b);
@@ -10428,7 +10430,7 @@ function _planScopeData(){
   else { try{myWords=JSON.parse(localStorage.getItem('wd-w')||'[]');}catch(e){myWords=[];} try{myMM=JSON.parse(localStorage.getItem('wd-mk')||'{}');}catch(e){myMM={};} }
   myWords=_mStudyFilter(myWords||[]);
   var books=[{name:'내 단어장', total:(myWords||[]).length, memo:(myWords||[]).filter(function(w){return (myMM||{})[_mk(w.en)]===1;}).length, weak:(myWords||[]).filter(function(w){return (myMM||{})[_mk(w.en)]===2;}).length, ens:(myWords||[]).map(function(w){return w.en;})}];
-  (S.books||[]).forEach(function(b){ var w=_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[]); var mm=b.markMap||{};
+  (S.books||[]).forEach(function(b){ var w=(typeof _bookWordsL==='function'?_bookWordsL(b):_mStudyFilter((typeof getBookWords==='function'?getBookWords(b):(b.words||[]))||[])); var mm=b.markMap||{};
     var _memo=w.filter(function(x){return mm[_mk(x.en)]===1;}).length, _weak=w.filter(function(x){return mm[_mk(x.en)]===2;}).length;
     // [버그수정] 마켓팩 단어 미로드(w=[])면 memo=0이 되어 헤더가 '외운 0·남은 0 → 완료'로 오표시.
     // 단어 목록을 못 구했을 땐 markMap(내 학습기록)으로 외움 수를 센다.

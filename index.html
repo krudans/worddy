@@ -2723,14 +2723,40 @@ function _pkCefrBar(pk, h) {
   const cols = { A1:'#34D399', A2:'#6EE7B7', B1:'#60A5FA', B2:'#3B82F6', C1:'#A78BFA', C2:'#8B5CF6' };
   const bar = ['A1','A2','B1','B2','C1','C2'].map(k => {
     const v = c[k] || 0; if (!v) return '';
-    return `<div style="width:${v/n*100}%;background:${cols[k]}"></div>`;
+    return `<div style="width:${v/n*100}%;background:${cols[k]}" title="${k} ${_PK_LV_TXT[k]||''} ${Math.round(v/n*100)}%"></div>`;
   }).join('');
   const legend = ['A1','A2','B1','B2','C1','C2'].filter(k => c[k] && c[k]/n >= 0.05)
     .map(k => `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:9px">
       <span style="width:7px;height:7px;border-radius:2px;background:${cols[k]}"></span>
-      <span style="font-size:10.5px;color:var(--text3,#9CA3AF)">${k} ${Math.round(c[k]/n*100)}%</span></span>`).join('');
-  return `<div style="display:flex;height:${h||8}px;border-radius:4px;overflow:hidden">${bar}</div>
-          <div style="margin-top:6px">${legend}</div>`;
+      <span style="font-size:10.5px;color:var(--text3,#9CA3AF)">${k} ${_PK_LV_TXT[k]||''} ${Math.round(c[k]/n*100)}%</span></span>`).join('');
+  return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">
+            <span style="font-size:10.5px;font-weight:700;color:var(--text2,#374151)">📊 단어 난이도 구성</span>
+            <span onclick="event.stopPropagation();showCefrGuide()" style="font-size:9.5px;color:var(--theme,#3B82F6);cursor:pointer;border:1px solid var(--theme,#3B82F6);border-radius:8px;padding:0 5px;font-weight:700">?</span>
+          </div>
+          <div style="display:flex;height:${h||8}px;border-radius:4px;overflow:hidden">${bar}</div>
+          <div style="margin-top:6px">${legend}</div>
+          <div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:3px">유럽 공통 어학 기준(CEFR)의 단어 난이도예요. 낮을수록 쉬운 단어</div>`;
+}
+
+// CEFR 등급 전체 안내 모달
+function showCefrGuide(){
+  try{
+    var rows = ['A1','A2','B1','B2','C1','C2'].map(function(k){
+      var m = (typeof CEFR_LABEL!=='undefined' && CEFR_LABEL[k]) || {};
+      var cols = { A1:'#34D399', A2:'#6EE7B7', B1:'#60A5FA', B2:'#3B82F6', C1:'#A78BFA', C2:'#8B5CF6' };
+      return '<div style="display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-bottom:1px solid var(--border,#F0F0F0)">'
+        +'<span style="width:12px;height:12px;border-radius:3px;background:'+cols[k]+';flex-shrink:0;margin-top:2px"></span>'
+        +'<div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--text1,#111)">'+k+' · '+(m.name||'')+'</div>'
+        +'<div style="font-size:11.5px;color:var(--text3,#9CA3AF);margin-top:1px;line-height:1.5">'+(m.desc||'')+'</div></div></div>';
+    }).join('');
+    var mr=document.getElementById('mr');
+    if(mr){ mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:340px">'
+      +'<div style="font-size:16px;font-weight:900;margin-bottom:3px">📚 단어 난이도(CEFR)란?</div>'
+      +'<div style="font-size:12px;color:var(--text3,#9CA3AF);line-height:1.6;margin-bottom:12px">유럽 공통 어학 평가 기준으로, 단어가 얼마나 어려운지를 6단계로 나눈 거예요. A1이 가장 쉽고 C2가 가장 어려워요.</div>'
+      +rows
+      +'<button onclick="cm()" class="btn bb" style="width:100%;margin-top:14px">알겠어요</button>'
+      +'</div></div>'; }
+  }catch(e){}
 }
 
 // ── 마켓 배너 (리스트 대신) ──
@@ -6327,13 +6353,21 @@ function showLogin() {
       </div></div>`;
       return;
     }
+    // [중복 클릭 방지] 이미 로그인 진행 중이면 무시 — 연속 클릭 시 팝업이 서로 취소되는 문제 해결
+    if(window._authPending){ return; }
     window._authPending=true;
+    // 로그인 진행 중 화면 표시 (버튼 대신 로딩 오버레이)
+    try{
+      var _mr=document.getElementById('mr');
+      if(_mr){ _mr.innerHTML='<div class="mbg"><div class="modal" style="text-align:center"><div style="font-size:15px;font-weight:800;margin-bottom:6px">🔐 로그인 중…</div><div style="font-size:12.5px;color:#6B7280;line-height:1.7">구글 로그인 창에서 계정을 선택해 주세요.<br>창이 보이지 않으면 잠시 기다려 주세요.</div></div></div>'; }
+    }catch(_e){}
     auth.signInWithPopup(provider)
       .catch(e => {
         window._authPending = false;
+        try{ if(typeof cm==='function') cm(); }catch(_e){}   // 로딩 모달 닫아 재시도 가능하게
         if(e.code === 'auth/popup-blocked') {
           auth.signInWithRedirect(provider);
-        } else if(e.code !== 'auth/popup-closed-by-user') {
+        } else if(e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
           toast('로그인 오류: ' + e.message);
         }
       });
@@ -18060,6 +18094,7 @@ async function _migrateToV2(uid){
 
 auth.onAuthStateChanged(async user => {
   clearTimeout(_authTimeout);
+  window._authPending = false;   // [로그인 완료/변경] 진행 플래그 해제 → 다음 로그인 정상 동작
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
   if(user && typeof db!=='undefined'){ try{ _initSessionLock(user.uid); }catch(e){} try{ _migrateToV2(user.uid).then(function(r){ if(r&&(r.ok||r.skipped==='already-v3')) window._splitReady=true; }); }catch(e){} } // [세션락]+[문서분리 마이그레이션] 비차단, 완료 후 이중쓰기 게이트 open

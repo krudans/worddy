@@ -3291,19 +3291,19 @@ function rMarket() {
       </div>
     </div>`;
 
-  // 검색창 (단어장 찾기)
+  // 검색창 (단어장 찾기) — IME(한글) 조합 중에는 리렌더하지 않도록 전용 핸들러 사용
   html += `<div style="position:relative;margin-bottom:8px">
     <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:.5;pointer-events:none">🔍</span>
     <input id="mkt-search" type="search" value="${(S._mktSearch||'').replace(/"/g,'&quot;')}" placeholder="단어장 이름·단어로 검색" autocomplete="off"
-      oninput="S._mktSearch=this.value;clearTimeout(window.__mktSearchT);window.__mktSearchT=setTimeout(function(){var c=document.getElementById('mkt-search');var pos=c?c.selectionStart:null;go();setTimeout(function(){var e=document.getElementById('mkt-search');if(e){e.focus();if(pos!=null){try{e.setSelectionRange(pos,pos);}catch(_){}}}},0);},220)"
+      oncompositionstart="window.__mktComposing=true"
+      oncompositionend="window.__mktComposing=false;_mktFilterInput(this.value)"
+      oninput="if(!window.__mktComposing)_mktFilterInput(this.value)"
       style="width:100%;box-sizing:border-box;padding:10px 34px 10px 34px;border-radius:12px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;color:var(--text1,#111);outline:none">
-    ${(S._mktSearch||'') ? `<span onclick="S._mktSearch='';go()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text3,#9CA3AF);cursor:pointer;font-weight:700">✕</span>` : ''}
+    <span id="mkt-search-clear" onclick="var i=document.getElementById('mkt-search');if(i){i.value='';}_mktFilterInput('')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text3,#9CA3AF);cursor:pointer;font-weight:700;display:${(S._mktSearch||'')?'block':'none'}">✕</span>
   </div>`;
 
-  // 검색 결과 안내
-  if(query){
-    html += `<div style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 8px">'${S._mktSearch.trim()}' 검색 결과 ${searchPacks.length}개</div>`;
-  }
+  // 검색 결과 안내 (부분 갱신되는 목록 영역 밖, 검색어 표시용)
+  html += `<div id="mkt-search-info" style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 8px;display:${query?'block':'none'}">${query?`'${(S._mktSearch||'').trim()}' 검색 결과 ${searchPacks.length}개`:''}</div>`;
 
   // 카테고리 탭 + 정렬 (검색 중에는 카테고리 탭 숨김)
   if(!query){
@@ -3312,6 +3312,8 @@ function rMarket() {
   html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
     html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
 
+  // ── 팩 목록 영역 (검색 시 이 안쪽만 부분 교체) ──
+  html += '<div id="mkt-list">';
   if(!packs.length) {
     html += `<div style="text-align:center;padding:48px 20px">
       <div style="font-size:48px;margin-bottom:12px">📦</div>
@@ -3323,7 +3325,7 @@ function rMarket() {
       <div style="font-size:44px;margin-bottom:12px">🔍</div>
       <div style="font-size:15px;font-weight:700;color:var(--text1,#111);margin-bottom:6px">${query?'검색 결과가 없어요':'이 카테고리에 단어장이 없어요'}</div>
       <div style="font-size:12px;color:var(--text3,#9CA3AF)">${query?'다른 검색어를 입력해 보세요':'다른 카테고리를 선택해 보세요'}</div>
-      ${query?`<button onclick="S._mktSearch='';go()" style="margin-top:14px;background:var(--theme,#3B82F6);color:#fff;border:none;border-radius:12px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer">검색 지우기</button>`:''}
+      ${query?`<button onclick="var i=document.getElementById('mkt-search');if(i){i.value='';}_mktFilterInput('')" style="margin-top:14px;background:var(--theme,#3B82F6);color:#fff;border:none;border-radius:12px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer">검색 지우기</button>`:''}
     </div>`;
   } else {
     // 카테고리 탭 중복 제거 (상단 줄바꿈 카테고리 바로 일원화)
@@ -3393,10 +3395,32 @@ ${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F
       html += `</div>`;
     }
   }
+  html += '</div>';// #mkt-list 끝
 
   html += `<button onclick="S.stab='books';go('mybooks')" style="width:100%;background:none;border:none;color:var(--text3,var(--text3,#9CA3AF));font-size:13px;cursor:pointer;padding:12px 0 0">← 단어장으로</button>`;
   html += '</div>';
   return html;
+}
+// 마켓 검색: 입력 시 전체 리렌더 대신 목록 영역(#mkt-list)만 교체 → 한글 IME 조합·포커스 유지
+function _mktFilterInput(val){
+  S._mktSearch = val;
+  clearTimeout(window.__mktSearchT);
+  window.__mktSearchT = setTimeout(function(){
+    try{
+      var full = rMarket();                  // 최신 검색어로 마켓 HTML 재생성
+      var tmp = document.createElement('div');
+      tmp.innerHTML = full;
+      var freshList = tmp.querySelector('#mkt-list');
+      var curList = document.getElementById('mkt-list');
+      if(freshList && curList){ curList.innerHTML = freshList.innerHTML; }
+      // 검색어 안내·지우기 버튼도 갱신
+      var freshInfo = tmp.querySelector('#mkt-search-info');
+      var curInfo = document.getElementById('mkt-search-info');
+      if(freshInfo && curInfo){ curInfo.innerHTML = freshInfo.innerHTML; curInfo.style.display = freshInfo.style.display; }
+      var clr = document.getElementById('mkt-search-clear');
+      if(clr){ clr.style.display = (S._mktSearch||'') ? 'block' : 'none'; }
+    }catch(e){ /* 실패 시 전체 리렌더 폴백 */ try{ go(); }catch(_){} }
+  }, 180);
 }
 
 function togglePackPreview(packId) {

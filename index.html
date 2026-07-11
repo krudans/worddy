@@ -1429,7 +1429,22 @@ function _mStudyFilter(arr){ try{
 }catch(e){ return arr; } }
 window._mStudyFilter=_mStudyFilter;
 // 책 객체 → 학습언어 데이터 보유 단어/개수(드롭다운·현황·목표 공용)
-function _bookWordsL(b){ try{ var w=(typeof getBookWords==='function')?getBookWords(b):((b&&b.words)||[]); return _mStudyFilter(w||[]); }catch(e){ return (b&&b.words)||[]; } }
+// 커리큘럼/팩 책은 챕터 단위 학습이므로 '현재 챕터' 단어만 센다(전체 1000개가 아니라).
+function _bookWordsL(b){ try{
+  var w;
+  if(b && (b.isCurriculum || b.packId) && typeof _chapterCount==='function' && typeof _chapterSlice==='function'){
+    var chTotal=_chapterCount(b);
+    if(chTotal>0){
+      // 활성 챕터 인덱스: 커리큘럼은 _activeChapterIdx, 없으면 아직 통과 안 한 첫 챕터
+      var ci=null;
+      if(b.isCurriculum && typeof _activeChapterIdx==='function'){ ci=_activeChapterIdx(b); }
+      if(ci==null){ var cp=b.chPass||[]; ci=0; for(var i=0;i<chTotal;i++){ if(!cp[i]){ ci=i; break; } if(i===chTotal-1) ci=chTotal-1; } }
+      w=_chapterSlice(b, ci);
+    }
+  }
+  if(!w) w=(typeof getBookWords==='function')?getBookWords(b):((b&&b.words)||[]);
+  return _mStudyFilter(w||[]);
+}catch(e){ return (b&&b.words)||[]; } }
 function _bookCntL(b){ try{ return _bookWordsL(b).length; }catch(e){ return ((b&&b.words)||[]).length; } }
 window._bookWordsL=_bookWordsL; window._bookCntL=_bookCntL;
 // 학습언어별 마크(외웠음/헷갈림) 키 — en은 기존 키 그대로(데이터 보존·회귀0), ja/de는 접두사로 분리.

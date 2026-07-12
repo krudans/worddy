@@ -18594,6 +18594,8 @@ auth.onAuthStateChanged(async user => {
           //  로컬(스테일)로 user_words를 merge:false 덮어써서, 다른 기기가 넣은 책/단어를 통째로 파괴했다(§1-C).
           //  → 저장 직전 서버 user_words를 읽어 books/words를 합집합 병합(서버 ∪ 로컬)한 뒤 저장한다.
           (async ()=>{
+            var _sig=function(){ try{ return (S.books||[]).map(function(b){ return (b.name||b.packId||'')+':'+(Array.isArray(b.words)?b.words.length:0)+':'+Object.keys(b.markMap||{}).length+':'+((b.chPass||[]).join('')); }).join('|')+'#'+((S.words||[]).length); }catch(e){ return String(Math.random()); } };
+            var _sigBefore=_sig(), _syncChanged=false;
             try{
               const _uwSnap = await db.collection('user_words').doc(user.uid).get();
               if(_uwSnap.exists){
@@ -18607,7 +18609,19 @@ auth.onAuthStateChanged(async user => {
                 try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(b=>{ if(b&&b.packId){ const {words,...r}=b; return r; } return b; }))); }catch(e){}
               }
             }catch(e){ console.warn('[앱] user_words 병합 실패(로컬 유지)', e); }
+            _syncChanged = (_sig()!==_sigBefore);
             sv(); // 병합된 정본 저장
+            // [크로스기기 표시 동기화] 병합으로 책/진도가 실제로 바뀌었고, 사용자가 게임/시험/학습/모달 중이 아니면
+            //   현재 화면을 재렌더해 다른 기기의 변경을 새로고침 없이 즉시 반영한다. (인자없는 go()=현재 탭 유지 재렌더)
+            try{
+              var _mrEl=document.getElementById('mr');
+              if(_syncChanged && typeof go==='function'
+                 && !S._gameRunning && !S._inChExam && !S._inLevelTest && !S._inInitLevelTest && !S._inLearnSession
+                 && !(_mrEl && _mrEl.innerHTML && _mrEl.innerHTML.trim())){
+                go();
+                console.log('[앱] 크로스기기 병합 반영 → 화면 갱신');
+              }
+            }catch(e){}
             console.log('[앱] Firebase 백그라운드 동기화 완료(user_words 병합)');
           })();
         }).catch(e => console.warn('[앱] Firebase 동기화 실패', e));

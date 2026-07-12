@@ -5226,13 +5226,21 @@ function _dictOverlayArr(raw){
 function getBookWords(book) {
   if (!book) return [];
   if (book.isCurriculum) {
-    // [level 불일치 근본수정] 생성 시 고정 저장한 words가 있으면 그걸 쓴다.
-    //   저장 words가 markMap 기준이므로, level 필드가 어긋나도 학습·진도가 일치한다.
-    //   words는 en만 저장하므로 사전 오버레이로 뜻·발음·예문을 채운다.
-    if(Array.isArray(book.words) && book.words.length){
+    // 커리큘럼 단어는 book.level에서 결정론적으로 도출된다(_levelWords → 레벨당 정확히 1000).
+    //   [손상 자가복구] saveCurrentBook/병합 경로가 작업목록(내 단어장 겸용 S.words)을
+    //   커리큘럼 words에 잘못 커밋해 개수가 어긋나는 손상이 발생할 수 있다(예: 21개).
+    //   저장 words 개수가 정본과 다르면 손상으로 보고 정본(en 고정목록)으로 즉시 복구한다.
+    //   markMap은 en 기준이라 복구 후에도 학습·진도가 유지된다. 표시 시 사전 오버레이로 뜻·발음·예문 채움.
+    var _cw = _levelWords(book.level);   // 메타 로드 시 1000, 미로드 시 [](→복구 스킵, 데이터 보존)
+    var _have = (Array.isArray(book.words) ? book.words.length : 0);
+    if(_cw.length && _have !== _cw.length){
+      try{ book.words = _cw.map(function(w){ return {en:w.en}; }); }catch(e){}
+      return _cw;   // 이미 오버레이된 정본
+    }
+    if(_have){
       return (typeof _enrichFromDict==='function') ? book.words.map(function(w){ return _enrichFromDict({en:w.en}); }) : book.words;
     }
-    return _levelWords(book.level);   // 구버전(words 미저장) 폴백
+    return _cw;   // 구버전(words 미저장) 폴백
   }
   if (book.packId) {
     // 마켓팩은 오직 Firebase _marketPacks에서만 조회 + 단어사전 라이브 오버레이
@@ -5315,7 +5323,25 @@ function _migratePackWords() {
   localStorage.removeItem('wd-pack-migrated');
 }
 
+// [커리큘럼 손상 방지·저장 게이트] 저장 직전 커리큘럼 책의 words를 book.level 기반 정본으로 정규화한다.
+//   개수가 정본(_levelWords, 레벨당 1000)과 다르면 손상으로 보고 en 고정목록으로 교체.
+//   → localStorage·users·user_words 어디에도 손상된 커리큘럼 words가 절대 기록되지 않는다.
+//   메타 미로드(_levelWords 빈배열) 시엔 건드리지 않아 정상 데이터 파괴를 막는다. markMap은 en 기준이라 진도 유지.
+function _healCurriculumWords(){
+  try{
+    (S.books||[]).forEach(function(b){
+      if(!b || !b.isCurriculum) return;
+      var cw = (typeof _levelWords==='function') ? _levelWords(b.level) : [];
+      if(cw.length && (!Array.isArray(b.words) || b.words.length !== cw.length)){
+        var _before = (Array.isArray(b.words) ? b.words.length : 'na');
+        b.words = cw.map(function(w){ return {en:w.en}; });
+        try{ console.warn('[커리큘럼 자가복구] '+b.name+' words '+_before+' → '+cw.length); }catch(e){}
+      }
+    });
+  }catch(e){}
+}
 function sv() {
+  _healCurriculumWords();   // [손상 방지] 저장 전 커리큘럼 words 정규화 (레벨업N단계 손상 재발 근본차단)
   // 잡 키(순수 숫자/빈 문자열) 마크 제거 — 단어가 아닌 마크가 저장·Firebase 동기화되지 않도록
   try{ if(S.markMap) Object.keys(S.markMap).forEach(function(k){ if(!k||/^[0-9]+$/.test(k)) delete S.markMap[k]; }); }catch(e){}
   localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-xp',S.xp);
@@ -11567,7 +11593,10 @@ function saveCurrentBook() {
       console.warn('[saveCurrentBook] 빈 단어로 덮어쓰기 차단:', S.currentBook, prevCount+'개 보존');
       return;
     }
-    S.books[idx].words=[...S.words];
+    // [커리큘럼 손상 방지·근본수정] 커리큘럼 책의 words는 book.level 기반 고정 목록(정확히 1000)이라
+    //   작업목록(S.words: '내 단어장'과 겸용)으로 절대 덮지 않는다. 덮으면 내 단어장 단어수(예 21개)가
+    //   커리큘럼 1000개를 대체하는 손상이 발생한다(레벨업1 4챕터 오표시 버그의 1차 원인). 진도(markMap/learned)만 갱신.
+    if(!S.books[idx].isCurriculum){ S.books[idx].words=[...S.words]; }
     // [수정] 현재 책에 속한 단어의 마킹만 저장 (전역/타 단어장 마킹 누수로 학습률이 부풀려지는 버그 차단)
     var _bwSC=(typeof getBookWords==='function')?(getBookWords(S.books[idx])||[]):(S.books[idx].words||[]);
     var _ownSC=new Set(_bwSC.map(function(w){return w&&w.en;}));

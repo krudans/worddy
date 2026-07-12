@@ -14,6 +14,8 @@
 <script src="js/bwd-pron.js?v=1"></script>
 <script src="js/bwd-dict.js?v=1"></script>
 <script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js','js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){document.write('<scr'+'ipt src="'+src+'?cb='+cb+'"></scr'+'ipt>');});})();</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>try{ if(typeof pdfjsLib!=='undefined'){ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } }catch(e){}</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap');
 
@@ -3206,11 +3208,18 @@ window._bp = window._bp || {
   packId: '', name: '', emoji: '📖', cat: '📖 도서',
   courseId: '', courseName: '', courseEmoji: '📚',
   tiers: [{ label: '', text: '' }],
-  settings: { topN: 1000, excludeA1: true, pnRatio: 90, minLen: 2, lemmatize: true, excludeFn: true, shortEx: true },
+  settings: { topN: 500, excludeA1: true, pnRatio: 90, minLen: 2, lemmatize: true, excludeFn: true, shortEx: true, aiMode: true },
   preview: null
 };
 
 // 표제어화: 굴절형을 BWD_DICT 표제어로 환원 (규칙 후보 → 사전 검증)
+var _BP_STOP = new Set(('a an the and or but nor so yet for of to in on at by from with within without into onto upon over under above below between among through during before after since until about against toward towards across along around behind beside beyond near off out up down as than then thus hence therefore however moreover otherwise whether if unless because although though while whereas whenever wherever whatever whoever whichever ' +
+  'i you he she it we they me him her us them my your his its our their mine yours hers ours theirs myself yourself himself herself itself ourselves themselves this that these those who whom whose which what where when why how ' +
+  'is am are was were be been being do does did doing done have has had having will would shall should can could may might must ought ' +
+  'not no nor none neither either both all any some each every few more most many much several such own same other another ' +
+  'here there now just only also too very even still yet again ever never always often sometimes once twice ' +
+  'this that s t re ve ll d m o').split(/\s+/).filter(Boolean));
+
 function _bpLemma(w, doLem) {
   if (typeof BWD_DICT === 'undefined') return null;
   if (BWD_DICT[w] && BWD_DICT[w].kr) return w;
@@ -3244,7 +3253,7 @@ function _bpAnalyzeText(text, s) {
     if (en.length < (s.minLen || 2)) return false;
     var d = BWD_DICT[en]; if (!d || !d.kr) return false;
     if (/고유/.test(d.pos || '')) return false;
-    if (s.excludeFn && PX_GENERIC.has(en)) return false;
+    if (s.excludeFn && (PX_GENERIC.has(en) || _BP_STOP.has(en))) return false;
     if ((cap[en] || 0) / (tot[en] || 1) >= pnRatio) return false;
     return true;
   });
@@ -3270,6 +3279,34 @@ function _bpReadSettings() {
   if (g('bp-lemmatize')) s.lemmatize = g('bp-lemmatize').checked;
   if (g('bp-excludeFn')) s.excludeFn = g('bp-excludeFn').checked;
   if (g('bp-shortEx')) s.shortEx = g('bp-shortEx').checked;
+  if (g('bp-aiMode')) s.aiMode = g('bp-aiMode').checked;
+}
+
+// AI(Gemini) 어휘 추출: 원서 텍스트를 조각내 학습가치 높은 어휘를 [{en,kr}]로 추출·취합
+async function _bpAiExtract(fullText, s, onStatus) {
+  var text = String(fullText || '').trim();
+  if (!text) return { words: [], chunks: 0 };
+  var N = s.topN || 300;
+  var CH = 7000, chunks = [];
+  for (var i = 0; i < text.length; i += CH) chunks.push(text.slice(i, i + CH));
+  var maxChunks = Math.min(chunks.length, 40);
+  var seen = {}, out = [];
+  var a1note = s.excludeA1 ? '아주 기초적인 A1 단어(the,a,is,go,good 등)와 기능어는 제외. ' : '';
+  for (var ci = 0; ci < maxChunks && out.length < N; ci++) {
+    if (onStatus) onStatus('🤖 AI 분석 중... 조각 ' + (ci + 1) + '/' + maxChunks + ' · 누적 ' + out.length + '단어');
+    var per = Math.min(70, N - out.length);
+    var prompt = '다음은 영어 원서의 일부입니다. 학습 가치가 높은 영어 어휘를 최대 ' + per + '개 골라 JSON 배열로만 반환하세요.\n' +
+      '- 반드시 표제어(사전 원형, 소문자)로. 고유명사(인명·지명)는 제외. ' + a1note + '\n' +
+      '- 형식: [{"en":"word","kr":"한국어 뜻"}]\n- JSON 외 다른 텍스트·설명·코드펜스 금지.\n\n[본문]\n' + chunks[ci];
+    var res = await callAI(prompt, 2048, 0, onStatus);
+    var arr = [];
+    try { arr = JSON.parse(res); } catch (e) { var m = res.match(/\[[\s\S]*\]/); if (m) { try { arr = JSON.parse(m[0]); } catch (e2) { } } }
+    if (Array.isArray(arr)) arr.forEach(function (w) {
+      var en = String((w && w.en) || '').trim().toLowerCase().replace(/[^a-z'\-]/g, '');
+      if (en && en.length >= (s.minLen || 2) && !seen[en]) { seen[en] = 1; out.push({ en: en, kr: String((w && w.kr) || '').trim() }); }
+    });
+  }
+  return { words: out.slice(0, N), chunks: maxChunks };
 }
 function _bpReadTiers() {
   (_bp.tiers || []).forEach(function (t, i) {
@@ -3284,27 +3321,95 @@ function _bpReadTiers() {
 function _bpSetMode(m) { _bpReadTiers(); _bpReadSettings(); _bp.mode = m; if (m === 'book' && _bp.tiers.length !== 1) _bp.tiers = [_bp.tiers[0] || { label: '', text: '' }]; _bp.preview = null; rBP2(); }
 function _bpAddTier() { _bpReadTiers(); _bpReadSettings(); _bp.tiers.push({ label: '', text: '' }); rBP2(); }
 function _bpDelTier(i) { _bpReadTiers(); _bpReadSettings(); _bp.tiers.splice(i, 1); if (!_bp.tiers.length) _bp.tiers = [{ label: '', text: '' }]; rBP2(); }
+function _bpSlug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40); }
+
+// PDF/파일명에서 제목·packId·코스명 자동 입력 (비어있는 칸만 채움)
+function _bpAutoFill(info, filename, i) {
+  var base = (info && info.title && info.title.trim()) || String(filename || '').replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim();
+  if (!base) return;
+  var slug = _bpSlug((info && info.title) ? info.title : base);
+  if (_bp.mode === 'book') {
+    if (!_bp.name) _bp.name = base;
+    if (!_bp.packId) _bp.packId = slug || ('book_' + Date.now().toString(36));
+  } else {
+    if (!_bp.courseName) _bp.courseName = base.replace(/\s*\d+\s*$/, '').trim();
+    if (!_bp.courseId) _bp.courseId = _bpSlug(_bp.courseName || base) || ('course_' + Date.now().toString(36));
+    if (!_bp.tiers[i].label) _bp.tiers[i].label = base;
+  }
+}
+
+// PDF → 텍스트 + 메타(제목) 추출 (PDF.js)
+async function _bpExtractPdf(f) {
+  var buf = await f.arrayBuffer();
+  if (typeof pdfjsLib === 'undefined') throw new Error('PDF 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.');
+  var pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  var title = '';
+  try { var meta = await pdf.getMetadata(); title = (meta && meta.info && meta.info.Title) || ''; } catch (e) { }
+  var parts = [];
+  for (var p = 1; p <= pdf.numPages; p++) {
+    var page = await pdf.getPage(p);
+    var c = await page.getTextContent();
+    parts.push(c.items.map(function (it) { return it.str; }).join(' '));
+  }
+  return { text: parts.join('\n'), title: String(title || '').trim(), pages: pdf.numPages };
+}
+
 function _bpFile(i, input) {
   var f = input.files && input.files[0]; if (!f) return;
-  var rd = new FileReader();
-  rd.onload = function () { _bpReadTiers(); _bpReadSettings(); _bp.tiers[i].text = String(rd.result || ''); rBP2(); setTimeout(function () { var ta = document.getElementById('bp-text-' + i); if (ta) ta.scrollTop = 0; }, 30); };
-  rd.readAsText(f);
-}
-
-function _bpPreview() {
+  var name = f.name || '';
   _bpReadTiers(); _bpReadSettings();
-  var s = _bp.settings;
-  var results = _bp.tiers.map(function (t) { return _bpAnalyzeText(t.text, s); });
-  _bp.preview = results;
-  rBP2();
+  var isPdf = /\.pdf$/i.test(name) || f.type === 'application/pdf';
+  if (isPdf) {
+    _bp.tiers[i]._loading = 'PDF 읽는 중... (' + Math.round(f.size / 1024) + 'KB)'; _bp.tiers[i]._err = null; rBP2();
+    _bpExtractPdf(f).then(function (res) {
+      _bp.tiers[i].text = res.text; _bp.tiers[i]._loading = null;
+      _bp.tiers[i]._pdfInfo = res.pages + '쪽 · ' + (res.title || name);
+      _bpAutoFill(res, name, i); rBP2();
+    }).catch(function (e) {
+      _bp.tiers[i]._loading = null; _bp.tiers[i]._err = 'PDF 오류: ' + ((e && e.message) || e); rBP2();
+    });
+  } else {
+    var rd = new FileReader();
+    rd.onload = function () { _bp.tiers[i].text = String(rd.result || ''); _bp.tiers[i]._pdfInfo = null; _bpAutoFill({ title: '' }, name, i); rBP2(); };
+    rd.readAsText(f);
+  }
 }
 
-async function _bpRegister() {
+async function _bpPreview() {
   _bpReadTiers(); _bpReadSettings();
   var s = _bp.settings;
   var box = document.getElementById('bp-regresult');
   var setR = function (c, h) { if (box) { box.style.color = c; box.innerHTML = h; } };
-  // 유효성
+  if (s.aiMode && typeof getGeminiKey === 'function' && !getGeminiKey()) { setR('#DC2626', 'AI 분석에는 Gemini API 키가 필요합니다. (앱 설정 또는 admin에서 키 입력) — 또는 AI 분석을 끄고 규칙기반으로 하세요.'); return; }
+  try {
+    var results = [];
+    for (var i = 0; i < _bp.tiers.length; i++) {
+      var t = _bp.tiers[i];
+      if (!String(t.text || '').trim()) { results.push({ mode: s.aiMode ? 'ai' : 'rule', selected: [], cefr: {}, textLen: 0 }); continue; }
+      if (s.aiMode) {
+        var tag = ' — 원서 ' + (i + 1) + '/' + _bp.tiers.length;
+        setR('#1E5FA5', '🤖 AI 분석 시작...' + tag);
+        var ai = await _bpAiExtract(t.text, s, function (msg) { setR('#1E5FA5', msg + tag); });
+        var sel = ai.words;
+        var cefr = {}; sel.forEach(function (w) { var k = pxCefr(w.en) || '-'; cefr[k] = (cefr[k] || 0) + 1; });
+        var inDict = sel.filter(function (w) { return BWD_DICT[w.en] && BWD_DICT[w.en].kr; }).length;
+        results.push({ mode: 'ai', textLen: (t.text || '').length, chunks: ai.chunks, selected: sel, cefr: cefr, inDict: inDict });
+      } else {
+        var r = _bpAnalyzeText(t.text, s);
+        var sel2 = r.selected.map(function (en) { var d = BWD_DICT[en] || {}; return { en: en, kr: (d.kr || '') }; });
+        results.push({ mode: 'rule', allTokens: r.allTokens, matched: r.matched, candCount: r.candCount, selected: sel2, cefr: r.cefr, exception: r.exception });
+      }
+    }
+    _bp.preview = results;
+    rBP2();
+    var box2 = document.getElementById('bp-regresult'); if (box2) { box2.style.color = '#16A34A'; box2.innerHTML = '✅ 분석 완료 — 확인 후 [등록]을 누르세요.'; }
+  } catch (e) { setR('#DC2626', '분석 실패: ' + ((e && e.message) || e)); }
+}
+
+async function _bpRegister() {
+  _bpReadTiers(); _bpReadSettings();
+  var box = document.getElementById('bp-regresult');
+  var setR = function (c, h) { if (box) { box.style.color = c; box.innerHTML = h; } };
   if (_bp.mode === 'book') {
     if (!_bp.packId || !/^[a-z0-9_]+$/.test(_bp.packId)) { setR('#DC2626', 'packId는 영소문자·숫자·_ 만 (예: the_little_prince)'); return; }
     if (!_bp.name) { setR('#DC2626', '단어장 이름을 입력하세요.'); return; }
@@ -3312,22 +3417,23 @@ async function _bpRegister() {
     if (!_bp.courseId || !/^[a-z0-9_]+$/.test(_bp.courseId)) { setR('#DC2626', 'courseId는 영소문자·숫자·_ 만 (예: harry_potter)'); return; }
     if (!_bp.courseName) { setR('#DC2626', '코스 이름을 입력하세요.'); return; }
   }
-  var results = _bp.tiers.map(function (t) { return _bpAnalyzeText(t.text, s); });
-  if (results.some(function (r) { return r.selected.length === 0; })) { setR('#DC2626', '단어가 0개인 원서가 있습니다. 먼저 [분석/미리보기]로 확인하세요.'); return; }
+  if (!_bp.preview || _bp.preview.length !== _bp.tiers.length) { setR('#DC2626', '먼저 [분석/미리보기]를 실행하세요.'); return; }
+  var results = _bp.preview;
+  if (results.some(function (r) { return !r.selected || r.selected.length === 0; })) { setR('#DC2626', '단어가 0개인 원서가 있습니다. 원서 내용/설정을 확인하세요.'); return; }
   if (!confirm('마켓 팩을 Firebase에 등록합니다. 계속할까요?')) return;
   setR('#6B7280', '등록 중...');
   try {
+    var toWords = function (sel) { return sel.map(function (w) { return w.kr ? { en: w.en, kr: w.kr } : { en: w.en }; }); };
     var docs = [];
     if (_bp.mode === 'book') {
-      docs.push({ id: _bp.packId, data: { name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: results[0].selected.map(function (en) { return { en: en }; }), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서추출' } });
+      docs.push({ id: _bp.packId, data: { name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' } });
     } else {
       var total = _bp.tiers.length;
       for (var i = 0; i < _bp.tiers.length; i++) {
         var label = (_bp.tiers[i].label || (i + 1) + '단계').trim();
-        docs.push({ id: _bp.courseId + '_' + (i + 1), data: { name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: results[i].selected.map(function (en) { return { en: en }; }), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서추출' } });
+        docs.push({ id: _bp.courseId + '_' + (i + 1), data: { name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' } });
       }
     }
-    // 백업(기존 동일 id 있으면) + 쓰기
     var overwritten = [];
     for (var j = 0; j < docs.length; j++) {
       var ref = db.collection('packs').doc(docs[j].id);
@@ -3335,7 +3441,7 @@ async function _bpRegister() {
       if (snap.exists) { overwritten.push(docs[j].id); try { localStorage.setItem('bp-bak-' + docs[j].id, JSON.stringify(snap.data())); } catch (e) { } }
       await ref.set(docs[j].data, { merge: false });
     }
-    setR('#16A34A', '✅ 등록 완료: ' + docs.map(function (d) { return d.id + '(' + d.data.count + '단어)'; }).join(', ') + (overwritten.length ? ('<br>⚠️ 덮어쓴 기존 팩: ' + overwritten.join(', ') + ' (백업은 localStorage bp-bak-*)') : ''));
+    setR('#16A34A', '✅ 등록 완료: ' + docs.map(function (d) { return d.id + '(' + d.data.count + '단어)'; }).join(', ') + (overwritten.length ? ('<br>⚠️ 덮어쓴 기존 팩: ' + overwritten.join(', ') + ' (백업: localStorage bp-bak-*)') : ''));
     if (typeof toast === 'function') toast('팩 등록 완료', 'ok');
   } catch (e) { setR('#DC2626', '등록 실패: ' + ((e && e.message) || e)); }
 }
@@ -3366,21 +3472,23 @@ function rBP2() {
     var pv = _bp.preview && _bp.preview[i];
     var pvHtml = '';
     if (pv) {
-      var samples = pv.selected.slice(0, 20).map(function (en) { var d = BWD_DICT[en] || {}; return '<span style="display:inline-block;background:#F3F4F6;border-radius:6px;padding:2px 7px;margin:2px;font-size:11px">' + esc(en) + ' <span style="color:#9CA3AF">' + esc((d.kr || '').split(/[;,]/)[0]) + '</span></span>'; }).join('');
+      var samples = pv.selected.slice(0, 24).map(function (w) { return '<span style="display:inline-block;background:#F3F4F6;border-radius:6px;padding:2px 7px;margin:2px;font-size:11px">' + esc(w.en) + ' <span style="color:#9CA3AF">' + esc(String(w.kr || '').split(/[;,]/)[0]) + '</span></span>'; }).join('');
+      var head = (pv.mode === 'ai')
+        ? ('🤖 AI 분석 결과 · 원문 ' + (pv.textLen || 0).toLocaleString() + '자 · ' + (pv.chunks || 0) + '조각 → <b>추출 ' + pv.selected.length.toLocaleString() + '단어</b> (사전보유 ' + (pv.inDict || 0) + ') · 예상 ' + Math.max(1, Math.ceil(pv.selected.length / 200)) + '챕터')
+        : ('규칙 분석 · 총 토큰 ' + (pv.allTokens || 0).toLocaleString() + ' · 매칭 ' + (pv.matched || 0).toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b>' + (pv.exception ? ' <span style="color:#D97706">(단편예외:A1포함)</span>' : ''));
       pvHtml = '<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:11px;margin-top:8px">' +
-        '<div style="font-size:12px;font-weight:800;color:#16A34A">분석 결과' + (pv.exception ? ' <span style="color:#D97706">(단편 예외: A1 포함)</span>' : '') + '</div>' +
-        '<div style="font-size:12px;color:#374151;margin:5px 0">총 토큰 ' + pv.allTokens.toLocaleString() + ' · 사전 매칭 ' + pv.matched.toLocaleString() + ' · 후보 ' + pv.candCount.toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b> · 예상 ' + Math.max(1, Math.ceil(pv.selected.length / 200)) + '챕터</div>' +
+        '<div style="font-size:12px;color:#374151;margin:2px 0 5px">' + head + '</div>' +
         pxCefrBar(pv.cefr, pv.selected.length) +
-        '<div style="margin-top:6px">' + samples + (pv.selected.length > 20 ? '<span style="font-size:11px;color:#9CA3AF"> …외 ' + (pv.selected.length - 20) + '</span>' : '') + '</div>' +
+        '<div style="margin-top:6px">' + samples + (pv.selected.length > 24 ? '<span style="font-size:11px;color:#9CA3AF"> …외 ' + (pv.selected.length - 24) + '</span>' : '') + '</div>' +
         '</div>';
     }
     var labelInput = (m === 'course') ? '<input id="bp-label-' + i + '" value="' + esc(t.label) + '" placeholder="' + (i + 1) + '단계 이름 (예: 유형편 · 1권 · 기초)" style="width:100%;box-sizing:border-box;padding:8px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px;margin-bottom:6px">' : '';
     var delBtn = (m === 'course' && _bp.tiers.length > 1) ? '<button onclick="_bpDelTier(' + i + ')" style="background:#FEE2E2;color:#DC2626;border:none;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer">삭제</button>' : '';
     return '<div style="border:1px solid #E5E7EB;border-radius:12px;padding:12px;margin-bottom:10px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:12px;font-weight:800;color:#374151">' + (m === 'course' ? ('원서 ' + (i + 1)) : '원서 텍스트') + '</div><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:#1E5FA5;font-weight:800;cursor:pointer">📄 .txt 업로드<input type="file" accept=".txt,text/plain" onchange="_bpFile(' + i + ',this)" style="display:none"></label>' + delBtn + '</div></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:12px;font-weight:800;color:#374151">' + (m === 'course' ? ('원서 ' + (i + 1)) : '원서 텍스트') + '</div><div style="display:flex;gap:6px;align-items:center"><label style="font-size:12px;color:#fff;background:#1E5FA5;padding:6px 12px;border-radius:8px;font-weight:800;cursor:pointer">📄 PDF·txt 불러오기<input type="file" accept=".pdf,.txt,application/pdf,text/plain" onchange="_bpFile(' + i + ',this)" style="display:none"></label>' + delBtn + '</div></div>' +
       labelInput +
-      '<textarea id="bp-text-' + i + '" placeholder="원서 전문을 붙여넣거나 .txt를 업로드하세요" style="width:100%;box-sizing:border-box;height:120px;padding:10px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px;resize:vertical">' + esc(t.text) + '</textarea>' +
-      '<div style="font-size:11px;color:#9CA3AF;margin-top:3px">' + (t.text ? (t.text.length.toLocaleString() + '자') : '비어있음') + '</div>' +
+      '<textarea id="bp-text-' + i + '" placeholder="PDF를 불러오면 자동으로 채워집니다 (또는 텍스트 붙여넣기 · .txt)" style="width:100%;box-sizing:border-box;height:120px;padding:10px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px;resize:vertical">' + esc(t.text) + '</textarea>' +
+      '<div style="font-size:11px;margin-top:3px">' + (t._loading ? ('<span style="color:#1E5FA5">⏳ ' + esc(t._loading) + '</span>') : t._err ? ('<span style="color:#DC2626">' + esc(t._err) + '</span>') : ('<span style="color:#9CA3AF">' + (t.text ? (t.text.length.toLocaleString() + '자' + (t._pdfInfo ? (' · 📄 ' + esc(t._pdfInfo)) : '')) : '비어있음') + '</span>')) + '</div>' +
       pvHtml +
       '</div>';
   }).join('');
@@ -3390,14 +3498,15 @@ function rBP2() {
   var num = function (id, label, val, w) { return '<div><label style="font-size:11px;font-weight:800;color:#6B7280;display:block">' + label + '</label><input type="number" id="' + id + '" value="' + val + '" style="width:' + (w || 80) + 'px;box-sizing:border-box;padding:7px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>'; };
   var settings = '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px">' +
     '<div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:10px">⚙️ 추출 설정</div>' +
-    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '상위 N개', s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 대문자비율(%)', s.pnRatio, 110) + '</div>' +
-    '<div style="display:flex;gap:16px;flex-wrap:wrap">' + chk('bp-excludeA1', 'A1(최기초) 제외', s.excludeA1) + chk('bp-shortEx', '단편 예외(A2+ 부족 시 A1 포함)', s.shortEx) + chk('bp-lemmatize', '표제어화', s.lemmatize) + chk('bp-excludeFn', '기능어 제외', s.excludeFn) + '</div>' +
+    '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#1E5FA5;cursor:pointer;margin-bottom:10px;padding:9px;background:#EFF6FF;border-radius:8px"><input type="checkbox" id="bp-aiMode"' + (s.aiMode ? ' checked' : '') + '>🤖 AI 분석 (Gemini) — 원서를 AI가 읽고 학습가치 높은 어휘를 선정 (권장). 끄면 빈도 기반 규칙 추출.</label>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '목표 단어수', s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 대문자비율(%)', s.pnRatio, 110) + '</div>' +
+    '<div style="display:flex;gap:16px;flex-wrap:wrap">' + chk('bp-excludeA1', 'A1(최기초) 제외', s.excludeA1) + chk('bp-shortEx', '단편 예외(A2+ 부족 시 A1 포함)', s.shortEx) + chk('bp-lemmatize', '표제어화(규칙)', s.lemmatize) + chk('bp-excludeFn', '기능어 제외(규칙)', s.excludeFn) + '</div>' +
     '</div>';
 
   main.innerHTML =
     '<div style="max-width:720px">' +
     '<h2 style="font-size:22px;font-weight:900;margin-bottom:4px">📖 원서 → 팩 만들기</h2>' +
-    '<div style="font-size:13px;color:#6B7280;margin-bottom:16px">원서 텍스트/.txt를 넣으면 발췌 기준으로 단어를 뽑아 마켓 팩을 만듭니다. <b>단어장</b>=단독 팩 · <b>단어팩</b>=코스(여러 권/단계).</div>' +
+    '<div style="font-size:13px;color:#6B7280;margin-bottom:16px">원서 <b>PDF</b>(또는 텍스트·.txt)를 불러오면 제목·packId가 자동 입력되고, 발췌 기준으로 단어를 뽑아 마켓 팩을 만듭니다. <b>단어장</b>=단독 팩 · <b>단어팩</b>=코스(여러 권/단계).</div>' +
     '<div style="display:flex;gap:10px;margin-bottom:16px">' + modeBtn('book', '📖 단어장 (단독)', m === 'book') + modeBtn('course', '📚 단어팩 (코스)', m === 'course') + '</div>' +
     '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:16px;margin-bottom:14px">' + meta + '</div>' +
     settings +
@@ -3407,7 +3516,7 @@ function rBP2() {
     '<button onclick="_bpRegister()" style="flex:1;padding:13px;background:#1E5FA5;color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer">📥 등록</button>' +
     '</div>' +
     '<div id="bp-regresult" style="margin-top:12px;font-size:13px;line-height:1.6"></div>' +
-    '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ 저장은 en(영단어)만 — 뜻·발음·예문·이모지는 앱이 사전에서 자동으로 채웁니다.<br>※ CEFR 챕터 분할은 앱이 학습 시 자동 처리(쉬운→어려운, 200단어씩). 여기선 나누지 않습니다.<br>※ 사전(BWD_DIC)에 없는 단어는 자동 제외됩니다.</div>' +
+    '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ AI 분석: PDF/텍스트를 조각내 Gemini가 학습가치 높은 어휘를 [en,뜻]으로 추출합니다(목표 단어수까지). Gemini API 키 필요.<br>※ 뜻은 AI가 주고, 발음·예문·이모지는 앱이 사전에서 자동 보완합니다. CEFR 챕터(200단어씩)는 앱이 학습 시 자동 분할.<br>※ 큰 원서는 조각 수만큼 API 호출이 있어 시간이 걸릴 수 있습니다(429 시 자동 재시도).</div>' +
     '</div>';
 }
 

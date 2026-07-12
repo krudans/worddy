@@ -3095,7 +3095,11 @@ function pxStats(words) {
   const phrases = ws.filter(w => /[\s-]/.test((w.en || '').trim())).length;
   const c = {};
   ws.forEach(w => { const k = pxCefr((w.en || '').toLowerCase()) || '-'; c[k] = (c[k] || 0) + 1; });
-  const incomplete = ws.filter(w => !w.kr || !w.img || !w.ex).length;
+  // [점검 오탐 수정] en만 저장하는 팩(앱이 사전에서 뜻·예문·이모지를 실시간 오버레이)은 원본에 kr/img/ex가 없어도 정상 표시된다.
+  //   따라서 '불완전'은 '표시할 뜻을 어디서도 못 얻는 단어'만 센다: 인라인 kr 없음 AND 앱 사전(BWD_DICT)에도 뜻 없음.
+  //   → 사전에 다 있는 en-only 팩(어린왕자 등)은 '활성', 사전에 실제 없는 단어가 있는 팩만 '점검'.
+  const _dictHasKr = en => { try{ var d=(typeof BWD_DICT!=='undefined')&&BWD_DICT[String(en||'').trim().toLowerCase()]; return !!(d && d.kr); }catch(e){ return false; } };
+  const incomplete = ws.filter(w => !w.kr && !_dictHasKr(w.en)).length;
   return { n: ws.length, phrases, singles: ws.length - phrases, incomplete, cefr: c };
 }
 

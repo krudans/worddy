@@ -637,59 +637,83 @@ async function doGoogleLogin(){
 }
 
 // ── 쿠폰 관리 (회원에게 나비 쿠폰 지급) ──
-//   [복구] 07-07 배포·검증본에 있던 rCP/grantCoupons가 이후 admin 재구조화 세션에서 'cp' 탭째 유실됨 → 스펙대로 재구현.
-//   grantCoupons: 이메일로 users 조회 → bfCoupons increment(수량). users 문서에 email 필드 필요(앱 로그인 시 저장).
+//   [복구·정정] 대화명(nick)으로 회원 검색 → 선택 → 원하는 수량만큼 bfCoupons 지급.
+//   (이메일 고정수량 버전으로 잘못 복구했던 것을 사용자 확인대로 대화명-검색·선택·임의수량으로 재구현)
+function _cpEsc(s){ try{ return (typeof esc==='function')?esc(String(s==null?'':s)):String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }catch(e){ return ''; } }
 function rCP() {
   const main = document.getElementById('main-inner');
+  window.__cpSel = null;
   main.innerHTML =
-    '<div style="max-width:520px">'
+    '<div style="max-width:560px">'
     +'<h2 style="font-size:22px;font-weight:900;margin-bottom:6px">🎫 쿠폰 관리</h2>'
-    +'<div style="font-size:13px;color:#6B7280;margin-bottom:18px">회원 이메일로 <b>나비 쿠폰</b>을 지급합니다. (XP 없이 나비를 뽑는 티켓)</div>'
+    +'<div style="font-size:13px;color:#6B7280;margin-bottom:18px">대화명으로 회원을 검색해 선택한 뒤, 원하는 수량만큼 <b>나비 쿠폰</b>을 지급합니다.</div>'
     +'<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:18px">'
-    +'  <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:6px">회원 이메일</label>'
-    +'  <input id="cp-email" type="email" placeholder="user@example.com" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1.5px solid #D1D5DB;border-radius:10px;font-size:14px;margin-bottom:14px">'
-    +'  <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:6px">수량</label>'
-    +'  <div style="display:flex;gap:8px;margin-bottom:16px">'
-    +     [1,5,10,30].map(function(n){ var on=(n===5); return '<button type="button" onclick="_cpPick('+n+')" id="cp-amt-'+n+'" style="flex:1;padding:10px;border:1.5px solid '+(on?'#1E5FA5':'#D1D5DB')+';background:'+(on?'#EFF6FF':'#fff')+';color:'+(on?'#1E5FA5':'#374151')+';border-radius:10px;font-size:14px;font-weight:800;cursor:pointer">'+n+'장</button>'; }).join('')
+    +'  <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:6px">대화명 검색</label>'
+    +'  <div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'    <input id="cp-q" type="text" placeholder="대화명 (일부만 입력해도 됨 · 비우고 검색하면 전체)" onkeydown="if(event.key===\'Enter\')cpSearch()" style="flex:1;box-sizing:border-box;padding:11px 12px;border:1.5px solid #D1D5DB;border-radius:10px;font-size:14px">'
+    +'    <button onclick="cpSearch()" style="padding:11px 18px;background:#1E5FA5;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;white-space:nowrap">🔍 검색</button>'
     +'  </div>'
-    +'  <button onclick="grantCoupons()" style="width:100%;padding:13px;background:#1E5FA5;color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer">🎫 쿠폰 지급</button>'
-    +'  <div id="cp-result" style="margin-top:14px;font-size:13px;line-height:1.6"></div>'
+    +'  <div id="cp-results" style="display:flex;flex-direction:column;gap:6px"></div>'
+    +'  <div id="cp-grant" style="display:none;margin-top:14px;border-top:1px solid #EEF0F2;padding-top:14px"></div>'
     +'</div>'
-    +'<div style="font-size:11.5px;color:#9CA3AF;margin-top:12px;line-height:1.7">※ 회원 문서에 email이 있어야 조회됩니다(대상 회원이 앱에 1회 이상 로그인해야 저장됨).<br>※ 지급 즉시 회원의 bfCoupons가 증가하며, 회원은 나비 탭에서 쿠폰으로 나비를 뽑을 수 있습니다.</div>'
+    +'<div style="font-size:11.5px;color:#9CA3AF;margin-top:12px;line-height:1.7">※ 지급 즉시 회원의 나비 쿠폰이 늘어나며, 회원은 나비 탭에서 쿠폰으로 나비를 뽑을 수 있습니다.</div>'
     +'</div>';
-  window.__cpAmt = 5;
 }
-window._cpPick = function(n){
-  window.__cpAmt = n;
-  [1,5,10,30].forEach(function(m){
-    var el=document.getElementById('cp-amt-'+m); if(!el) return;
-    var on=(m===n);
-    el.style.border='1.5px solid '+(on?'#1E5FA5':'#D1D5DB');
-    el.style.background=on?'#EFF6FF':'#fff';
-    el.style.color=on?'#1E5FA5':'#374151';
-  });
+async function cpSearch(){
+  var q=(((document.getElementById('cp-q')||{}).value)||'').trim().toLowerCase();
+  var box=document.getElementById('cp-results');
+  var grant=document.getElementById('cp-grant'); if(grant){ grant.style.display='none'; grant.innerHTML=''; }
+  if(!box) return;
+  box.innerHTML='<div style="font-size:13px;color:#9CA3AF;padding:8px 2px">검색 중...</div>';
+  try{
+    var snap=await db.collection('users').get();
+    var rows=[];
+    snap.forEach(function(d){
+      var u=d.data()||{};
+      var nick=String(u.nick||u.nickname||'').trim();
+      if(!q || nick.toLowerCase().indexOf(q)>=0){
+        rows.push({uid:d.id, nick:nick||'(대화명 없음)', email:u.email||'', coupons:(u.bfCoupons||0)});
+      }
+    });
+    if(!rows.length){ box.innerHTML='<div style="font-size:13px;color:#DC2626;padding:8px 2px">일치하는 회원이 없어요.</div>'; return; }
+    box.innerHTML=rows.map(function(r){
+      var uidJs=String(r.uid).replace(/'/g,"\\'"); var nickJs=String(r.nick).replace(/'/g,"\\'");
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #E5E7EB;border-radius:10px">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:#111">'+_cpEsc(r.nick)+'</div>'
+        +'<div style="font-size:11px;color:#9CA3AF">'+_cpEsc(r.email)+' · 현재 쿠폰 '+r.coupons+'장</div></div>'
+        +'<button onclick="cpSelect(\''+uidJs+'\',\''+nickJs+'\','+r.coupons+')" style="padding:7px 14px;background:#EFF6FF;color:#1E5FA5;border:1.5px solid #1E5FA5;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">선택</button>'
+        +'</div>';
+    }).join('');
+  }catch(e){ box.innerHTML='<div style="font-size:13px;color:#DC2626;padding:8px 2px">검색 실패: '+_cpEsc((e&&e.message)||e)+'</div>'; }
+}
+window.cpSelect=function(uid, nick, cur){
+  window.__cpSel={uid:uid, nick:nick};
+  var g=document.getElementById('cp-grant'); if(!g) return;
+  g.style.display='block';
+  g.innerHTML=
+    '<div style="font-size:13px;color:#374151;margin-bottom:8px">선택: <b>'+_cpEsc(nick)+'</b> (현재 '+cur+'장)</div>'
+    +'<div style="display:flex;gap:8px;align-items:center">'
+    +'  <input id="cp-amt" type="number" min="1" value="1" style="width:120px;box-sizing:border-box;padding:11px 12px;border:1.5px solid #D1D5DB;border-radius:10px;font-size:14px">'
+    +'  <span style="font-size:13px;color:#6B7280">장</span>'
+    +'  <button onclick="grantCoupons()" style="flex:1;padding:12px;background:#1E5FA5;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer">🎫 지급</button>'
+    +'</div>'
+    +'<div id="cp-result" style="margin-top:10px;font-size:13px;line-height:1.6"></div>';
+  try{ var a=document.getElementById('cp-amt'); if(a){ a.focus(); a.select(); } }catch(e){}
 };
 async function grantCoupons(){
-  var emailEl=document.getElementById('cp-email');
+  var sel=window.__cpSel;
   var resEl=document.getElementById('cp-result');
-  var email=((emailEl&&emailEl.value)||'').trim().toLowerCase();
-  var amt=window.__cpAmt||5;
-  var setRes=function(color,html){ if(resEl){ resEl.style.color=color; resEl.innerHTML=html; } };
-  if(!email){ setRes('#DC2626','이메일을 입력하세요.'); return; }
+  var setRes=function(c,h){ if(resEl){ resEl.style.color=c; resEl.innerHTML=h; } };
+  if(!sel||!sel.uid){ setRes('#DC2626','회원을 먼저 선택하세요.'); return; }
+  var amt=parseInt(((document.getElementById('cp-amt')||{}).value)||'0',10);
+  if(!amt||amt<1){ setRes('#DC2626','수량을 1 이상 입력하세요.'); return; }
   setRes('#6B7280','지급 중...');
   try{
-    var snap=await db.collection('users').where('email','==',email).get();
-    if(snap.empty){ setRes('#DC2626','해당 이메일의 회원을 찾을 수 없어요.<br>(회원이 앱에 로그인해 email이 저장돼 있어야 합니다)'); return; }
-    var n=0;
-    for(var i=0;i<snap.docs.length;i++){
-      await snap.docs[i].ref.update({bfCoupons: firebase.firestore.FieldValue.increment(amt)});
-      n++;
-    }
-    setRes('#16A34A','✅ '+email+' 에게 나비 쿠폰 <b>'+amt+'장</b> 지급 완료'+(n>1?(' ('+n+'개 계정)'):'')+'.');
+    await db.collection('users').doc(sel.uid).update({bfCoupons: firebase.firestore.FieldValue.increment(amt)});
+    setRes('#16A34A','✅ <b>'+_cpEsc(sel.nick)+'</b> 에게 나비 쿠폰 <b>'+amt+'장</b> 지급 완료.');
     if(typeof toast==='function') toast('쿠폰 '+amt+'장 지급 완료','ok');
-  }catch(e){
-    setRes('#DC2626','지급 실패: '+((e&&e.message)||e));
-  }
+    if(typeof cpSearch==='function') setTimeout(cpSearch, 500); // 현재 쿠폰 수 갱신
+  }catch(e){ setRes('#DC2626','지급 실패: '+_cpEsc((e&&e.message)||e)); }
 }
 
 // ── 나비 관리 ──

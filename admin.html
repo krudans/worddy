@@ -327,6 +327,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('wd')" id="ni-wd"><span class="ic">📚</span>단어 관리</div>
       <div class="ni" onclick="T('dict')" id="ni-dict"><span class="ic">📖</span>Butterfly Dic<span id="dict-new-badge" style="display:none;margin-left:auto;background:#EF4444;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px"></span></div>
       <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
+      <div class="ni" onclick="T('bp')" id="ni-bp"><span class="ic">📖</span>원서 → 팩</div>
       <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
       <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
       <div class="ss">나비 & 게임</div>
@@ -2514,9 +2515,9 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',bp:'원서 → 팩 만들기',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -3195,6 +3196,219 @@ function pxCefrBar(c, n) {
     `<div style="font-size:9.5px;color:#9CA3AF">` +
     ['A1','A2','B1','B2','C1','C2'].filter(k => c[k]).map(k => `${k} ${Math.round(c[k]/n*100)}%`).join(' · ') +
     `</div>`;
+}
+
+// ══════════ 원서 → 단어팩/단어장 자동 생성 ══════════
+//  텍스트/.txt 원서를 넣으면 발췌 기준(토큰화→표제어화(BWD_DICT 검증)→고유명사·A1·기능어 제외→빈도 상위N)으로
+//  단어를 뽑아 마켓팩을 만든다. 단독=단어장(1문서), 코스=단어팩(tier N문서). 저장은 en-only(앱이 뜻·발음·예문 오버레이).
+window._bp = window._bp || {
+  mode: 'book',
+  packId: '', name: '', emoji: '📖', cat: '📖 도서',
+  courseId: '', courseName: '', courseEmoji: '📚',
+  tiers: [{ label: '', text: '' }],
+  settings: { topN: 1000, excludeA1: true, pnRatio: 90, minLen: 2, lemmatize: true, excludeFn: true, shortEx: true },
+  preview: null
+};
+
+// 표제어화: 굴절형을 BWD_DICT 표제어로 환원 (규칙 후보 → 사전 검증)
+function _bpLemma(w, doLem) {
+  if (typeof BWD_DICT === 'undefined') return null;
+  if (BWD_DICT[w] && BWD_DICT[w].kr) return w;
+  if (!doLem) return null;
+  var c = [];
+  if (/s$/.test(w) && !/ss$/.test(w)) { c.push(w.slice(0, -1)); c.push(w.slice(0, -2)); }
+  if (/ies$/.test(w)) c.push(w.slice(0, -3) + 'y');
+  if (/ed$/.test(w)) { c.push(w.slice(0, -2)); c.push(w.slice(0, -1)); if (w.length > 5) c.push(w.slice(0, -3)); }
+  if (/ing$/.test(w)) { c.push(w.slice(0, -3)); c.push(w.slice(0, -3) + 'e'); }
+  if (/er$/.test(w)) { c.push(w.slice(0, -2)); c.push(w.slice(0, -1)); }
+  if (/est$/.test(w)) { c.push(w.slice(0, -3)); c.push(w.slice(0, -2)); }
+  for (var i = 0; i < c.length; i++) { var b = c[i]; if (b && b.length >= 3 && BWD_DICT[b] && BWD_DICT[b].kr) return b; }
+  return null;
+}
+
+// 원서 텍스트 1개 분석 → 채택 단어 목록(빈도순)
+function _bpAnalyzeText(text, s) {
+  var raw = (String(text || '').match(/[A-Za-z][A-Za-z'-]*/g)) || [];
+  var freq = {}, cap = {}, tot = {};
+  for (var i = 0; i < raw.length; i++) {
+    var r = raw[i];
+    var lower = r.toLowerCase().replace(/[^a-z]/g, '');
+    if (lower.length < 1) continue;
+    var isCap = /^[A-Z]/.test(r);
+    var lem = _bpLemma(lower, s.lemmatize);
+    if (!lem) continue;
+    freq[lem] = (freq[lem] || 0) + 1; tot[lem] = (tot[lem] || 0) + 1; if (isCap) cap[lem] = (cap[lem] || 0) + 1;
+  }
+  var pnRatio = (s.pnRatio || 90) / 100;
+  var cands = Object.keys(freq).filter(function (en) {
+    if (en.length < (s.minLen || 2)) return false;
+    var d = BWD_DICT[en]; if (!d || !d.kr) return false;
+    if (/고유/.test(d.pos || '')) return false;
+    if (s.excludeFn && PX_GENERIC.has(en)) return false;
+    if ((cap[en] || 0) / (tot[en] || 1) >= pnRatio) return false;
+    return true;
+  });
+  cands.sort(function (a, b) { return freq[b] - freq[a]; });
+  var N = s.topN || 1000;
+  var a2plus = cands.filter(function (en) { return pxCefr(en) !== 'A1'; });
+  var selected, exception = false;
+  if (s.excludeA1) {
+    if (s.shortEx && a2plus.length < N) { selected = cands.slice(0, N); exception = true; }
+    else { selected = a2plus.slice(0, N); }
+  } else { selected = cands.slice(0, N); }
+  var cefr = {}; selected.forEach(function (en) { var k = pxCefr(en) || '-'; cefr[k] = (cefr[k] || 0) + 1; });
+  return { allTokens: raw.length, matched: Object.keys(freq).length, candCount: cands.length, selected: selected, freq: freq, cefr: cefr, exception: exception };
+}
+
+function _bpReadSettings() {
+  var g = function (id) { return document.getElementById(id); };
+  var s = _bp.settings;
+  if (g('bp-topN')) s.topN = Math.max(1, parseInt(g('bp-topN').value || '1000', 10));
+  if (g('bp-minLen')) s.minLen = Math.max(1, parseInt(g('bp-minLen').value || '2', 10));
+  if (g('bp-pnRatio')) s.pnRatio = Math.max(1, Math.min(100, parseInt(g('bp-pnRatio').value || '90', 10)));
+  if (g('bp-excludeA1')) s.excludeA1 = g('bp-excludeA1').checked;
+  if (g('bp-lemmatize')) s.lemmatize = g('bp-lemmatize').checked;
+  if (g('bp-excludeFn')) s.excludeFn = g('bp-excludeFn').checked;
+  if (g('bp-shortEx')) s.shortEx = g('bp-shortEx').checked;
+}
+function _bpReadTiers() {
+  (_bp.tiers || []).forEach(function (t, i) {
+    var ta = document.getElementById('bp-text-' + i); if (ta) t.text = ta.value;
+    var lb = document.getElementById('bp-label-' + i); if (lb) t.label = lb.value;
+  });
+  var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); }
+  else { _bp.courseId = g('bp-courseId').trim(); _bp.courseName = g('bp-courseName').trim(); _bp.courseEmoji = g('bp-courseEmoji').trim() || '📚'; }
+}
+
+function _bpSetMode(m) { _bpReadTiers(); _bpReadSettings(); _bp.mode = m; if (m === 'book' && _bp.tiers.length !== 1) _bp.tiers = [_bp.tiers[0] || { label: '', text: '' }]; _bp.preview = null; rBP2(); }
+function _bpAddTier() { _bpReadTiers(); _bpReadSettings(); _bp.tiers.push({ label: '', text: '' }); rBP2(); }
+function _bpDelTier(i) { _bpReadTiers(); _bpReadSettings(); _bp.tiers.splice(i, 1); if (!_bp.tiers.length) _bp.tiers = [{ label: '', text: '' }]; rBP2(); }
+function _bpFile(i, input) {
+  var f = input.files && input.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function () { _bpReadTiers(); _bpReadSettings(); _bp.tiers[i].text = String(rd.result || ''); rBP2(); setTimeout(function () { var ta = document.getElementById('bp-text-' + i); if (ta) ta.scrollTop = 0; }, 30); };
+  rd.readAsText(f);
+}
+
+function _bpPreview() {
+  _bpReadTiers(); _bpReadSettings();
+  var s = _bp.settings;
+  var results = _bp.tiers.map(function (t) { return _bpAnalyzeText(t.text, s); });
+  _bp.preview = results;
+  rBP2();
+}
+
+async function _bpRegister() {
+  _bpReadTiers(); _bpReadSettings();
+  var s = _bp.settings;
+  var box = document.getElementById('bp-regresult');
+  var setR = function (c, h) { if (box) { box.style.color = c; box.innerHTML = h; } };
+  // 유효성
+  if (_bp.mode === 'book') {
+    if (!_bp.packId || !/^[a-z0-9_]+$/.test(_bp.packId)) { setR('#DC2626', 'packId는 영소문자·숫자·_ 만 (예: the_little_prince)'); return; }
+    if (!_bp.name) { setR('#DC2626', '단어장 이름을 입력하세요.'); return; }
+  } else {
+    if (!_bp.courseId || !/^[a-z0-9_]+$/.test(_bp.courseId)) { setR('#DC2626', 'courseId는 영소문자·숫자·_ 만 (예: harry_potter)'); return; }
+    if (!_bp.courseName) { setR('#DC2626', '코스 이름을 입력하세요.'); return; }
+  }
+  var results = _bp.tiers.map(function (t) { return _bpAnalyzeText(t.text, s); });
+  if (results.some(function (r) { return r.selected.length === 0; })) { setR('#DC2626', '단어가 0개인 원서가 있습니다. 먼저 [분석/미리보기]로 확인하세요.'); return; }
+  if (!confirm('마켓 팩을 Firebase에 등록합니다. 계속할까요?')) return;
+  setR('#6B7280', '등록 중...');
+  try {
+    var docs = [];
+    if (_bp.mode === 'book') {
+      docs.push({ id: _bp.packId, data: { name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: results[0].selected.map(function (en) { return { en: en }; }), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서추출' } });
+    } else {
+      var total = _bp.tiers.length;
+      for (var i = 0; i < _bp.tiers.length; i++) {
+        var label = (_bp.tiers[i].label || (i + 1) + '단계').trim();
+        docs.push({ id: _bp.courseId + '_' + (i + 1), data: { name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: results[i].selected.map(function (en) { return { en: en }; }), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서추출' } });
+      }
+    }
+    // 백업(기존 동일 id 있으면) + 쓰기
+    var overwritten = [];
+    for (var j = 0; j < docs.length; j++) {
+      var ref = db.collection('packs').doc(docs[j].id);
+      var snap = await ref.get();
+      if (snap.exists) { overwritten.push(docs[j].id); try { localStorage.setItem('bp-bak-' + docs[j].id, JSON.stringify(snap.data())); } catch (e) { } }
+      await ref.set(docs[j].data, { merge: false });
+    }
+    setR('#16A34A', '✅ 등록 완료: ' + docs.map(function (d) { return d.id + '(' + d.data.count + '단어)'; }).join(', ') + (overwritten.length ? ('<br>⚠️ 덮어쓴 기존 팩: ' + overwritten.join(', ') + ' (백업은 localStorage bp-bak-*)') : ''));
+    if (typeof toast === 'function') toast('팩 등록 완료', 'ok');
+  } catch (e) { setR('#DC2626', '등록 실패: ' + ((e && e.message) || e)); }
+}
+
+function rBP2() {
+  var s = _bp.settings, m = _bp.mode;
+  var esc = function (x) { return _cpEsc ? _cpEsc(x) : String(x == null ? '' : x); };
+  var main = document.getElementById('main-inner');
+  var modeBtn = function (id, label, on) { return '<button onclick="_bpSetMode(\'' + id + '\')" style="flex:1;padding:11px;border:1.5px solid ' + (on ? '#1E5FA5' : '#D1D5DB') + ';background:' + (on ? '#EFF6FF' : '#fff') + ';color:' + (on ? '#1E5FA5' : '#374151') + ';border-radius:10px;font-size:14px;font-weight:800;cursor:pointer">' + label + '</button>'; };
+  // 메타
+  var meta;
+  if (m === 'book') {
+    meta = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">packId (영문)</label><input id="bp-packId" value="' + esc(_bp.packId) + '" placeholder="the_little_prince" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">단어장 이름</label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="어린 왕자" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">이모지</label><input id="bp-emoji" value="' + esc(_bp.emoji) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">분류</label><select id="bp-cat" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><option' + (_bp.cat === '📖 도서' ? ' selected' : '') + '>📖 도서</option><option' + (_bp.cat === '📺 드라마' ? ' selected' : '') + '>📺 드라마</option></select></div>' +
+      '</div>';
+  } else {
+    meta = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">courseId (영문)</label><input id="bp-courseId" value="' + esc(_bp.courseId) + '" placeholder="harry_potter" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">코스 이름</label><input id="bp-courseName" value="' + esc(_bp.courseName) + '" placeholder="해리포터" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">이모지</label><input id="bp-courseEmoji" value="' + esc(_bp.courseEmoji) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '</div>';
+  }
+  // tier 입력들
+  var tiersHtml = _bp.tiers.map(function (t, i) {
+    var pv = _bp.preview && _bp.preview[i];
+    var pvHtml = '';
+    if (pv) {
+      var samples = pv.selected.slice(0, 20).map(function (en) { var d = BWD_DICT[en] || {}; return '<span style="display:inline-block;background:#F3F4F6;border-radius:6px;padding:2px 7px;margin:2px;font-size:11px">' + esc(en) + ' <span style="color:#9CA3AF">' + esc((d.kr || '').split(/[;,]/)[0]) + '</span></span>'; }).join('');
+      pvHtml = '<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:11px;margin-top:8px">' +
+        '<div style="font-size:12px;font-weight:800;color:#16A34A">분석 결과' + (pv.exception ? ' <span style="color:#D97706">(단편 예외: A1 포함)</span>' : '') + '</div>' +
+        '<div style="font-size:12px;color:#374151;margin:5px 0">총 토큰 ' + pv.allTokens.toLocaleString() + ' · 사전 매칭 ' + pv.matched.toLocaleString() + ' · 후보 ' + pv.candCount.toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b> · 예상 ' + Math.max(1, Math.ceil(pv.selected.length / 200)) + '챕터</div>' +
+        pxCefrBar(pv.cefr, pv.selected.length) +
+        '<div style="margin-top:6px">' + samples + (pv.selected.length > 20 ? '<span style="font-size:11px;color:#9CA3AF"> …외 ' + (pv.selected.length - 20) + '</span>' : '') + '</div>' +
+        '</div>';
+    }
+    var labelInput = (m === 'course') ? '<input id="bp-label-' + i + '" value="' + esc(t.label) + '" placeholder="' + (i + 1) + '단계 이름 (예: 유형편 · 1권 · 기초)" style="width:100%;box-sizing:border-box;padding:8px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px;margin-bottom:6px">' : '';
+    var delBtn = (m === 'course' && _bp.tiers.length > 1) ? '<button onclick="_bpDelTier(' + i + ')" style="background:#FEE2E2;color:#DC2626;border:none;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer">삭제</button>' : '';
+    return '<div style="border:1px solid #E5E7EB;border-radius:12px;padding:12px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:12px;font-weight:800;color:#374151">' + (m === 'course' ? ('원서 ' + (i + 1)) : '원서 텍스트') + '</div><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:#1E5FA5;font-weight:800;cursor:pointer">📄 .txt 업로드<input type="file" accept=".txt,text/plain" onchange="_bpFile(' + i + ',this)" style="display:none"></label>' + delBtn + '</div></div>' +
+      labelInput +
+      '<textarea id="bp-text-' + i + '" placeholder="원서 전문을 붙여넣거나 .txt를 업로드하세요" style="width:100%;box-sizing:border-box;height:120px;padding:10px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px;resize:vertical">' + esc(t.text) + '</textarea>' +
+      '<div style="font-size:11px;color:#9CA3AF;margin-top:3px">' + (t.text ? (t.text.length.toLocaleString() + '자') : '비어있음') + '</div>' +
+      pvHtml +
+      '</div>';
+  }).join('');
+  var addTierBtn = (m === 'course') ? '<button onclick="_bpAddTier()" style="width:100%;padding:10px;background:#EFF6FF;color:#1E5FA5;border:1.5px dashed #1E5FA5;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:12px">＋ 원서(권/단계) 추가</button>' : '';
+  // 설정 패널
+  var chk = function (id, label, on) { return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '>' + label + '</label>'; };
+  var num = function (id, label, val, w) { return '<div><label style="font-size:11px;font-weight:800;color:#6B7280;display:block">' + label + '</label><input type="number" id="' + id + '" value="' + val + '" style="width:' + (w || 80) + 'px;box-sizing:border-box;padding:7px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>'; };
+  var settings = '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px">' +
+    '<div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:10px">⚙️ 추출 설정</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '상위 N개', s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 대문자비율(%)', s.pnRatio, 110) + '</div>' +
+    '<div style="display:flex;gap:16px;flex-wrap:wrap">' + chk('bp-excludeA1', 'A1(최기초) 제외', s.excludeA1) + chk('bp-shortEx', '단편 예외(A2+ 부족 시 A1 포함)', s.shortEx) + chk('bp-lemmatize', '표제어화', s.lemmatize) + chk('bp-excludeFn', '기능어 제외', s.excludeFn) + '</div>' +
+    '</div>';
+
+  main.innerHTML =
+    '<div style="max-width:720px">' +
+    '<h2 style="font-size:22px;font-weight:900;margin-bottom:4px">📖 원서 → 팩 만들기</h2>' +
+    '<div style="font-size:13px;color:#6B7280;margin-bottom:16px">원서 텍스트/.txt를 넣으면 발췌 기준으로 단어를 뽑아 마켓 팩을 만듭니다. <b>단어장</b>=단독 팩 · <b>단어팩</b>=코스(여러 권/단계).</div>' +
+    '<div style="display:flex;gap:10px;margin-bottom:16px">' + modeBtn('book', '📖 단어장 (단독)', m === 'book') + modeBtn('course', '📚 단어팩 (코스)', m === 'course') + '</div>' +
+    '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:16px;margin-bottom:14px">' + meta + '</div>' +
+    settings +
+    tiersHtml + addTierBtn +
+    '<div style="display:flex;gap:10px;margin-top:4px">' +
+    '<button onclick="_bpPreview()" style="flex:1;padding:13px;background:#fff;color:#1E5FA5;border:1.5px solid #1E5FA5;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer">🔍 분석 / 미리보기</button>' +
+    '<button onclick="_bpRegister()" style="flex:1;padding:13px;background:#1E5FA5;color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer">📥 등록</button>' +
+    '</div>' +
+    '<div id="bp-regresult" style="margin-top:12px;font-size:13px;line-height:1.6"></div>' +
+    '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ 저장은 en(영단어)만 — 뜻·발음·예문·이모지는 앱이 사전에서 자동으로 채웁니다.<br>※ CEFR 챕터 분할은 앱이 학습 시 자동 처리(쉬운→어려운, 200단어씩). 여기선 나누지 않습니다.<br>※ 사전(BWD_DIC)에 없는 단어는 자동 제외됩니다.</div>' +
+    '</div>';
 }
 
 

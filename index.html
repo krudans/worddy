@@ -2866,7 +2866,7 @@ function _pkOpen(bookName) {
 function _pkBuy(packId) {
   const keep = S._pkDetail;
   S._silentBuy = true;
-  _doBuyPack(packId);
+  _doBuyPack(packId, {standalone:true}); // 단권 담기 = 잠금 없이 바로 학습
   S._silentBuy = false;
   const pk = (S._marketPacks || []).find(p => p.id === packId);
   if (pk) toast('✅ ' + pk.name + ' 담기 완료');
@@ -3513,7 +3513,8 @@ function buyPack(packId) {
   </div></div>`;
 }
 
-function _doBuyPack(packId) {
+function _doBuyPack(packId, opts) {
+  opts = opts || {};
   const pk = (S._marketPacks||[]).find(p=>p.id===packId);
   if(!pk) return;
   const words = pk.words||[];
@@ -3523,8 +3524,10 @@ function _doBuyPack(packId) {
   if(existing) {
     const newW = words.filter(w=>!existing.words.find(x=>x.en===w.en));
     existing.words = [...existing.words, ...newW];
+    if(opts.standalone) existing._standalone = true; // 단권으로 다시 담으면 잠금 해제 표시
   } else {
-    S.books.push({ name:pk.name, packId:packId, fromMarket:true, markMap:{}, learned:[], chPass:new Array(CH_N).fill(false), preCheck:{} }); // emoji/imageUrl/words는 항상 Firebase에서 조회
+    // [단권 학습] _standalone=true면 코스 tier라도 잠금 없이 바로 학습(단어장에서 단권 담기용)
+    S.books.push({ name:pk.name, packId:packId, fromMarket:true, _standalone:!!opts.standalone, markMap:{}, learned:[], chPass:new Array(CH_N).fill(false), preCheck:{} }); // emoji/imageUrl/words는 항상 Firebase에서 조회
   }
   S._ownedPacks.push(packId);
   if(typeof db !== 'undefined' && S.user?.uid) {
@@ -13117,6 +13120,7 @@ function _curriculumGroupHtml(){
 function _bookLocked(book) {
   try {
     if (!book || !book.packId) return false;
+    if (book._standalone) return false; // [단권 학습] 단권으로 담은 코스 권은 순차 잠금 없이 바로 학습
     const packs = S._marketPacks || [];
     const pk = packs.find(p => p.id === book.packId);
     if (!pk || !pk.courseId) return false;
@@ -13185,6 +13189,8 @@ function _ownedCourses() {
 // 코스 안에서 이 단어장이 열렸는가 — 앞 권을 마스터해야 열린다
 function _courseBookUnlocked(c, idx) {
   if (idx === 0) return true;
+  const cur = c.books[idx];
+  if (cur && cur.book && cur.book._standalone) return true; // [단권 학습] 단권으로 담은 권은 코스 순서와 무관하게 항상 열림
   const prev = c.books[idx - 1];
   return !!(prev && _bookMastered(prev.book));
 }
@@ -13306,9 +13312,26 @@ function rStudyBooks() {
     const rows=c.books.map((o,i)=>_courseGroupRow(c,o,i)).join('');
     const have=c.books.length, all=c.total;
     const badge = have<all ? (have+'/'+all+'권') : '팩';
-    const more = have<all
-      ? '<div onclick="S._pkDetail=\''+c.id+'\';go(\'mybooks\',\'detail\')" style="display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer;border-top:1px solid var(--border,#ECEEF1)"><span style="font-size:18px;width:30px;text-align:center;color:var(--theme,#475569);flex-shrink:0">＋</span><div style="flex:1;font-size:13px;font-weight:700;color:var(--theme,#475569)">나머지 '+(all-have)+'권 담기</div><span style="color:#B8AE96;flex-shrink:0">›</span></div>'
-      : '';
+    // [단권 학습] 아직 안 담은 권을 개별 '담기'로 표시 → 단권으로 바로 받아 학습(잠금 없음). 여러 권이면 코스 순차 담기도 제공.
+    let more='';
+    if(have<all){
+      const _allTiers=(S._marketPacks||[]).filter(p=>p&&p.courseId===c.id).sort((a,b)=>(a.tierIdx||0)-(b.tierIdx||0));
+      const _ownIds={}; c.books.forEach(o=>{_ownIds[o.pack.id]=1;});
+      const _un=_allTiers.filter(p=>!_ownIds[p.id]);
+      more=_un.map(function(p){
+        const pid=String(p.id).replace(/'/g,"\\'");
+        const cnt=(p.count||(p.words||[]).length||0);
+        return '<div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-top:1px solid var(--border,#ECEEF1)">'
+          +'<div style="width:30px;height:30px;border-radius:9px;background:var(--bg-sub,#F3F4F6);color:var(--text3,#9CA3AF);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">'+(p.tierIdx||'＋')+'</div>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text2,#374151);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(p.tierLabel||p.name)+'</div>'
+          +'<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:2px">'+cnt+'단어 · 단권 바로 학습</div></div>'
+          +'<button onclick="_pkBuy(\''+pid+'\')" style="background:var(--theme,#475569);color:#fff;border:none;border-radius:9px;padding:7px 12px;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0">＋ 담기</button>'
+          +'</div>';
+      }).join('');
+      if(_un.length>1){
+        more+='<div onclick="_courseBuy(\''+c.id+'\',true)" style="display:flex;align-items:center;gap:11px;padding:10px 2px;cursor:pointer;border-top:1px solid var(--border,#ECEEF1)"><span style="font-size:15px;width:30px;text-align:center;color:var(--text3,#9CA3AF);flex-shrink:0">↕</span><div style="flex:1;font-size:12px;font-weight:700;color:var(--text3,#9CA3AF)">전체 '+_un.length+'권 담기 (순차 미션)</div><span style="color:#B8AE96;flex-shrink:0">›</span></div>';
+      }
+    }
     return { name:String(c.name||''), html:_groupCard(c.emoji, c.name, badge, rows, more) };
   });
 
@@ -17788,16 +17811,15 @@ function showResetStudy() {
     <div style="background:#FFF8E1;border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:6px">삭제되는 데이터:</div>
       <div style="font-size:12px;color:#6B7280;line-height:1.9">
-        📚 내 단어장 단어 (${S.words.length}개)<br>
-        ✅ 학습 진도 · 외운 표시 · 챕터 통과<br>
-        📅 출석 기록 (${S.attendCount}일)<br>
-        🎮 학습 로그 · 게임 기록<br>
+        📚 모든 단어장 (초·중·고·레벨업·마켓팩 등)<br>
+        📝 내 단어장 단어 (${S.words.length}개)<br>
+        ✅ 학습 진도 · 출석 (${S.attendCount}일) · 게임 기록<br>
         🛒 마켓 구매 이력
       </div>
     </div>
     <div style="background:#F0FDF4;border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:12px;color:#16A34A;font-weight:700">유지되는 것:</div>
-      <div style="font-size:12px;color:#6B7280;margin-top:2px;line-height:1.7">계정 · 닉네임 · XP · 레벨 · 나비<br>단어장 목록(코스·기본·마켓팩)은 그대로, 진도만 초기화</div>
+      <div style="font-size:12px;color:#6B7280;margin-top:2px;line-height:1.7">계정 · 닉네임 · XP · 레벨 · 나비 (로그인 유지)<br>단어장 목록은 '내 단어장(0개)'만 남아요</div>
     </div>
     <div style="display:flex;gap:8px">
       <button onclick="doResetStudy()" style="flex:1;background:#E65100;color:#fff;border:none;border-radius:12px;padding:13px;font-size:13px;font-weight:700;cursor:pointer">초기화</button>
@@ -17807,23 +17829,21 @@ function showResetStudy() {
 }
 
 function doResetStudy() {
-  // [버그수정] 학습 데이터만 초기화: 내 단어장·모든 책 진도(마크/통과/외운목록)·출석·학습로그·구매이력 삭제. 계정/닉/XP/일기/친구 유지.
-  //  기존 버그 (1) S.books 진도를 안 지워 '아무것도 안 바뀜'. (2) currentBook이 내단어장이 아니면 sv가 stale wd-w를
-  //   내단어장 정본으로 되살림. → 아래처럼 책 진도까지 리셋하고 로컬 정본(wd-w 등)도 비운다.
+  // [학습 데이터 초기화] 단어장 목록 전체 삭제 + 내 단어장·진도·출석·학습로그·게임기록·구매이력 삭제.
+  //   계정·닉네임·XP·레벨·나비는 유지. 목록이 '내 단어장(0개)'만 남게 비워진다(기본책 자동 재생성 안 함).
   S.words=[]; S.learned=new Set(); S.markMap={}; S.markDates={};
   S.studyLog={}; S.attendCount=0; S.attendDates=[]; S.attendPopupShown='';
   S.bestScores={}; S.gSavedGame=null; S.idx=0;
   S._ownedPacks=[]; S._acc=[]; S._equipped=''; // 마켓 구매이력 + 장식품 초기화
-  // 모든 책(단어장)의 진도 초기화 — 커리큘럼/기본/팩 구조는 유지, 마크·통과시험·외운목록만 0으로
-  (S.books||[]).forEach(function(b){ try{ b.markMap={}; b.learned=[]; if(Array.isArray(b.chPass)) b.chPass=b.chPass.map(function(){return false;}); }catch(e){} });
+  // 단어장(책) 전부 삭제 → 목록 비워짐. _defBooksInit 유지 → 초·중·고 기본책이 다시 자동 생성되지 않음.
+  S.books=[]; S._defBooksInit=1;
   S.currentBook='내 단어장';
-  // 내 단어장/진도 로컬 정본 비우기 (sv가 stale 값으로 되살리지 않도록)
-  try{ localStorage.setItem('wd-w','[]'); localStorage.setItem('wd-lrn','[]'); localStorage.setItem('wd-mk','{}'); localStorage.setItem('wd-mkd','{}'); localStorage.setItem('wd-sl','{}'); localStorage.setItem('wd-ac','0'); localStorage.setItem('wd-ad','[]'); localStorage.setItem('wd-cbk','내 단어장'); }catch(e){}
-  // Firebase 구매이력도 초기화
+  // 로컬 정본도 비움 (sv가 stale 값으로 되살리지 않도록)
+  try{ localStorage.setItem('wd-w','[]'); localStorage.setItem('wd-lrn','[]'); localStorage.setItem('wd-mk','{}'); localStorage.setItem('wd-mkd','{}'); localStorage.setItem('wd-sl','{}'); localStorage.setItem('wd-ac','0'); localStorage.setItem('wd-ad','[]'); localStorage.setItem('wd-cbk','내 단어장'); localStorage.setItem('wd-bks','[]'); }catch(e){}
   if(typeof db!=='undefined' && S.user?.uid) {
     db.collection('user_packs').doc(S.user.uid).delete().catch(()=>{});
   }
-  sv(); // 초기화된 S.books(진도 0)·빈 내단어장을 서버 user_words·users에 저장
+  sv(); // 빈 단어장·빈 내단어장을 서버 user_words·users에 저장
   cm();
   toast('✅ 학습 데이터 초기화 완료');
   go('home');

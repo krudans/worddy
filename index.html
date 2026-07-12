@@ -17806,16 +17806,23 @@ function showResetStudy() {
 }
 
 function doResetStudy() {
-  // 학습 데이터만 초기화
-  S.words=[]; S.learned=new Set(); S.markMap={};
+  // [버그수정] 학습 데이터만 초기화: 내 단어장·모든 책 진도(마크/통과/외운목록)·출석·학습로그·구매이력 삭제. 계정/닉/XP/일기/친구 유지.
+  //  기존 버그 (1) S.books 진도를 안 지워 '아무것도 안 바뀜'. (2) currentBook이 내단어장이 아니면 sv가 stale wd-w를
+  //   내단어장 정본으로 되살림. → 아래처럼 책 진도까지 리셋하고 로컬 정본(wd-w 등)도 비운다.
+  S.words=[]; S.learned=new Set(); S.markMap={}; S.markDates={};
   S.studyLog={}; S.attendCount=0; S.attendDates=[]; S.attendPopupShown='';
   S.bestScores={}; S.gSavedGame=null; S.idx=0;
   S._ownedPacks=[]; S._acc=[]; S._equipped=''; // 마켓 구매이력 + 장식품 초기화
+  // 모든 책(단어장)의 진도 초기화 — 커리큘럼/기본/팩 구조는 유지, 마크·통과시험·외운목록만 0으로
+  (S.books||[]).forEach(function(b){ try{ b.markMap={}; b.learned=[]; if(Array.isArray(b.chPass)) b.chPass=b.chPass.map(function(){return false;}); }catch(e){} });
+  S.currentBook='내 단어장';
+  // 내 단어장/진도 로컬 정본 비우기 (sv가 stale 값으로 되살리지 않도록)
+  try{ localStorage.setItem('wd-w','[]'); localStorage.setItem('wd-lrn','[]'); localStorage.setItem('wd-mk','{}'); localStorage.setItem('wd-mkd','{}'); localStorage.setItem('wd-sl','{}'); localStorage.setItem('wd-ac','0'); localStorage.setItem('wd-ad','[]'); localStorage.setItem('wd-cbk','내 단어장'); }catch(e){}
   // Firebase 구매이력도 초기화
   if(typeof db!=='undefined' && S.user?.uid) {
     db.collection('user_packs').doc(S.user.uid).delete().catch(()=>{});
   }
-  sv();
+  sv(); // 초기화된 S.books(진도 0)·빈 내단어장을 서버 user_words·users에 저장
   cm();
   toast('✅ 학습 데이터 초기화 완료');
   go('home');
@@ -17847,14 +17854,30 @@ function showResetAll() {
 function doResetAll() {
   const val = document.getElementById('reset-confirm-inp')?.value?.trim();
   if(val !== '초기화') { toast('⚠️ "초기화"를 정확히 입력해주세요'); return; }
-  // localStorage 전체 삭제
-  const keys = ['wd-l','wd-xp','wd-st','wd-dt','wd-nk','wd-w','wd-lrn','wd-mk',
-    'wd-dl','wd-gl','wd-glt','wd-sv','wd-sva','wd-sty','wd-th','wd-ac','wd-ad','wd-sl',
-    'wd-cp','wd-cc','wd-bks','wd-cbk','wd-gs','wd-fr','wd-bs','wd-onboard','wd-tested'];
-  keys.forEach(k => localStorage.removeItem(k));
-  cm();
-  toast('완전 초기화 완료. 로그아웃합니다.');
-  setTimeout(() => auth.signOut(), 1000);
+  // [버그수정] 기존엔 로컬 일부 키만 지우고 서버(user_words/users)는 안 지워, 재로그인 시 전부 복원됐다.
+  //  → 저장 차단 후 서버 문서(user_words·users·user_packs·sessions)를 삭제하고, 로컬 전체(wd-*·bw-*)를 비운 뒤 로그아웃.
+  window._svDisabled=true; try{ clearTimeout(window._svTimer); }catch(e){}
+  var uid = S.user && S.user.uid;
+  var _finish = function(){
+    try{
+      var rm=[];
+      for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && (/^wd-/.test(k)||/^bw-/.test(k))) rm.push(k); }
+      rm.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+    }catch(e){}
+    cm();
+    toast('완전 초기화 완료. 로그아웃합니다.');
+    setTimeout(function(){ try{ auth.signOut(); }catch(e){} try{ location.reload(); }catch(e){} }, 1000);
+  };
+  if(typeof db!=='undefined' && uid){
+    Promise.all([
+      db.collection('user_words').doc(uid).delete().catch(function(){}),
+      db.collection('users').doc(uid).delete().catch(function(){}),
+      db.collection('user_packs').doc(uid).delete().catch(function(){}),
+      db.collection('sessions').doc(uid).delete().catch(function(){})
+    ]).then(_finish, _finish);
+  } else {
+    _finish();
+  }
 }
 
 // ── 친구 시스템 ──

@@ -2923,14 +2923,16 @@ async function callAI(prompt, maxTokens=300, _retry=0, _onStatus=null) {
       generationConfig: {maxOutputTokens: maxTokens, temperature: 0.8}
     })
   });
-  if(resp.status === 429) {
-    if(_retry >= 5) throw new Error('Gemini 429: 요청 한도 초과. 잠시 후 다시 시도해주세요.');
-    const wait = [8000,15000,30000,60000,120000][_retry];
+  if(resp.status === 429 || (resp.status >= 500 && resp.status <= 504)) {
+    const is429 = resp.status === 429;
+    if(_retry >= 5) throw new Error(`Gemini ${resp.status}: ${is429?'요청 한도 초과':'서버 혼잡(일시적)'}. 잠시 후 다시 시도해주세요.`);
+    const wait = (is429 ? [8000,15000,30000,60000,120000] : [2000,5000,10000,20000,40000])[_retry];
+    const label = is429 ? '429 한도 초과' : (resp.status + ' 서버 혼잡');
     // 카운트다운 표시
     if(_onStatus) {
       let remain = Math.round(wait/1000);
-      const iv = setInterval(()=>{ remain--; if(_onStatus) _onStatus(`⏳ 429 한도 초과 — ${remain}초 후 재시도...`); if(remain<=0) clearInterval(iv); }, 1000);
-      if(_onStatus) _onStatus(`⏳ 429 한도 초과 — ${remain}초 후 재시도...`);
+      const iv = setInterval(()=>{ remain--; if(_onStatus) _onStatus(`⏳ ${label} — ${remain}초 후 재시도...`); if(remain<=0) clearInterval(iv); }, 1000);
+      if(_onStatus) _onStatus(`⏳ ${label} — ${remain}초 후 재시도...`);
     }
     await new Promise(r=>setTimeout(r, wait));
     return callAI(prompt, maxTokens, _retry+1, _onStatus);

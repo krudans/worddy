@@ -7063,6 +7063,7 @@ async function missAiRegister(en){
     _bwdDict()[en]={kr:kr, ex:p.ex||'', pos:p.pos||''};
     await db.collection('dict_missing').doc(en).set({resolved:true, resolvedAt:new Date().toISOString(), resolvedKr:kr},{merge:true});
     toast('✅ "'+en+'" 코어 등록! 📥 bwd-dict.js 내보내기 후 js/에 업로드하세요','ok');
+    if(typeof _showRegResult==='function') _showRegResult(en, {kr:kr, ph:p.ph||'', ex:p.ex||'', pos:p.pos||''});
     await _updateMissBadge(); rDICT();
   }catch(e){ toast('AI 등록 실패: '+(e&&e.message||e)+' — 폼에 채웁니다','err'); missFillForm(en); }
 }
@@ -7082,6 +7083,27 @@ async function missDismiss(en){
     await db.collection('dict_missing').doc(en).set({resolved:true, resolvedAt:new Date().toISOString(), dismissed:true},{merge:true});
     toast('무시 처리됨','ok'); await _updateMissBadge(); rDICT();
   }catch(e){ toast('실패: '+(e&&e.message||e),'err'); }
+}
+// [B-4] 등록 직후 결과 확인 카드 — 등록하면 목록에서 사라지기만 하던 문제 해결.
+//   등록된 en/뜻/발음/품사/예문을 그 자리에서 보여주고, 틀리면 [수정](폼 채우기)로 바로 고칠 수 있게 한다.
+//   document.body에 고정 배치 → rDICT() 재렌더에도 유지. 15초 후 또는 ✕로 닫힘.
+function _showRegResult(en, e){
+  try{
+    e=e||{};
+    var box=document.getElementById('regResultPanel');
+    if(!box){ box=document.createElement('div'); box.id='regResultPanel'; document.body.appendChild(box); }
+    box.style.cssText='position:fixed;right:16px;bottom:16px;z-index:99999;max-width:340px;background:#fff;border:1px solid #E5E7EB;border-left:4px solid #16A34A;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px 16px;font-size:13px;color:#1F2937';
+    var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    var ph=e.ph?(' <span style="color:#6B7280;font-family:monospace;font-size:12px">'+esc(e.ph)+'</span>'):'';
+    var pos=e.pos?(' <span style="color:#9CA3AF;font-size:12px">· '+esc(e.pos)+'</span>'):'';
+    var enJs=String(en).replace(/'/g,"\\'");
+    box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:#16A34A">✅ 등록됨 (확인)</b><span onclick="var p=document.getElementById(\'regResultPanel\');if(p)p.remove()" style="cursor:pointer;color:#9CA3AF;font-weight:800;font-size:15px;line-height:1">✕</span></div>'
+      +'<div style="font-weight:800;font-size:15px">'+esc(en)+ph+pos+'</div>'
+      +'<div style="margin-top:4px;color:#111"><b>'+esc(e.kr||'(뜻 없음)')+'</b></div>'
+      +(e.ex?'<div style="margin-top:4px;color:#6B7280;font-style:italic">'+esc(e.ex)+'</div>':'')
+      +'<div style="margin-top:9px;display:flex;gap:8px;align-items:center"><button onclick="missFillForm(\''+enJs+'\')" style="font-size:12px;padding:5px 12px;border:1px solid #D1D5DB;border-radius:8px;background:#F9FAFB;cursor:pointer;font-weight:700">✏️ 수정</button><span style="font-size:11px;color:#9CA3AF">📥 내보내기→업로드 필요</span></div>';
+    clearTimeout(window._regResultTO); window._regResultTO=setTimeout(function(){ var p=document.getElementById('regResultPanel'); if(p)p.remove(); }, 15000);
+  }catch(err){}
 }
 
 function bwdDelEntry(en){

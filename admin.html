@@ -3289,14 +3289,14 @@ async function _bpAiExtract(fullText, s, onStatus) {
   var text = String(fullText || '').trim();
   if (!text) return { words: [], chunks: 0 };
   var N = s.topN || 300;
-  var CH = 7000, chunks = [];
+  var CH = 12000, chunks = [];
   for (var i = 0; i < text.length; i += CH) chunks.push(text.slice(i, i + CH));
   var maxChunks = Math.min(chunks.length, 60);
   var seen = {}, out = [], done = 0, warn = '';
   var a1note = s.excludeA1 ? '아주 기초적인 A1 단어(the,a,is,go,good 등)와 기능어는 제외. ' : '';
   for (var ci = 0; ci < maxChunks && out.length < N; ci++) {
     if (onStatus) onStatus('🤖 AI 분석 중... 조각 ' + (ci + 1) + '/' + maxChunks + ' · 누적 ' + out.length + '단어');
-    var per = Math.min(70, N - out.length);
+    var per = Math.min(90, N - out.length);
     var prompt = '다음은 영어 원서의 일부입니다. 학습 가치가 높은 영어 어휘를 최대 ' + per + '개 골라 JSON 배열로만 반환하세요.\n' +
       '- 반드시 표제어(사전 원형, 소문자)로. 고유명사(인명·지명)는 제외. ' + a1note + '\n' +
       '- 형식: [{"en":"word","kr":"한국어 뜻"}]\n- JSON 외 다른 텍스트·설명·코드펜스 금지.\n\n[본문]\n' + chunks[ci];
@@ -3315,8 +3315,8 @@ async function _bpAiExtract(fullText, s, onStatus) {
       if (en && en.length >= (s.minLen || 2) && !seen[en]) { seen[en] = 1; out.push({ en: en, kr: String((w && w.kr) || '').trim() }); }
     });
     done++;
-    // 429(분당 15회) 방지: 다음 호출까지 잠깐 간격
-    if (ci + 1 < maxChunks && out.length < N) { await new Promise(function (r) { setTimeout(r, 3500); }); }
+    // 429(분당 15회 한도) 방지: 다음 호출까지 간격 (분당 ~14회)
+    if (ci + 1 < maxChunks && out.length < N) { await new Promise(function (r) { setTimeout(r, 4300); }); }
   }
   return { words: out.slice(0, N), chunks: done, warn: warn };
 }

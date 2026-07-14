@@ -3210,7 +3210,7 @@ window._bp = window._bp || {
   packId: '', name: '', emoji: '📖', cat: '📖 도서',
   courseId: '', courseName: '', courseEmoji: '📚',
   tiers: [{ label: '', text: '' }],
-  settings: { topN: 500, excludeA1: true, pnRatio: 90, minLen: 2, lemmatize: true, excludeFn: true, shortEx: true, aiMode: true },
+  settings: { topN: 500, excludeA1: true, pnRatio: 90, minLen: 2, lemmatize: true, excludeFn: true, shortEx: true, aiMode: false },
   preview: null
 };
 
@@ -3333,6 +3333,54 @@ function _bpReadTiers() {
 function _bpSetMode(m) { _bpReadTiers(); _bpReadSettings(); _bp.mode = m; if (m === 'book' && _bp.tiers.length !== 1) _bp.tiers = [_bp.tiers[0] || { label: '', text: '' }]; _bp.preview = null; rBP2(); }
 function _bpAddTier() { _bpReadTiers(); _bpReadSettings(); _bp.tiers.push({ label: '', text: '' }); rBP2(); }
 function _bpDelTier(i) { _bpReadTiers(); _bpReadSettings(); _bp.tiers.splice(i, 1); if (!_bp.tiers.length) _bp.tiers = [{ label: '', text: '' }]; rBP2(); }
+// Gemini 비전 호출(이미지→텍스트 OCR, 429/503 재시도)
+async function _bpVisionCall(prompt, b64, mimeType, maxTokens, _retry, onStatus) {
+  _retry = _retry || 0;
+  var apiKey = getGeminiKey();
+  if (!apiKey) throw new Error('Gemini API 키가 없습니다.');
+  var model = window._aiModel || localStorage.getItem('ai_model') || 'gemini-2.5-flash-lite';
+  if (onStatus) onStatus('🖼️ 이미지 글자 추출 중...');
+  var resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mimeType || 'image/jpeg', data: b64 } }] }], generationConfig: { maxOutputTokens: maxTokens || 4096, temperature: 0 } })
+  });
+  if (resp.status === 429 || (resp.status >= 500 && resp.status <= 504)) {
+    if (_retry >= 5) throw new Error('Gemini ' + resp.status + ': 서버 혼잡/한도. 잠시 후 다시.');
+    var is429 = resp.status === 429;
+    var wait = (is429 ? [8000, 15000, 30000, 60000, 120000] : [2000, 5000, 10000, 20000, 40000])[_retry];
+    if (onStatus) onStatus('⏳ ' + resp.status + (is429 ? ' 한도' : ' 혼잡') + ' — ' + Math.round(wait / 1000) + '초 후 재시도...');
+    await new Promise(function (r) { setTimeout(r, wait); });
+    return _bpVisionCall(prompt, b64, mimeType, maxTokens, _retry + 1, onStatus);
+  }
+  if (!resp.ok) throw new Error('Gemini ' + resp.status);
+  var data = await resp.json();
+  return ((((data.candidates || [])[0] || {}).content || {}).parts || []).map(function (p) { return p.text || ''; }).join('');
+}
+
+// 스캔(이미지) PDF: 각 페이지를 이미지로 렌더 → Gemini OCR로 글자 추출
+async function _bpOcrPdf(f, onPage, maxPages) {
+  var buf = await f.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  var title = '';
+  try { var meta = await pdf.getMetadata(); title = (meta && meta.info && meta.info.Title) || ''; } catch (e) { }
+  var np = Math.min(pdf.numPages, maxPages || 40);
+  var parts = [], failed = 0;
+  for (var p = 1; p <= np; p++) {
+    try {
+      var page = await pdf.getPage(p);
+      var vp = page.getViewport({ scale: 1.6 });
+      var canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      var b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      var txt = await _bpVisionCall('이 책 페이지 이미지의 모든 영어 텍스트를 그대로 추출해 텍스트만 반환하세요. 설명·번역·머리말 없이 본문 그대로.', b64, 'image/jpeg', 4096, 0, function (m) { if (onPage) onPage(p, np, m); });
+      parts.push(txt || '');
+      if (p < np) await new Promise(function (r) { setTimeout(r, 4300); }); // 429 방지 간격
+    } catch (e) { failed++; }
+  }
+  return { text: parts.join('\n').trim(), title: String(title || '').trim(), pages: pdf.numPages, ocrPages: np, ocr: true, failed: failed };
+}
+
 function _bpSlug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40); }
 
 // PDF/파일명에서 제목·packId·코스명 자동 입력 (비어있는 칸만 채움)
@@ -3383,7 +3431,23 @@ function _bpFile(i, input) {
       _bp.tiers[i]._pdfInfo = res.pages + '쪽 · ' + (res.title || name) + (res.failed ? (' · ' + res.failed + '쪽 건너뜀') : '');
       _bpAutoFill(res, name, i); rBP2();
     }).catch(function (e) {
-      _bp.tiers[i]._loading = null; _bp.tiers[i]._err = 'PDF 오류: ' + ((e && e.message) || e); rBP2();
+      var msg = (e && e.message) || String(e);
+      if (/텍스트를 추출하지 못/.test(msg)) {
+        // 텍스트가 없음 → 스캔(이미지) PDF로 판단, AI(Gemini) OCR 제안
+        if (!confirm('텍스트가 없는 스캔(이미지) PDF로 보입니다.\nAI(Gemini)로 페이지 이미지에서 글자를 추출할까요?\n(페이지 수만큼 API 호출·시간 소요, 최대 40쪽)')) {
+          _bp.tiers[i]._loading = null; _bp.tiers[i]._err = '스캔 PDF — AI OCR 취소됨'; rBP2(); return;
+        }
+        _bp.tiers[i]._loading = '🖼️ AI OCR 준비 중...'; rBP2();
+        _bpOcrPdf(f, function (p, total, m) { var el = document.getElementById('bp-status-' + i); if (el) el.innerHTML = '<span style="color:#1E5FA5">🖼️ AI 글자추출 ' + p + '/' + total + '쪽...' + (m && /재시도/.test(m) ? (' ' + m) : '') + '</span>'; }, 40).then(function (res2) {
+          _bp.tiers[i]._loading = null;
+          if (!res2.text) { _bp.tiers[i]._err = 'OCR 결과가 비어있습니다.'; rBP2(); return; }
+          _bp.tiers[i].text = res2.text;
+          _bp.tiers[i]._pdfInfo = res2.pages + '쪽(🖼️AI OCR ' + res2.ocrPages + '쪽' + (res2.failed ? ('·' + res2.failed + '실패') : '') + ') · ' + (res2.title || name);
+          _bpAutoFill(res2, name, i); rBP2();
+        }).catch(function (e2) { _bp.tiers[i]._loading = null; _bp.tiers[i]._err = 'OCR 오류: ' + ((e2 && e2.message) || e2); rBP2(); });
+      } else {
+        _bp.tiers[i]._loading = null; _bp.tiers[i]._err = 'PDF 오류: ' + msg; rBP2();
+      }
     });
   } else {
     var rd = new FileReader();
@@ -3515,7 +3579,7 @@ function rBP2() {
   var num = function (id, label, val, w) { return '<div><label style="font-size:11px;font-weight:800;color:#6B7280;display:block">' + label + '</label><input type="number" id="' + id + '" value="' + val + '" style="width:' + (w || 80) + 'px;box-sizing:border-box;padding:7px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>'; };
   var settings = '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px">' +
     '<div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:10px">⚙️ 추출 설정</div>' +
-    '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#1E5FA5;cursor:pointer;margin-bottom:10px;padding:9px;background:#EFF6FF;border-radius:8px"><input type="checkbox" id="bp-aiMode"' + (s.aiMode ? ' checked' : '') + '>🤖 AI 분석 (Gemini) — 원서를 AI가 읽고 학습가치 높은 어휘를 선정 (권장). 끄면 빈도 기반 규칙 추출.</label>' +
+    '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#1E5FA5;cursor:pointer;margin-bottom:10px;padding:9px;background:#EFF6FF;border-radius:8px"><input type="checkbox" id="bp-aiMode"' + (s.aiMode ? ' checked' : '') + '>🤖 단어 선정에 AI(Gemini) 사용 — 끄면 사전+빈도 규칙으로 무료·즉시 선정(기본·권장). 텍스트 PDF는 끈 채로 충분합니다.</label>' +
     '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '목표 단어수', s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 대문자비율(%)', s.pnRatio, 110) + '</div>' +
     '<div style="display:flex;gap:16px;flex-wrap:wrap">' + chk('bp-excludeA1', 'A1(최기초) 제외', s.excludeA1) + chk('bp-shortEx', '단편 예외(A2+ 부족 시 A1 포함)', s.shortEx) + chk('bp-lemmatize', '표제어화(규칙)', s.lemmatize) + chk('bp-excludeFn', '기능어 제외(규칙)', s.excludeFn) + '</div>' +
     '</div>';
@@ -3533,7 +3597,7 @@ function rBP2() {
     '<button onclick="_bpRegister()" style="flex:1;padding:13px;background:#1E5FA5;color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer">📥 등록</button>' +
     '</div>' +
     '<div id="bp-regresult" style="margin-top:12px;font-size:13px;line-height:1.6"></div>' +
-    '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ AI 분석: PDF/텍스트를 조각내 Gemini가 학습가치 높은 어휘를 [en,뜻]으로 추출합니다(목표 단어수까지). Gemini API 키 필요.<br>※ 뜻은 AI가 주고, 발음·예문·이모지는 앱이 사전에서 자동 보완합니다. CEFR 챕터(200단어씩)는 앱이 학습 시 자동 분할.<br>※ 큰 원서는 조각 수만큼 API 호출이 있어 시간이 걸릴 수 있습니다(429 시 자동 재시도).</div>' +
+    '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ <b>텍스트 PDF</b>: PDF.js가 글자 추출(무료) → 단어 선정도 <b>규칙 기반(사전+빈도, 무료)</b>이 기본. AI 없이 처리됩니다.<br>※ <b>스캔(이미지) PDF</b>: 글자가 없으면 자동으로 <b>AI(Gemini) OCR</b>로 페이지 이미지에서 글자를 추출합니다(페이지당 1회 호출, 최대 40쪽).<br>※ 뜻·발음·예문·이모지는 앱이 사전에서 자동 보완. CEFR 챕터(200단어씩)는 앱이 학습 시 자동 분할.</div>' +
     '</div>';
 }
 

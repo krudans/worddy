@@ -3224,22 +3224,29 @@ var _BP_STOP = new Set(('a an the and or but nor so yet for of to in on at by fr
 
 function _bpLemma(w, doLem) {
   if (typeof BWD_DICT === 'undefined') return null;
-  if (BWD_DICT[w] && BWD_DICT[w].kr) return w;
-  if (!doLem) return null;
+  var inDict = !!(BWD_DICT[w] && BWD_DICT[w].kr);
+  if (!doLem) return inDict ? w : null;
+  // 표제어화 ON: 굴절형이 사전에 있어도 원형(base)이 있으면 원형으로 통합 (memories→memory, seemed→seem, nodded→nod)
   var c = [];
-  if (/s$/.test(w) && !/ss$/.test(w)) { c.push(w.slice(0, -1)); c.push(w.slice(0, -2)); }
   if (/ies$/.test(w)) c.push(w.slice(0, -3) + 'y');
-  if (/ed$/.test(w)) { c.push(w.slice(0, -2)); c.push(w.slice(0, -1)); if (w.length > 5) c.push(w.slice(0, -3)); }
-  if (/ing$/.test(w)) { c.push(w.slice(0, -3)); c.push(w.slice(0, -3) + 'e'); }
-  if (/er$/.test(w)) { c.push(w.slice(0, -2)); c.push(w.slice(0, -1)); }
-  if (/est$/.test(w)) { c.push(w.slice(0, -3)); c.push(w.slice(0, -2)); }
+  if (/es$/.test(w) && !/ses$/.test(w)) c.push(w.slice(0, -2));
+  if (/s$/.test(w) && !/ss$/.test(w) && !/us$/.test(w)) c.push(w.slice(0, -1));
+  if (/ed$/.test(w)) { c.push(w.slice(0, -1)); c.push(w.slice(0, -2)); if (w.length > 5 && /(.)\1ed$/.test(w)) c.push(w.slice(0, -3)); }
+  if (/ing$/.test(w)) { c.push(w.slice(0, -3)); c.push(w.slice(0, -3) + 'e'); if (w.length > 6 && /(.)\1ing$/.test(w)) c.push(w.slice(0, -4)); }
   for (var i = 0; i < c.length; i++) { var b = c[i]; if (b && b.length >= 3 && BWD_DICT[b] && BWD_DICT[b].kr) return b; }
-  return null;
+  return inDict ? w : null;
 }
 
 // 원서 텍스트 1개 분석 → 채택 단어 목록(빈도순)
 function _bpAnalyzeText(text, s) {
-  var raw = (String(text || '').match(/[A-Za-z][A-Za-z'-]*/g)) || [];
+  // 페이지 머리말/바닥글의 파일경로·URL 노이즈 제거 (예: file:/C:/unzipped/The_Giver.xml 가 182쪽 반복)
+  var clean = String(text || '')
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, ' ')
+    .replace(/\bfile:\S+/gi, ' ')
+    .replace(/\b[A-Za-z]:[\\\/]\S+/g, ' ')
+    .replace(/\S+\.(xml|html?|pdf|txt|epub|docx?|jpe?g|png|gif)\b/gi, ' ')
+    .replace(/\S+@\S+\.\S+/g, ' ');
+  var raw = (clean.match(/[A-Za-z][A-Za-z'-]*/g)) || [];
   var freq = {}, cap = {}, tot = {};
   for (var i = 0; i < raw.length; i++) {
     var r = raw[i];
@@ -3516,7 +3523,14 @@ async function _bpRegister() {
   if (!confirm('마켓 팩을 Firebase에 등록합니다. 계속할까요?')) return;
   setR('#6B7280', '등록 중...');
   try {
-    var toWords = function (sel) { return sel.map(function (w) { return w.kr ? { en: w.en, kr: w.kr } : { en: w.en }; }); };
+    // 사전에서 전체 필드(발음·이모지·예문5·품사)를 채워 저장 — 빠진 항목 없게
+    var toWords = function (sel) {
+      return sel.map(function (w) {
+        var full = (typeof pxBuildWord === 'function') ? pxBuildWord(w.en) : null;
+        if (full) { if (!full.kr && w.kr) full.kr = w.kr; return full; }
+        return w.kr ? { en: w.en, kr: w.kr, img: '📘' } : { en: w.en };
+      });
+    };
     var docs = [];
     if (_bp.mode === 'book') {
       docs.push({ id: _bp.packId, data: { name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' } });

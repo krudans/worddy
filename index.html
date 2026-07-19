@@ -13795,11 +13795,17 @@ function _gcbwRaw() {
     const w=getBookWords(bk);
     if(w.length){
       // 챕터 학습 중이면 해당 챕터 200개로 스코프.
-      // [버그수정] 커리큘럼인데 스코프가 아직 없으면(새로고침 직후 등) 활성 챕터를 자동 계산한다.
-      //   없으면 책 전체(1000개)가 학습 대상이 되어 '자동학습 800개' 같은 오류가 생김.
+      // [근본수정] 챕터 자동계산을 '모든 챕터형 책'으로 확장 — 기존엔 커리큘럼(isCurriculum)만 적용되어
+      //  기본 제공(초·중·고)·마켓팩은 학습 탭에 바로 들어오면 책 전체(1000개)가 학습 대상이 됐고,
+      //  잠긴 2~5챕터 단어까지 외워지는 챕터 미션 우회가 발생했음(2026-07-19, 92개 전챕터 분산 사건).
       var _sci = S._studyChapterIdx;
-      if((_sci==null || _sci<0) && bk.isCurriculum && typeof _activeChapterIdx==='function'){
-        var _auto=_activeChapterIdx(bk);
+      if((_sci==null || _sci<0) && w.length>200){
+        var _auto=null;
+        if(bk.isCurriculum && typeof _activeChapterIdx==='function'){ _auto=_activeChapterIdx(bk); }
+        if(_auto==null){
+          var _cht=Math.ceil(w.length/200), _cp=bk.chPass||[]; _auto=0;
+          for(var _i=0;_i<_cht;_i++){ if(!_cp[_i]){ _auto=_i; break; } if(_i===_cht-1) _auto=_cht-1; }
+        }
         if(_auto!=null){ _sci=_auto; S._studyChapterIdx=_auto; }
       }
       if(_sci!=null && _sci>=0 && w.length>200){

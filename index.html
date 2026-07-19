@@ -1292,7 +1292,13 @@ function _restoreCloudExtras(_data){
     var _cp; try{_cp=(typeof _data.plan==='string')?JSON.parse(_data.plan):_data.plan;}catch(e){_cp=null;}
     if(_cp && typeof _cp==='object'){
       var _lp={}; try{_lp=JSON.parse(localStorage.getItem('wd-plan')||'{}')||{};}catch(e){}
-      localStorage.setItem('wd-plan', JSON.stringify(Object.assign({}, _cp, _lp)));
+      // [근본수정] '로컬 무조건 우선' → '최신(_ts) 우선'. 기존엔 옛 로컬(예: PC의 daily 20)이
+      //  다른 기기에서 새로 설정한 값(폰의 100)을 계속 되덮어 기기마다 목표가 달라졌음(2026-07-19).
+      var _win;
+      var _ct=Number(_cp._ts||0), _lt=Number(_lp._ts||0);
+      if(_ct||_lt){ _win=(_lt>=_ct)?Object.assign({},_cp,_lp):Object.assign({},_lp,_cp); }
+      else { _win=Object.assign({}, _cp, _lp); } // 둘 다 _ts 없으면 기존 동작 유지
+      localStorage.setItem('wd-plan', JSON.stringify(_win));
     }
   }}catch(e){}
   try{ if(_data.planScope && !localStorage.getItem('wd-plan-scope')) localStorage.setItem('wd-plan-scope', _data.planScope); }catch(e){}
@@ -10510,7 +10516,7 @@ function _planAllLoad(){
   }catch(e){ return {}; }
 }
 function _planLoadFor(key){ var a=_planAllLoad(); return a[key]||{}; }
-function _planSaveFor(key,plan){ var a=_planAllLoad(); a[key]=plan; try{ localStorage.setItem('wd-plan',JSON.stringify(a)); }catch(e){} if(typeof sv==='function'){ try{sv();}catch(e){} } }
+function _planSaveFor(key,plan){ var a=_planAllLoad(); a[key]=plan; a._ts=Date.now(); try{ localStorage.setItem('wd-plan',JSON.stringify(a)); }catch(e){} if(typeof sv==='function'){ try{sv();}catch(e){} } }
 function _planScopeSel(){ try{ return localStorage.getItem('wd-plan-scope')||'__all__'; }catch(e){ return '__all__'; } }
 
 function _planScopeData(){

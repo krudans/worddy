@@ -10469,14 +10469,26 @@ function _todayMemoByBook(bookName, todayStr, booksArr){
     var marked=Array.isArray(d.markedEns)?d.markedEns:[];
     if(!bookName || bookName==='__all__') return marked.length;
     var mb=(d.markBook&&typeof d.markBook==='object')?d.markBook:{};
-    var books=booksArr||[];
+    // [근본수정] 폴백 소유자 판정을 '책 전체 단어 목록'으로 — 기존엔 챕터 제한(200)된 books[].ens를 써서
+    //  현재 챕터 밖에서 외운 단어가 그 책 소속이 아닌 걸로 판정돼 '오늘' 링이 실제보다 작게 나오던 원인.
+    var fullSets=null;
+    function _buildFull(){
+      fullSets=[];
+      try{
+        var my=(typeof _myBookWords==='function')?(_myBookWords()||[]):[];
+        var s0=Object.create(null); my.forEach(function(w){ if(w&&w.en) s0[w.en]=1; });
+        fullSets.push({name:'내 단어장', set:s0});
+        (S.books||[]).forEach(function(b){ var ws=(typeof getBookWords==='function')?(getBookWords(b)||[]):(b.words||[]); var st=Object.create(null); ws.forEach(function(w){ if(w&&w.en) st[w.en]=1; }); fullSets.push({name:b.name, set:st}); });
+      }catch(e){ fullSets=[]; }
+    }
     var c=0;
     for(var i=0;i<marked.length;i++){
       var en=marked[i];
       if(mb[en]!==undefined){ if(mb[en]===bookName) c++; continue; } // 귀속 기록 있음(정확)
+      if(fullSets===null) _buildFull();
       var owners=0, inThis=false;
-      for(var b=0;b<books.length;b++){ var es=books[b].ens; if(es && es.indexOf && es.indexOf(en)>=0){ owners++; if(books[b].name===bookName) inThis=true; } }
-      if(inThis && owners===1) c++; // 겹침 단어(owners>1)는 제외
+      for(var b=0;b<fullSets.length;b++){ if(fullSets[b].set[en]){ owners++; if(fullSets[b].name===bookName) inThis=true; } }
+      if(inThis && owners===1) c++; // 겹침 단어(owners>1)는 귀속 불명이라 제외
     }
     return c;
   }catch(e){ return 0; }
@@ -18570,14 +18582,23 @@ auth.onAuthStateChanged(async user => {
               const _meU = Array.from(new Set([].concat(Array.isArray(local.markedEns)?local.markedEns:[], Array.isArray(fb.markedEns)?fb.markedEns:[])));
               const _lmc=local._mc, _fmc=fb._mc;
               const _mn=(_lmc&&!_fmc)?(local.min||0):(_fmc&&!_lmc)?(fb.min||0):Math.max(local.min||0, fb.min||0);
-              merged[date] = {
+              // [근본수정] 모든 필드 보존 병합 — 기존엔 words/quiz/min/xp/gameMin만 남기고
+              //  markBook(책 귀속)·seenEns(오늘 학습)·xpWords(XP 중복지급 방지)를 통째로 버려서
+              //  동기화 때마다 '오늘 외운' 책별 집계·학습수·XP가드가 파괴되던 원인.
+              const _seU = Array.from(new Set([].concat(Array.isArray(local.seenEns)?local.seenEns:[], Array.isArray(fb.seenEns)?fb.seenEns:[])));
+              const _xw = Object.assign({}, (fb.xpWords&&typeof fb.xpWords==='object')?fb.xpWords:{}, (local.xpWords&&typeof local.xpWords==='object')?local.xpWords:{});
+              const _mb = Object.assign({}, (fb.markBook&&typeof fb.markBook==='object')?fb.markBook:{}, (local.markBook&&typeof local.markBook==='object')?local.markBook:{});
+              merged[date] = Object.assign({}, fb, local, {
                 words: Math.max(local.words||0, fb.words||0),
                 quiz:  Math.max(local.quiz||0,  fb.quiz||0),
                 min:   _mn,
                 xp:    Math.max(local.xp||0,    fb.xp||0),
                 gameMin: Math.max(local.gameMin||0, fb.gameMin||0),
-              };
+              });
               if(_meU.length){ merged[date].markedEns=_meU; merged[date].marked=_meU.length; }
+              if(_seU.length){ merged[date].seenEns=_seU; }
+              if(Object.keys(_xw).length){ merged[date].xpWords=_xw; }
+              if(Object.keys(_mb).length){ merged[date].markBook=_mb; }
               if(_lmc||_fmc) merged[date]._mc=1;
             });
             S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
@@ -18768,14 +18789,23 @@ auth.onAuthStateChanged(async user => {
               const _meU = Array.from(new Set([].concat(Array.isArray(local.markedEns)?local.markedEns:[], Array.isArray(fb.markedEns)?fb.markedEns:[])));
               const _lmc=local._mc, _fmc=fb._mc;
               const _mn=(_lmc&&!_fmc)?(local.min||0):(_fmc&&!_lmc)?(fb.min||0):Math.max(local.min||0, fb.min||0);
-              merged[date] = {
+              // [근본수정] 모든 필드 보존 병합 — 기존엔 words/quiz/min/xp/gameMin만 남기고
+              //  markBook(책 귀속)·seenEns(오늘 학습)·xpWords(XP 중복지급 방지)를 통째로 버려서
+              //  동기화 때마다 '오늘 외운' 책별 집계·학습수·XP가드가 파괴되던 원인.
+              const _seU = Array.from(new Set([].concat(Array.isArray(local.seenEns)?local.seenEns:[], Array.isArray(fb.seenEns)?fb.seenEns:[])));
+              const _xw = Object.assign({}, (fb.xpWords&&typeof fb.xpWords==='object')?fb.xpWords:{}, (local.xpWords&&typeof local.xpWords==='object')?local.xpWords:{});
+              const _mb = Object.assign({}, (fb.markBook&&typeof fb.markBook==='object')?fb.markBook:{}, (local.markBook&&typeof local.markBook==='object')?local.markBook:{});
+              merged[date] = Object.assign({}, fb, local, {
                 words: Math.max(local.words||0, fb.words||0),
                 quiz:  Math.max(local.quiz||0,  fb.quiz||0),
                 min:   _mn,
                 xp:    Math.max(local.xp||0,    fb.xp||0),
                 gameMin: Math.max(local.gameMin||0, fb.gameMin||0),
-              };
+              });
               if(_meU.length){ merged[date].markedEns=_meU; merged[date].marked=_meU.length; }
+              if(_seU.length){ merged[date].seenEns=_seU; }
+              if(Object.keys(_xw).length){ merged[date].xpWords=_xw; }
+              if(Object.keys(_mb).length){ merged[date].markBook=_mb; }
               if(_lmc||_fmc) merged[date]._mc=1;
             });
             S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}

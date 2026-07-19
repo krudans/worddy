@@ -10546,10 +10546,34 @@ function _planStat(label,val){
 }
 
 // 페이스 판정 (오늘/최근7일 외운 vs 하루목표)
+// [범위통일] 스코프(챕터) 안에서 오늘 외운 수 — 귀속(markBook)이 다른 책이면 제외.
+//  플랜 카드의 모든 숫자(외운/남은/목표/링)를 같은 범위로 맞추기 위한 계산.
+function _planTodayMemoScoped(ens, todayStr, bookName){
+  try{
+    var t=todayStr||((typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10));
+    var d=(S.studyLog||{})[t]||{};
+    var marked=Array.isArray(d.markedEns)?d.markedEns:[];
+    if(!ens||!ens.length) return marked.length;
+    var set=Object.create(null); ens.forEach(function(e){ set[e]=1; });
+    var mb=(d.markBook&&typeof d.markBook==='object')?d.markBook:{};
+    var c=0;
+    for(var i=0;i<marked.length;i++){
+      var en=marked[i];
+      if(!set[en]) continue;                                            // 이 스코프(챕터) 단어만
+      if(bookName && mb[en]!==undefined && mb[en]!==bookName) continue; // 다른 책에서 외운 동철 단어 제외
+      c++;
+    }
+    return c;
+  }catch(e){ return 0; }
+}
+
 function _planPace(ens, daily, todayStr, bookName){
-  // [책귀속] 특정 단어장이면 markBook 기준으로 오늘 외운 수 계산(겹치는 단어가 안 연 책에 잡히던 버그 방지)
+  // [범위통일] 플랜 카드 링은 카드의 다른 숫자(외운/남은/목표)와 같은 스코프(챕터)로 센다.
+  //  기존: 책 전체 오늘(_todayMemoByBook)을 써서 '193/63'처럼 분자·분모 범위가 갈렸음(2026-07-19).
   var todayMemo;
-  if(bookName && bookName!=='__all__' && typeof _todayMemoByBook==='function'){
+  if(ens && ens.length && bookName && bookName!=='__all__'){
+    todayMemo=_planTodayMemoScoped(ens,todayStr,bookName);
+  } else if(bookName && bookName!=='__all__' && typeof _todayMemoByBook==='function'){
     var _bx=window._planCtx||(typeof _planScopeData==='function'?_planScopeData():null);
     todayMemo=_todayMemoByBook(bookName,todayStr,_bx?_bx.books:[]);
   } else {

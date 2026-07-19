@@ -18579,6 +18579,13 @@ auth.onAuthStateChanged(async user => {
               if(k === 'xp'){ if((_data._totalXp||0) >= (S._totalXp||0) && _data.xp!==undefined) S.xp=_data.xp; return; }
               // streak/alStreak(연속 학습일): 최댓값
               if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=Math.max(S[k]||0, _data[k]); return; }
+              // [전수점검 보강] '옛 서버가 새 로컬을 덮는' 필드 보존 병합
+              if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object') S.markMap=Object.assign({}, _data.markMap, S.markMap||{}); return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
+              if(k === '_ownedPacks'){ if(Array.isArray(_data._ownedPacks)) S._ownedPacks=Array.from(new Set([].concat(S._ownedPacks||[], _data._ownedPacks))); return; } // 구매이력: 합집합
+              if(k === 'attendDates'){ if(Array.isArray(_data.attendDates)){ S.attendDates=Array.from(new Set([].concat(S.attendDates||[], _data.attendDates))); } return; } // 출석일: 합집합
+              if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
+              if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
+              if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
@@ -18813,6 +18820,13 @@ auth.onAuthStateChanged(async user => {
               if(k === 'xp'){ if((_data._totalXp||0) >= (S._totalXp||0) && _data.xp!==undefined) S.xp=_data.xp; return; }
               // streak/alStreak(연속 학습일): 최댓값
               if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=Math.max(S[k]||0, _data[k]); return; }
+              // [전수점검 보강] '옛 서버가 새 로컬을 덮는' 필드 보존 병합
+              if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object') S.markMap=Object.assign({}, _data.markMap, S.markMap||{}); return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
+              if(k === '_ownedPacks'){ if(Array.isArray(_data._ownedPacks)) S._ownedPacks=Array.from(new Set([].concat(S._ownedPacks||[], _data._ownedPacks))); return; } // 구매이력: 합집합
+              if(k === 'attendDates'){ if(Array.isArray(_data.attendDates)){ S.attendDates=Array.from(new Set([].concat(S.attendDates||[], _data.attendDates))); } return; } // 출석일: 합집합
+              if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
+              if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
+              if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
@@ -18886,7 +18900,7 @@ auth.onAuthStateChanged(async user => {
             S.bestScores = _mergedBs;
             localStorage.setItem('wd-bs', JSON.stringify(_mergedBs));
           }
-          if(Array.isArray(_data.learned)) S.learned=new Set(_data.learned);
+          if(Array.isArray(_data.learned)) S.learned=new Set([].concat(Array.from(S.learned||[]), _data.learned)); // [보강] 합집합
           if(Array.isArray(_data.favorites)) S.favorites=_data.favorites;
         if((Array.isArray(_data.tHistory)||Array.isArray(_data.deletedTHistory)) && typeof _mergeTHistory==='function'){
           var _tt2=Array.from(new Set([].concat(_thGetTomb(), _data.deletedTHistory||[])));

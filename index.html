@@ -2481,8 +2481,8 @@ function saveCollection(col) {
   if(S.user&&S.user.uid&&typeof db!=='undefined') {
     clearTimeout(window._colTimer);
     window._colTimer = setTimeout(()=>{
-      db.collection('users').doc(S.user.uid).set({collection:col},{merge:true})
-        .catch(e=>console.warn('컬렉션 저장 오류',e));
+      // [도감/캐릭터 불일치 근본수정] 병합 우회 직접쓰기 폐기 → _colMerge(합집합−묘비) 경유 push
+      try{ _colMerge([], []); }catch(e){ console.warn('컬렉션 저장 오류',e); }
     },2000);
   }
 }
@@ -3586,10 +3586,10 @@ function _doRemoveButterfly(bId) {
   localStorage.setItem('wd-butterflies', JSON.stringify(owned));
   S.myButterflies = owned;
   if(typeof _bfAddTomb==='function') _bfAddTomb([bId]);
-  // Firebase에도 즉시 반영
+  // [도감/캐릭터 불일치 근본수정] 병합 우회 직접쓰기 폐기 → _bfMerge(합집합−묘비) 경유 push
+  //  (묘비는 위 _bfAddTomb에서 이미 반영. _bfMerge가 로컬∪서버-빈값−묘비로 재구성 후 myButterflies·deletedButterflies 동반 저장)
   if(S.user && typeof db !== 'undefined') {
-    db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true})
-      .catch(e=>console.warn('나비 삭제 Firebase 오류', e));
+    try{ _bfMerge([], []); }catch(e){ console.warn('나비 삭제 병합 오류', e); }
   }
   const b = BUTTERFLY_LIST.find(x=>x.id===bId);
   toast('🗑️ '+(b?.name||bId)+' 삭제됨');
@@ -5123,6 +5123,7 @@ function load() {
   S.lid = localStorage.getItem('wd-l')||'egg';
   S.xp = +(localStorage.getItem('wd-xp')||0);
   S.bfCoupons = +(localStorage.getItem('wd-coupons')||0);
+  S.bfCouponsTs = +(localStorage.getItem('wd-coupons-ts')||0);   // [쿠폰 유실 근본수정] LWW 타임스탬프
   S.streak = +(localStorage.getItem('wd-st')||1);
   S.lastDate = localStorage.getItem('wd-dt') || '';
   S.lastDate = localStorage.getItem('wd-dt')||'';
@@ -5368,6 +5369,7 @@ function sv() {
   try{ if(S.markMap) Object.keys(S.markMap).forEach(function(k){ if(!k||/^[0-9]+$/.test(k)) delete S.markMap[k]; }); }catch(e){}
   localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-xp',S.xp);
   localStorage.setItem('wd-coupons', S.bfCoupons||0);
+  localStorage.setItem('wd-coupons-ts', S.bfCouponsTs||0);   // [쿠폰 유실 근본수정] LWW 타임스탬프
   localStorage.setItem('wd-st',S.streak); localStorage.setItem('wd-dt',S.lastDate);
   localStorage.setItem('wd-nk',S.nick);
   // 내 단어장일 때만 wd-w 갱신 (다른 책 활성 시 내 단어장 데이터 보존)
@@ -5472,6 +5474,7 @@ function sv() {
     myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
       deletedButterflies:(typeof _bfGetTomb==='function'?_bfGetTomb():JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]')),
       bfCoupons: S.bfCoupons||0,
+      bfCouponsTs: S.bfCouponsTs||0,   // [쿠폰 유실 근본수정] LWW 타임스탬프 동반 push
       tHistory: (S.tHistory||[]).slice(-(typeof _TH_MAX!=='undefined'?_TH_MAX:50)),   // 레벨테스트 성장 이력(최근 N회)
       deletedTHistory: (typeof _thGetTomb==='function'?_thGetTomb():[]),   // 삭제된 이력(묘비)
       email:(S.user&&S.user.email)||'',
@@ -7929,7 +7932,7 @@ function finishChapterExam(){
     var gotNabi=false;
     if(passed && b){
       if(!Array.isArray(b.chPass)) b.chPass=new Array(CH_N).fill(false);
-      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; S.bfCoupons=(S.bfCoupons||0)+1; gotNabi=true; }
+      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now(); gotNabi=true; }
       if(typeof sv==='function') sv();
     }
     S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
@@ -10151,7 +10154,8 @@ function rollButterfly(preferUnowned) {
     S.myButterflies = owned;
     if(typeof _bfRemoveTomb==='function') _bfRemoveTomb([chosen.id]);
     if(S.user && typeof db !== 'undefined') {
-      try { db.collection('users').doc(S.user.uid).set({myButterflies: owned}, {merge:true}); } catch(e) {}
+      // [도감/캐릭터 불일치 근본수정] 병합 우회 직접쓰기 폐기 → _bfMerge(합집합−묘비) 경유 push
+      try { _bfMerge([], []); } catch(e) {}
     }
   }
   // 이미 보유한 나비여도 chosen을 반환 (뽑기 결과로 표시)
@@ -10162,7 +10166,7 @@ function rollButterfly(preferUnowned) {
 window._useBfCoupon = function(){
   try{
     if((S.bfCoupons||0) <= 0){ if(typeof toast==='function') toast('나비 쿠폰이 없어요'); return; }
-    S.bfCoupons = (S.bfCoupons||0) - 1;
+    S.bfCoupons = (S.bfCoupons||0) - 1; S.bfCouponsTs=Date.now();
     if(typeof sv==='function') sv();
     var bf = (typeof rollButterfly==='function') ? rollButterfly(true) : null;
     if(bf){
@@ -10330,7 +10334,7 @@ function _bfMerge(fireBf, fireTomb){
   if(S.user&&typeof db!=='undefined'){ try{ db.collection('users').doc(S.user.uid).set({myButterflies:merged, deletedButterflies:tombArr},{merge:true}); }catch(e){} }
   return merged;
 }
-function _bfSaveButterflies(arr){ try{ S.myButterflies=arr; localStorage.setItem('wd-butterflies',JSON.stringify(arr)); if(S.user&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({myButterflies:arr},{merge:true}).catch(function(){}); } }catch(e){} }
+function _bfSaveButterflies(arr){ try{ S.myButterflies=arr; localStorage.setItem('wd-butterflies',JSON.stringify(arr)); if(S.user&&typeof db!=='undefined'){ try{ _bfMerge([], []); }catch(e){} } }catch(e){} }  /* [도감/캐릭터 불일치 근본수정] 병합 우회 직접쓰기 폐기 → _bfMerge 경유(로컬=arr 반영 후 묘비 적용·동반 저장) */
 function _bfClearSelected(){
   var sel=window._bfSel||{}; var ids=Object.keys(sel).filter(function(k){return sel[k];});
   if(!ids.length) return;
@@ -18586,6 +18590,12 @@ auth.onAuthStateChanged(async user => {
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
               if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
               if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
+              if(k === 'bfCoupons'){ // [쿠폰 유실 근본수정] _ts 최신우선 LWW — 무조건 덮어쓰기 폐기(지급/소비 최신 기기 값 보존, 스테일 서버가 되덮지 못하게)
+                var _sTs=+(_data.bfCouponsTs||0), _lTs=+(S.bfCouponsTs||0);
+                if(_sTs===0 && _lTs===0){ if(_data.bfCoupons!==undefined) S.bfCoupons=_data.bfCoupons; return; } // 레거시(양쪽 ts 없음): 기존 동작(서버 채택)
+                if(_sTs > _lTs){ if(_data.bfCoupons!==undefined) S.bfCoupons=_data.bfCoupons; S.bfCouponsTs=_sTs; return; } // 서버가 더 최신 → 서버 채택
+                return; // 로컬이 더 최신(또는 동률) → 로컬 값·ts 유지
+              }
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });
@@ -18827,6 +18837,12 @@ auth.onAuthStateChanged(async user => {
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
               if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
               if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
+              if(k === 'bfCoupons'){ // [쿠폰 유실 근본수정] _ts 최신우선 LWW — 무조건 덮어쓰기 폐기(지급/소비 최신 기기 값 보존, 스테일 서버가 되덮지 못하게)
+                var _sTs=+(_data.bfCouponsTs||0), _lTs=+(S.bfCouponsTs||0);
+                if(_sTs===0 && _lTs===0){ if(_data.bfCoupons!==undefined) S.bfCoupons=_data.bfCoupons; return; } // 레거시(양쪽 ts 없음): 기존 동작(서버 채택)
+                if(_sTs > _lTs){ if(_data.bfCoupons!==undefined) S.bfCoupons=_data.bfCoupons; S.bfCouponsTs=_sTs; return; } // 서버가 더 최신 → 서버 채택
+                return; // 로컬이 더 최신(또는 동률) → 로컬 값·ts 유지
+              }
               if(k === 'nick' && _data[k] === '' && S.nick) return;
               if(_data[k]!==undefined) S[k]=_data[k]; // currentBook 제외: 로컬 위치 보존
             });

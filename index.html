@@ -2834,8 +2834,9 @@ function _pkBanner(pk, owned, petCol) {
     <div style="position:absolute;inset:0;overflow:hidden">${img}</div>
 
     ${!pk.imageUrl ? `<div style="position:absolute;right:-6px;bottom:-10px;font-size:96px;opacity:.16;line-height:1;pointer-events:none">${pk.emoji || '📚'}</div>` : ''}
+    ${pk.imageUrl ? `<div style="position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none"><img src="${pk.imageUrl}" style="width:72px;height:96px;object-fit:cover;border-radius:8px;border:2px solid rgba(255,255,255,.9);box-shadow:0 4px 14px rgba(0,0,0,.35);display:block"></div>` : ''}<!-- [썸네일 개선 20260720] 배경 32% 무드 위에 또렷한 책표지 전경 -->
 
-    <div style="position:relative;flex:1;padding:15px 16px;display:flex;flex-direction:column;justify-content:space-between;min-width:0">
+    <div style="position:relative;flex:1;padding:15px 16px;display:flex;flex-direction:column;justify-content:space-between;min-width:0${pk.imageUrl?';padding-right:100px':''}">
       <div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
           ${owned ? `<span style="background:rgba(255,255,255,.92);color:${petCol.main};font-size:9.5px;font-weight:800;padding:2.5px 7px;border-radius:20px">보유 중</span>` : ''}
@@ -3437,7 +3438,7 @@ function rMarket() {
       const wordCount = (pk.words||[]).length;
       const preview = (pk.words||[]).slice(0,3).map(w=>w.en).join(', ');
       const pkIcon = pk.imageUrl
-        ? `<img src="${pk.imageUrl}" style="width:46px;height:46px;border-radius:12px;object-fit:cover;flex-shrink:0">`
+        ? `<img src="${pk.imageUrl}" style="width:44px;height:60px;border-radius:7px;object-fit:cover;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.18);border:1px solid var(--border,#E5E7EB)">` /* [썸네일 개선 20260720] 책표지 비율 */
         : `<div style="font-size:36px;flex-shrink:0">${pk.emoji||'📚'}</div>`;
       html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:14px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:${owned?'0':'10px'}">
@@ -3457,8 +3458,12 @@ function rMarket() {
             </div>`
             : `<button onclick="_doBuyPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
         </div>
-        ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>
-        <div id="preview-${pk.id}" style="display:none;margin-top:10px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div onclick="togglePackIntro('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">ℹ️ 자세히 보기 ▾</div>
+          ${!owned?`<div onclick="togglePackPreview('${pk.id}')" style="cursor:pointer;font-size:11px;color:${petCol.main};font-weight:700">📖 단어 미리보기 ▾</div>`:''}
+        </div>
+        <div id="intro-${pk.id}" style="display:none;margin-top:10px;background:var(--bg-sub,#F8FAFC);border:1px solid var(--border,#E5E7EB);border-radius:12px;padding:12px 13px"></div><!-- [마켓 팩 상세소개 20260720] -->
+        ${!owned?`<div id="preview-${pk.id}" style="display:none;margin-top:10px">
           <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
@@ -3511,6 +3516,52 @@ function togglePackPreview(packId) {
   const el = document.getElementById('preview-'+packId);
   if(!el) return;
   el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+/* ══════ [마켓 팩 상세소개 20260720] 신간 공지와 동일한 구성(책 소개+단어장 특징+CEFR 막대·범례)을
+   각 팩의 실데이터(desc·basis)와 BWD_META 실측 분포로 즉석 조립 — 전 팩·신규 팩 자동 적용.
+   목록에선 접힘, "자세히 보기 ▾"로 펼침(lazy 렌더). ══════ */
+function _pkIntroHTML(pk){
+  try{
+    var ws=Array.isArray(pk.words)?pk.words:[];
+    var ens=ws.map(function(w){ return typeof w==='string'?w:(w&&w.en)||''; }).filter(Boolean);
+    var cnt=ens.length||pk.count||0;
+    var chN=Math.max(1, Math.min((typeof CH_N!=='undefined'?CH_N:5), Math.ceil(cnt/((typeof CH_PACK!=='undefined')?CH_PACK:200))));
+    var dist={}, known=0;
+    try{ if(typeof _ensureBwdMeta==='function') _ensureBwdMeta(); }catch(e){}
+    try{ var M=(typeof BWD_META!=='undefined')?BWD_META:(window.BWD_META||null);
+      if(M){ ens.forEach(function(en){ var m=M[en]; var c=m&&m.cefr; if(c){ dist[c]=(dist[c]||0)+1; known++; } }); } }catch(e){}
+    var order=['A1','A2','B1','B2','C1','C2'];
+    var _CCOL={A1:'#34D399',A2:'#6EE7B7',B1:'#60A5FA',B2:'#3B82F6',C1:'#A78BFA',C2:'#8B5CF6'};
+    var chart='';
+    if(known>0){
+      var segs=order.filter(function(c){return dist[c];});
+      var bar=segs.map(function(c){ var p=Math.round(dist[c]/known*1000)/10; return '<span style="display:block;width:'+p+'%;background:'+_CCOL[c]+'"></span>'; }).join('');
+      var legend=segs.map(function(c){ var p=Math.round(dist[c]/known*100); var L=(typeof CEFR_LABEL!=='undefined'&&CEFR_LABEL[c])||{name:'',desc:''};
+        return '<div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">'
+        +'<span style="width:10px;height:10px;border-radius:3px;background:'+_CCOL[c]+';flex-shrink:0;margin-top:2px"></span>'
+        +'<div style="flex:1;font-size:11px;line-height:1.45;color:var(--text2,#374151)"><b>'+c+' · '+L.name+'</b> <b style="color:var(--text1,#111)">'+p+'%</b> ('+dist[c].toLocaleString()+'개)<br><span style="font-size:10px;color:var(--text3,#9CA3AF)">'+L.desc+'</span></div></div>'; }).join('');
+      chart='<div style="margin-top:10px;background:var(--bg-card,#fff);border:1px solid var(--border,#E5E7EB);border-radius:10px;padding:10px 12px">'
+        +'<div style="font-size:11px;font-weight:800;color:var(--text2,#374151);margin-bottom:7px">📊 단어 난이도 구성</div>'
+        +'<div style="display:flex;height:10px;border-radius:5px;overflow:hidden">'+bar+'</div>'+legend
+        +'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:6px">유럽 공통 어학 기준(CEFR) — 낮을수록 쉬운 단어예요</div></div>';
+    }
+    var esc=function(s){ return String(s||'').replace(/</g,'&lt;'); };
+    return '<div style="font-size:12px;line-height:1.75;color:var(--text2,#374151)">'
+      +(pk.desc?('<div style="margin-bottom:10px">'+esc(pk.desc)+'</div>'):'')
+      +'<div style="font-weight:800;color:var(--text1,#111);margin-bottom:2px">📖 이런 책이에요</div>'
+      +'<div style="margin-bottom:10px">'+esc(pk.basis||pk.courseDesc||'원서 전문에서 핵심 어휘를 빈도순으로 뽑아 만든 단어장이에요.')+'</div>'
+      +'<div style="font-weight:800;color:var(--text1,#111);margin-bottom:2px">✨ 단어장 특징</div>'
+      +'<div>· 총 '+cnt.toLocaleString()+'단어를 CEFR 난이도순 '+chN+'개 챕터로 구성 — 1챕터가 가장 쉽고 뒤로 갈수록 어려워요<br>· 챕터를 외우고 통과 시험(90점)에 합격하면 다음 챕터가 열리고 나비 쿠폰 🦋을 받아요</div>'
+      +chart+'</div>';
+  }catch(e){ return '<div style="font-size:12px;color:var(--text3,#9CA3AF)">소개를 불러오지 못했어요</div>'; }
+}
+function togglePackIntro(packId){
+  var el=document.getElementById('intro-'+packId); if(!el) return;
+  if(el.style.display==='none'){
+    if(!el._filled){ var pk=(S._marketPacks||[]).find(function(p){return p.id===packId;}); el.innerHTML=pk?_pkIntroHTML(pk):''; el._filled=true; }
+    el.style.display='block';
+  } else { el.style.display='none'; }
 }
 
 

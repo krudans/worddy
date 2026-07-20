@@ -5365,6 +5365,15 @@ function _healCurriculumWords(){
         b.words = cw.map(function(w){ return {en:w.en}; });
         try{ console.warn('[커리큘럼 자가복구] '+b.name+' words '+_before+' → '+cw.length); }catch(e){}
       }
+      /* [1MiB 저장실패 근본수정 20260720] 개수가 정본과 같아도 words에 en 외 필드(kr·ex5·ja·de 등)가
+         커밋돼 비대해지는 오염이 있음(예: 레벨업 1단계 890KB → user_words 1.35MB → 1MiB 초과로 저장 전면 실패).
+         설계 정본은 en-only({en})이므로, en 외 키가 하나라도 있으면 en-only로 strip한다.
+         markMap은 en 키 기준이라 진도 무손실, 표시 시 사전 오버레이가 다시 채우므로 화면 무변화. */
+      if(Array.isArray(b.words) && b.words.some(function(w){ return w && Object.keys(w).length>1; })){
+        var _szB=0; try{ _szB=JSON.stringify(b.words).length; }catch(e){}
+        b.words = b.words.map(function(w){ return {en:(w&&w.en)||''}; });
+        try{ console.warn('[커리큘럼 슬림화] '+b.name+' words en-only 정규화 ('+_szB+'B → '+JSON.stringify(b.words).length+'B)'); }catch(e){}
+      }
     });
   }catch(e){}
 }
@@ -5503,7 +5512,7 @@ function sv() {
       const _myWords = (!S.currentBook || S.currentBook==='내 단어장')
         ? (S.words||[])
         : (function(){ try{ return JSON.parse(localStorage.getItem('wd-w')||'[]')||[]; }catch(e){ return []; } })();
-      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : b), words: _myWords, tombBooks:(S._tombBooks||[]), tombWords:(S._tombWords||[]), updatedAt: new Date().toISOString()};
+      const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : (b&&b.isCurriculum ? {...b, words:(Array.isArray(b.words)?b.words:[]).map(w=>({en:(w&&w.en)||''}))} : b)), words: _myWords, tombBooks:(S._tombBooks||[]), tombWords:(S._tombWords||[]), updatedAt: new Date().toISOString()};   /* [1MiB 저장실패 근본수정 20260720] 커리큘럼 words는 payload에서도 en-only 보장(설계 정본) — 오염돼도 서버엔 절대 비대본이 안 감 */
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장
@@ -6986,8 +6995,9 @@ function cleanDummyWords() {
   const dummyKeys = ['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문','한국어뜻'];
   const before = S.words.length;
   S.words = S.words.filter(w => w.en && w.kr && !dummyKeys.includes(w.en) && w.en.length < 80);
-  // books도 정리
+  // books도 정리 — [1MiB 저장실패 근본수정 20260720] 커리큘럼(en-only 정본)은 kr이 없어 이 필터가 전량 삭제함 → 제외
   (S.books||[]).forEach(bk => {
+    if(bk.isCurriculum) return;
     if(bk.words) bk.words = bk.words.filter(w => w.en && w.kr && !dummyKeys.includes(w.en) && w.en.length < 80);
   });
   const removed = before - S.words.length;
@@ -7006,7 +7016,7 @@ function startApp() {
   // 더미 헤더 데이터 자동 제거
   const _dummyKeys = ['포함된 문장','단어','한국어뜻','발음기호','형태','한국어','예문'];
   S.words = S.words.filter(w => w.en && w.kr && !_dummyKeys.includes(w.en) && w.en.length < 80);
-  (S.books||[]).forEach(bk => { if(bk.words) bk.words = bk.words.filter(w => w.en && w.kr && !_dummyKeys.includes(w.en) && w.en.length < 80); });
+  (S.books||[]).forEach(bk => { if(bk.isCurriculum) return; if(bk.words) bk.words = bk.words.filter(w => w.en && w.kr && !_dummyKeys.includes(w.en) && w.en.length < 80); });   /* [1MiB 저장실패 근본수정 20260720] 커리큘럼(en-only) 보호 */
   // ph(발음기호) 칸에 발음기호 대신 예문이 잘못 들어간 단어 자동교정 → 예문(ex)으로 옮기고 ph 비움.
   // 진짜 발음기호([..]/IPA)는 건드리지 않음. 시작 시마다 실행(Firebase 옛값 덮어도 재교정).
   (function(){

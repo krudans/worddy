@@ -3393,6 +3393,8 @@ function rMarket() {
   }
   html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
     html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
+  /* [원서 요청 서비스 20260720] 찾는 원서가 없을 때 요청 → book_requests 적재 → 관리자 등록 → 인앱 알림 */
+  html += `<button onclick="showBookRequest()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);border:none;border-radius:12px;padding:11px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff">📮 찾는 원서가 없나요? 요청하기 · 1주일 이내 올려드려요</button>`;
 
   // ── 팩 목록 영역 (검색 시 이 안쪽만 부분 교체) ──
   html += '<div id="mkt-list">';
@@ -4172,6 +4174,55 @@ ${['없음','적음','보통','많음','최다'].map((lb,i)=>` <div style="displ
 }
 
 // ── 마켓 단어팩 Firebase 로드 ──
+/* ══════════ [원서 요청 서비스 20260720] ══════════
+   사용자가 원하는 원서를 요청 → book_requests 컬렉션 적재(status:'pending')
+   → 관리자(admin '원서 요청' 탭)가 팩 등록 후 완료 처리(status:'done'+packId)
+   → 앱이 로그인 후 내 완료 요청을 감지해 축하 모달 알림(notified:true 마킹). */
+function showBookRequest(){
+  var mr=document.getElementById('mr'); if(!mr) return;
+  if(!S.user||!S.user.uid){ toast('로그인 후 요청할 수 있어요'); return; }
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()">'
+    +'<div style="font-size:17px;font-weight:900;margin-bottom:4px">📮 원서 단어장 요청</div>'
+    +'<div style="font-size:12px;color:var(--text3,#9CA3AF);line-height:1.6;margin-bottom:14px">읽고 싶은 원서를 알려주세요. <b style="color:var(--theme,#3B82F6)">1주일 이내</b>에 CEFR 단계별 챕터 단어장으로 만들어 올려드리고, 등록되면 알림을 보내드려요.</div>'
+    +'<input id="bq-title" placeholder="책 제목 (필수) — 예: The Giver" style="width:100%;padding:11px 14px;border:1.5px solid var(--border,#E5E7EB);border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:8px">'
+    +'<input id="bq-author" placeholder="저자 (선택)" style="width:100%;padding:10px 14px;border:1.5px solid var(--border,#E5E7EB);border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:8px">'
+    +'<textarea id="bq-note" placeholder="한마디 (선택) — 예: 수업 교재예요" style="width:100%;min-height:60px;resize:vertical;padding:10px 14px;border:1.5px solid var(--border,#E5E7EB);border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px"></textarea>'
+    +'<button onclick="submitBookRequest()" style="width:100%;background:var(--theme,#3B82F6);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:8px">📮 요청 보내기</button>'
+    +'<button onclick="cm()" style="width:100%;background:var(--bg-sub,#F3F4F6);color:var(--text2,#374151);border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">닫기</button>'
+    +'</div></div>';
+}
+async function submitBookRequest(){
+  try{
+    var t=(document.getElementById('bq-title')||{}).value||''; t=t.trim();
+    if(!t){ toast('책 제목을 입력해주세요'); return; }
+    var a=((document.getElementById('bq-author')||{}).value||'').trim();
+    var n=((document.getElementById('bq-note')||{}).value||'').trim();
+    if(typeof db==='undefined'||!S.user||!S.user.uid){ toast('로그인 상태를 확인해주세요'); return; }
+    await db.collection('book_requests').add({ title:t, author:a, note:n, uid:S.user.uid, nick:S.nick||'', status:'pending', notified:false, createdAt:new Date().toISOString() });
+    cm(); toast('📮 요청 완료! 1주일 이내에 올려드릴게요');
+  }catch(e){ toast('요청 실패: 잠시 후 다시 시도해주세요'); }
+}
+async function _checkBookRequestDone(){
+  try{
+    if(typeof db==='undefined'||!S.user||!S.user.uid) return;
+    var q=await db.collection('book_requests').where('uid','==',S.user.uid).get();
+    var done=q.docs.filter(function(d){ var v=d.data()||{}; return v.status==='done' && !v.notified; });
+    if(!done.length) return;
+    var v=done[0].data();
+    var mr=document.getElementById('mr');
+    if(mr){
+      mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
+        +'<div style="font-size:48px;margin-bottom:8px">🎉</div>'
+        +'<div style="font-size:17px;font-weight:900;margin-bottom:4px">요청하신 원서가 등록됐어요!</div>'
+        +'<div style="font-size:13px;color:var(--text2,#374151);margin-bottom:14px">「'+(v.title||'')+'」 단어장이 마켓에 올라왔어요.<br>지금 담아서 챕터 미션을 시작해보세요!</div>'
+        +'<button onclick="cm();go(\'mybooks\');setTimeout(function(){if(typeof showMarket===\'function\')showMarket();},300)" style="width:100%;background:var(--theme,#3B82F6);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:8px">🛒 마켓에서 보기</button>'
+        +'<button onclick="cm()" style="width:100%;background:var(--bg-sub,#F3F4F6);color:var(--text2,#374151);border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에</button>'
+        +'</div></div>';
+    }
+    for(var i=0;i<done.length;i++){ try{ await db.collection('book_requests').doc(done[i].id).update({notified:true, notifiedAt:new Date().toISOString()}); }catch(e){} }
+  }catch(e){}
+}
+
 async function loadMarketPacks(retryCount) {
   retryCount = retryCount || 0;
   if(typeof db === 'undefined') {
@@ -7062,6 +7113,7 @@ function startApp() {
   // [제거] 빈 단어장에 시스템 기본단어를 멋대로 채워넣던 자동주입 호출 삭제
   setTimeout(()=>checkAttend(), 1000);
   setTimeout(()=>syncProfileToFirebase(), 2000);
+  setTimeout(()=>{ try{ if(typeof _checkBookRequestDone==='function') _checkBookRequestDone(); }catch(e){} }, 6000);   /* [원서 요청 서비스 20260720] 완료 알림 */
   setTimeout(async ()=>{
     await loadMarketPacks();
     _migratePackWords(); // 기존 마켓팩 단어 로컬 제거 + packId 복원

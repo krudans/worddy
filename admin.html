@@ -330,6 +330,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('dict')" id="ni-dict"><span class="ic">📖</span>Butterfly Dic<span id="dict-new-badge" style="display:none;margin-left:auto;background:#EF4444;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px"></span></div>
       <div class="ni" onclick="T('pk')" id="ni-pk"><span class="ic">🛒</span>마켓 팩</div>
       <div class="ni" onclick="T('bp')" id="ni-bp"><span class="ic">📖</span>원서 → 팩</div>
+      <div class="ni" onclick="T('bq')" id="ni-bq"><span class="ic">📮</span>원서 요청<span id="bq-new-badge" style="display:none;margin-left:auto;background:#EF4444;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px"></span></div>
       <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
       <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
       <div class="ss">나비 & 게임</div>
@@ -2407,6 +2408,7 @@ function showAppScreen(){
   document.getElementById('au-role').textContent=currentAdmin?.role||'관리자';
   T('db');
   try{ if(typeof _updateMissBadge==='function') _updateMissBadge(); }catch(e){}
+  try{ if(typeof _bqLoad==='function') _bqLoad().then(function(){ _updateBQBadge(); }); }catch(e){}   /* [원서 요청 서비스 20260720] */
 }
 function showErr(msg){
   const el=document.getElementById('li-err');
@@ -2517,9 +2519,9 @@ const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',bp:'원서 → 팩 만들기',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',bp:'원서 → 팩 만들기',bq:'원서 요청',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
+  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,bq:rBQ,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
 }
 
 // ══════════════════════════════════
@@ -7538,6 +7540,129 @@ function bwdAddEntry(){
   // 앱에서 들어온 미등록 알림이 있으면 자동 해결 처리
   try{ if(window.__missWords && window.__missWords.some(function(x){return x.id===en;})){ db.collection('dict_missing').doc(en).set({resolved:true,resolvedAt:new Date().toISOString()},{merge:true}).then(function(){_updateMissBadge();}); } }catch(e){}
   rDICT();
+}
+
+// ── [원서 요청 서비스 20260720] 앱 마켓의 "원서 요청하기"가 book_requests에 쌓인다.
+//    관리자는 여기서 목록 확인 → 팩 등록 후 [완료 처리](packId 연결, 앱이 요청자에게 인앱 알림)
+//    → [📢 공지 만들기]로 서적 홍보+단어장 특징 공지를 자동 조립·편집·게시(announcements). ──
+async function _bqLoad(){
+  try{ var s=await db.collection('book_requests').get();
+    window.__bqAll=s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+      .sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  }catch(e){ window.__bqAll=[]; }
+}
+function _updateBQBadge(){
+  var n=(window.__bqAll||[]).filter(function(x){return x.status==='pending';}).length;
+  var b=document.getElementById('bq-new-badge');
+  if(b){ if(n>0){ b.style.display='inline-block'; b.textContent='NEW '+n; } else { b.style.display='none'; } }
+}
+function _bqDays(iso){ try{ return Math.floor((Date.now()-new Date(iso).getTime())/864e5); }catch(e){ return 0; } }
+async function rBQ(){
+  const c=document.getElementById('content'); if(!c) return;
+  c.innerHTML='<div style="padding:40px;text-align:center;color:#9CA3AF">⏳ 불러오는 중...</div>';
+  await _bqLoad(); _updateBQBadge();
+  var all=window.__bqAll||[];
+  var pend=all.filter(function(x){return x.status==='pending';});
+  var done=all.filter(function(x){return x.status==='done';});
+  var dism=all.filter(function(x){return x.status==='dismissed';});
+  function row(x){
+    var d=_bqDays(x.createdAt); var late=d>=5&&x.status==='pending';
+    var badge=x.status==='pending'?('<span style="background:'+(late?'#EF4444':'#F59E0B')+';color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px">D+'+d+(late?' ⚠️ 1주 임박':'')+'</span>')
+      : x.status==='done'?'<span style="background:#10B981;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px">완료'+(x.packId?' · '+x.packId:'')+'</span>'
+      :'<span style="background:#9CA3AF;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px">무시됨</span>';
+    var acts = x.status==='pending'
+      ? '<button class="btn bb" style="padding:6px 12px;font-size:12px" onclick="bqDone(\''+x.id+'\')">✅ 완료 처리</button>'
+        +'<button class="btn bgr" style="padding:6px 12px;font-size:12px" onclick="bqDismiss(\''+x.id+'\')">무시</button>'
+      : x.status==='done'
+      ? '<button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="bqNotice(\''+(x.packId||'')+'\')">📢 공지 만들기</button>'
+      : '';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1.5px solid #E5E7EB;border-radius:12px;margin-bottom:8px;background:#fff;flex-wrap:wrap">'
+      +'<div style="flex:1;min-width:200px"><div style="font-weight:800;font-size:14px">📚 '+(x.title||'')+(x.author?' <span style="font-weight:600;color:#6B7280;font-size:12px">· '+x.author+'</span>':'')+'</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;margin-top:2px">'+(x.nick||'익명')+' · '+(x.createdAt||'').slice(0,10)+(x.note?' · "'+x.note+'"':'')+'</div></div>'
+      +badge+'<div style="display:flex;gap:6px">'+acts+'</div></div>';
+  }
+  c.innerHTML='<div style="max-width:860px">'
+    +'<h2 style="font-size:22px;font-weight:900;margin-bottom:6px">📮 원서 요청</h2>'
+    +'<p style="font-size:12px;color:#6B7280;margin-bottom:16px">사용자가 앱 마켓에서 요청한 원서 목록입니다. <b>1주일 이내 등록</b>이 약속입니다 — 팩을 등록한 뒤 [완료 처리]에 팩 ID를 연결하면 요청자에게 앱 알림이 가고, [공지 만들기]로 신간 홍보 공지를 자동 작성할 수 있습니다.</p>'
+    +'<button class="btn bp" style="margin-bottom:16px" onclick="bqNotice(\'\')">📢 팩 골라서 신간 공지 만들기 (요청 무관)</button>'
+    +'<div style="font-weight:900;font-size:14px;margin-bottom:8px">대기 중 <span style="color:#EF4444">'+pend.length+'</span></div>'
+    +(pend.length?pend.map(row).join(''):'<div style="padding:16px;color:#9CA3AF;font-size:13px;border:1.5px dashed #E5E7EB;border-radius:12px;margin-bottom:8px">대기 중인 요청이 없어요</div>')
+    +'<div style="font-weight:900;font-size:14px;margin:18px 0 8px">완료 '+done.length+'</div>'+done.map(row).join('')
+    +(dism.length?('<div style="font-weight:900;font-size:14px;margin:18px 0 8px;color:#9CA3AF">무시 '+dism.length+'</div>'+dism.map(row).join('')):'')
+    +'</div>';
+}
+async function bqDone(id){
+  var pid=prompt('등록한 팩 ID를 입력하세요 (packs 문서 ID, 예: the_giver)\n※ 입력하면 요청자에게 앱 알림이 갑니다.');
+  if(pid===null) return; pid=(pid||'').trim();
+  try{ await db.collection('book_requests').doc(id).update({status:'done', packId:pid, doneAt:new Date().toISOString()});
+    toast('✅ 완료 처리 — 요청자에게 알림이 갑니다','ok'); rBQ();
+  }catch(e){ toast('오류: '+e.message,'err'); }
+}
+async function bqDismiss(id){
+  if(!confirm('이 요청을 무시 처리할까요?')) return;
+  try{ await db.collection('book_requests').doc(id).update({status:'dismissed', dismissedAt:new Date().toISOString()}); rBQ(); }catch(e){ toast('오류','err'); }
+}
+// ── 신간 공지 자동 생성: packId → 팩 메타(이름·단어수·desc) + CEFR 분포 실측 → 템플릿 조립 → 편집·AI다듬기·게시 ──
+async function bqNotice(packId){
+  if(!packId){ packId=prompt('공지로 만들 팩 ID를 입력하세요 (packs 문서 ID)'); if(packId===null) return; packId=(packId||'').trim(); }
+  if(!packId){ toast('팩 ID가 필요합니다','err'); return; }
+  var s; try{ s=await db.collection('packs').doc(packId).get(); }catch(e){}
+  if(!s||!s.exists){ toast('팩을 찾을 수 없어요: '+packId,'err'); return; }
+  var p=s.data()||{};
+  var ws=Array.isArray(p.words)?p.words:[];
+  var ens=ws.map(function(w){ return typeof w==='string'?w:(w&&w.en)||''; }).filter(Boolean);
+  var cnt=ens.length||p.count||0;
+  var chN=Math.max(1, Math.min(5, Math.ceil(cnt/200)));
+  // CEFR 분포 (BWD_META)
+  var dist={}, known=0;
+  try{ var M=(typeof BWD_META!=='undefined')?BWD_META:(window.BWD_META||null);
+    if(M){ ens.forEach(function(en){ var m=M[en]; var c=m&&m.cefr; if(c){ dist[c]=(dist[c]||0)+1; known++; } }); }
+  }catch(e){}
+  var order=['A1','A2','B1','B2','C1','C2'];
+  var minC=order.find(function(c){ return (dist[c]||0)>=Math.max(10,cnt*0.05); })||order.find(function(c){return dist[c];})||'';
+  var distStr=order.filter(function(c){return dist[c];}).map(function(c){return c+' '+dist[c];}).join(' · ');
+  var title='📚 신간 단어장 — '+(p.name||packId);
+  var subtitle=cnt.toLocaleString()+'단어 · '+chN+'챕터'+(minC?(' · '+minC+'부터'):'');
+  var body=(p.desc?p.desc+'\n\n':'')
+    +'📖 이런 책이에요\n'+(p.basis||p.courseDesc||'원서 전문에서 핵심 어휘를 빈도순으로 뽑아 만든 단어장이에요.')+'\n\n'
+    +'✨ 단어장 특징\n'
+    +'· 총 '+cnt.toLocaleString()+'단어를 CEFR 난이도순 '+chN+'개 챕터로 구성 — 1챕터가 가장 쉽고 뒤로 갈수록 어려워요'
+    +(distStr?('\n· 난이도 분포: '+distStr):'')
+    +'\n· 챕터를 외우고 통과 시험(90점)에 합격하면 다음 챕터가 열리고 나비 쿠폰 🦋을 받아요'
+    +'\n\n지금 마켓에서 담아 첫 챕터 미션을 시작해보세요!';
+  var mr=document.getElementById('mr')||document.getElementById('modal-root');
+  if(!mr){ mr=document.createElement('div'); mr.id='mr'; document.body.appendChild(mr); }
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:560px;text-align:left">'
+    +'<h3 style="font-size:18px;font-weight:900;margin-bottom:4px">📢 신간 공지 미리보기</h3>'
+    +'<p style="font-size:11.5px;color:#6B7280;margin-bottom:12px">팩 데이터로 자동 조립했어요. 자유롭게 수정한 뒤 게시하세요. (게시 즉시 앱 홈 공지에 노출)</p>'
+    +'<input id="bqn-title" class="input" value="'+title.replace(/"/g,'&quot;')+'" style="margin-bottom:8px">'
+    +'<input id="bqn-sub" class="input" value="'+subtitle.replace(/"/g,'&quot;')+'" style="margin-bottom:8px">'
+    +'<textarea id="bqn-body" class="input" style="min-height:220px;font-size:13px;line-height:1.7">'+body.replace(/</g,'&lt;')+'</textarea>'
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<button class="btn bp" style="flex:1" onclick="bqNoticeAI(\''+packId+'\')">✨ AI로 홍보문 다듬기</button>'
+    +'<button class="btn bb" style="flex:1" onclick="bqNoticePost()">📤 공지 게시</button>'
+    +'<button class="btn bgr" onclick="cm()">닫기</button></div>'
+    +'</div></div>';
+}
+async function bqNoticeAI(packId){
+  var b=document.getElementById('bqn-body'); if(!b) return;
+  var t=(document.getElementById('bqn-title')||{}).value||'';
+  try{ toast('✨ AI 작성 중...','ok');
+    var out=await callAI('다음은 영단어 학습 앱의 신간 원서 단어장 공지 초안이다. 책의 매력을 살린 홍보 1~2문장과 단어장 특징을 담아, 같은 구조(📖 이런 책이에요 / ✨ 단어장 특징)를 유지하며 더 매끄러운 한국어 공지로 다듬어라. 이모지·불릿(·)은 유지하고, 과장 없이 350자 이내로. 결과 본문만 출력.\n\n제목: '+t+'\n\n'+b.value, 600);
+    if(out&&out.trim()) b.value=out.trim();
+    toast('✨ 완료 — 확인 후 게시하세요','ok');
+  }catch(e){ toast('AI 실패: '+e.message,'err'); }
+}
+async function bqNoticePost(){
+  var t=((document.getElementById('bqn-title')||{}).value||'').trim();
+  var st=((document.getElementById('bqn-sub')||{}).value||'').trim();
+  var bd=((document.getElementById('bqn-body')||{}).value||'').trim();
+  if(!t||!bd){ toast('제목과 내용을 입력하세요','err'); return; }
+  try{
+    await db.collection('announcements').add({ title:t, content:bd, subtitle:st, active:true,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(), createdBy:(currentAdmin&&currentAdmin.email)||'', kind:'new-book' });
+    toast('✅ 공지 게시 완료 — 앱 홈에 노출됩니다','ok'); cm();
+  }catch(e){ toast('게시 실패: '+e.message,'err'); }
 }
 
 // ── [미등록 단어 알림] 앱에서 사전에 없는 단어가 들어오면 dict_missing에 쌓인다. 관리자가 여기서 그때그때 등록. ──

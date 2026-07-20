@@ -7620,16 +7620,33 @@ async function bqNotice(packId){
   }catch(e){}
   var order=['A1','A2','B1','B2','C1','C2'];
   var minC=order.find(function(c){ return (dist[c]||0)>=Math.max(10,cnt*0.05); })||order.find(function(c){return dist[c];})||'';
-  var distStr=order.filter(function(c){return dist[c];}).map(function(c){return c+' '+dist[c];}).join(' · ');
+  /* [공지 CEFR 그래프 20260720] 텍스트 나열 대신 마켓 팩 상세와 동일한 막대+범례(등급 의미 설명) HTML.
+     앱 공지(notice.js)는 content를 innerHTML로 렌더하므로 그대로 표시된다. */
+  var _CCOL={A1:'#34D399',A2:'#6EE7B7',B1:'#60A5FA',B2:'#3B82F6',C1:'#A78BFA',C2:'#8B5CF6'};
+  var _CLBL={A1:['입문','인사·숫자 같은 생존 필수 단어'],A2:['초급','간단한 일상 대화에 쓰는 단어'],B1:['중급','익숙한 주제를 스스로 표현하는 수준'],B2:['중상급','원어민과 무리 없이 소통하는 수준'],C1:['고급','복잡한 글·업무를 자유롭게 다루는 수준'],C2:['최상급','미묘한 뉘앙스까지 아는 원어민급']};
+  var chartHTML='';
+  if(known>0){
+    var segs=order.filter(function(c){return dist[c];});
+    var bar=segs.map(function(c){ var p=Math.round(dist[c]/known*1000)/10; return '<span style="display:block;width:'+p+'%;background:'+_CCOL[c]+'"></span>'; }).join('');
+    var legend=segs.map(function(c){ var p=Math.round(dist[c]/known*100); return '<div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">'
+      +'<span style="width:10px;height:10px;border-radius:3px;background:'+_CCOL[c]+';flex-shrink:0;margin-top:2px"></span>'
+      +'<div style="flex:1;font-size:11px;line-height:1.45;color:#374151"><b>'+c+' · '+_CLBL[c][0]+'</b> <b style="color:#111">'+p+'%</b> ('+dist[c].toLocaleString()+'개)<br><span style="font-size:10px;color:#9CA3AF">'+_CLBL[c][1]+'</span></div></div>'; }).join('');
+    chartHTML='<div style="margin-top:10px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px">'
+      +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:7px">📊 단어 난이도 구성</div>'
+      +'<div style="display:flex;height:10px;border-radius:5px;overflow:hidden">'+bar+'</div>'
+      +legend
+      +'<div style="font-size:9.5px;color:#9CA3AF;margin-top:6px">유럽 공통 어학 기준(CEFR) — 낮을수록 쉬운 단어예요</div>'
+      +'</div>';
+  }
   var title='📚 신간 단어장 — '+(p.name||packId);
   var subtitle=cnt.toLocaleString()+'단어 · '+chN+'챕터'+(minC?(' · '+minC+'부터'):'');
   var body=(p.desc?p.desc+'\n\n':'')
     +'📖 이런 책이에요\n'+(p.basis||p.courseDesc||'원서 전문에서 핵심 어휘를 빈도순으로 뽑아 만든 단어장이에요.')+'\n\n'
     +'✨ 단어장 특징\n'
     +'· 총 '+cnt.toLocaleString()+'단어를 CEFR 난이도순 '+chN+'개 챕터로 구성 — 1챕터가 가장 쉽고 뒤로 갈수록 어려워요'
-    +(distStr?('\n· 난이도 분포: '+distStr):'')
     +'\n· 챕터를 외우고 통과 시험(90점)에 합격하면 다음 챕터가 열리고 나비 쿠폰 🦋을 받아요'
-    +'\n\n지금 마켓에서 담아 첫 챕터 미션을 시작해보세요!';
+    +'\n\n지금 마켓에서 담아 첫 챕터 미션을 시작해보세요!'
+    +(chartHTML?('\n'+chartHTML):'');
   var mr=document.getElementById('mr')||document.getElementById('modal-root');
   if(!mr){ mr=document.createElement('div'); mr.id='mr'; document.body.appendChild(mr); }
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:560px;text-align:left">'
@@ -7647,9 +7664,11 @@ async function bqNotice(packId){
 async function bqNoticeAI(packId){
   var b=document.getElementById('bqn-body'); if(!b) return;
   var t=(document.getElementById('bqn-title')||{}).value||'';
+  /* [공지 CEFR 그래프 20260720] 그래프 HTML은 AI 입력에서 분리해 보존 — AI는 텍스트만 다듬고 그래프는 그대로 재부착 */
+  var full=b.value; var cut=full.indexOf('<div'); var txt=cut>=0?full.slice(0,cut):full; var chart=cut>=0?full.slice(cut):'';
   try{ toast('✨ AI 작성 중...','ok');
-    var out=await callAI('다음은 영단어 학습 앱의 신간 원서 단어장 공지 초안이다. 책의 매력을 살린 홍보 1~2문장과 단어장 특징을 담아, 같은 구조(📖 이런 책이에요 / ✨ 단어장 특징)를 유지하며 더 매끄러운 한국어 공지로 다듬어라. 이모지·불릿(·)은 유지하고, 과장 없이 350자 이내로. 결과 본문만 출력.\n\n제목: '+t+'\n\n'+b.value, 600);
-    if(out&&out.trim()) b.value=out.trim();
+    var out=await callAI('다음은 영단어 학습 앱의 신간 원서 단어장 공지 초안이다. 책의 매력을 살린 홍보 1~2문장과 단어장 특징을 담아, 같은 구조(📖 이런 책이에요 / ✨ 단어장 특징)를 유지하며 더 매끄러운 한국어 공지로 다듬어라. 이모지·불릿(·)은 유지하고, 과장 없이 350자 이내로. 결과 본문만 출력.\n\n제목: '+t+'\n\n'+txt, 600);
+    if(out&&out.trim()) b.value=out.trim()+(chart?('\n'+chart):'');
     toast('✨ 완료 — 확인 후 게시하세요','ok');
   }catch(e){ toast('AI 실패: '+e.message,'err'); }
 }

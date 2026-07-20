@@ -4189,6 +4189,18 @@ async function loadMarketPacks(retryCount) {
     const fbIds = new Set(fbPacks.map(p => p.id));
     const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
     S._marketPacks = [...fbPacks, ...localOnly];
+    /* [en-only 팩 지원 20260720] packs.words가 ["mustache",...] 문자열 배열인 신형 팩을
+       로드 직후 객체 배열로 정규화(사전 오버레이) → 이후 모든 소비 지점(마켓·담기·학습·게임)이 무수정 동작.
+       사전 미로드 시엔 {en}만 채워 표시 시 getBookWords 오버레이에 맡긴다(dict_missing 오적재 방지). */
+    try{
+      S._marketPacks.forEach(function(p){
+        if(p && Array.isArray(p.words) && p.words.length && typeof p.words[0]==='string'){
+          var _dictReady=(typeof BWD_DICT!=='undefined');
+          p.words=p.words.map(function(en){ return (_dictReady&&typeof _enrichFromDict==='function')?_enrichFromDict({en:en}):{en:en}; });
+          p._enOnly=true;
+        }
+      });
+    }catch(e){}
     console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
     _migratePackWords(); // 로드 완료 즉시 packId 복원 + 구 데이터 제거
   } catch(e) {

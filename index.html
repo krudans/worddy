@@ -3550,7 +3550,8 @@ function _doBuyPack(packId, opts) {
   }
   S._ownedPacks.push(packId);
   if(typeof db !== 'undefined' && S.user?.uid) {
-    db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});
+    /* [user_packs 통째교체 수정 20260720] 통째 set은 스테일 기기가 타 기기 구매를 지움 → arrayUnion 증분 */
+    db.collection('user_packs').doc(S.user.uid).set({owned:firebase.firestore.FieldValue.arrayUnion(packId)},{merge:true}).catch(()=>{});
   }
   sv();
   vib([100,50,100]);
@@ -11530,7 +11531,7 @@ function _deleteDefaultGroup(){
   S.books = (S.books||[]).filter(b=>!DEFGRP.includes(b.packId));
   S._ownedPacks = (S._ownedPacks||[]).filter(id=>!DEFGRP.includes(id));
   if(delNames.includes(S.currentBook)){ if(typeof _selectBook==='function') _selectBook('내 단어장'); else S.currentBook='내 단어장'; }
-  if(typeof db!=='undefined' && S.user && S.user.uid){ db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(function(){}); }
+  if(typeof db!=='undefined' && S.user && S.user.uid){ db.collection('user_packs').doc(S.user.uid).set({owned:firebase.firestore.FieldValue.arrayRemove.apply(null,DEFGRP)},{merge:true}).catch(function(){}); }   /* [user_packs 통째교체 수정 20260720] arrayRemove 증분 */
   if(typeof sv==='function') sv();
   if(typeof toast==='function') toast('🗑 기본 단어 그룹 삭제됨');
   showBooksModal();
@@ -11549,7 +11550,7 @@ function _reRegisterDefaultGroup(){
     }
     if(S._ownedPacks.indexOf(pid)<0) S._ownedPacks.push(pid);
   });
-  if(typeof db!=='undefined' && S.user && S.user.uid){ db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(function(){}); }
+  if(typeof db!=='undefined' && S.user && S.user.uid){ db.collection('user_packs').doc(S.user.uid).set({owned:firebase.firestore.FieldValue.arrayUnion.apply(null,DEFGRP)},{merge:true}).catch(function(){}); }   /* [user_packs 통째교체 수정 20260720] arrayUnion 증분 */
   if(typeof sv==='function') sv();
   if(typeof toast==='function') toast('🔄 기본 단어 그룹 '+added+'개 재등록!');
   showBooksModal();
@@ -13598,7 +13599,7 @@ function _confirmDeleteBook(name, fromModal) {
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px">단어장을 삭제할까요?<br>단어 데이터도 함께 삭제됩니다.</div>
     <div style="display:flex;gap:8px">
       <button onclick="${back}" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:S._ownedPacks},{merge:true}).catch(()=>{});}_tombBookKey(_db&&_db.packId?('p:'+_db.packId):('n:'+'${esc}'));S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')S.currentBook='내 단어장';sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:firebase.firestore.FieldValue.arrayRemove(_db.packId)},{merge:true}).catch(()=>{});}_tombBookKey(_db&&_db.packId?('p:'+_db.packId):('n:'+'${esc}'));S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')S.currentBook='내 단어장';sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
     </div>
   </div></div>`;
 }
@@ -18086,15 +18087,18 @@ async function syncProfileToFirebase() {
   if(!S.user?.uid) return;
   try {
     const todayStudy = (S.studyLog[new Date().toISOString().slice(0,10)]||{}).words||0;
+    /* [프로필 되돌림 방지 20260720] 기존엔 로컬 값을 무조건 set → 스테일 기기가 서버 xp/streak 등을
+       낮은 값으로 되돌릴 수 있었음(랭킹/친구 표시 필드). 서버 선독 1회 후 숫자 필드는 max로 기록. */
+    let _srv={}; try{ const _ss=await db.collection('users').doc(S.user.uid).get(); _srv=_ss.data()||{}; }catch(e){}
     await db.collection('users').doc(S.user.uid).set({
-      nick: S.nick||'',
-      lid: S.lid||'egg',
-      streak: S.streak||0,
-      xp: S.xp||0,
+      nick: (S.nick && S.nick.length ? S.nick : (_srv.nick||'')),
+      lid: S.lid || _srv.lid || 'egg',
+      streak: Math.max(S.streak||0, _srv.streak||0),
+      xp: Math.max(S.xp||0, _srv.xp||0),
       todayWords: todayStudy,
-      totalLearned: S.learned ? S.learned.size : 0,
-      maxCombo: S._maxCombo||0,
-      achievements: (S._achievements||[]).length,
+      totalLearned: Math.max(S.learned ? S.learned.size : 0, _srv.totalLearned||0),
+      maxCombo: Math.max(S._maxCombo||0, _srv.maxCombo||0),
+      achievements: Math.max((S._achievements||[]).length, _srv.achievements||0),
       code: S.user.uid.slice(0,8).toUpperCase(),
       updatedAt: new Date().toISOString(),
     }, {merge:true});

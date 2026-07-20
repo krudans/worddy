@@ -3613,6 +3613,8 @@ function changeNickname() {
     localStorage.setItem('wd-butterflies', JSON.stringify(allIds));
     S.myButterflies = allIds;
     if(typeof _bfRemoveTomb==='function') _bfRemoveTomb(allIds);
+    /* [나비 유실 근본수정 20260720] sv payload에서 나비 제거했으므로 서버 반영은 _bfMerge로 직접 수행 */
+    if(S.user && typeof db!=='undefined'){ try{ _bfMerge([], []); }catch(e){} }
     S.nick = v; sv();
     toast('👑 복사왕! 나비 30종 전체 획득!'); vib([100,50,200]);
     go(); return;
@@ -4239,7 +4241,10 @@ function _claimHourButterfly(bfId) {
   if(!owned.has(bfId)) {
     owned.add(bfId);
     localStorage.setItem(key, JSON.stringify([...owned]));
+    S.myButterflies=[...owned];
     if(typeof _bfRemoveTomb==='function') _bfRemoveTomb([bfId]);
+    /* [나비 유실 근본수정 20260720] sv payload에서 나비 제거했으므로 서버 반영은 _bfMerge로 직접 수행 */
+    if(S.user && typeof db!=='undefined'){ try{ _bfMerge([], []); }catch(e){} }
     showButterflyRoll(bf, null);
     checkAchievements();
   } else {
@@ -5471,15 +5476,17 @@ function sv() {
       bestScores:S.bestScores||{},
       hiddenPackWords:S.hiddenPackWords||{},
       modeSettings:_mset,
-    myButterflies:S.myButterflies||JSON.parse(localStorage.getItem('wd-butterflies')||'[]'),
-      deletedButterflies:(typeof _bfGetTomb==='function'?_bfGetTomb():JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]')),
+      /* [나비 유실 근본수정 20260720] sv는 3초 throttle 후 '호출 시점 스냅샷'을 push함.
+         뽑기 직전 sv()가 뽑기 前 나비배열을 스냅샷 → 3초 뒤 flush되며 방금 뽑은 나비를 덮어써 유실.
+         나비/도감/컬렉션은 이미 _bfMerge·_colMerge·_bfSetTomb·_colTombSet가 모든 변경 시 서버에 즉시 write하므로
+         sv payload에서 제거한다(단일 소스=merge). myButterflies·deletedButterflies·collection·deletedCollection 4개. */
+      // myButterflies / deletedButterflies : _bfMerge·_bfSetTomb가 관리 → sv 제외
       bfCoupons: S.bfCoupons||0,
       bfCouponsTs: S.bfCouponsTs||0,   // [쿠폰 유실 근본수정] LWW 타임스탬프 동반 push
       tHistory: (S.tHistory||[]).slice(-(typeof _TH_MAX!=='undefined'?_TH_MAX:50)),   // 레벨테스트 성장 이력(최근 N회)
       deletedTHistory: (typeof _thGetTomb==='function'?_thGetTomb():[]),   // 삭제된 이력(묘비)
       email:(S.user&&S.user.email)||'',
-      collection:S._collection||JSON.parse(localStorage.getItem('bw-collection')||'[]'),
-      deletedCollection:(typeof _colTombGet==='function'?_colTombGet():JSON.parse(localStorage.getItem('bw-col-tomb')||'[]')),
+      // collection / deletedCollection : _colMerge·_colTombSet가 관리 → sv 제외 (위 [나비 유실 근본수정] 주석 참조)
       updatedAt: new Date().toISOString()
     };
     // throttle: 3초에 1번만

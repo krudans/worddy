@@ -7754,9 +7754,11 @@ async function bqNotice(packId){
       +'<div style="font-size:9.5px;color:#9CA3AF;margin-top:6px">유럽 공통 어학 기준(CEFR) — 낮을수록 쉬운 단어예요</div>'
       +'</div>';
   }
+  /* [공지 표지 20260722] 팩 표지를 공지 본문 우측에 노출(앱 notice.js가 innerHTML 렌더) */
+  var coverHTML=(p.imageUrl&&p.imageUrl.length>1000)?('<img src="'+p.imageUrl+'" style="float:right;width:78px;height:106px;object-fit:cover;border-radius:9px;margin:0 0 8px 10px;box-shadow:0 3px 10px rgba(0,0,0,.18);border:1px solid #E5E7EB">'):'';
   var title='📚 신간 단어장 — '+(p.name||packId);
   var subtitle=cnt.toLocaleString()+'단어 · '+chN+'챕터'+(minC?(' · '+minC+'부터'):'');
-  var body=(p.desc?p.desc+'\n\n':'')
+  var body=coverHTML+(p.desc?p.desc+'\n\n':'')
     +'📖 이런 책이에요\n'+(p.basis||p.courseDesc||'원서 전문에서 핵심 어휘를 빈도순으로 뽑아 만든 단어장이에요.')+'\n\n'
     +'✨ 단어장 특징\n'
     +'· 총 '+cnt.toLocaleString()+'단어를 CEFR 난이도순 '+chN+'개 챕터로 구성 — 1챕터가 가장 쉽고 뒤로 갈수록 어려워요'
@@ -7781,10 +7783,12 @@ async function bqNoticeAI(packId){
   var b=document.getElementById('bqn-body'); if(!b) return;
   var t=(document.getElementById('bqn-title')||{}).value||'';
   /* [공지 CEFR 그래프 20260720] 그래프 HTML은 AI 입력에서 분리해 보존 — AI는 텍스트만 다듬고 그래프는 그대로 재부착 */
-  var full=b.value; var cut=full.indexOf('<div'); var txt=cut>=0?full.slice(0,cut):full; var chart=cut>=0?full.slice(cut):'';
+  var full=b.value;
+  var imgM=full.match(/^\s*<img[^>]*>/); var img=imgM?imgM[0]:''; if(img) full=full.slice(imgM[0].length);   /* [공지 표지 20260722] 표지 태그 분리 보존 */
+  var cut=full.indexOf('<div'); var txt=cut>=0?full.slice(0,cut):full; var chart=cut>=0?full.slice(cut):'';
   try{ toast('✨ AI 작성 중...','ok');
     var out=await callAI('다음은 영단어 학습 앱의 신간 원서 단어장 공지 초안이다. 책의 매력을 살린 홍보 1~2문장과 단어장 특징을 담아, 같은 구조(📖 이런 책이에요 / ✨ 단어장 특징)를 유지하며 더 매끄러운 한국어 공지로 다듬어라. 이모지·불릿(·)은 유지하고, 과장 없이 350자 이내로. 결과 본문만 출력.\n\n제목: '+t+'\n\n'+txt, 600);
-    if(out&&out.trim()) b.value=out.trim()+(chart?('\n'+chart):'');
+    if(out&&out.trim()) b.value=img+out.trim()+(chart?('\n'+chart):'');
     toast('✨ 완료 — 확인 후 게시하세요','ok');
   }catch(e){ toast('AI 실패: '+e.message,'err'); }
 }

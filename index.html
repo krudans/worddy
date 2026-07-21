@@ -5661,8 +5661,28 @@ function sv() {
     };
     // throttle: 3초에 1번만
     clearTimeout(window._svTimer);
-    window._svTimer = setTimeout(()=>{
+    window._svTimer = setTimeout(async ()=>{
       if(window._sessionLost){ console.warn('[세션락] 다른 기기 접속 중 → 서버 저장 건너뜀(로컬만 저장)'); return; } // [세션락] clobber 방지
+      /* [크로스기기 삭제 존중 20260721] 이 기기가 켜져 있는 동안 다른 기기(폰 등)에서 책을 삭제하면,
+         이 기기의 통째 저장(books set)이 삭제를 되살리던 문제. 저장 직전 서버 tombBooks를 선독해
+         로컬 묘비와 합치고, 묘비 대상 책을 로컬 books에서도 제거한 뒤 저장한다. (read 1회/flush) */
+      try{
+        const _srvTomb = await db.collection('user_words').doc(uid).get().then(s=>((s.data()||{}).tombBooks)||[]).catch(()=>[]);
+        if(_srvTomb.length){
+          const _merged = Array.from(new Set([...(S._tombBooks||[]), ..._srvTomb]));
+          if(_merged.length !== (S._tombBooks||[]).length){
+            S._tombBooks = _merged;
+            const _tombSet = {}; _merged.forEach(k=>{ _tombSet[k]=1; });
+            const _before = (S.books||[]).length;
+            S.books = (S.books||[]).filter(b=>{ if(!b) return false; const key = b.packId?('p:'+b.packId):('n:'+b.name); return !_tombSet[key]; });
+            if(S.books.length !== _before){
+              console.log('[크로스기기 삭제 존중] 다른 기기의 삭제 반영:', _before, '→', S.books.length, '권');
+              try{ localStorage.setItem('wd-bks', JSON.stringify(S.books)); }catch(e){}
+              if(S.currentBook && !S.books.some(b=>b.name===S.currentBook)) S.currentBook='내 단어장';
+            }
+          }
+        }
+      }catch(e){}
       // 메인 user 문서 저장 (단어 제외 - 용량 절약 + user_words 덮어쓰기 방지)
       const saveDataLite = {...saveData};
       delete saveDataLite.words; delete saveDataLite.books;

@@ -399,6 +399,34 @@ async function generateOneWordEx(packId, wordIdx) {
 }
 
 // ── Google 로그인 ──
+function _renderAiProviderCard(){
+  try{
+    var main=document.getElementById('main-inner'); if(!main||document.getElementById('ai-prov-card')) return;
+    var prov=getAiProvider(); var hasKey=!!(localStorage.getItem('claude-key')||'').trim();
+    var html='<div id="ai-prov-card" style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px 16px;margin-bottom:16px">'
+      +'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+      +'<div style="font-size:13px;font-weight:900;color:#111">🤖 AI 엔진 (전체 일괄 적용)</div>'
+      +'<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;cursor:pointer"><input type="radio" name="ai-prov" value="gemini" '+(prov==='gemini'?'checked':'')+' onchange="_setAiProv(this.value)"> Gemini <span style="font-size:10.5px;color:#9CA3AF">(무료 · 한도 있음)</span></label>'
+      +'<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;cursor:pointer"><input type="radio" name="ai-prov" value="claude" '+(prov==='claude'?'checked':'')+' onchange="_setAiProv(this.value)"> Claude <span style="font-size:10.5px;color:#9CA3AF">(API 키 필요)</span></label>'
+      +'<span id="ai-prov-state" style="font-size:11px;font-weight:800;color:'+(prov==='claude'?(hasKey?'#16A34A':'#DC2626'):'#16A34A')+'">'+(prov==='claude'?(hasKey?'● Claude 사용 중':'● 키를 입력하세요'):'● Gemini 사용 중')+'</span>'
+      +'</div>'
+      +'<div id="ai-claude-row" style="display:'+(prov==='claude'?'flex':'none')+';gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">'
+      +'<input id="ai-claude-key" type="password" placeholder="Claude API 키 (sk-ant-...)" value="'+((localStorage.getItem('claude-key')||''))+'" style="flex:1;min-width:240px;padding:9px 12px;border:1.5px solid #D1D5DB;border-radius:9px;font-size:12px">'
+      +'<button class="btn bb" style="padding:8px 14px;font-size:12px" onclick="_saveClaudeKey()">키 저장·연결 확인</button>'
+      +'<span style="font-size:10.5px;color:#9CA3AF">키는 이 브라우저(localStorage)에만 저장 · 모델: claude-haiku-4-5</span>'
+      +'</div></div>';
+    main.insertAdjacentHTML('afterbegin', html);
+  }catch(e){}
+}
+function _setAiProv(v){ localStorage.setItem('ai-provider', v); var c=document.getElementById('ai-prov-card'); if(c)c.remove(); _renderAiProviderCard(); toast(v==='claude'?'🤖 Claude로 전환 — 모든 AI 기능에 적용됩니다':'🤖 Gemini로 전환','ok'); }
+async function _saveClaudeKey(){
+  var k=((document.getElementById('ai-claude-key')||{}).value||'').trim();
+  if(!k){ toast('키를 입력하세요','err'); return; }
+  localStorage.setItem('claude-key', k);
+  try{ toast('연결 확인 중...','ok'); var r=await callClaude('OK라고만 답해', 16, null); toast('✅ Claude 연결 성공: '+String(r).slice(0,20),'ok'); }
+  catch(e){ toast('연결 실패: '+e.message,'err'); return; }
+  var c=document.getElementById('ai-prov-card'); if(c)c.remove(); _renderAiProviderCard();
+}
 async function rDB(){
   const mi = document.getElementById('main-inner');
   if(!mi) return;
@@ -2521,7 +2549,8 @@ function T(tab){
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
   const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',bp:'원서 → 팩 만들기',bq:'원서 요청',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  ({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,bq:rBQ,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab]?.();
+  const _fn=({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,bq:rBQ,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab];
+  if(_fn){ const _r=_fn(); if(tab==='db'){ Promise.resolve(_r).then(function(){ try{ _renderAiProviderCard(); }catch(e){} }); } }
 }
 
 // ══════════════════════════════════
@@ -2912,7 +2941,25 @@ function showAddW(){
 function getGeminiKey() {
   return window._geminiApiKey || localStorage.getItem('gemini_api_key') || '';
 }
+/* [AI 프로바이더 전역 스위치 20260721] 대시보드 상단 라디오로 Gemini/Claude 선택 →
+   관리자 페이지의 모든 AI 기능(callAI 경유)이 일괄 전환된다. Claude는 API 키 입력 후 즉시 사용. */
+async function callClaude(prompt, maxTokens, _onStatus){
+  const key=(localStorage.getItem('claude-key')||'').trim();
+  if(!key) throw new Error('Claude API 키가 없습니다. 대시보드 상단 AI 설정에서 키를 입력하세요.');
+  if(_onStatus) _onStatus('🤖 Claude 요청 중...');
+  const model=localStorage.getItem('claude-model')||'claude-haiku-4-5';
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:model, max_tokens:Math.max(256, maxTokens||300), messages:[{role:'user',content:prompt}]})
+  });
+  if(!resp.ok){ const t=await resp.text().catch(()=>''); throw new Error('Claude '+resp.status+': '+t.slice(0,140)); }
+  const d=await resp.json();
+  return (d.content||[]).filter(x=>x&&x.type==='text').map(x=>x.text).join('\n');
+}
+function getAiProvider(){ return localStorage.getItem('ai-provider')==='claude'?'claude':'gemini'; }
 async function callAI(prompt, maxTokens=300, _retry=0, _onStatus=null) {
+  if(getAiProvider()==='claude') return callClaude(prompt, maxTokens, _onStatus);
   const apiKey = getGeminiKey();
   if(!apiKey) throw new Error('Gemini API 키가 없습니다. 설정에서 입력해주세요.');
   if(_onStatus) _onStatus('🌐 API 요청 중...');
@@ -3214,7 +3261,7 @@ window._bp = window._bp || {
   packId: '', name: '', emoji: '📖', cat: '📖 도서',
   courseId: '', courseName: '', courseEmoji: '📚',
   tiers: [{ label: '', text: '' }],
-  settings: { topN: 500, excludeA1: true, pnRatio: 90, minLen: 2, lemmatize: true, excludeFn: true, shortEx: true, aiMode: false },
+  settings: { topN: 500, excludeA1: true, pnRatio: 90, minLen: 3, lemmatize: true, excludeFn: true, shortEx: true, aiMode: false },
   preview: null
 };
 
@@ -3263,7 +3310,7 @@ function _bpAnalyzeText(text, s) {
   }
   var pnRatio = (s.pnRatio || 90) / 100;
   var cands = Object.keys(freq).filter(function (en) {
-    if (en.length < (s.minLen || 2)) return false;
+    if (en.length < (s.minLen || 3)) return false;
     var d = BWD_DICT[en]; if (!d || !d.kr) return false;
     if (/고유/.test(d.pos || '')) return false;
     if (s.excludeFn && (PX_GENERIC.has(en) || _BP_STOP.has(en))) return false;
@@ -3286,7 +3333,7 @@ function _bpReadSettings() {
   var g = function (id) { return document.getElementById(id); };
   var s = _bp.settings;
   if (g('bp-topN')) s.topN = Math.max(1, parseInt(g('bp-topN').value || '1000', 10));
-  if (g('bp-minLen')) s.minLen = Math.max(1, parseInt(g('bp-minLen').value || '2', 10));
+  if (g('bp-minLen')) s.minLen = Math.max(1, parseInt(g('bp-minLen').value || '3', 10));
   if (g('bp-pnRatio')) s.pnRatio = Math.max(1, Math.min(100, parseInt(g('bp-pnRatio').value || '90', 10)));
   if (g('bp-excludeA1')) s.excludeA1 = g('bp-excludeA1').checked;
   if (g('bp-lemmatize')) s.lemmatize = g('bp-lemmatize').checked;
@@ -3323,7 +3370,7 @@ async function _bpAiExtract(fullText, s, onStatus) {
     try { arr = JSON.parse(res); } catch (e) { var m = res.match(/\[[\s\S]*\]/); if (m) { try { arr = JSON.parse(m[0]); } catch (e2) { } } }
     if (Array.isArray(arr)) arr.forEach(function (w) {
       var en = String((w && w.en) || '').trim().toLowerCase().replace(/[^a-z'\-]/g, '');
-      if (en && en.length >= (s.minLen || 2) && !seen[en]) { seen[en] = 1; out.push({ en: en, kr: String((w && w.kr) || '').trim() }); }
+      if (en && en.length >= (s.minLen || 3) && !seen[en]) { seen[en] = 1; out.push({ en: en, kr: String((w && w.kr) || '').trim() }); }
     });
     done++;
     // 429(분당 15회 한도) 방지: 다음 호출까지 간격 (분당 ~14회)
@@ -3337,7 +3384,7 @@ function _bpReadTiers() {
     var lb = document.getElementById('bp-label-' + i); if (lb) t.label = lb.value;
   });
   var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
-  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); }
+  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); }
   else { _bp.courseId = g('bp-courseId').trim(); _bp.courseName = g('bp-courseName').trim(); _bp.courseEmoji = g('bp-courseEmoji').trim() || '📚'; }
 }
 
@@ -3498,6 +3545,29 @@ async function _bpPreview() {
   } catch (e) { setR('#DC2626', '분석 실패: ' + ((e && e.message) || e)); }
 }
 
+/* [원서 표지 자동검색 20260721] Open Library 공개 API에서 제목으로 표지 검색 → 400px 압축 dataURL.
+   관리자가 표지를 직접 안 넣으면 등록 시 자동으로 찾아 넣는다(실패 시 표지 없이 등록). */
+async function _bpFetchCover(title){
+  try{
+    if(!title||!String(title).trim()) return '';
+    var q=encodeURIComponent(String(title).trim());
+    var res=await fetch('https://openlibrary.org/search.json?q='+q+'&limit=20').then(function(r){return r.json();});
+    var docs=(res.docs||[]).filter(function(d){return d.cover_i;});
+    if(!docs.length) return '';
+    var t=String(title).trim().toLowerCase();
+    var exact=docs.find(function(d){return String(d.title||'').trim().toLowerCase()===t;});
+    var pick=exact||docs.sort(function(a,b){return (b.edition_count||0)-(a.edition_count||0);})[0];
+    var blob=await fetch('https://covers.openlibrary.org/b/id/'+pick.cover_i+'-L.jpg').then(function(r){return r.blob();});
+    if(!blob||blob.size<2000) return '';
+    var img=await createImageBitmap(blob);
+    var maxW=400, scale=Math.min(1, maxW/Math.max(img.width,img.height));
+    var cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    var qly=0.85, du=cv.toDataURL('image/jpeg',qly);
+    while(du.length>110*1024 && qly>0.4){ qly-=0.1; du=cv.toDataURL('image/jpeg',qly); }
+    return du;
+  }catch(e){ return ''; }
+}
 async function _bpRegister() {
   _bpReadTiers(); _bpReadSettings();
   var box = document.getElementById('bp-regresult');
@@ -3537,12 +3607,15 @@ async function _bpRegister() {
     };
     var docs = [];
     if (_bp.mode === 'book') {
-      docs.push({ id: _bp.packId, data: { name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' } });
+      var _img=(_bp.imageUrl||'').trim();
+      if(!_img){ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _img=await _bpFetchCover(_bp.name); setR('#1E5FA5', _img?'🖼️ 표지 찾음 — 등록 계속':'🖼️ 표지 못 찾음 — 표지 없이 등록'); }   /* [원서 표지 자동검색 20260721] */
+      docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _img?{imageUrl:_img}:{}) });
     } else {
       var total = _bp.tiers.length;
+      var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
       for (var i = 0; i < _bp.tiers.length; i++) {
         var label = (_bp.tiers[i].label || (i + 1) + '단계').trim();
-        docs.push({ id: _bp.courseId + '_' + (i + 1), data: { name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' } });
+        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _cImg?{imageUrl:_cImg}:{}) });
       }
     }
     var overwritten = [];
@@ -3554,6 +3627,13 @@ async function _bpRegister() {
     }
     setR('#16A34A', '✅ 등록 완료: ' + docs.map(function (d) { return d.id + '(' + d.data.count + '단어)'; }).join(', ') + (overwritten.length ? ('<br>⚠️ 덮어쓴 기존 팩: ' + overwritten.join(', ') + ' (백업: localStorage bp-bak-*)') : ''));
     if (typeof toast === 'function') toast('팩 등록 완료', 'ok');
+    /* [등록 후 폼 리셋 20260721] 이전 단어장 이름·본문이 다음 작업에 그대로 남던 문제 → 전체 초기화 후 결과 메시지만 유지 */
+    var _doneMsg = '✅ 등록 완료: ' + docs.map(function (d) { return d.id + '(' + d.data.count + '단어)'; }).join(', ') + (overwritten.length ? ('<br>⚠️ 덮어쓴 기존 팩: ' + overwritten.join(', ') + ' (백업: localStorage bp-bak-*)') : '') + '<br><span style="color:#6B7280">입력 폼을 초기화했습니다 — 다음 원서를 바로 시작하세요.</span>';
+    _bp.name=''; _bp.packId=''; _bp.desc=''; _bp.emoji=''; _bp.imageUrl='';
+    _bp.courseId=''; _bp.courseName=''; _bp.courseEmoji='';
+    _bp.tiers=[{label:'',text:''}]; _bp.preview=null;
+    rBP2();
+    var _rb=document.getElementById('bp-regresult'); if(_rb){ _rb.style.color='#16A34A'; _rb.innerHTML=_doneMsg; }
   } catch (e) { setR('#DC2626', '등록 실패: ' + ((e && e.message) || e)); }
 }
 
@@ -3568,6 +3648,7 @@ function rBP2() {
     meta = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">packId (영문 소문자·숫자·_)</label><input id="bp-packId" value="' + esc(_bp.packId) + '" placeholder="the_little_prince" onblur="this.value=_bpSlug(this.value)" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">단어장 이름</label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="어린 왕자" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">책 표지 <span style="color:#9CA3AF;font-weight:600">(비우면 자동 검색)</span></label><div style="display:flex;align-items:center;gap:8px"><label style="font-size:12px;color:#fff;background:#1E5FA5;padding:8px 12px;border-radius:8px;font-weight:800;cursor:pointer;white-space:nowrap">🖼️ 이미지 선택<input type="file" accept="image/*" onchange="pkImgUpload(this,\'bp-img-prev\',\'bp-imageUrl\')" style="display:none"></label><input type="hidden" id="bp-imageUrl" value="' + esc(_bp.imageUrl||'') + '"><span id="bp-img-prev">' + (_bp.imageUrl?('<img src="'+_bp.imageUrl+'" style="width:34px;height:46px;object-fit:cover;border-radius:5px;border:1px solid #E5E7EB">'):'<span style="font-size:11px;color:#9CA3AF">미등록 → 자동</span>') + '</span></div></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">이모지</label><input id="bp-emoji" value="' + esc(_bp.emoji) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">분류</label><select id="bp-cat" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><option' + (_bp.cat === '📖 도서' ? ' selected' : '') + '>📖 도서</option><option' + (_bp.cat === '📺 드라마' ? ' selected' : '') + '>📺 드라마</option></select></div>' +
       '</div>';
@@ -3583,12 +3664,22 @@ function rBP2() {
     var pv = _bp.preview && _bp.preview[i];
     var pvHtml = '';
     if (pv) {
+      /* [6단계 수준 배지 20260721] 분석 결과에 앱 마켓과 동일한 서술형 난이도 평가 표시 */
+      var _lvB='';
+      try{
+        var _ord=['A1','A2','B1','B2','C1','C2'], _n=pv.selected.length||1, _ws=0;
+        _ord.forEach(function(k,ix){ _ws+=ix*((pv.cefr&&pv.cefr[k])||0); });
+        var _ai2=Math.min(5,Math.max(0,Math.round(_ws/_n)));
+        var _LT=['아주 평이한 수준','전반적으로 평이한 수준','중급 단어 위주','중상급 단어 위주','고급 단어 위주','전문가 수준의 단어'];
+        var _LC={0:'#34D399',1:'#6EE7B7',2:'#60A5FA',3:'#3B82F6',4:'#A78BFA',5:'#8B5CF6'}[_ai2];
+        _lvB=' <span style="background:'+_LC+'22;color:'+_LC+';border:1px solid '+_LC+'55;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:800;filter:saturate(1.4) brightness(.8)">'+_LT[_ai2]+'</span>';
+      }catch(e){}
       var samples = pv.selected.slice(0, 24).map(function (w) { return '<span style="display:inline-block;background:#F3F4F6;border-radius:6px;padding:2px 7px;margin:2px;font-size:11px">' + esc(w.en) + ' <span style="color:#9CA3AF">' + esc(String(w.kr || '').split(/[;,]/)[0]) + '</span></span>'; }).join('');
       var head = (pv.mode === 'ai')
         ? ('🤖 AI 분석 결과 · 원문 ' + (pv.textLen || 0).toLocaleString() + '자 · ' + (pv.chunks || 0) + '조각 → <b>추출 ' + pv.selected.length.toLocaleString() + '단어</b> (사전보유 ' + (pv.inDict || 0) + ') · 예상 ' + Math.max(1, Math.ceil(pv.selected.length / 200)) + '챕터' + (pv.warn ? ('<br><span style="color:#D97706">⚠️ ' + esc(pv.warn) + '</span>') : ''))
         : ('규칙 분석 · 총 토큰 ' + (pv.allTokens || 0).toLocaleString() + ' · 매칭 ' + (pv.matched || 0).toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b>' + (pv.exception ? ' <span style="color:#D97706">(단편예외:A1포함)</span>' : ''));
       pvHtml = '<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:11px;margin-top:8px">' +
-        '<div style="font-size:12px;color:#374151;margin:2px 0 5px">' + head + '</div>' +
+        '<div style="font-size:12px;color:#374151;margin:2px 0 5px">' + head + _lvB + '</div>' +
         pxCefrBar(pv.cefr, pv.selected.length) +
         '<div style="margin-top:6px">' + samples + (pv.selected.length > 24 ? '<span style="font-size:11px;color:#9CA3AF"> …외 ' + (pv.selected.length - 24) + '</span>' : '') + '</div>' +
         '</div>';
@@ -3610,8 +3701,14 @@ function rBP2() {
   var settings = '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px">' +
     '<div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:10px">⚙️ 추출 설정</div>' +
     '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#1E5FA5;cursor:pointer;margin-bottom:10px;padding:9px;background:#EFF6FF;border-radius:8px"><input type="checkbox" id="bp-aiMode"' + (s.aiMode ? ' checked' : '') + '>🤖 단어 선정에 AI(Gemini) 사용 — 끄면 사전+빈도 규칙으로 무료·즉시 선정(기본·권장). 텍스트 PDF는 끈 채로 충분합니다.</label>' +
-    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '목표 단어수', s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 대문자비율(%)', s.pnRatio, 110) + '</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '목표 단어수', s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 판정 기준(%)', s.pnRatio, 110) + '</div>' +
     '<div style="display:flex;gap:16px;flex-wrap:wrap">' + chk('bp-excludeA1', 'A1(최기초) 제외', s.excludeA1) + chk('bp-shortEx', '단편 예외(A2+ 부족 시 A1 포함)', s.shortEx) + chk('bp-lemmatize', '표제어화(규칙)', s.lemmatize) + chk('bp-excludeFn', '기능어 제외(규칙)', s.excludeFn) + '</div>' +
+    /* [설정 설명 20260721] */
+    '<div style="margin-top:11px;background:#fff;border:1px dashed #D1D5DB;border-radius:9px;padding:10px 12px;font-size:11.5px;color:#6B7280;line-height:1.7">' +
+      '<b style="color:#374151">📌 단어는 어떻게 뽑히나요?</b> 원문 전체를 표제어화해 사전과 대조한 뒤, 고유명사·기능어·(옵션)A1을 제외하고 <b style="color:#1E5FA5">원문 등장 빈도가 높은 순서</b>로 목표 단어수만큼 뽑습니다. 랜덤이 아닙니다 — 그 책에서 가장 자주 나오는 단어부터입니다.<br>' +
+      '<b style="color:#374151">📌 왜 대부분 "중급"으로 나오나요?</b> 어떤 원서든 빈도 상위권은 일상 중빈도 어휘(A2~B1)가 차지하는 언어 특성 때문입니다. 프로그램 오류가 아니라, 목표 단어수를 늘리면 뒤쪽에 더 어려운 단어가 포함돼 평균이 올라갑니다.<br>' +
+      '<b style="color:#374151">📌 고유명사 판정 기준(%)</b> = 어떤 단어가 원문에서 <b>대문자로 시작한 채 등장한 비율</b>이 이 값 이상이면 인명·지명 같은 고유명사로 보고 제외합니다. 예: 90 → 등장의 90% 이상이 대문자면 제외. 100이면 "항상 대문자로만 나온 단어"만 제외하므로 걸러지는 게 줄고, 낮출수록 더 공격적으로 걸러냅니다.' +
+    '</div>' +
     '</div>';
 
   main.innerHTML =
@@ -6570,7 +6667,7 @@ async function saveNT(){
     rNT();
   }catch(e){toast('오류: '+e.message,'err');}
 }
-async function toggleNT(id,active){try{await db.collection('announcements').doc(id).update({active});toast(active?'✅ 게시됨':'🙈 숨김','ok');rNT();}catch(e){toast('오류','err');}}
+async function toggleNT(id,active){try{const _a=(active===true||active==='true');await db.collection('announcements').doc(id).update({active:_a});toast(_a?'✅ 게시됨':'🙈 숨김','ok');rNT();}catch(e){toast('오류','err');}}   /* [공지토글 수정 20260721] data-act 문자열 "false"가 truthy로 저장되던 버그 → boolean 변환 */
 async function delNT(id){
   document.getElementById('mr').innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
     <div style="font-size:36px;margin-bottom:12px">🗑️</div>

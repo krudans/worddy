@@ -489,6 +489,14 @@ const CEFR_LABEL = {
   C1:{name:'고급',   desc:'복잡한 글·업무를 자유롭게 다루는 수준'},
   C2:{name:'최상급', desc:'미묘한 뉘앙스까지 아는 원어민급'}
 };
+/* [읽기수준 이원화 20260721] 원서의 '책 읽기 수준'(공인 AR/Lexile 기반, packs.read.idx 0~5)과
+   '단어 학습 수준'(어휘 CEFR 평균)을 분리 표기. 추천·"~부터" 배지는 읽기 수준 우선. */
+const READ_BANDS=['그림책·입문','초등 저학년','초등 고학년','청소년','고등·성인','고전·전문'];
+const READ_COLS=['#34D399','#6EE7B7','#60A5FA','#3B82F6','#A78BFA','#8B5CF6'];
+function _readBadge(pk,small){ var r=pk&&pk.read; if(!r||r.idx===undefined||r.idx===null) return '';
+  var i=Math.min(5,Math.max(0,r.idx)); var c=READ_COLS[i];
+  var meta=[r.ar?('AR '+r.ar):'', r.lexile?(r.lexile+'L'):''].filter(Boolean).join('·');
+  return '<span title="'+(meta||'읽기 수준')+'" style="flex-shrink:0;background:'+c+'22;color:'+c+';border:1px solid '+c+'55;border-radius:20px;padding:'+(small?'2px 8px':'3px 10px')+';font-size:'+(small?'9.5':'10.5')+'px;font-weight:800;filter:saturate(1.4) brightness(.82);white-space:nowrap">읽기: '+READ_BANDS[i]+'</span>'; }
 function _cefrTag(c){ var m=CEFR_LABEL[String(c||'').toUpperCase()]; return m?(c+' · '+m.name):(c||''); }
 function _cefrDesc(c){ var m=CEFR_LABEL[String(c||'').toUpperCase()]; return m?m.desc:''; }
 function showCefrInfo(c){ try{ var m=CEFR_LABEL[String(c||'').toUpperCase()]; if(m&&typeof toast==='function') toast('📚 '+c+' · '+m.name+' — '+m.desc); }catch(e){} }
@@ -2783,7 +2791,8 @@ function _pkCefrBar(pk, h) {
   let _ws=0; _ord.forEach((k,i)=>{ _ws+=i*(c[k]||0); });
   const _ai=Math.min(5, Math.max(0, Math.round(_ws/n)));
   const _bc=cols[_ord[_ai]];
-  const lvlBadge=`<span style="margin-left:auto;background:${_bc}22;color:${_bc};border:1px solid ${_bc}55;border-radius:20px;padding:2px 9px;font-size:9.5px;font-weight:800;filter:saturate(1.4) brightness(.82);white-space:nowrap">${_LVTXT[_ai]}</span>`;
+  const _rb2=(typeof _readBadge==='function')?_readBadge(pk,true):'';
+  const lvlBadge = _rb2?`<span style="margin-left:auto;display:inline-flex">${_rb2}</span>`:`<span style="margin-left:auto;background:${_bc}22;color:${_bc};border:1px solid ${_bc}55;border-radius:20px;padding:2px 9px;font-size:9.5px;font-weight:800;filter:saturate(1.4) brightness(.82);white-space:nowrap">${_LVTXT[_ai]}</span>`;   /* [읽기수준 이원화 20260721] */
   const bar = ['A1','A2','B1','B2','C1','C2'].map(k => {
     const v = c[k] || 0; if (!v) return '';
     return `<div style="width:${v/n*100}%;background:${cols[k]}" title="${k} ${_PK_LV_TXT[k]||''} ${Math.round(v/n*100)}%"></div>`;
@@ -3426,7 +3435,8 @@ function rMarket() {
     } else {
       const myIdx=_lvToIdx[Math.min(10,Math.max(1,S._myLevel))];
       const cand=(S._marketPacks||[]).filter(p=>/도서/.test(p.cat||'')&&Array.isArray(p.words)&&p.words.length);
-      const scored=cand.map(p=>{ let ai=-1; try{ const M=(typeof BWD_META!=='undefined')?BWD_META:null; if(p.__avgIdx===undefined){ p.__avgIdx=-1; if(M){ const ord={A1:0,A2:1,B1:2,B2:3,C1:4,C2:5}; let s=0,k=0; p.words.forEach(w=>{const en=typeof w==='string'?w:(w&&w.en); const m=en&&M[en]; const c=m&&ord[m.cefr]; if(c!==undefined){s+=c;k++;}}); if(k)p.__avgIdx=s/k; } } ai=p.__avgIdx; }catch(e){} return {p, d:ai<0?99:Math.abs(ai-myIdx)}; }).filter(x=>x.d<=1.2).sort((a,b)=>a.d-b.d).slice(0,4);
+      const _c2r=[1,2,3,4,4,5]; const myReadIdx=_c2r[myIdx];   /* [읽기수준 이원화 20260721] 내 CEFR→권장 읽기 밴드 */
+      const scored=cand.map(p=>{ if(p.read&&p.read.idx!==undefined&&p.read.idx!==null){ return {p, d:Math.abs(p.read.idx-myReadIdx)}; } let ai=-1; try{ const M=(typeof BWD_META!=='undefined')?BWD_META:null; if(p.__avgIdx===undefined){ p.__avgIdx=-1; if(M){ const ord={A1:0,A2:1,B1:2,B2:3,C1:4,C2:5}; let s=0,k=0; p.words.forEach(w=>{const en=typeof w==='string'?w:(w&&w.en); const m=en&&M[en]; const c=m&&ord[m.cefr]; if(c!==undefined){s+=c;k++;}}); if(k)p.__avgIdx=s/k; } } ai=p.__avgIdx; }catch(e){} return {p, d:ai<0?99:Math.abs(ai-myIdx)}; }).filter(x=>x.d<=1.2).sort((a,b)=>a.d-b.d).slice(0,4);
       if(scored.length){
         const chips=scored.map(({p})=>`<div onclick="event.stopPropagation();showPackDetail&&showPackDetail('${p.id}')" style="flex-shrink:0;width:86px;cursor:pointer;text-align:center">
           ${p.imageUrl?`<img src="${p.imageUrl}" style="width:64px;height:86px;object-fit:cover;border-radius:8px;box-shadow:0 3px 9px rgba(0,0,0,.18);border:1px solid var(--border,#E5E7EB)">`:`<div style="width:64px;height:86px;margin:0 auto;border-radius:8px;background:var(--bg-sub,#F1F5F9);display:flex;align-items:center;justify-content:center;font-size:28px">${p.emoji||'📚'}</div>`}
@@ -3589,9 +3599,11 @@ function _pkIntroHTML(pk){
       var _c=_CCOL[order[avgIdx]];
       lvlScale='<span style="flex-shrink:0;background:'+_c+'22;color:'+_c+';border:1px solid '+_c+'55;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:800;filter:saturate(1.4) brightness(.82)">'+_LVTXT[avgIdx]+'</span>';
     }
+    var _rb=_readBadge(pk,false);
     var html='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
       +'<div style="font-size:12.5px;font-weight:800;color:var(--text1,#111)">📚 '+cnt.toLocaleString()+'단어 · '+chN+'챕터'+(minC?(' · '+minC+'부터'):'')+'</div>'
-      +lvlScale+'</div>';
+      +(_rb||lvlScale)+'</div>';   /* [읽기수준 이원화 20260721] 읽기 배지 우선, 없으면 어휘 배지 폴백 */
+    if(_rb&&lvlScale){ html+='<div style="display:flex;justify-content:flex-end;margin:-4px 0 6px">'+lvlScale.replace(/>([^<]+)<\/span>$/,'>단어: $1</span>')+'</div>'; }
     if(known>0){
       var segs=order.filter(function(c){return dist[c];});
       var bar=segs.map(function(c){ var p=Math.round(dist[c]/known*1000)/10; return '<span style="display:block;width:'+p+'%;background:'+_CCOL[c]+'"></span>'; }).join('');
@@ -3620,6 +3632,8 @@ function _pkSpecLine(pk){
           var order=['A1','A2','B1','B2','C1','C2'];
           pk.__minC=order.find(function(c){ return (dist[c]||0)>=Math.max(10,cnt*0.05); })||order.find(function(c){return dist[c];})||''; } }catch(e){}
     }
+    var _rd=pk.read&&pk.read.idx!==undefined&&pk.read.idx!==null?READ_BANDS[Math.min(5,Math.max(0,pk.read.idx))]:'';
+    if(_rd) return _rd+' · '+cnt.toLocaleString()+'단어 · '+chN+'챕터';   /* [읽기수준 이원화 20260721] */
     return cnt.toLocaleString()+'단어 · '+chN+'챕터'+(pk.__minC?(' · '+pk.__minC+'부터'):'');
   }catch(e){ return ((pk.words||[]).length||0)+'단어'; }
 }

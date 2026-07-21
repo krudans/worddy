@@ -19057,6 +19057,35 @@ auth.onAuthStateChanged(async user => {
               }
             }catch(e){}
             console.log('[앱] Firebase 백그라운드 동기화 완료(user_words 병합)');
+            /* ══ [실시간 동기화 20260722] 원칙: 한 기기가 저장하면 다른 기기·서버는 자동 업데이트. ══
+               user_words 실시간 리스너 — 다른 기기의 저장을 켜져 있는 이 기기가 즉시 수신해
+               묘비·LWW 규칙으로 반영하고 화면까지 갱신한다. (자기 저장 에코는 updatedAt으로 무시,
+               이 기기가 방금 작업 중이면(dirty가 더 최신) 내 변경을 보호하고 무시) */
+            try{
+              if(window._uwUnsub){ try{window._uwUnsub();}catch(e){} }
+              window._uwUnsub = db.collection('user_words').doc(user.uid).onSnapshot(function(snap){
+                try{
+                  if(!snap.exists) return;
+                  var d = snap.data()||{};
+                  var mineLast = localStorage.getItem('wd-last-sv')||'';
+                  if(d.updatedAt && d.updatedAt===mineLast) return;               // 내 저장 에코
+                  var locT=0; try{ locT=Math.max(Date.parse(localStorage.getItem('wd-last-sv')||0)||0, Date.parse(localStorage.getItem('wd-dirty-at')||0)||0); }catch(e){}
+                  var srvT=Date.parse(d.updatedAt||0)||0;
+                  if(!(srvT>locT+2000)) return;                                    // 서버가 확실히 최신일 때만(내 작업 보호)
+                  S._tombBooks=Array.from(new Set([...(S._tombBooks||[]), ...((d.tombBooks)||[])]));
+                  S._tombWords=Array.from(new Set([...(S._tombWords||[]), ...((d.tombWords)||[])]));
+                  var _bB=(S.books||[]).length, _wB=(S.words||[]).length;
+                  S.books=(d.books||[]).filter(Boolean).map(function(sb){ var lb=(S.books||[]).find(function(x){return x&&x.name===sb.name;}); if(lb&&lb.markMap&&Object.keys(lb.markMap).length){ sb=Object.assign({},sb); sb.markMap=Object.assign({}, sb.markMap||{}, lb.markMap); } return sb; });
+                  S.words=(d.words||[]).slice();
+                  if(S.currentBook && S.currentBook!=='내 단어장' && !S.books.some(function(b){return b.name===S.currentBook;})) S.currentBook='내 단어장';
+                  try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(function(b){ if(b&&b.packId){ var r=Object.assign({},b); delete r.words; return r; } return b; }))); localStorage.setItem('wd-w', JSON.stringify(S.words)); }catch(e){}
+                  console.log('[실시간 동기화] 다른 기기 변경 수신 → 반영: 책 '+_bB+'→'+S.books.length+', 단어 '+_wB+'→'+S.words.length);
+                  var _mrEl=document.getElementById('mr');
+                  if(typeof go==='function' && !S._gameRunning && !S._inChExam && !S._inLevelTest && !S._inInitLevelTest && !S._inLearnSession && !(_mrEl&&_mrEl.innerHTML&&_mrEl.innerHTML.trim())){ go(); }
+                }catch(e){}
+              }, function(){});
+              console.log('[실시간 동기화] user_words 리스너 시작');
+            }catch(e){}
           })();
         }).catch(e => console.warn('[앱] Firebase 동기화 실패', e));
       }

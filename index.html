@@ -3333,6 +3333,10 @@ function rMarket() {
   const mktSort = S._mktSort||'kr';
   const selCat = S._mktCat||'전체';
   const query = (S._mktSearch||'').trim().toLowerCase();
+  /* [10개 페이지네이션 20260720] 카테고리·검색·정렬이 바뀌면 표시 개수를 10으로 리셋 */
+  const _mkKey = selCat+'|'+query+'|'+mktSort;
+  if(S.__mktKey!==_mkKey){ S.__mktKey=_mkKey; S._mktShown=10; }
+  const _mktShown = S._mktShown||10;
   console.log('[마켓] 현재 보유팩:', JSON.stringify(ownedPacks));
 
   // 검색어 필터 (팩 이름·설명·카테고리·수록 단어로 검색)
@@ -3433,7 +3437,7 @@ function rMarket() {
           <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_loosePacks.length}개</div></div>`;
       }
       html += `<div style="display:flex;flex-direction:column;gap:10px">`;
-    _loosePacks.forEach(pk => {
+    _loosePacks.slice(0, _mktShown).forEach(pk => {   /* [10개 페이지네이션 20260720] */
       const owned = ownedPacks.includes(pk.id);
       const wordCount = (pk.words||[]).length;
       const pkIcon = pk.imageUrl
@@ -3470,6 +3474,12 @@ ${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F
       </div>`;
     });
 
+      /* [10개 페이지네이션 20260720] 남은 팩이 있으면 하단에 더 보기 버튼 */
+      if(_loosePacks.length > _mktShown){
+        const _rem = _loosePacks.length - _mktShown;
+        html += `<button onclick="_mktShowMore()" style="width:100%;background:var(--bg-card,#fff);border:1.5px dashed var(--theme-soft,#BFDBFE);border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:var(--theme,#3B82F6);cursor:pointer;margin-top:2px">+ 단어장 ${Math.min(10,_rem)}개 더 보기 <span style="color:var(--text3,#9CA3AF);font-weight:600">(${_mktShown}/${_loosePacks.length})</span></button>`;
+      }
+
       html += `</div>`;
     }
   }
@@ -3480,6 +3490,13 @@ ${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F
   return html;
 }
 // 마켓 검색: 입력 시 전체 리렌더 대신 목록 영역(#mkt-list)만 교체 → 한글 IME 조합·포커스 유지
+/* [10개 페이지네이션 20260720] 더 보기: 10개 추가 후 재렌더, 스크롤 위치 유지 */
+function _mktShowMore(){
+  S._mktShown=(S._mktShown||10)+10;
+  var y=window.scrollY||document.documentElement.scrollTop||0;
+  try{ go(); }catch(e){}
+  setTimeout(function(){ try{ window.scrollTo(0,y); }catch(e){} },60);
+}
 function _mktFilterInput(val){
   S._mktSearch = val;
   clearTimeout(window.__mktSearchT);

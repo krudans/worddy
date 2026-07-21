@@ -5705,6 +5705,7 @@ function sv() {
       // collection / deletedCollection : _colMerge·_colTombSet가 관리 → sv 제외 (위 [나비 유실 근본수정] 주석 참조)
       updatedAt: new Date().toISOString()
     };
+    try{ localStorage.setItem('wd-dirty-at', new Date().toISOString()); }catch(e){}   /* [LWW 20260722] 이 기기의 마지막 로컬 변경 시각 */
     // throttle: 3초에 1번만
     clearTimeout(window._svTimer);
     window._svTimer = setTimeout(async ()=>{
@@ -5744,6 +5745,7 @@ function sv() {
         .catch(e=>console.warn('Firebase 저장 오류',e));
       // 단어장 별도 저장
       db.collection('user_words').doc(uid).set(booksData, {merge:false})
+        .then(()=>{ try{ localStorage.setItem('wd-last-sv', booksData.updatedAt); }catch(e){} })   /* [LWW 20260722] 서버 저장 성공 시각 */
         .catch(e=>console.warn('단어장 저장 오류',e));
       // [문서분리 STEP2 · 1단계 이중쓰기] 별도 books 서브컬렉션에 markMap/진도 가산 갱신.
       //  blob(정본)·읽기 경로는 안 건드림. _splitReady(마이그레이션 완료) 게이트 + 완전 격리 → 저장 흐름 절대 안 깨짐.
@@ -18653,7 +18655,9 @@ async function _acquireLock(uid, force){
   var snap=await ref.get(); var d=snap.exists?snap.data():null;
   var existsOther = d && d.deviceId && d.deviceId!==me;
   var fresh = existsOther && ((now-(d.hb||0)) < LOCK_STALE_MS);
-  if(existsOther && !force) return {ok:false, other:d, stale:!fresh};
+  /* [세션락 근본수정 20260722] 죽은(60초+ 무하트비트) 락은 자동 인수 — 옛 기기 잔존 락이
+     새 기기(실사용자)의 저장을 통째로 차단해 작업이 유실되던 사고의 원인. 살아있는 충돌만 오버레이. */
+  if(existsOther && fresh && !force) return {ok:false, other:d, stale:false};
   await ref.set({deviceId:me, name:_deviceName(), at:now, hb:now});
   return {ok:true};
 }
@@ -19004,8 +19008,19 @@ auth.onAuthStateChanged(async user => {
                 const _bBefore = (S.books||[]).length, _wBefore = (S.words||[]).length;
                 S._tombBooks = Array.from(new Set([...(S._tombBooks||[]), ...((_uw.tombBooks)||[])]));
                 S._tombWords = Array.from(new Set([...(S._tombWords||[]), ...((_uw.tombWords)||[])]));
-                S.books = _mergeBooksUnion(S.books, _uw.books, S._tombBooks);
-                S.words = _mergeWordsUnion(S.words, _uw.words, S._tombWords);
+                /* [LWW 20260722] 이 기기가 서버보다 낡았으면(마지막 저장·변경이 서버 updatedAt보다 과거)
+                   합집합 대신 서버 정본을 채택 — 옛 로컬이 다른 기기의 삭제·재구성을 되살리던 근본 원인 차단.
+                   로컬 진도(markMap)는 같은 책에 한해 병합 보존. 두 시각이 모두 없으면(구버전 로컬) 기존 합집합 유지. */
+                var _locT=0; try{ _locT=Math.max(Date.parse(localStorage.getItem('wd-last-sv')||0)||0, Date.parse(localStorage.getItem('wd-dirty-at')||0)||0); }catch(e){}
+                var _srvT=Date.parse(_uw.updatedAt||0)||0;
+                if(_locT>0 && _srvT>_locT+2000){
+                  S.books=(_uw.books||[]).filter(Boolean).map(function(sb){ var lb=(S.books||[]).find(function(x){return x&&x.name===sb.name;}); if(lb&&lb.markMap&&Object.keys(lb.markMap).length){ sb=Object.assign({},sb); sb.markMap=Object.assign({}, sb.markMap||{}, lb.markMap); } return sb; });
+                  S.words=(_uw.words||[]).slice();
+                  console.log('[앱] LWW: 서버가 최신 → 서버 정본 채택(로컬 부활 방지)');
+                } else {
+                  S.books = _mergeBooksUnion(S.books, _uw.books, S._tombBooks);
+                  S.words = _mergeWordsUnion(S.words, _uw.words, S._tombWords);
+                }
                 console.log('[앱] user_words 병합: 책 '+_bBefore+'→'+(S.books||[]).length+', 단어 '+_wBefore+'→'+(S.words||[]).length+' (서버책 '+((_uw.books||[]).length)+')');
                 try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(b=>{ if(b&&b.packId){ const {words,...r}=b; return r; } return b; }))); }catch(e){}
               }

@@ -5714,7 +5714,19 @@ function sv() {
          이 기기의 통째 저장(books set)이 삭제를 되살리던 문제. 저장 직전 서버 tombBooks를 선독해
          로컬 묘비와 합치고, 묘비 대상 책을 로컬 books에서도 제거한 뒤 저장한다. (read 1회/flush) */
       try{
-        const _srvTomb = await db.collection('user_words').doc(uid).get().then(s=>((s.data()||{}).tombBooks)||[]).catch(()=>[]);
+        const _srvDoc = await db.collection('user_words').doc(uid).get().then(s=>s.data()||{}).catch(()=>({}));
+        const _srvTomb = _srvDoc.tombBooks||[];
+        /* [초기화 묘비 20260722] 다른 기기의 단어 삭제(tombWords)도 저장 직전 반영 */
+        try{
+          const _srvTW = _srvDoc.tombWords||[];
+          if(_srvTW.length){
+            const _twSet={}; _srvTW.forEach(k=>{ _twSet[String(k).toLowerCase()]=1; });
+            S._tombWords = Array.from(new Set([...(S._tombWords||[]), ..._srvTW]));
+            const _wb=(S.words||[]).length;
+            S.words=(S.words||[]).filter(w=>!(w&&w.en&&_twSet[String(w.en).toLowerCase()]));
+            if(S.words.length!==_wb){ console.log('[크로스기기 삭제 존중] 다른 기기의 단어 삭제 반영:', _wb, '→', S.words.length); try{ localStorage.setItem('wd-w', JSON.stringify(S.words)); }catch(e){} }
+          }
+        }catch(e){}
         if(_srvTomb.length){
           const _merged = Array.from(new Set([...(S._tombBooks||[]), ..._srvTomb]));
           if(_merged.length !== (S._tombBooks||[]).length){
@@ -18165,6 +18177,10 @@ function showResetStudy() {
 function doResetStudy() {
   // [학습 데이터 초기화] 단어장 목록 전체 삭제 + 내 단어장·진도·출석·학습로그·게임기록·구매이력 삭제.
   //   계정·닉네임·XP·레벨·나비는 유지. 목록이 '내 단어장(0개)'만 남게 비워진다(기본책 자동 재생성 안 함).
+  /* [초기화 묘비 20260722] 비우기 전에 삭제 묘비를 전량 기록 — 묘비 없이 비우면 다른 기기의
+     로컬 사본이 병합·저장에서 전부 되살리던 근본 원인(내 단어장 1000개 부활 사건). */
+  try{ (S.words||[]).forEach(function(w){ if(w&&w.en) _tombWord(w.en); }); }catch(e){}
+  try{ (S.books||[]).forEach(function(b){ if(!b) return; var k=b.packId?('p:'+b.packId):('n:'+b.name); if(!S._tombBooks)S._tombBooks=[]; if(S._tombBooks.indexOf(k)<0)S._tombBooks.push(k); }); }catch(e){}
   S.words=[]; S.learned=new Set(); S.markMap={}; S.markDates={};
   S.studyLog={}; S.attendCount=0; S.attendDates=[]; S.attendPopupShown='';
   S.bestScores={}; S.gSavedGame=null; S.idx=0;
@@ -19026,7 +19042,9 @@ auth.onAuthStateChanged(async user => {
               }
             }catch(e){ console.warn('[앱] user_words 병합 실패(로컬 유지)', e); }
             _syncChanged = (_sig()!==_sigBefore);
-            sv(); // 병합된 정본 저장
+            /* [무변경 무저장 20260722] 병합 결과가 이 기기에서 아무것도 안 바꿨으면 서버에 쓰지 않는다 —
+               "손 안 댄 기기"가 로그인만으로 서버 updatedAt·데이터를 건드리던 동작 제거. */
+            if(_syncChanged){ sv(); } else { console.log('[앱] 병합 변경 없음 → 서버 저장 생략'); }
             // [크로스기기 표시 동기화] 병합으로 책/진도가 실제로 바뀌었고, 사용자가 게임/시험/학습/모달 중이 아니면
             //   현재 화면을 재렌더해 다른 기기의 변경을 새로고침 없이 즉시 반영한다. (인자없는 go()=현재 탭 유지 재렌더)
             try{

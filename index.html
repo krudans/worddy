@@ -3233,6 +3233,7 @@ function rCourseDetail() {
         return `<div style="border:1.5px solid ${bown ? petCol.main + '55' : 'var(--border,#ECEEF1)'};border-radius:13px;padding:11px 12px;background:${bown ? petCol.main + '0C' : 'var(--bg-sub,#F8F9FA)'}">
           <div style="display:flex;align-items:center;gap:9px">
             <div style="width:26px;height:26px;border-radius:8px;background:${bown ? petCol.main : ac};color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">${bown ? '✓' : (i + 1)}</div>
+            ${b.imageUrl ? `<img src="${b.imageUrl}" style="width:34px;height:46px;border-radius:6px;object-fit:cover;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.16);border:1px solid var(--border,#E5E7EB)">` : ''}<!-- [코스 권 표지 20260721] -->
             <div style="flex:1;min-width:0">
               <div style="font-size:12.5px;font-weight:800;color:var(--text1,#111)">${b.tierLabel || b.name}${bown ? ` <span style="background:${petCol.main}1A;color:${petCol.main};font-size:9px;font-weight:800;padding:1.5px 6px;border-radius:20px;margin-left:3px;white-space:nowrap">✓ 이미 담음</span>` : ''}</div>
               <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:1px">${bn.toLocaleString()}단어 · 5챕터 ${blv ? '· ' + blv : ''}</div>
@@ -3408,6 +3409,34 @@ function rMarket() {
     html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
   /* [원서 요청 서비스 20260720] 찾는 원서가 없을 때 요청 → book_requests 적재 → 관리자 등록 → 인앱 알림 */
   html += `<button onclick="showBookRequest()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);border:none;border-radius:12px;padding:11px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff">📮 찾는 원서가 없나요? 요청하기 · 1주일 이내 올려드려요</button>`;
+
+  /* [레벨↔원서 추천 20260721] 레벨 진단 결과와 팩 실측 난이도를 연결 — 진단의 사용 동기 부여.
+     진단 전: 진단 유도 CTA / 진단 후: 내 수준 ±1 원서 추천 + 30일 경과 시 재진단 넛지 */
+  try{
+    const _lvToIdx=[0,0,1,2,2,3,3,4,4,5,5];
+    const _idxToCefr=['A1','A2','B1','B2','C1','C2'];
+    if(!S._myLevel){
+      html += `<div onclick="startInitialLevelExam()" style="margin-top:8px;background:var(--bg-card,#fff);border:1.5px dashed var(--theme-soft,#BFDBFE);border-radius:14px;padding:13px 14px;cursor:pointer;display:flex;align-items:center;gap:11px">
+        <div style="font-size:26px">🎯</div>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:var(--text1,#111)">레벨 진단하면 딱 맞는 원서를 추천해드려요</div>
+        <div style="font-size:11px;color:var(--text3,#9CA3AF);margin-top:1px">3분 테스트로 내 수준에 맞는 책 찾기</div></div>
+        <div style="color:var(--theme,#3B82F6);font-weight:900;font-size:13px">시작 ›</div></div>`;
+    } else {
+      const myIdx=_lvToIdx[Math.min(10,Math.max(1,S._myLevel))];
+      const cand=(S._marketPacks||[]).filter(p=>/도서/.test(p.cat||'')&&Array.isArray(p.words)&&p.words.length);
+      const scored=cand.map(p=>{ let ai=-1; try{ const M=(typeof BWD_META!=='undefined')?BWD_META:null; if(p.__avgIdx===undefined){ p.__avgIdx=-1; if(M){ const ord={A1:0,A2:1,B1:2,B2:3,C1:4,C2:5}; let s=0,k=0; p.words.forEach(w=>{const en=typeof w==='string'?w:(w&&w.en); const m=en&&M[en]; const c=m&&ord[m.cefr]; if(c!==undefined){s+=c;k++;}}); if(k)p.__avgIdx=s/k; } } ai=p.__avgIdx; }catch(e){} return {p, d:ai<0?99:Math.abs(ai-myIdx)}; }).filter(x=>x.d<=1.2).sort((a,b)=>a.d-b.d).slice(0,4);
+      if(scored.length){
+        const chips=scored.map(({p})=>`<div onclick="event.stopPropagation();showPackDetail&&showPackDetail('${p.id}')" style="flex-shrink:0;width:86px;cursor:pointer;text-align:center">
+          ${p.imageUrl?`<img src="${p.imageUrl}" style="width:64px;height:86px;object-fit:cover;border-radius:8px;box-shadow:0 3px 9px rgba(0,0,0,.18);border:1px solid var(--border,#E5E7EB)">`:`<div style="width:64px;height:86px;margin:0 auto;border-radius:8px;background:var(--bg-sub,#F1F5F9);display:flex;align-items:center;justify-content:center;font-size:28px">${p.emoji||'📚'}</div>`}
+          <div style="font-size:10px;font-weight:700;color:var(--text2,#374151);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(p.name||'').split('·')[0].trim()}</div></div>`).join('');
+        let redo='';
+        try{ const lt=parseInt(localStorage.getItem('wd-lt-date')||'0'); if(lt && (Date.now()-lt)>30*864e5){ redo=`<div onclick="startInitialLevelExam()" style="font-size:10.5px;color:var(--theme,#3B82F6);font-weight:800;cursor:pointer;margin-top:7px">🔄 진단 후 한 달 지났어요 — 실력이 늘었는지 다시 확인하기 ›</div>`; } }catch(e){}
+        html += `<div style="margin-top:8px;background:var(--bg-card,#fff);border:1.5px solid var(--border,#E5E7EB);border-radius:14px;padding:13px 14px">
+          <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111);margin-bottom:9px">📖 내 레벨 <span style="color:var(--theme,#3B82F6)">${S._myLevel} (${_idxToCefr[myIdx]})</span>에 딱 맞는 원서</div>
+          <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px">${chips}</div>${redo}</div>`;
+      }
+    }
+  }catch(e){}
 
   // ── 팩 목록 영역 (검색 시 이 안쪽만 부분 교체) ──
   html += '<div id="mkt-list">';
@@ -7118,7 +7147,7 @@ function finishAdaptiveTest() {
   window.__ltPrevLevel = S._myLevel;
   window.__ltNeedsConfirm = _adHadProgress;
   if(!_adHadProgress){
-    S._myLevel = _newLevel;
+    S._myLevel = _newLevel; try{localStorage.setItem('wd-lt-date',String(Date.now()));}catch(e){} /* [레벨↔원서 추천 20260721] 진단일 기록 */
     try{ _generateCurriculum(S._myLevel); }catch(e){}
   }
   // 레벨테스트 XP: 맞힌 문항당 2XP + 통과한 레벨마다 10XP 보너스
@@ -8323,7 +8352,7 @@ function _ltFinish(){
     window.__ltPrevLevel = S._myLevel;
     window.__ltNeedsConfirm = _hadProgress;
     if(!_hadProgress){
-      S._myLevel=placement;
+      S._myLevel=placement; try{localStorage.setItem('wd-lt-date',String(Date.now()));}catch(e){} /* [레벨↔원서 추천 20260721] 진단일 기록 */
       try{ _generateCurriculum(placement); }catch(e){}
     }
     try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
@@ -8387,7 +8416,7 @@ function _ltApplyNewCurriculum(){
   try{
     var lv=window.__ltPendingLevel;
     if(lv==null){ if(typeof startApp==='function') startApp(); return; }
-    S._myLevel=lv;
+    S._myLevel=lv; try{localStorage.setItem('wd-lt-date',String(Date.now()));}catch(e){} /* [레벨↔원서 추천 20260721] 진단일 기록 */
     try{ _generateCurriculum(lv); }catch(e){}
     try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=lv){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
     window.__ltNeedsConfirm=false; window.__ltPendingLevel=null;

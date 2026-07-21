@@ -3384,7 +3384,7 @@ function _bpReadTiers() {
     var lb = document.getElementById('bp-label-' + i); if (lb) t.label = lb.value;
   });
   var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
-  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); }
+  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); _bp.readAr=((document.getElementById('bp-read-ar')||{}).value||'').trim(); _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim(); }
   else { _bp.courseId = g('bp-courseId').trim(); _bp.courseName = g('bp-courseName').trim(); _bp.courseEmoji = g('bp-courseEmoji').trim() || '📚'; }
 }
 
@@ -3609,7 +3609,8 @@ async function _bpRegister() {
     if (_bp.mode === 'book') {
       var _img=(_bp.imageUrl||'').trim();
       if(!_img){ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _img=await _bpFetchCover(_bp.name); setR('#1E5FA5', _img?'🖼️ 표지 찾음 — 등록 계속':'🖼️ 표지 못 찾음 — 표지 없이 등록'); }   /* [원서 표지 자동검색 20260721] */
-      docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _img?{imageUrl:_img}:{}) });
+      var _readObj=null; try{ var _a2=parseFloat(_bp.readAr), _l2=parseInt(_bp.readLx); var _i2=!isNaN(_a2)?(_a2<3?0:_a2<4.5?1:_a2<6?2:_a2<7.5?3:_a2<10?4:5):(!isNaN(_l2)?(_l2<500?0:_l2<700?1:_l2<900?2:_l2<1000?3:_l2<1200?4:5):null); if(_i2!==null) _readObj={ar:isNaN(_a2)?null:_a2, lexile:isNaN(_l2)?null:_l2, idx:_i2}; }catch(e){}   /* [읽기수준 입력 20260721] */
+      docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });
     } else {
       var total = _bp.tiers.length;
       var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
@@ -3649,6 +3650,7 @@ function rBP2() {
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">packId (영문 소문자·숫자·_)</label><input id="bp-packId" value="' + esc(_bp.packId) + '" placeholder="the_little_prince" onblur="this.value=_bpSlug(this.value)" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">단어장 이름</label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="어린 왕자" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">책 표지 <span style="color:#9CA3AF;font-weight:600">(비우면 자동 검색)</span></label><div style="display:flex;align-items:center;gap:8px"><label style="font-size:12px;color:#fff;background:#1E5FA5;padding:8px 12px;border-radius:8px;font-weight:800;cursor:pointer;white-space:nowrap">🖼️ 이미지 선택<input type="file" accept="image/*" onchange="pkImgUpload(this,\'bp-img-prev\',\'bp-imageUrl\')" style="display:none"></label><input type="hidden" id="bp-imageUrl" value="' + esc(_bp.imageUrl||'') + '"><span id="bp-img-prev">' + (_bp.imageUrl?('<img src="'+_bp.imageUrl+'" style="width:34px;height:46px;object-fit:cover;border-radius:5px;border:1px solid #E5E7EB">'):'<span style="font-size:11px;color:#9CA3AF">미등록 → 자동</span>') + '</span></div></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">읽기 수준 <span style="color:#9CA3AF;font-weight:600">(선택 · AR/Lexile)</span></label><div style="display:flex;gap:6px"><input id="bp-read-ar" type="number" step="0.1" placeholder="AR" value="' + (_bp.readAr||'') + '" style="width:70px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><input id="bp-read-lexile" type="number" placeholder="Lexile" value="' + (_bp.readLx||'') + '" style="width:84px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"></div></div>'  +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">이모지</label><input id="bp-emoji" value="' + esc(_bp.emoji) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">분류</label><select id="bp-cat" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><option' + (_bp.cat === '📖 도서' ? ' selected' : '') + '>📖 도서</option><option' + (_bp.cat === '📺 드라마' ? ' selected' : '') + '>📺 드라마</option></select></div>' +
       '</div>';
@@ -4595,6 +4597,14 @@ function showEditPack(packId) {
               <button type="button" onclick="document.getElementById('ep-file').click()" style="background:none;border:none;color:#1E5FA5;font-size:10.5px;font-weight:700;cursor:pointer;padding:0;text-align:left">이미지 올리기</button>
               ${p.imageUrl ? `<button onclick="pkImgClear('ep-img-prev','ep-imageUrl','${esc(p.emoji || '📚')}')" style="background:none;border:none;color:#DC2626;font-size:10.5px;font-weight:700;cursor:pointer;padding:0;text-align:left">이미지 제거</button>` : ''}
               <input id="ep-emoji" value="${esc(p.emoji || '📚')}" style="width:74px;padding:5px;border:1.5px solid #E8EBEF;border-radius:8px;font-size:15px;text-align:center;outline:none">
+              <div style="margin-top:8px;font-size:11px;font-weight:800;color:#6B7280">📖 읽기 수준 <span style="font-weight:600;color:#9CA3AF">(AR·Lexile 중 아는 값만 — 밴드 비우면 자동 산출)</span></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <input id="ep-read-ar" type="number" step="0.1" placeholder="AR (예 5.0)" value="${(p.read&&p.read.ar)||''}" style="width:92px;padding:6px;border:1.5px solid #E8EBEF;border-radius:8px;font-size:12px;outline:none">
+                <input id="ep-read-lexile" type="number" placeholder="Lexile (예 840)" value="${(p.read&&p.read.lexile)||''}" style="width:104px;padding:6px;border:1.5px solid #E8EBEF;border-radius:8px;font-size:12px;outline:none">
+                <select id="ep-read-idx" style="padding:6px;border:1.5px solid #E8EBEF;border-radius:8px;font-size:12px;outline:none">
+                  <option value="">자동</option>${['그림책·입문','초등 저학년','초등 고학년','청소년','고등·성인','고전·전문'].map((b,i)=>`<option value="${i}" ${(p.read&&p.read.idx===i)?'selected':''}>${i} · ${b}</option>`).join('')}
+                </select>
+              </div><!-- [읽기수준 입력 20260721] -->
             </div>
           </div>
           <div class="fg">
@@ -4701,6 +4711,15 @@ async function saveEditPack(packId) {
 
   const name = (document.getElementById('ep-name') || {}).value;
   const emoji = (document.getElementById('ep-emoji') || {}).value;
+  /* [읽기수준 입력 20260721] AR/Lexile/밴드 → packs.read (밴드 비면 AR→Lexile 순 자동 산출) */
+  try{
+    const _ar=parseFloat((document.getElementById('ep-read-ar')||{}).value); const _lx=parseInt((document.getElementById('ep-read-lexile')||{}).value);
+    const _ixRaw=(document.getElementById('ep-read-idx')||{}).value;
+    let _ix=(_ixRaw===''||_ixRaw===undefined)?null:parseInt(_ixRaw);
+    if(_ix===null){ if(!isNaN(_ar)) _ix=_ar<3?0:_ar<4.5?1:_ar<6?2:_ar<7.5?3:_ar<10?4:5;
+      else if(!isNaN(_lx)) _ix=_lx<500?0:_lx<700?1:_lx<900?2:_lx<1000?3:_lx<1200?4:5; }
+    if(_ix!==null||!isNaN(_ar)||!isNaN(_lx)) patch.read={ar:isNaN(_ar)?null:_ar, lexile:isNaN(_lx)?null:_lx, idx:_ix};
+  }catch(e){}
   const patch = { updatedAt: Date.now() };
 
   if (emoji) patch.emoji = emoji.trim();

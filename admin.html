@@ -3498,19 +3498,57 @@ function _bpSlug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g
 
 // PDF/파일명에서 제목·packId·코스명 자동 입력 (비어있는 칸만 채움)
 function _bpAutoFill(info, filename, i) {
-  var base = (info && info.title && info.title.trim()) || String(filename || '').replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim();
-  if (!base) return;
-  var slug = _bpSlug((info && info.title) ? info.title : base);
-  /* [저자 자동추출 20260722] 원문 앞부분·PDF 메타에서 "by 저자" 패턴 추출 */
+  var _txt = String((_bp.tiers[i] && _bp.tiers[i].text) || '');
+  var _fname = String(filename || '').replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim();
+  var _genericName = /^(document|untitled|scan|file|pdf|download|새 문서|무제)\b/i.test(_fname) || _fname.length < 2;
+  /* [제목 추출 개선 20260722] 파일명이 무의미(document 등)하거나 원문 첫 줄이 더 그럴듯하면 원문 첫 줄을 제목으로 */
+  var _firstLine = '';
   try{
-    var _au=(info && info.author) ? info.author : '';
+    var _lines = _txt.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean);
+    for(var li=0; li<Math.min(5,_lines.length); li++){
+      var _l=_lines[li];
+      // 제목 후보: 1~6단어, 문장부호 적음, 너무 길지 않음
+      if(_l.length>=2 && _l.length<=60 && _l.split(/\s+/).length<=8 && !/[.!?]$/.test(_l)){ _firstLine=_l; break; }
+    }
+  }catch(e){}
+  var base;
+  var _splitAuthor='';
+  if(info && info.title && info.title.trim()){ base = info.title.trim(); }
+  else if(_genericName && _firstLine){
+    /* [제목·저자 분리 20260722] 첫 줄이 "제목 + 저자이름"이면 뒤쪽 사람이름을 저자로 떼어낸다.
+       예: "Holes Louis Sachar" → 제목 "Holes" + 저자 "Louis Sachar" */
+    var _sa=_firstLine.match(/^(.*?)[ \t]+([A-Z][a-z.'-]+(?:[ \t]+[A-Z][a-z.'-]+){1,2})$/);
+    if(_sa && _sa[1] && _sa[1].trim().length>=2){ base=_sa[1].trim(); _splitAuthor=_sa[2].trim(); }
+    else { base=_firstLine; }
+  }
+  else if(_firstLine && !_genericName){ base = _fname; }
+  else { base = _firstLine || _fname; }
+  if (!base) return;
+  var slug = _bpSlug(base);
+  /* [저자 자동추출 20260722] "by 저자" 또는 제목 다음 줄의 사람이름 패턴 추출 */
+  try{
+    var _au=(info && info.author) ? info.author : (_splitAuthor || '');
     if(!_au){
-      var _head=String((_bp.tiers[i] && _bp.tiers[i].text) || '').slice(0, 1500);
+      var _head=_txt.slice(0, 1500);
+      // 1) "by Author" 패턴
       var _m=_head.match(/\bby\s+([A-Z][A-Za-z.'-]+(?:[ \t]+[A-Z][A-Za-z.'-]+){0,2})/);
-      if(_m){
-        _au=_m[1].replace(/\s+/g,' ').trim();
-        /* [저자 정제 20260722] 저자명 뒤 붙은 책 메타 단어(Jacket/Cover/Copyright 등) 잘라냄 */
-        _au=_au.replace(/\s+(Jacket|Cover|Copyright|Illustrated|Illustrations?|Translated|Edited|Foreword|Introduction|Preface|Published|Publishing|Press|Books?|Inc|Ltd|Chapter|Contents|Prologue|Author)\b.*$/i,'').trim();
+      if(_m){ _au=_m[1].replace(/\s+/g,' ').trim(); }
+      // 2) "제목 저자명" 한 줄 또는 제목 다음 줄이 사람이름(2~3 대문자 단어)
+      if(!_au && _firstLine){
+        // 제목 뒤에 붙은 저자 (예: "Holes Louis Sachar")
+        var _after=_firstLine.replace(base,'').trim();
+        var _nm=_after.match(/^([A-Z][a-z.'-]+(?:[ \t]+[A-Z][a-z.'-]+){1,2})$/);
+        if(_nm){ _au=_nm[1]; }
+        // 제목 다음 줄
+        if(!_au){
+          var _lines2=_txt.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean);
+          var _ti=_lines2.indexOf(_firstLine);
+          if(_ti>=0 && _lines2[_ti+1]){ var _nm2=_lines2[_ti+1].match(/^([A-Z][a-z.'-]+(?:[ \t]+[A-Z][a-z.'-]+){1,2})$/); if(_nm2) _au=_nm2[1]; }
+        }
+      }
+      if(_au){
+        /* [저자 정제 20260722] 저자명 뒤 붙은 책 메타 단어 잘라냄 */
+        _au=_au.replace(/\s+(Jacket|Cover|Copyright|Illustrated|Illustrations?|Translated|Edited|Foreword|Introduction|Preface|Published|Publishing|Press|Books?|Inc|Ltd|Chapter|Contents|Prologue|Author|Part|One|Two)\b.*$/i,'').trim();
       }
     }
     if(_au && !_bp.author) _bp.author=_au;
@@ -3550,6 +3588,8 @@ function _bpFile(i, input) {
   var f = input.files && input.files[0]; if (!f) return;
   var name = f.name || '';
   _bp._userSetN = false;   /* [수동 목표수 존중 20260722] 새 파일 → 자동 목표수 재적용 허용 */
+  /* [자동값 초기화 20260722] 새 파일 → 이전 책의 제목·저자·Lexile·읽기밴드가 남지 않도록 초기화(단독 모드만) */
+  if(_bp.mode==='book'){ _bp.name=''; _bp.packId=''; _bp.author=''; _bp.readAr=''; _bp.readLx=''; _bp.imageUrl=''; }
   _bpReadTiers(); _bpReadSettings();
   var isPdf = /\.pdf$/i.test(name) || f.type === 'application/pdf';
   if (isPdf) {

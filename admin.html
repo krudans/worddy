@@ -3350,10 +3350,14 @@ function _bpAnalyzeText(text, s) {
     return true;
   });
   cands.sort(function (a, b) { return freq[b] - freq[a]; });
-  /* [자동 목표수 20260722] FK를 먼저 계산해, 자동 모드(s.autoN)면 읽기수준·후보수 기반 목표치로 N 설정 */
+  /* [자동 목표수 20260722] FK를 먼저 계산해, 자동 모드(s.autoN)면 읽기수준·후보수 기반 목표치로 N 설정.
+     [Lexile 우선 20260722] 관리자가 Lexile을 입력했으면 그 밴드로 목표수를 잡는다(공인값 우선). */
   var _fk = _bpFleschKincaid(clean);
   var _fkIdx = _bpGradeToIdx(_fk);
-  var _autoN = _bpAutoTargetN(_fkIdx, cands.length);
+  var _lxIdx = null;
+  try{ var _lx=parseInt(s.readLx,10); if(!isNaN(_lx)) _lxIdx = _lx<500?0:_lx<700?1:_lx<900?2:_lx<1000?3:_lx<1200?4:5; }catch(e){}
+  var _bandForN = (_lxIdx!=null) ? _lxIdx : _fkIdx;
+  var _autoN = _bpAutoTargetN(_bandForN, cands.length);
   var N = (s.autoN ? _autoN : (s.topN || 1000));
   var a2plus = cands.filter(function (en) { return pxCefr(en) !== 'A1'; });
   var selected, exception = false;
@@ -3375,6 +3379,7 @@ function _bpReadSettings() {
   if (g('bp-lemmatize')) s.lemmatize = g('bp-lemmatize').checked;
   if (g('bp-excludeFn')) s.excludeFn = g('bp-excludeFn').checked;
   if (g('bp-autoN')) s.autoN = g('bp-autoN').checked;   /* [자동 목표수 20260722] */
+  s.readLx = ((document.getElementById('bp-read-lexile')||{}).value||'').trim();   /* [Lexile 우선 20260722] 목표수 계산에 반영 */
   if (g('bp-shortEx')) s.shortEx = g('bp-shortEx').checked;
   if (g('bp-aiMode')) s.aiMode = g('bp-aiMode').checked;
 }
@@ -3488,8 +3493,12 @@ function _bpAutoFill(info, filename, i) {
     var _au=(info && info.author) ? info.author : '';
     if(!_au){
       var _head=String((_bp.tiers[i] && _bp.tiers[i].text) || '').slice(0, 1500);
-      var _m=_head.match(/\bby\s+([A-Z][A-Za-z.'-]+(?:[ \t]+[A-Z][A-Za-z.'-]+){0,3})/);
-      if(_m) _au=_m[1].replace(/\s+/g,' ').trim();
+      var _m=_head.match(/\bby\s+([A-Z][A-Za-z.'-]+(?:[ \t]+[A-Z][A-Za-z.'-]+){0,2})/);
+      if(_m){
+        _au=_m[1].replace(/\s+/g,' ').trim();
+        /* [저자 정제 20260722] 저자명 뒤 붙은 책 메타 단어(Jacket/Cover/Copyright 등) 잘라냄 */
+        _au=_au.replace(/\s+(Jacket|Cover|Copyright|Illustrated|Illustrations?|Translated|Edited|Foreword|Introduction|Preface|Published|Publishing|Press|Books?|Inc|Ltd|Chapter|Contents|Prologue|Author)\b.*$/i,'').trim();
+      }
     }
     if(_au && !_bp.author) _bp.author=_au;
   }catch(e){}
@@ -3641,6 +3650,16 @@ async function _bpFetchCover(title){
   }catch(e){ return ''; }
 }
 /* [Lexile 필수·조회 20260722] 책 제목으로 공식 Lexile Hub 검색 새 탭 — 관리자가 값 확인 후 입력 */
+/* [Lexile 우선 20260722] Lexile 입력이 바뀌면, 이미 분석했던 경우 목표수·미리보기를 다시 계산 */
+function _bpOnLexileChange(){
+  try{
+    _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim();
+    if(_bp.preview && _bp.tiers && _bp.tiers.some(function(t){return (t.text||'').trim();})){
+      if(typeof toast==='function') toast('Lexile 반영해 다시 분석 중...','ok');
+      _bpPreview();
+    }
+  }catch(e){}
+}
 function _bpOpenLexile(){
   try{ _bpReadSettings(); }catch(e){}
   var title=(_bp.name||_bp.courseName||'').trim();
@@ -3741,7 +3760,7 @@ function rBP2() {
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">단어장 이름</label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="어린 왕자" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">지은이 <span style="color:#9CA3AF;font-weight:600">(자동 추출 · 수정 가능)</span></label><input id="bp-author" value="' + esc(_bp.author||'') + '" placeholder="Roald Dahl" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">책 표지 <span style="color:#9CA3AF;font-weight:600">(비우면 자동 검색)</span></label><div style="display:flex;align-items:center;gap:8px"><label style="font-size:12px;color:#fff;background:#1E5FA5;padding:8px 12px;border-radius:8px;font-weight:800;cursor:pointer;white-space:nowrap">🖼️ 이미지 선택<input type="file" accept="image/*" onchange="pkImgUpload(this,\'bp-img-prev\',\'bp-imageUrl\')" style="display:none"></label><input type="hidden" id="bp-imageUrl" value="' + esc(_bp.imageUrl||'') + '"><span id="bp-img-prev">' + (_bp.imageUrl?('<img src="'+_bp.imageUrl+'" style="width:34px;height:46px;object-fit:cover;border-radius:5px;border:1px solid #E5E7EB">'):'<span style="font-size:11px;color:#9CA3AF">미등록 → 자동</span>') + '</span></div></div>' +
-      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">읽기 수준 <span style="color:#9CA3AF;font-weight:600">(Lexile 입력 시 공인값 우선 · 비우면 원문 자동 산출)</span></label><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="bp-read-ar" type="number" step="0.1" placeholder="AR(선택)" value="' + (_bp.readAr||'') + '" style="width:76px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><input id="bp-read-lexile" type="number" placeholder="Lexile" value="' + (_bp.readLx||'') + '" style="width:84px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><button type="button" onclick="_bpOpenLexile()" style="background:#0F766E;color:#fff;border:none;border-radius:8px;padding:9px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">📊 Lexile 조회</button></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">조회 버튼 → 공식 사이트에서 값 확인 후 입력(예: 840). 비워두면 원문 난이도로 자동 부여돼요.</div></div>'  +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">읽기 수준 <span style="color:#9CA3AF;font-weight:600">(Lexile 입력 시 공인값 우선 · 비우면 원문 자동 산출)</span></label><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="bp-read-ar" type="number" step="0.1" placeholder="AR(선택)" value="' + (_bp.readAr||'') + '" style="width:76px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><input id="bp-read-lexile" type="number" placeholder="Lexile" value="' + (_bp.readLx||'') + '" onchange="_bpOnLexileChange()" style="width:84px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><button type="button" onclick="_bpOpenLexile()" style="background:#0F766E;color:#fff;border:none;border-radius:8px;padding:9px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">📊 Lexile 조회</button></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">조회 버튼 → 공식 사이트에서 값 확인 후 입력(예: 840). 비워두면 원문 난이도로 자동 부여돼요.</div></div>'  +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">이모지</label><input id="bp-emoji" value="' + esc(_bp.emoji) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">분류</label><select id="bp-cat" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><option' + (_bp.cat === '📖 도서' ? ' selected' : '') + '>📖 도서</option><option' + (_bp.cat === '📺 드라마' ? ' selected' : '') + '>📺 드라마</option></select></div>' +
       '</div>';

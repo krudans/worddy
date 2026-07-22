@@ -3313,13 +3313,24 @@ function _bpGradeToIdx(g){
   if(g==null) return null;
   return g<3?0 : g<4.5?1 : g<6?2 : g<7.5?3 : g<10?4 : 5;
 }
-/* [자동 목표수 20260722] 원문 읽기수준(FK idx)별 상한 × 실제 후보 수 → 그 책에 맞는 목표 단어수 제안.
-   유아용 짧은 책엔 50개, 두꺼운 성인서엔 최대 1000개. 후보가 상한보다 적으면 후보 수만큼. */
-var _BP_AUTO_CAP = [50, 150, 300, 500, 800, 1000];
+/* [자동 목표수 B방식 20260722] 추출 가능한 단어량(후보 수)을 주 기준으로 목표수 결정.
+   읽기 밴드는 보조(상한 가드)로만. 어휘 풍부한 책은 더 많이, 빈약한 책은 있는 만큼. */
+var _BP_AUTO_CAP = [50, 150, 300, 500, 800, 1000];   // 밴드별 상한(가드)
 function _bpAutoTargetN(fkIdx, candCount){
-  var cap = (fkIdx!=null) ? _BP_AUTO_CAP[Math.min(5,Math.max(0,fkIdx))] : 1000;
-  var n = Math.min(cap, candCount||cap);
-  return Math.max(10, n);
+  var c = candCount || 0;
+  var n;
+  if(c <= 100)      n = c;                          // 있는 만큼
+  else if(c <= 300) n = Math.round(c * 0.9);        // 대부분
+  else if(c <= 600) n = 400;
+  else if(c <= 1000) n = 600;
+  else if(c <= 2000) n = 800;
+  else               n = 1000;                      // 상한
+  // 읽기 밴드 상한 가드: 아주 쉬운 책(그림책·초등 저학년)은 과하게 뽑지 않도록만 제한
+  if(fkIdx!=null){
+    var cap = _BP_AUTO_CAP[Math.min(5,Math.max(0,fkIdx))];
+    if(n > cap && fkIdx <= 1) n = cap;              // idx 0·1(그림책·초등 저학년)만 상한 적용
+  }
+  return Math.max(10, Math.min(n, c || n));         // 후보 수를 넘지 않음
 }
 function _bpAnalyzeText(text, s) {
   // 페이지 머리말/바닥글의 파일경로·URL 노이즈 제거 (예: file:/C:/unzipped/The_Giver.xml 가 182쪽 반복)
@@ -3358,7 +3369,9 @@ function _bpAnalyzeText(text, s) {
   try{ var _lx=parseInt(s.readLx,10); if(!isNaN(_lx)) _lxIdx = _lx<500?0:_lx<700?1:_lx<900?2:_lx<1000?3:_lx<1200?4:5; }catch(e){}
   var _bandForN = (_lxIdx!=null) ? _lxIdx : _fkIdx;
   var _autoN = _bpAutoTargetN(_bandForN, cands.length);
-  var N = (s.autoN ? _autoN : (s.topN || 1000));
+  /* [수동 목표수 존중 20260722] 목표 단어수 칸 값(s.topN)이 있으면 항상 그것을 우선한다.
+     '자동 조절'은 파일 로드/적용 시 이 칸을 자동값으로 채우는 역할일 뿐, 관리자가 직접 넣은 값을 덮지 않는다. */
+  var N = (s.topN && s.topN>0) ? s.topN : _autoN;
   var a2plus = cands.filter(function (en) { return pxCefr(en) !== 'A1'; });
   var selected, exception = false;
   if (s.excludeA1) {
@@ -3536,6 +3549,7 @@ async function _bpExtractPdf(f, onPage) {
 function _bpFile(i, input) {
   var f = input.files && input.files[0]; if (!f) return;
   var name = f.name || '';
+  _bp._userSetN = false;   /* [수동 목표수 존중 20260722] 새 파일 → 자동 목표수 재적용 허용 */
   _bpReadTiers(); _bpReadSettings();
   var isPdf = /\.pdf$/i.test(name) || f.type === 'application/pdf';
   if (isPdf) {
@@ -3619,8 +3633,9 @@ async function _bpPreview() {
       }
     }
     _bp.preview = results;
-    /* [자동 목표수 20260722] 자동 모드면 첫 원서의 자동 목표수를 topN에 반영(관리자가 이후 수동 조정 가능) */
-    try{ if(s.autoN && results[0] && results[0].autoN){ s.topN = results[0].autoN; } }catch(e){}
+    /* [수동 목표수 존중 20260722] 관리자가 목표 단어수를 직접 건드리지 않은 경우에만 자동값으로 채운다.
+       _bpUserSetN(사용자가 칸을 직접 수정) 플래그가 켜져 있으면 자동값이 덮지 않는다. */
+    try{ if(s.autoN && !_bp._userSetN && results[0] && results[0].autoN){ s.topN = results[0].autoN; var _tn=document.getElementById('bp-topN'); if(_tn) _tn.value=results[0].autoN; } }catch(e){}
     rBP2();
     var box2 = document.getElementById('bp-regresult'); if (box2) { box2.style.color = '#16A34A'; box2.innerHTML = '✅ 분석 완료 — 확인 후 [등록]을 누르세요.'; }
   } catch (e) { setR('#DC2626', '분석 실패: ' + ((e && e.message) || e)); }
@@ -3667,6 +3682,7 @@ function _bpLexileBadge(){
 function _bpApplyLexile(){
   try{
     _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim();
+    _bp._userSetN=false;   /* [수동 목표수 존중 20260722] 적용 = Lexile 밴드 기준 자동 목표수 다시 제안 */
     _bpLexileBadge();
     var hasText = _bp.tiers && _bp.tiers.some(function(t){return (t.text||'').trim();});
     if(!hasText){ if(typeof toast==='function') toast('먼저 원서 파일을 올리거나 텍스트를 넣어주세요','err'); return; }
@@ -3803,7 +3819,7 @@ function rBP2() {
       var samples = pv.selected.slice(0, 24).map(function (w) { return '<span style="display:inline-block;background:#F3F4F6;border-radius:6px;padding:2px 7px;margin:2px;font-size:11px">' + esc(w.en) + ' <span style="color:#9CA3AF">' + esc(String(w.kr || '').split(/[;,]/)[0]) + '</span></span>'; }).join('');
       var head = (pv.mode === 'ai')
         ? ('🤖 AI 분석 결과 · 원문 ' + (pv.textLen || 0).toLocaleString() + '자 · ' + (pv.chunks || 0) + '조각 → <b>추출 ' + pv.selected.length.toLocaleString() + '단어</b> (사전보유 ' + (pv.inDict || 0) + ') · 예상 ' + (pv.selected.length>=200?Math.max(1,Math.ceil(pv.selected.length/200)):Math.max(1,Math.min(3,Math.round(pv.selected.length/25)))) + '챕터' + (pv.warn ? ('<br><span style="color:#D97706">⚠️ ' + esc(pv.warn) + '</span>') : ''))
-        : ('규칙 분석 · 총 토큰 ' + (pv.allTokens || 0).toLocaleString() + ' · 매칭 ' + (pv.matched || 0).toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b>' + (pv.exception ? ' <span style="color:#D97706">(단편예외:A1포함)</span>' : '') + (pv.autoN!=null && _bp.settings.autoN ? (' <span style="color:#1E5FA5;font-weight:800">· 자동 목표 ' + pv.autoN + '개</span> <span style="color:#9CA3AF;font-size:11px">(읽기수준·후보수 기반)</span>') : ''));
+        : ('규칙 분석 · 총 토큰 ' + (pv.allTokens || 0).toLocaleString() + ' · 매칭 ' + (pv.matched || 0).toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b>' + (pv.exception ? ' <span style="color:#D97706">(단편예외:A1포함)</span>' : '') + (pv.autoN!=null && _bp.settings.autoN ? (' <span style="color:#1E5FA5;font-weight:800">· 자동 목표 ' + pv.autoN + '개</span> <span style="color:#9CA3AF;font-size:11px">(추출 가능 단어량 기준)</span>') : ''));
       /* [읽기수준 자동산출 20260722] 원문 Flesch-Kincaid → 읽기 밴드 (관리자 AR/Lexile 미입력 시 이 값 적용) */
       var _rdB='';
       if(pv.fkIdx!=null){
@@ -3836,7 +3852,7 @@ function rBP2() {
     '<div style="font-size:13px;font-weight:800;color:#374151;margin-bottom:10px">⚙️ 추출 설정</div>' +
     '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#1E5FA5;cursor:pointer;margin-bottom:10px;padding:9px;background:#EFF6FF;border-radius:8px"><input type="checkbox" id="bp-aiMode"' + (s.aiMode ? ' checked' : '') + '>🤖 단어 선정에 AI(Gemini) 사용 — 끄면 사전+빈도 규칙으로 무료·즉시 선정(기본·권장). 텍스트 PDF는 끈 채로 충분합니다.</label>' +
     '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#0F766E;cursor:pointer;margin-bottom:10px;padding:9px;background:#F0FDFA;border-radius:8px"><input type="checkbox" id="bp-autoN"' + (s.autoN ? ' checked' : '') + '>📏 책 수준에 맞춰 단어 개수 자동 조절 — 유아·그림책은 적게(≤50), 성인·고전서는 많이(≤1000). 끄면 아래 목표 단어수를 그대로 사용.</label>' +   /* [자동 목표수 20260722] */
-    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">' + num('bp-topN', '목표 단어수' + (s.autoN?' (자동)':''), s.topN, 90) + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 판정 기준(%)', s.pnRatio, 110) + '</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px"><div><label style="font-size:11px;font-weight:800;color:#6B7280;display:block">목표 단어수 <span style="color:#9CA3AF;font-weight:600">(직접 수정 가능)</span></label><input type="number" id="bp-topN" value="' + s.topN + '" oninput="_bp._userSetN=true" style="width:90px;box-sizing:border-box;padding:7px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' + num('bp-minLen', '최소 글자수', s.minLen, 80) + num('bp-pnRatio', '고유명사 판정 기준(%)', s.pnRatio, 110) + '</div>' +
     '<div style="display:flex;gap:16px;flex-wrap:wrap">' + chk('bp-excludeA1', 'A1(최기초) 제외', s.excludeA1) + chk('bp-shortEx', '단편 예외(A2+ 부족 시 A1 포함)', s.shortEx) + chk('bp-lemmatize', '표제어화(규칙)', s.lemmatize) + chk('bp-excludeFn', '기능어 제외(규칙)', s.excludeFn) + '</div>' +
     /* [설정 설명 20260721] */
     '<div style="margin-top:11px;background:#fff;border:1px dashed #D1D5DB;border-radius:9px;padding:10px 12px;font-size:11.5px;color:#6B7280;line-height:1.7">' +

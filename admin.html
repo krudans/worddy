@@ -3313,24 +3313,19 @@ function _bpGradeToIdx(g){
   if(g==null) return null;
   return g<3?0 : g<4.5?1 : g<6?2 : g<7.5?3 : g<10?4 : 5;
 }
-/* [자동 목표수 B방식 20260722] 추출 가능한 단어량(후보 수)을 주 기준으로 목표수 결정.
-   읽기 밴드는 보조(상한 가드)로만. 어휘 풍부한 책은 더 많이, 빈약한 책은 있는 만큼. */
-var _BP_AUTO_CAP = [50, 150, 300, 500, 800, 1000];   // 밴드별 상한(가드)
+/* [자동 목표수 A방식 20260722] 추출 가능한 단어량(후보 수)만으로 목표수 결정. 읽기 난이도는 표시용일 뿐,
+   쉬운 책이라도 어휘가 많으면 많이 뽑는다(밴드 상한 가드 제거). */
+var _BP_AUTO_CAP = [50, 150, 300, 500, 800, 1000];   // (참고용, 목표수 계산엔 미사용)
 function _bpAutoTargetN(fkIdx, candCount){
   var c = candCount || 0;
   var n;
   if(c <= 100)      n = c;                          // 있는 만큼
   else if(c <= 300) n = Math.round(c * 0.9);        // 대부분
-  else if(c <= 600) n = 400;
-  else if(c <= 1000) n = 600;
-  else if(c <= 2000) n = 800;
+  else if(c <= 600) n = Math.round(c * 0.75);       // 약 450
+  else if(c <= 1000) n = Math.round(c * 0.7);       // 약 700
+  else if(c <= 2000) n = Math.round(c * 0.6);       // 약 900
   else               n = 1000;                      // 상한
-  // 읽기 밴드 상한 가드: 아주 쉬운 책(그림책·초등 저학년)은 과하게 뽑지 않도록만 제한
-  if(fkIdx!=null){
-    var cap = _BP_AUTO_CAP[Math.min(5,Math.max(0,fkIdx))];
-    if(n > cap && fkIdx <= 1) n = cap;              // idx 0·1(그림책·초등 저학년)만 상한 적용
-  }
-  return Math.max(10, Math.min(n, c || n));         // 후보 수를 넘지 않음
+  return Math.max(10, Math.min(n, c || n));
 }
 function _bpAnalyzeText(text, s) {
   // 페이지 머리말/바닥글의 파일경로·URL 노이즈 제거 (예: file:/C:/unzipped/The_Giver.xml 가 182쪽 반복)
@@ -3728,7 +3723,11 @@ function _bpLexileBadge(){
 function _bpApplyLexile(){
   try{
     _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim();
-    _bp._userSetN=false;   /* [수동 목표수 존중 20260722] 적용 = Lexile 밴드 기준 자동 목표수 다시 제안 */
+    /* [적용 목표수 존중 20260722] 관리자가 목표수를 직접 넣었으면(_userSetN) 적용해도 그 값 유지.
+       칸이 비었거나(자동) 아직 안 건드렸을 때만 Lexile 밴드 기준 자동 목표수를 다시 제안. */
+    var _tnEl=document.getElementById('bp-topN');
+    var _tnVal=_tnEl?(_tnEl.value||'').trim():'';
+    if(!_bp._userSetN || !_tnVal){ _bp._userSetN=false; }
     _bpLexileBadge();
     var hasText = _bp.tiers && _bp.tiers.some(function(t){return (t.text||'').trim();});
     if(!hasText){ if(typeof toast==='function') toast('먼저 원서 파일을 올리거나 텍스트를 넣어주세요','err'); return; }

@@ -2957,25 +2957,32 @@ function rPackDetail() {
 
   let html = `<div style="padding:0 0 90px">`;
 
-  // 히어로
-  html += `<div style="position:relative;border-radius:0 0 22px 22px;overflow:hidden;background:${grad};padding:16px 18px 22px">
-    <div style="position:absolute;right:-10px;bottom:-16px;font-size:120px;opacity:.15;line-height:1">${pk.emoji || '📚'}</div>
-    <button onclick="S._pkDetail=null;go('mybooks','market')" style="position:relative;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:13px;font-weight:700;padding:7px 12px;border-radius:20px;cursor:pointer;margin-bottom:14px">‹ 마켓</button>
-    <div style="position:relative">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">
-        ${owned ? `<span style="background:#fff;color:${petCol.main};font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px">보유 중</span>` : ''}
-        ${lvTxt ? `<span style="background:rgba(255,255,255,.22);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">${lv} · ${lvTxt}</span>` : ''}
-        <span style="background:rgba(255,255,255,.22);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">${pk.cat || '기타'}</span>
+  // 히어로 (C안: 표지형 리스트 카드 — 그라데이션 제거, 표지 전면)
+  const _rb = (typeof _readBadge==='function') ? _readBadge(pk, false) : '';
+  const _wordLvTxt = lvTxt ? ('단어 ' + lvTxt) : '';
+  html += `<div style="padding:14px 16px 4px">
+    <button onclick="S._pkDetail=null;go('mybooks','market')" style="background:none;border:none;color:var(--text3,#9CA3AF);font-size:13px;font-weight:700;padding:4px 0;cursor:pointer;margin-bottom:10px">‹ 마켓</button>
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      ${pk.imageUrl
+        ? `<img src="${pk.imageUrl}" style="width:74px;height:100px;border-radius:10px;object-fit:cover;flex-shrink:0;box-shadow:0 3px 10px rgba(0,0,0,.16);border:1px solid var(--border,#E5E7EB)">`
+        : `<div style="width:74px;height:100px;border-radius:10px;background:var(--bg-sub,#F1F5F9);display:flex;align-items:center;justify-content:center;font-size:38px;flex-shrink:0">${pk.emoji || '📚'}</div>`}
+      <div style="flex:1;min-width:0;padding-top:2px">
+        ${pk.courseName ? `<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-bottom:2px">${pk.courseName}</div>` : ''}
+        <div style="font-size:18px;font-weight:900;color:var(--text1,#111);line-height:1.25">${pk.name}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
+          ${owned ? `<span style="background:${petCol.main}22;color:${petCol.main};font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px">✓ 보유 중</span>` : ''}
+          ${_rb}
+          ${_wordLvTxt ? `<span style="background:var(--bg-sub,#F1F5F9);color:var(--text2,#374151);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px">${_wordLvTxt}</span>` : ''}
+        </div>
       </div>
-      <div style="font-size:22px;font-weight:900;color:#fff;line-height:1.25;text-shadow:0 1px 5px rgba(0,0,0,.2)">${pk.name}</div>
-      ${pk.desc ? `<div style="font-size:12.5px;color:rgba(255,255,255,.92);margin-top:6px;line-height:1.55">${pk.desc}</div>` : ''}
     </div>
+    ${pk.desc ? `<div style="font-size:12px;color:var(--text2,#6B7280);margin-top:11px;line-height:1.55">${pk.desc}</div>` : ''}
   </div>`;
 
   const card = (inner, mt) => `<div style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:16px;padding:15px 16px;margin:${mt || 12}px 14px 0">${inner}</div>`;
   const h = t => `<div style="font-size:13px;font-weight:900;color:var(--text1,#111);margin-bottom:9px">${t}</div>`;
 
-  // 숫자 3분할
+  // 숫자 2분할 (단어·챕터만 — "50일/하루20개" 제거)
   html += card(`
     <div style="display:flex">
       <div style="flex:1;text-align:center">
@@ -2987,29 +2994,35 @@ function rPackDetail() {
         <div style="font-size:21px;font-weight:900;color:var(--text1,#111)">${chN}</div>
         <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">챕터</div>
       </div>
-      <div style="width:1px;background:var(--border,#ECEEF1)"></div>
-      <div style="flex:1;text-align:center">
-        <div style="font-size:21px;font-weight:900;color:var(--text1,#111)">${days20}</div>
-        <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:2px">일 (하루 20개)</div>
-      </div>
     </div>`, 14);
+
+  // ── 접히는 상세 행 (iOS 설정형) ──
+  const _accRow = (id, icon, title, right, bodyHTML) => `
+    <div onclick="(function(el){var b=document.getElementById('acc-${id}');var c=el.querySelector('.acc-chev');if(!b)return;var open=b.style.display!=='none';b.style.display=open?'none':'block';if(c)c.style.transform=open?'':'rotate(90deg)';})(this)"
+      style="display:flex;align-items:center;gap:11px;padding:14px 0;border-top:0.5px solid var(--border,#ECEEF1);cursor:pointer">
+      <span style="font-size:16px;width:20px;text-align:center;flex-shrink:0">${icon}</span>
+      <span style="flex:1;font-size:13px;font-weight:700;color:var(--text1,#111)">${title}</span>
+      ${right ? `<span style="font-size:11.5px;color:var(--text3,#9CA3AF)">${right}</span>` : ''}
+      <span class="acc-chev" style="font-size:12px;color:var(--text3,#9CA3AF);transition:transform .2s">▶</span>
+    </div>
+    <div id="acc-${id}" style="display:none;padding:0 0 14px 31px">${bodyHTML}</div>`;
+
+  let acc = `<div style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:16px;padding:2px 16px;margin:12px 14px 0">`;
+
+  // 난이도 분포
+  acc += _accRow('diff', '📊', '난이도 구성', _wordLvTxt || 'CEFR',
+    `${_pkCefrBar(pk, 9)}
+     <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:9px;line-height:1.6">읽기 수준은 책 자체의 난이도, 단어 난이도는 이 단어장에서 외울 어휘 수준이에요. 배지의 ⓘ를 눌러 자세히 볼 수 있어요.</div>`);
 
   // 구성 기준
   if (pk.basis) {
-    html += card(`${h('📐 어떤 기준으로 모았나')}
-      <div style="font-size:12px;color:var(--text2,#374151);line-height:1.65">${pk.basis}</div>`);
+    acc += _accRow('basis', '📐', '어떤 기준으로 모았나', '',
+      `<div style="font-size:12px;color:var(--text2,#374151);line-height:1.65">${pk.basis}</div>`);
   }
 
-  // 난이도 분포
-  html += card(`${h('📊 난이도 분포')}
-    ${_pkCefrBar(pk, 9)}
-    <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:9px;line-height:1.6">
-      CEFR은 유럽 공통 언어 기준입니다. A1이 가장 쉽고 C2가 가장 어렵습니다.
-    </div>`);
-
-  // 암기 과정
-  html += card(`${h('🔁 어떻게 외우나')}
-    <div style="display:flex;flex-direction:column;gap:0">
+  // 학습 방법
+  acc += _accRow('how', '🔁', '어떻게 외우나', `${chN}단계`,
+    `<div style="display:flex;flex-direction:column;gap:0">
       ${[
         ['1', '사전 체크', `챕터마다 ${chSize.toLocaleString()}단어 — 시작 전에 이미 아는 단어를 걸러냅니다`],
         ['2', '학습', '플래시카드·게임 5종으로 반복합니다'],
@@ -3029,39 +3042,10 @@ function rPackDetail() {
         </div>`).join('')}
     </div>`);
 
-  // 효과
-  html += card(`${h('🎯 끝내면 무엇이 남나')}
-    <div style="display:flex;flex-direction:column;gap:9px">
-      ${[
-        ['📖', `${n.toLocaleString()}단어를 뜻·발음·예문까지`, '단어마다 예문 5개와 이모지가 붙어 있습니다'],
-        ['🦋', `나비 ${chN}마리`, '챕터를 통과할 때마다 한 마리씩 모입니다'],
-        ['📈', '성장 그래프에 기록', '레벨 변화와 정확도가 곡선으로 남습니다'],
-        ['🔄', '오답은 사라질 때까지', 'SRS가 잊을 때쯤 다시 꺼내 보여줍니다']
-      ].map(([ic, t, d]) => `
-        <div style="display:flex;gap:10px;align-items:flex-start">
-          <div style="font-size:17px;flex-shrink:0;width:22px;text-align:center">${ic}</div>
-          <div style="flex:1">
-            <div style="font-size:12px;font-weight:700;color:var(--text1,#111)">${t}</div>
-            <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:1px;line-height:1.5">${d}</div>
-          </div>
-        </div>`).join('')}
-    </div>`);
-
-  // 예상 기간
-  html += card(`${h('⏱ 하루 몇 개씩 하면')}
-    <div style="display:flex;gap:8px">
-      ${[[10, '느긋하게'], [20, '보통'], [30, '집중해서']].map(([per, label]) => `
-        <div style="flex:1;background:var(--bg-sub,#F8F9FA);border-radius:11px;padding:11px 8px;text-align:center">
-          <div style="font-size:10px;color:var(--text3,#9CA3AF)">${label}</div>
-          <div style="font-size:15px;font-weight:900;color:var(--text1,#111);margin:3px 0 1px">${_pkDays(n, per)}일</div>
-          <div style="font-size:9.5px;color:var(--text3,#9CA3AF)">하루 ${per}개</div>
-        </div>`).join('')}
-    </div>`);
-
   // 미리보기
   if (sample.length) {
-    html += card(`${h('👀 이런 단어들')}
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
+    acc += _accRow('sample', '👀', '이런 단어들', `${n.toLocaleString()}개`,
+      `<div style="display:flex;flex-wrap:wrap;gap:6px">
         ${sample.map(w => `<div style="background:var(--bg-sub,#F8F9FA);border-radius:9px;padding:7px 10px;display:flex;align-items:center;gap:6px">
             <span style="font-size:14px">${w.img || '📘'}</span>
             <span style="font-size:11.5px;font-weight:700;color:var(--text1,#111)">${w.en}</span>
@@ -3070,6 +3054,8 @@ function rPackDetail() {
       </div>`);
   }
 
+  acc += `</div>`;
+  html += acc;
   html += `</div>`;
 
   // 하단 고정 담기 버튼
@@ -3492,63 +3478,55 @@ function rMarket() {
     const _loosePacks = filtered.filter(pk => !pk.courseId);
 
     if(_courseList.length){
-      html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 8px">
+      html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 10px">
         <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">🎯 목표별 코스</div>
         <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_courseList.length}개 코스</div></div>`;
-      _courseList.forEach(c => { html += _courseBanner(c, petCol); });
+      /* [책장형 마켓 20260722] 코스 = 가로 스크롤 책장(표지·제목·권수·읽기수준) */
+      html += `<div style="display:flex;gap:12px;overflow-x:auto;padding:0 2px 8px;margin-bottom:6px;-webkit-overflow-scrolling:touch">`;
+      _courseList.forEach(c => {
+        const cover = c.books.find(b => b.imageUrl);
+        const bookCnt = c.books.length;
+        const rd = c.books.map(b=>b.read&&b.read.idx).filter(v=>v!=null);
+        const rdTxt = rd.length ? (typeof READ_BANDS!=='undefined' ? READ_BANDS[Math.round(rd.reduce((a,b)=>a+b,0)/rd.length)] : '') : '';
+        html += `<div onclick="showCourseDetail('${c.id}')" style="flex-shrink:0;width:92px;cursor:pointer;text-align:center">
+          ${cover
+            ? `<img src="${cover.imageUrl}" style="width:80px;height:106px;border-radius:9px;object-fit:cover;margin:0 auto;display:block;box-shadow:0 3px 9px rgba(0,0,0,.16);border:1px solid var(--border,#E5E7EB)">`
+            : `<div style="width:80px;height:106px;border-radius:9px;background:var(--bg-sub,#F1F5F9);margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:30px">${c.emoji||'📚'}</div>`}
+          <div style="font-size:11px;font-weight:700;color:var(--text1,#111);margin-top:6px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</div>
+          <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:1px">${bookCnt}권${rdTxt?' · '+rdTxt:''}</div>
+        </div>`;
+      });
+      html += `</div>`;
     }
 
     if(_loosePacks.length){
       if(_courseList.length){
-        html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:16px 2px 8px">
-          <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">📚 단어장</div>
+        html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:18px 2px 10px">
+          <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">📚 원서 단어장</div>
           <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_loosePacks.length}개</div></div>`;
       }
-      html += `<div style="display:flex;flex-direction:column;gap:10px">`;
-    _loosePacks.slice(0, _mktShown).forEach(pk => {   /* [10개 페이지네이션 20260720] */
-      const owned = ownedPacks.includes(pk.id);
-      const wordCount = (pk.words||[]).length;
-      const pkIcon = pk.imageUrl
-        ? `<img src="${pk.imageUrl}" style="width:44px;height:60px;border-radius:7px;object-fit:cover;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.18);border:1px solid var(--border,#E5E7EB)">` /* [썸네일 개선 20260720] 책표지 비율 */
-        : `<div style="font-size:36px;flex-shrink:0">${pk.emoji||'📚'}</div>`;
-      /* [A안 컴팩트 리스트 20260720] 카드=표지·제목·스펙 한 줄·담기만. desc/basis는 ⓘ 펼침으로 이동 */
-      html += `<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:16px;border:1.5px solid ${owned?petCol.main+'44':'var(--border,var(--border,#E5E7EB))'};padding:12px 14px">
-        <div style="display:flex;align-items:center;gap:12px">
-          ${pkIcon}
-          <div style="flex:1;min-width:0">
-            <div style="font-size:15px;font-weight:800;color:var(--text1,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pk.name}</div>
-            <div onclick="togglePackIntro('${pk.id}')" style="font-size:11.5px;color:var(--text3,#9CA3AF);margin-top:3px;cursor:pointer;font-weight:600">${_pkSpecLine(pk)} <span style="color:${petCol.main};font-weight:800">ⓘ 자세히 ▾</span></div>
-          </div>
-          ${owned
-            ? `<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;flex-shrink:0">✅ 보유</span>`
-            : `<button onclick="_doBuyPack('${pk.id}')" style="background:${petCol.main};color:#fff;border:none;border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">+ 담기</button>`}
-        </div>
-        <div id="intro-${pk.id}" onclick="togglePackIntro('${pk.id}')" style="display:none;margin-top:10px;background:var(--bg-sub,#F8FAFC);border:1px solid var(--border,#E5E7EB);border-radius:12px;padding:12px 13px;cursor:pointer"></div><!-- [마켓 팩 상세소개 20260720][접기 UX 20260721 박스 탭=접기] -->
-        ${!owned?`<div id="preview-${pk.id}" style="display:none;margin-top:10px">
-          <div style="overflow-x:auto;border-radius:10px;border:1px solid #E5E7EB">
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead><tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
-                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">영어</th>
-                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">한국어</th>
-                <th style="padding:6px 8px;text-align:left;font-weight:700;color:#374151">예문</th>
-              </tr></thead>
-              <tbody>
-${(pk.words||[]).slice(0,10).map((w,i)=>`<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}"> <td style="padding:6px 8px;font-weight:800;font-family:monospace;color:#111;white-space:nowrap">${w.en}</td> <td style="padding:6px 8px;color:#374151;white-space:nowrap">${w.kr}</td> <td style="padding:6px 8px;color:#6B7280;max-width:200px"> ${(()=>{const exs=(w.exList&&w.exList.length?w.exList:(w.ex?[w.ex]:[])).slice(0,3);return exs.map(e=>`<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px">${e}</div>`).join('');})()} </td> </tr>`).join('')}
-              ${wordCount>10?`<tr><td colspan="3" style="padding:6px 8px;text-align:center;color:#9CA3AF;font-size:10px">+${wordCount-10}개 더</td></tr>`:''}
-              </tbody>
-            </table>
-          </div>
-        </div>`:''}
-      </div>`;
-    });
+      /* [책장형 마켓 20260722] 낱개 단어장 = 3열 표지 그리드. 탭하면 상세(C안). ⓘ 펼침은 상세로 이동. */
+      html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 10px">`;
+      _loosePacks.slice(0, _mktShown).forEach(pk => {
+        const owned = ownedPacks.includes(pk.id);
+        const rd = (pk.read && pk.read.idx!=null && typeof READ_BANDS!=='undefined') ? READ_BANDS[Math.min(5,Math.max(0,pk.read.idx))] : '';
+        const cover = pk.imageUrl
+          ? `<img src="${pk.imageUrl}" style="width:100%;aspect-ratio:3/4;border-radius:8px;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.14);border:1px solid var(--border,#E5E7EB)">`
+          : `<div style="width:100%;aspect-ratio:3/4;border-radius:8px;background:var(--bg-sub,#F1F5F9);display:flex;align-items:center;justify-content:center;font-size:34px">${pk.emoji||'📚'}</div>`;
+        html += `<div onclick="showPackDetail('${pk.id}')" style="cursor:pointer;text-align:center;position:relative">
+          ${owned?`<span style="position:absolute;top:5px;right:5px;background:${petCol.main};color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:20px;z-index:1">✓</span>`:''}
+          ${cover}
+          <div style="font-size:11px;font-weight:700;color:var(--text1,#111);margin-top:6px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(pk.name||'').split('·')[0].trim()}</div>
+          <div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:1px">${rd||(_pkSpecLine(pk).split('·')[0].trim())}</div>
+        </div>`;
+      });
+      html += `</div>`;
 
       /* [10개 페이지네이션 20260720] 남은 팩이 있으면 하단에 더 보기 버튼 */
       if(_loosePacks.length > _mktShown){
         const _rem = _loosePacks.length - _mktShown;
-        html += `<button onclick="_mktShowMore()" style="width:100%;background:var(--bg-card,#fff);border:1.5px dashed var(--theme-soft,#BFDBFE);border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:var(--theme,#3B82F6);cursor:pointer;margin-top:2px">+ 단어장 ${Math.min(10,_rem)}개 더 보기 <span style="color:var(--text3,#9CA3AF);font-weight:600">(${_mktShown}/${_loosePacks.length})</span></button>`;
+        html += `<button onclick="_mktShowMore()" style="width:100%;background:var(--bg-card,#fff);border:1.5px dashed var(--theme-soft,#BFDBFE);border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:var(--theme,#3B82F6);cursor:pointer;margin-top:16px">+ 단어장 ${Math.min(10,_rem)}개 더 보기 <span style="color:var(--text3,#9CA3AF);font-weight:600">(${_mktShown}/${_loosePacks.length})</span></button>`;
       }
-
-      html += `</div>`;
     }
   }
   html += '</div>';// #mkt-list 끝

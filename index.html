@@ -5741,9 +5741,17 @@ function sv() {
           if(_srvTW.length){
             const _twSet={}; _srvTW.forEach(k=>{ _twSet[String(k).toLowerCase()]=1; });
             S._tombWords = Array.from(new Set([...(S._tombWords||[]), ..._srvTW]));
-            const _wb=(S.words||[]).length;
-            S.words=(S.words||[]).filter(w=>!(w&&w.en&&_twSet[String(w.en).toLowerCase()]));
-            if(S.words.length!==_wb){ console.log('[크로스기기 삭제 존중] 다른 기기의 단어 삭제 반영:', _wb, '→', S.words.length); try{ localStorage.setItem('wd-w', JSON.stringify(S.words)); }catch(e){} }
+            /* [내단어장 오염 원천차단 20260722] S.words는 '내 단어장'과 '현재 학습 책'을 겸용 →
+               현재 책이 내 단어장이 아닐 땐 S.words를 건드리거나 wd-w에 쓰면 사전 단어가 내 단어장에 박제됨.
+               내 단어장 정본(wd-w)에서만 삭제어를 걸러 다시 저장한다(라이브 S.words는 학습 중이면 안 건드림). */
+            var _isMy=(!S.currentBook || S.currentBook==='내 단어장');
+            if(_isMy){
+              var _wb=(S.words||[]).length;
+              S.words=(S.words||[]).filter(w=>!(w&&w.en&&_twSet[String(w.en).toLowerCase()]));
+              if(S.words.length!==_wb){ console.log('[크로스기기 삭제 존중] 내 단어 삭제 반영:', _wb, '→', S.words.length); try{ localStorage.setItem('wd-w', JSON.stringify(S.words)); }catch(e){} }
+            } else {
+              try{ var _mw=JSON.parse(localStorage.getItem('wd-w')||'[]')||[]; var _mwb=_mw.length; _mw=_mw.filter(w=>!(w&&w.en&&_twSet[String(w.en).toLowerCase()])); if(_mw.length!==_mwb){ localStorage.setItem('wd-w', JSON.stringify(_mw)); console.log('[크로스기기 삭제 존중] 내 단어장 정본에서 삭제 반영:', _mwb, '→', _mw.length); } }catch(e){}
+            }
           }
         }catch(e){}
         if(_srvTomb.length){
@@ -18931,8 +18939,11 @@ auth.onAuthStateChanged(async user => {
             }
             if(Array.isArray(_data.words) && _data.words.length){
               if(!Array.isArray(S.words)) S.words=[];
+              /* [users 병합 묘비게이트 20260722] users 문서의 낡은 words 잔재가 삭제 묘비를 무시하고
+                 union push로 되살리던 근본 버그(내 단어장 멋대로 채워짐) — 묘비 단어는 제외. */
+              var _tw=new Set((S._tombWords||[]).map(function(x){return String(x).toLowerCase();}));
               var _have = new Set(S.words.map(function(w){return (w&&w.en?String(w.en).toLowerCase():'');}));
-              _data.words.forEach(function(w){ if(w&&w.en&&!_have.has(String(w.en).toLowerCase())){ S.words.push(w); _have.add(String(w.en).toLowerCase()); } });
+              _data.words.forEach(function(w){ if(w&&w.en){ var _k=String(w.en).toLowerCase(); if(!_have.has(_k) && !_tw.has(_k)){ S.words.push(w); _have.add(_k); } } });
             }
           }
           if(_data.studyLog) {
@@ -19095,9 +19106,13 @@ auth.onAuthStateChanged(async user => {
                   S._tombWords=Array.from(new Set([...(S._tombWords||[]), ...((d.tombWords)||[])]));
                   var _bB=(S.books||[]).length, _wB=(S.words||[]).length;
                   S.books=(d.books||[]).filter(Boolean).map(function(sb){ var lb=(S.books||[]).find(function(x){return x&&x.name===sb.name;}); if(lb&&lb.markMap&&Object.keys(lb.markMap).length){ sb=Object.assign({},sb); sb.markMap=Object.assign({}, sb.markMap||{}, lb.markMap); } return sb; });
-                  S.words=(d.words||[]).slice();
-                  if(S.currentBook && S.currentBook!=='내 단어장' && !S.books.some(function(b){return b.name===S.currentBook;})) S.currentBook='내 단어장';
-                  try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(function(b){ if(b&&b.packId){ var r=Object.assign({},b); delete r.words; return r; } return b; }))); localStorage.setItem('wd-w', JSON.stringify(S.words)); }catch(e){}
+                  /* [내단어장 오염 원천차단 20260722] 서버 words는 '내 단어장' 정본. 현재 화면이 내 단어장일 때만
+                     라이브 S.words를 교체한다. 다른 책(레벨업 등)을 보는 중이면 S.words=그 책 단어이므로 건드리면 안 되고,
+                     wd-w(내 단어장 정본)만 서버값으로 갱신한다 → 학습 책 단어가 내 단어장에 새는 경로 차단. */
+                  var _rtMy=(!S.currentBook || S.currentBook==='내 단어장');
+                  try{ localStorage.setItem('wd-w', JSON.stringify((d.words||[]).slice())); }catch(e){}
+                  if(_rtMy){ S.words=(d.words||[]).slice(); }
+                  try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(function(b){ if(b&&b.packId){ var r=Object.assign({},b); delete r.words; return r; } return b; }))); }catch(e){}
                   console.log('[실시간 동기화] 다른 기기 변경 수신 → 반영: 책 '+_bB+'→'+S.books.length+', 단어 '+_wB+'→'+S.words.length);
                   var _mrEl=document.getElementById('mr');
                   if(typeof go==='function' && !S._gameRunning && !S._inChExam && !S._inLevelTest && !S._inInitLevelTest && !S._inLearnSession && !(_mrEl&&_mrEl.innerHTML&&_mrEl.innerHTML.trim())){ go(); }

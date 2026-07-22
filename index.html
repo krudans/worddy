@@ -2949,7 +2949,7 @@ function rPackDetail() {
   const lv = _pkLevel(pk);
   const lvTxt = _PK_LV_TXT[lv] || '';
   const grad = _pkGrad(pk.id);
-  const chN = Math.max(1, Math.min((typeof CH_N !== 'undefined') ? CH_N : 5, Math.ceil(n / ((typeof CH_PACK !== 'undefined') ? CH_PACK : 200)))) || 1;   /* [마켓 챕터표기 수정 20260720] 실제 챕터 계산과 통일 */
+  const chN = _pkChapters(n);   /* [작은 팩 챕터 20260722] */
   const chSize = Math.ceil(n / chN);
   const days20 = _pkDays(n, 20);
   const days30 = _pkDays(n, 30);
@@ -3119,7 +3119,7 @@ function _courseBanner(c, petCol) {
   const total = c.books.length;
   const ac = _courseAccent(c.id);
   const lv = _courseLevel(c);
-  const chTotal = c.books.reduce((s, b) => s + Math.max(1, Math.min((typeof CH_N!=='undefined'?CH_N:5), Math.ceil(((b.words || []).length) / (typeof CH_PACK!=='undefined'?CH_PACK:200)))), 0);   /* [마켓 챕터표기 수정 20260720] floor(단어/5) 오식 → 실제 챕터 계산(_chapterCount: ceil(단어/CH_PACK))과 통일 */
+  const chTotal = c.books.reduce((s, b) => s + _pkChapters((b.words || []).length), 0);   /* [작은 팩 챕터 20260722] */
 
   const ownedIds = (S.books || []).map(b => b && b.packId).filter(Boolean);
   const ownCnt = c.books.filter(b => ownedIds.includes(b.id)).length;
@@ -3129,7 +3129,7 @@ function _courseBanner(c, petCol) {
   const steps = c.books.map((b, i) => {
     const done = ownedIds.includes(b.id);
     const bn = (b.words || []).length;
-    const bch = Math.max(1, Math.min((typeof CH_N!=='undefined'?CH_N:5), Math.ceil(bn / (typeof CH_PACK!=='undefined'?CH_PACK:200))));   /* [마켓 챕터표기 수정 20260720] 실제 챕터 계산과 통일 */
+    const bch = _pkChapters(bn);   /* [작은 팩 챕터 20260722] */
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
       <div style="width:17px;height:17px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;
         background:${done ? petCol.main : 'var(--bg-sub,#F8F9FA)'};color:${done ? '#fff' : 'var(--text3,#9CA3AF)'}">${done ? '✓' : (i + 1)}</div>
@@ -3580,7 +3580,7 @@ function _pkIntroHTML(pk){
     var ws=Array.isArray(pk.words)?pk.words:[];
     var ens=ws.map(function(w){ return typeof w==='string'?w:(w&&w.en)||''; }).filter(Boolean);
     var cnt=ens.length||pk.count||0;
-    var chN=Math.max(1, Math.min((typeof CH_N!=='undefined'?CH_N:5), Math.ceil(cnt/((typeof CH_PACK!=='undefined')?CH_PACK:200))));
+    var chN=_pkChapters(cnt);   /* [작은 팩 챕터 20260722] */
     var dist={}, known=0;
     try{ if(typeof _ensureBwdMeta==='function') _ensureBwdMeta(); }catch(e){}
     try{ var M=(typeof BWD_META!=='undefined')?BWD_META:(window.BWD_META||null);
@@ -3623,7 +3623,7 @@ function _pkSpecLine(pk){
   try{
     var ws=Array.isArray(pk.words)?pk.words:[];
     var cnt=ws.length||pk.count||0;
-    var chN=Math.max(1, Math.min((typeof CH_N!=='undefined'?CH_N:5), Math.ceil(cnt/((typeof CH_PACK!=='undefined')?CH_PACK:200))));
+    var chN=_pkChapters(cnt);   /* [작은 팩 챕터 20260722] */
     if(pk.__minC===undefined){
       pk.__minC='';
       try{ var M=(typeof BWD_META!=='undefined')?BWD_META:(window.BWD_META||null);
@@ -8072,19 +8072,26 @@ function checkLearnComplete() {
 var CH_N = 5;          // 챕터 최대 개수
 var CH_MIN = 5;        // 챕터 하나의 최소 단어 수 (시험 응시 하한)
 var CH_PACK = 200;     // 팩(코스) 챕터 1개의 단어 수 — 20260710-chapter-200
+/* [작은 팩 챕터 20260722] 마켓 표기용 — _chapterCount(팩)와 동일 규칙: 200+ 는 ceil/200 최대5, 미만은 25단어 기준 최대3 */
+function _pkChapters(cnt){ cnt=cnt||0; if(cnt>=CH_PACK) return Math.max(1, Math.min((typeof CH_N!=='undefined'?CH_N:5), Math.ceil(cnt/CH_PACK))); return Math.max(1, Math.min(3, Math.round(cnt/25))); }
 function _isPackBook(book){ return !!(book && book.packId); }
 function _chapterCount(book){
   try{
     var ws=(typeof getBookWords==='function')?getBookWords(book):[];
     if(!ws.length) return 0;
-    if(_isPackBook(book)) return Math.max(1, Math.min(CH_N, Math.ceil(ws.length/CH_PACK)));
+    if(_isPackBook(book)){
+      /* [작은 팩 챕터 20260722] 200단어 이상은 ceil(단어/200) 최대 5.
+         200 미만 작은 책(유아·단편)은 챕터당 25단어 기준으로 나눠 최소 1·최대 3챕터 — 미션이 너무 잘게 쪼개지지 않게. */
+      if(ws.length >= CH_PACK) return Math.max(1, Math.min(CH_N, Math.ceil(ws.length/CH_PACK)));
+      return Math.max(1, Math.min(3, Math.round(ws.length/25)));
+    }
     return Math.max(1, Math.min(CH_N, Math.floor(ws.length/CH_MIN)));
   }catch(e){ return 0; }
 }
 function _chapterSize(book){
   var c=_chapterCount(book); if(!c) return 0;
   var ws=getBookWords(book);
-  if(_isPackBook(book)) return Math.max(CH_PACK, Math.ceil(ws.length/c));
+  if(_isPackBook(book)) return (ws.length>=CH_PACK) ? Math.max(CH_PACK, Math.ceil(ws.length/c)) : Math.ceil(ws.length/c);   /* [작은 팩 챕터 20260722] 작은 책은 CH_PACK 하한 없이 균등 분할 */
   return Math.ceil(ws.length/c);
 }
 function _chapterSlice(book, chIdx){

@@ -6717,7 +6717,10 @@ async function rNT(){
   elNT.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
       <h2 style="font-size:22px;font-weight:900">📢 공지사항</h2>
-      <button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="background:#0F766E;color:#fff" onclick="showNewBookNotice()">📚 신간 공지</button>
+        <button class="btn bb" onclick="showAddNT()">✏️ 공지 작성</button>
+      </div>
     </div>
     ${!ns.length
       ? `<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:60px;text-align:center;color:#9CA3AF">
@@ -7872,6 +7875,43 @@ async function bqDismiss(id){
   try{ await db.collection('book_requests').doc(id).update({status:'dismissed', dismissedAt:new Date().toISOString()}); rBQ(); }catch(e){ toast('오류','err'); }
 }
 // ── 신간 공지 자동 생성: packId → 팩 메타(이름·단어수·desc) + CEFR 분포 실측 → 템플릿 조립 → 편집·AI다듬기·게시 ──
+// ── 신간 공지: 등록된 단어장(팩) 리스트에서 선택 → bqNotice로 자동 공지 조립 ──
+/* [신간 공지 20260722] 최신 등록순 팩 목록 모달 → 클릭 시 bqNotice(packId) */
+async function showNewBookNotice(){
+  var wrap=document.getElementById('modal-root')||document.body;
+  var packs=[];
+  try{
+    var snap=await db.collection('packs').get();
+    packs=snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()||{}); });
+  }catch(e){ toast('팩 목록을 불러오지 못했어요','err'); return; }
+  // 최신 등록순 정렬 (createdAt desc, 없으면 뒤로)
+  packs.sort(function(a,b){ var ta=Date.parse(a.createdAt||0)||0, tb=Date.parse(b.createdAt||0)||0; return tb-ta; });
+  var _RB=['그림책·입문','초등 저학년','초등 고학년','청소년','고등·성인','고전·전문'];
+  var rows=packs.map(function(p){
+    var cnt=(Array.isArray(p.words)?p.words.length:0)||p.count||0;
+    var cover=(p.imageUrl&&p.imageUrl.length>1000)
+      ? '<img src="'+p.imageUrl+'" style="width:38px;height:52px;object-fit:cover;border-radius:5px;flex-shrink:0;border:1px solid #E5E7EB">'
+      : '<div style="width:38px;height:52px;border-radius:5px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+(p.emoji||'📚')+'</div>';
+    var rd=(p.read&&p.read.idx!=null)?('<span style="font-size:10px;color:#60A5FA;font-weight:700">'+_RB[Math.min(5,Math.max(0,p.read.idx))]+'</span> · '):'';
+    var dt=p.createdAt?new Date(p.createdAt).toLocaleDateString('ko-KR'):'';
+    return '<div onclick="_pickNewBookNotice(\''+p.id+'\')" style="display:flex;align-items:center;gap:11px;padding:11px;border:1px solid #E5E7EB;border-radius:10px;margin-bottom:8px;cursor:pointer;background:#fff" onmouseover="this.style.background=\'#F8FAFC\'" onmouseout="this.style.background=\'#fff\'">'
+      +cover
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.name||p.id)+'</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;margin-top:2px">'+rd+cnt.toLocaleString()+'단어'+(dt?(' · '+dt):'')+'</div></div>'
+      +'<span style="font-size:11px;color:#0F766E;font-weight:800;flex-shrink:0">공지 만들기 ›</span></div>';
+  }).join('');
+  var html='<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.remove()">'
+    +'<div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:82vh;overflow-y:auto;padding:22px" onclick="event.stopPropagation()">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="font-size:18px;font-weight:900">📚 신간 공지 만들기</h3><button onclick="this.closest(\'[style*=fixed]\').remove()" style="background:none;border:none;font-size:22px;color:#9CA3AF;cursor:pointer">×</button></div>'
+    +'<p style="font-size:12px;color:#6B7280;margin-bottom:14px">단어장을 선택하면 표지·단어수·읽기수준·난이도 그래프가 담긴 신간 공지가 자동으로 만들어져요. (최신 등록순)</p>'
+    +(rows||'<div style="text-align:center;color:#9CA3AF;padding:30px">등록된 단어장이 없어요</div>')
+    +'</div></div>';
+  var div=document.createElement('div'); div.innerHTML=html; document.body.appendChild(div.firstChild);
+}
+function _pickNewBookNotice(packId){
+  var m=document.querySelector('[style*="position:fixed"][style*="9999"]'); if(m)m.remove();
+  bqNotice(packId);
+}
 async function bqNotice(packId){
   if(!packId){ packId=prompt('공지로 만들 팩 ID를 입력하세요 (packs 문서 ID)'); if(packId===null) return; packId=(packId||'').trim(); }
   if(!packId){ toast('팩 ID가 필요합니다','err'); return; }

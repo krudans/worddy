@@ -19114,6 +19114,45 @@ auth.onAuthStateChanged(async user => {
               }, function(){});
               console.log('[실시간 동기화] user_words 리스너 시작');
             }catch(e){}
+            /* ══ [users 실시간 동기화 20260722] 나비·컬렉션·XP·쿠폰·오답노트 등 프로필 필드도 다른 기기 변경 시 자동 반영.
+               books/words는 user_words가 정본이므로 여기선 절대 건드리지 않는다(오염 방지). 각 필드는 자체 merge/tomb 규칙 존중. ══ */
+            try{
+              if(window._usUnsub){ try{window._usUnsub();}catch(e){} }
+              window._usUnsub = db.collection('users').doc(user.uid).onSnapshot(function(snap){
+                try{
+                  if(!snap.exists) return;
+                  var d=snap.data()||{};
+                  if(d.updatedAt && d.updatedAt===(localStorage.getItem('wd-last-sv')||'')) return; // 내 저장 에코
+                  var changed=false;
+                  // 나비: _bfMerge가 묘비·병합 규칙 처리
+                  if(Array.isArray(d.myButterflies) && typeof _bfMerge==='function'){
+                    var _bfBefore=(S.myButterflies||[]).length;
+                    _bfMerge(d.myButterflies||[], d.deletedButterflies||[]);
+                    if((S.myButterflies||[]).length!==_bfBefore) changed=true;
+                  }
+                  // 컬렉션 펫: _colMerge가 처리 (S._collection)
+                  if(Array.isArray(d.collection) && typeof _colMerge==='function'){
+                    var _colBefore=(S._collection||[]).length;
+                    _colMerge(d.collection||[], d.deletedCollection||[]);
+                    if((S._collection||[]).length!==_colBefore) changed=true;
+                  }
+                  // 숫자 프로필: xp만 (maxCombo·totalLearned는 users에 저장 안 됨). streak은 로컬 재계산 정본이라 제외.
+                  if(typeof d.xp==='number' && d.xp > (S.xp||0)){ S.xp=d.xp; changed=true; }
+                  // 쿠폰: LWW 타임스탬프 존중 — 서버 ts가 더 최신일 때만 채택
+                  if(typeof d.bfCoupons==='number'){
+                    var _srvTs=+(d.bfCouponsTs||0), _locTs=+(S.bfCouponsTs||0);
+                    if(_srvTs>_locTs && d.bfCoupons!==(S.bfCoupons||0)){ S.bfCoupons=d.bfCoupons; S.bfCouponsTs=_srvTs; try{ localStorage.setItem('wd-coupons',S.bfCoupons); localStorage.setItem('wd-coupons-ts',S.bfCouponsTs); }catch(e){} changed=true; }
+                  }
+                  if(changed){
+                    try{ localStorage.setItem('wd-butterflies', JSON.stringify(S.myButterflies||[])); }catch(e){}
+                    console.log('[실시간 동기화] users 프로필 변경 수신 → 반영');
+                    var _mr2=document.getElementById('mr');
+                    if(typeof go==='function' && !S._gameRunning && !S._inChExam && !S._inLevelTest && !S._inInitLevelTest && !S._inLearnSession && !(_mr2&&_mr2.innerHTML&&_mr2.innerHTML.trim())){ go(); }
+                  }
+                }catch(e){}
+              }, function(){});
+              console.log('[실시간 동기화] users 리스너 시작');
+            }catch(e){}
           })();
         }).catch(e => console.warn('[앱] Firebase 동기화 실패', e));
       }

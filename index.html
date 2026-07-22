@@ -3383,11 +3383,12 @@ function rMarket() {
   let filtered = (query || selCat==='전체') ? searchPacks : searchPacks.filter(p=>(p.cat||'기타')===selCat);
   // 정렬 적용
   if(mktSort==='name') filtered = filtered.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  else if(mktSort==='read') filtered = filtered.slice().sort((a,b)=>{ const ai=(a.read&&a.read.idx!=null)?a.read.idx:99, bi=(b.read&&b.read.idx!=null)?b.read.idx:99; return ai!==bi ? ai-bi : (a.name||'').localeCompare(b.name||''); });   /* [읽기순 정렬 20260722] 읽기 밴드 쉬운→어려운, 미지정은 뒤로 */
   else if(mktSort==='words') filtered = filtered.slice().sort((a,b)=>((b.words||[]).length||(b.count||0))-((a.words||[]).length||(a.count||0)));
   else if(mktSort==='owned') filtered = filtered.slice().sort((a,b)=>{ const ao=ownedPacks.includes(a.id),bo=ownedPacks.includes(b.id); return ao===bo?0:ao?-1:1; });
 
   // 정렬 버튼 HTML
-  const sortBtns = [['kr','기본'],['name','이름순'],['words','단어수'],['owned','보유']].map(function(item){
+  const sortBtns = [['kr','기본'],['name','이름순'],['read','읽기순'],['words','단어수'],['owned','보유']].map(function(item){
     var v=item[0],lb=item[1],active=mktSort===v;
     return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
   }).join('');
@@ -3403,8 +3404,8 @@ function rMarket() {
       </div>
     </div>`;
 
-  // 검색창 (단어장 찾기) — IME(한글) 조합 중에는 리렌더하지 않도록 전용 핸들러 사용
-  html += `<div style="position:relative;margin-bottom:8px">
+  // [마켓 순서 재배치 20260722] 검색·필터는 추천/코스/단어장 아래로 이동 → 아래 _mktSearchBlock 로 렌더
+  const _mktSearchBlock = `<div style="position:relative;margin-bottom:8px">
     <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:.5;pointer-events:none">🔍</span>
     <input id="mkt-search" type="search" value="${(S._mktSearch||'').replace(/"/g,'&quot;')}" placeholder="단어장 이름·단어로 검색" autocomplete="off"
       oncompositionstart="window.__mktComposing=true"
@@ -3412,19 +3413,18 @@ function rMarket() {
       oninput="if(!window.__mktComposing)_mktFilterInput(this.value)"
       style="width:100%;box-sizing:border-box;padding:10px 34px 10px 34px;border-radius:12px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;color:var(--text1,#111);outline:none">
     <span id="mkt-search-clear" onclick="var i=document.getElementById('mkt-search');if(i){i.value='';}_mktFilterInput('')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text3,#9CA3AF);cursor:pointer;font-weight:700;display:${(S._mktSearch||'')?'block':'none'}">✕</span>
-  </div>`;
+  </div>
+  <div id="mkt-search-info" style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 8px;display:${query?'block':'none'}">${query?`'${(S._mktSearch||'').trim()}' 검색 결과 ${searchPacks.length}개`:''}</div>`;
 
-  // 검색 결과 안내 (부분 갱신되는 목록 영역 밖, 검색어 표시용)
-  html += `<div id="mkt-search-info" style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 8px;display:${query?'block':'none'}">${query?`'${(S._mktSearch||'').trim()}' 검색 결과 ${searchPacks.length}개`:''}</div>`;
-
-  // 카테고리 탭 + 정렬 (검색 중에는 카테고리 탭 숨김)
+  // 카테고리 탭 + 정렬 + 새로고침 → [마켓 순서 재배치 20260722] 추천/코스/단어장 아래로 이동(_mktFilterBlock)
+  let _mktFilterBlock = '';
   if(!query){
-    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+    _mktFilterBlock += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
   }
-  html += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
-    html += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
+  _mktFilterBlock += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
+  _mktFilterBlock += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
   /* [원서 요청 서비스 20260720] 찾는 원서가 없을 때 요청 → book_requests 적재 → 관리자 등록 → 인앱 알림 */
-  html += `<button onclick="showBookRequest()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);border:none;border-radius:12px;padding:11px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff">📮 찾는 원서가 없나요? 요청하기 · 1주일 이내 올려드려요</button>`;
+  html += `<button onclick="showBookRequest()" style="width:100%;margin-bottom:12px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);border:none;border-radius:12px;padding:11px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff">📮 찾는 원서가 없나요? 요청하기 · 1주일 이내 올려드려요</button>`;
 
   /* [레벨↔원서 추천 20260721] 레벨 진단 결과와 팩 실측 난이도를 연결 — 진단의 사용 동기 부여.
      진단 전: 진단 유도 CTA / 진단 후: 내 수준 ±1 원서 추천 + 30일 경과 시 재진단 넛지 */
@@ -3456,6 +3456,8 @@ function rMarket() {
   }catch(e){}
 
   // ── 팩 목록 영역 (검색 시 이 안쪽만 부분 교체) ──
+  // [마켓 순서 재배치 20260722] 헤더+요청+추천 위 → 검색·필터·정렬은 여기(목록 직전)
+  html += _mktSearchBlock + _mktFilterBlock;
   html += '<div id="mkt-list">';
   if(!packs.length) {
     html += `<div style="text-align:center;padding:48px 20px">

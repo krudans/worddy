@@ -3289,6 +3289,30 @@ function _bpLemma(w, doLem) {
 }
 
 // 원서 텍스트 1개 분석 → 채택 단어 목록(빈도순)
+/* [읽기수준 자동산출 20260722] 원문에서 Flesch-Kincaid Grade Level 계산 → 6단계 읽기밴드(read.idx).
+   AR/Lexile 공인값이 없을 때의 폴백. 음절은 규칙 기반 추정(영어 모음군 카운트). */
+function _bpSyllables(w){
+  w=String(w||'').toLowerCase().replace(/[^a-z]/g,'');
+  if(w.length<=3) return w.length?1:0;
+  w=w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/,'').replace(/^y/,'');
+  var m=w.match(/[aeiouy]{1,2}/g);
+  return m?m.length:1;
+}
+function _bpFleschKincaid(text){
+  var clean=String(text||'').replace(/\s+/g,' ').trim();
+  if(!clean) return null;
+  var sentences=(clean.match(/[.!?]+(?:\s|$)/g)||[]).length || 1;
+  var words=(clean.match(/[A-Za-z][A-Za-z'-]*/g))||[];
+  if(words.length<50) return null;
+  var syll=0; for(var i=0;i<words.length;i++) syll+=_bpSyllables(words[i]);
+  var wps=words.length/sentences, spw=syll/words.length;
+  var grade=0.39*wps + 11.8*spw - 15.59;
+  return Math.round(grade*10)/10;
+}
+function _bpGradeToIdx(g){
+  if(g==null) return null;
+  return g<3?0 : g<4.5?1 : g<6?2 : g<7.5?3 : g<10?4 : 5;
+}
 function _bpAnalyzeText(text, s) {
   // 페이지 머리말/바닥글의 파일경로·URL 노이즈 제거 (예: file:/C:/unzipped/The_Giver.xml 가 182쪽 반복)
   var clean = String(text || '')
@@ -3326,7 +3350,8 @@ function _bpAnalyzeText(text, s) {
     else { selected = a2plus.slice(0, N); }
   } else { selected = cands.slice(0, N); }
   var cefr = {}; selected.forEach(function (en) { var k = pxCefr(en) || '-'; cefr[k] = (cefr[k] || 0) + 1; });
-  return { allTokens: raw.length, matched: Object.keys(freq).length, candCount: cands.length, selected: selected, freq: freq, cefr: cefr, exception: exception };
+  var _fk = _bpFleschKincaid(clean);   /* [읽기수준 자동산출 20260722] */
+  return { allTokens: raw.length, matched: Object.keys(freq).length, candCount: cands.length, selected: selected, freq: freq, cefr: cefr, exception: exception, fkGrade:_fk, fkIdx:_bpGradeToIdx(_fk) };
 }
 
 function _bpReadSettings() {
@@ -3609,14 +3634,22 @@ async function _bpRegister() {
     if (_bp.mode === 'book') {
       var _img=(_bp.imageUrl||'').trim();
       if(!_img){ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _img=await _bpFetchCover(_bp.name); setR('#1E5FA5', _img?'🖼️ 표지 찾음 — 등록 계속':'🖼️ 표지 못 찾음 — 표지 없이 등록'); }   /* [원서 표지 자동검색 20260721] */
-      var _readObj=null; try{ var _a2=parseFloat(_bp.readAr), _l2=parseInt(_bp.readLx); var _i2=!isNaN(_a2)?(_a2<3?0:_a2<4.5?1:_a2<6?2:_a2<7.5?3:_a2<10?4:5):(!isNaN(_l2)?(_l2<500?0:_l2<700?1:_l2<900?2:_l2<1000?3:_l2<1200?4:5):null); if(_i2!==null) _readObj={ar:isNaN(_a2)?null:_a2, lexile:isNaN(_l2)?null:_l2, idx:_i2}; }catch(e){}   /* [읽기수준 입력 20260721] */
+      var _readObj=null; try{
+        var _a2=parseFloat(_bp.readAr), _l2=parseInt(_bp.readLx);
+        var _i2=!isNaN(_a2)?(_a2<3?0:_a2<4.5?1:_a2<6?2:_a2<7.5?3:_a2<10?4:5):(!isNaN(_l2)?(_l2<500?0:_l2<700?1:_l2<900?2:_l2<1000?3:_l2<1200?4:5):null);
+        /* [읽기수준 자동산출 20260722] A우선(AR/Lexile) → 없으면 B폴백(원문 Flesch-Kincaid) */
+        var _auto=false;
+        if(_i2===null && results[0] && results[0].fkIdx!=null){ _i2=results[0].fkIdx; _auto=true; }
+        if(_i2!==null) _readObj={ar:isNaN(_a2)?null:_a2, lexile:isNaN(_l2)?null:_l2, idx:_i2, auto:_auto, fk:(results[0]&&results[0].fkGrade)||null};
+      }catch(e){}   /* [읽기수준 입력 20260721] */
       docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });
     } else {
       var total = _bp.tiers.length;
       var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
       for (var i = 0; i < _bp.tiers.length; i++) {
         var label = (_bp.tiers[i].label || (i + 1) + '단계').trim();
-        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _cImg?{imageUrl:_cImg}:{}) });
+        var _cRead=null; try{ if(results[i]&&results[i].fkIdx!=null) _cRead={ar:null,lexile:null,idx:results[i].fkIdx,auto:true,fk:results[i].fkGrade||null}; }catch(e){}   /* [읽기수준 자동산출 20260722] 코스 각 권도 원문 FK로 개별 부여 */
+        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _cImg?{imageUrl:_cImg}:{}, _cRead?{read:_cRead}:{}) });
       }
     }
     var overwritten = [];
@@ -3680,9 +3713,17 @@ function rBP2() {
       var head = (pv.mode === 'ai')
         ? ('🤖 AI 분석 결과 · 원문 ' + (pv.textLen || 0).toLocaleString() + '자 · ' + (pv.chunks || 0) + '조각 → <b>추출 ' + pv.selected.length.toLocaleString() + '단어</b> (사전보유 ' + (pv.inDict || 0) + ') · 예상 ' + Math.max(1, Math.ceil(pv.selected.length / 200)) + '챕터' + (pv.warn ? ('<br><span style="color:#D97706">⚠️ ' + esc(pv.warn) + '</span>') : ''))
         : ('규칙 분석 · 총 토큰 ' + (pv.allTokens || 0).toLocaleString() + ' · 매칭 ' + (pv.matched || 0).toLocaleString() + ' → <b>채택 ' + pv.selected.length.toLocaleString() + '단어</b>' + (pv.exception ? ' <span style="color:#D97706">(단편예외:A1포함)</span>' : ''));
+      /* [읽기수준 자동산출 20260722] 원문 Flesch-Kincaid → 읽기 밴드 (관리자 AR/Lexile 미입력 시 이 값 적용) */
+      var _rdB='';
+      if(pv.fkIdx!=null){
+        var _RB2=['그림책·입문','초등 저학년','초등 고학년','청소년','고등·성인','고전·전문'];
+        var _RC2=['#34D399','#6EE7B7','#60A5FA','#3B82F6','#A78BFA','#8B5CF6'];
+        var _rc2=_RC2[pv.fkIdx];
+        _rdB='<div style="margin-top:7px;font-size:11px;color:#6B7280">📖 자동 읽기 수준: <span style="background:'+_rc2+'22;color:'+_rc2+';border:1px solid '+_rc2+'55;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:800;filter:saturate(1.4) brightness(.8)">'+_RB2[pv.fkIdx]+'</span> <span style="color:#9CA3AF">Flesch-Kincaid '+pv.fkGrade+'학년 · AR/Lexile 입력 시 그 값이 우선</span></div>';
+      }
       pvHtml = '<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:11px;margin-top:8px">' +
         '<div style="font-size:12px;color:#374151;margin:2px 0 5px">' + head + _lvB + '</div>' +
-        pxCefrBar(pv.cefr, pv.selected.length) +
+        pxCefrBar(pv.cefr, pv.selected.length) + _rdB +
         '<div style="margin-top:6px">' + samples + (pv.selected.length > 24 ? '<span style="font-size:11px;color:#9CA3AF"> …외 ' + (pv.selected.length - 24) + '</span>' : '') + '</div>' +
         '</div>';
     }

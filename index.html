@@ -13882,17 +13882,55 @@ function rStudyBooks() {
     g3=_groupCard('🛒','마켓 단어장','', '', mktAdd);
   }
 
+  /* ══ [B구조 20260723] 두 칸으로 단순화: 📕 학습 코스(단계별로 올라가는 것) / 📗 내 책장(원서·내가 만든 것)
+     각 줄 = 제목 + 진행률 바 + 숫자 하나. 접었다 펼 수 있음. ══ */
+  function _simpleRow(o){
+    var pct=o.pct||0;
+    var sn=String(o.name).replace(/'/g,"\\'");
+    return '<div onclick="'+o.learnFn+'" style="display:flex;align-items:center;gap:10px;padding:12px 2px;cursor:pointer;border-top:1px solid var(--border,#F1F3F5)">'
+      +o.iconSm
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text1,#1F2937);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+o.name+(o.isCur?' <span style="font-size:9.5px;color:var(--theme,#3B82F6)">학습 중</span>':'')+'</div>'
+        +'<div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin-top:6px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#3B82F6);border-radius:20px"></div></div>'
+      +'</div>'
+      +'<div style="text-align:right;flex-shrink:0"><div style="font-size:12px;font-weight:800;color:var(--text2,#374151)">'+(o.right||(o.mem+'/'+o.count))+'</div></div>'
+      +'<span onclick="event.stopPropagation();'+o.menuFn+'" style="font-size:15px;color:#C7CDD4;padding:4px 0 4px 4px;cursor:pointer;flex-shrink:0">⋯</span>'
+    +'</div>';
+  }
+  function _sectionCard(id, emoji, title, count, rowsHtml, extraHtml){
+    var open = (S['_sec_'+id] !== false);
+    return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:2px 14px 6px">'
+      +'<div onclick="S[\'_sec_'+id+'\']=' + (open?'false':'true') + ';go()" style="display:flex;align-items:center;gap:8px;padding:13px 2px 9px;cursor:pointer">'
+        +'<span style="font-size:15px">'+emoji+'</span>'
+        +'<span style="flex:1;font-size:13px;font-weight:900;color:var(--text1,#111)">'+title+'</span>'
+        +'<span style="font-size:11px;color:var(--text3,#9CA3AF)">'+count+'</span>'
+        +'<span style="font-size:11px;color:var(--text3,#9CA3AF);transform:rotate('+(open?'90':'0')+'deg);transition:transform .2s">▶</span>'
+      +'</div>'
+      +(open ? (rowsHtml + (extraHtml||'')) : '')
+    +'</div>';
+  }
+  // ── 📕 학습 코스: 챕터로 단계를 올라가는 것 (기본 제공 그룹 + 담은 코스 + 레벨업 커리큘럼)
+  var courseRows = '';
+  var courseCnt = 0;
+  grpBooks.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); courseRows+=_simpleRow(o); courseCnt++; });
+  (S.books||[]).filter(function(b){ return b.isCurriculum; }).forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); courseRows+=_simpleRow(o); courseCnt++; });
+  _oc.forEach(function(c){ (c.books||[]).forEach(function(x){ var bk=x.book; if(!bk) return; var o=_bookOpts(bk); var ch=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=ch?(d+'/'+ch+'챕터'):(o.mem+'/'+o.count); courseRows+=_simpleRow(o); courseCnt++; }); });
+  if(!courseRows) courseRows='<div style="font-size:11.5px;color:#9CA3AF;text-align:center;padding:14px 2px">아직 학습 코스가 없어요</div>';
+  var secCourse=_sectionCard('course','📕','학습 코스', courseCnt+'권', courseRows,
+    '<div onclick="S.stab=\'market\';go(\'mybooks\',\'market\')" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 2px;border-top:1px solid var(--border,#F1F3F5);cursor:pointer;color:var(--theme,#3B82F6);font-size:12px;font-weight:700">＋ 코스 담으러 가기</div>');
+
+  // ── 📗 내 책장: 원서 단어장 + 내가 만든 것 + 내 단어장
+  var shelfRows = _simpleRow(myOpts);
+  var shelfCnt = 1;
+  looseMarket.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); shelfRows+=_simpleRow(o); shelfCnt++; });
+  myMadeBooks.forEach(function(bk){ shelfRows+=_simpleRow(_bookOpts(bk)); shelfCnt++; });
+  var secShelf=_sectionCard('shelf','📗','내 책장', shelfCnt+'권', shelfRows,
+    '<div onclick="showBooksModal&&showBooksModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 2px;border-top:1px solid var(--border,#F1F3F5);cursor:pointer;color:var(--theme,#3B82F6);font-size:12px;font-weight:700">＋ 새 단어장 만들기</div>');
+
   let html = '<div style="display:flex;flex-direction:column;background:var(--bg,#F8F9FA)">';
   html += '<div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#F8F9FA)">';
-  const _allBooksTab = [{name:'내 단어장', words:_myBookWords()}, ...(S.books||[])];
-  const _curName = S.currentBook||'내 단어장';
   html += renderStudyGoalCard('mybooks');
-  // [20260710-chapter-200] ① 내 단어장 ② 기본 제공 ③ 나머지 그룹 가나다순
-  const _rest = courseCardList.slice();
-  _rest.push({ name:'내 레벨업 코스', html:_curriculumGroupHtml() });
-  _rest.push({ name:'마켓 단어장',   html:g3 });
-  _rest.sort(function(a,b){ return String(a.name).localeCompare(String(b.name), 'ko'); });
-  html += g2 + g1 + _rest.map(function(x){ return x.html; }).join('');
+  html += secCourse + secShelf;
   html += '</div></div>';
   return '<div style="padding:10px 12px 4px">'+renderCharBanner({})+'</div>'+html;
 }

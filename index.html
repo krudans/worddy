@@ -5474,6 +5474,8 @@ function load() {
   S.myWords = S.words;
   S.learned = new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]'));
   S.markMap = JSON.parse(localStorage.getItem('wd-mk')||'{}');
+  /* [정본 분리 20260724] 마크·외움도 words와 동일하게 정본/뷰 분리 — 영속층은 정본만 본다 */
+  S.myLearned = S.learned; S.myMarkMap = S.markMap;
   S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}');
   S.favorites = JSON.parse(localStorage.getItem('wd-fav')||'[]');
   S._dcClaimed = localStorage.getItem('wd-dcc')||'';
@@ -5724,8 +5726,8 @@ function _toMyBook(){
   S.currentBook='내 단어장';
   if(Array.isArray(S.myWords)){ S.words=S.myWords; }
   else { try{ S.myWords=S.words=JSON.parse(localStorage.getItem('wd-w')||'[]')||[]; }catch(e){ S.myWords=S.words=[]; } }
-  try{ S.markMap=JSON.parse(localStorage.getItem('wd-mk')||'{}')||{}; }catch(e){}
-  try{ S.learned=new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]')); }catch(e){}
+  if(S.myMarkMap){ S.markMap=S.myMarkMap; } else { try{ S.myMarkMap=S.markMap=JSON.parse(localStorage.getItem('wd-mk')||'{}')||{}; }catch(e){} }
+  if(S.myLearned){ S.learned=S.myLearned; } else { try{ S.myLearned=S.learned=new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]')); }catch(e){} }
 }
 function sv() {
   _healCurriculumWords();   // [손상 방지] 저장 전 커리큘럼 words 정규화 (레벨업N단계 손상 재발 근본차단)
@@ -5739,10 +5741,10 @@ function sv() {
   /* [정본 분리 20260724] 내 단어장을 보고 있을 때의 S.words = 정본 참조·편집 결과 → 정본에 반영.
      wd-w는 항상 S.myWords에서만 기록 — S.words(팩 뷰)는 영속층에 닿을 수 없다. */
   if(!S.currentBook || S.currentBook==='내 단어장'){
-    S.myWords = S.words;
-    localStorage.setItem('wd-lrn',JSON.stringify([...S.learned]));
-    localStorage.setItem('wd-mk',JSON.stringify(S.markMap));
+    S.myWords = S.words; S.myLearned = S.learned; S.myMarkMap = S.markMap;
   }
+  if(S.myLearned) localStorage.setItem('wd-lrn',JSON.stringify([...S.myLearned]));
+  if(S.myMarkMap) localStorage.setItem('wd-mk',JSON.stringify(S.myMarkMap));
   if(Array.isArray(S.myWords)) localStorage.setItem('wd-w',JSON.stringify(S.myWords));
   // markDates는 전역(전체 단어장 합산)이라 현재 책과 무관하게 항상 저장.
   // 단, 사라져 있으면 LS에서 복원 후 저장(빈 {}로 기존 기록 덮어쓰기 방지).
@@ -12162,8 +12164,8 @@ function _selectBook(name) {
       const w = localStorage.getItem('wd-w');
       S.words = w ? JSON.parse(w) : [];
     } catch(e) { S.words = []; }
-    const mk = localStorage.getItem('wd-mk'); S.markMap = mk ? JSON.parse(mk) : {};
-    const lrn = localStorage.getItem('wd-lrn'); S.learned = new Set(lrn ? JSON.parse(lrn) : []);
+    if(S.myMarkMap){ S.markMap=S.myMarkMap; } else { const mk=localStorage.getItem('wd-mk'); S.myMarkMap=S.markMap=mk?JSON.parse(mk):{}; }
+    if(S.myLearned){ S.learned=S.myLearned; } else { const lrn=localStorage.getItem('wd-lrn'); S.myLearned=S.learned=new Set(lrn?JSON.parse(lrn):[]); }
     S.currentBook = name;
     S.idx = 0; S.flip = false;
     if(typeof sv === 'function') sv();
@@ -14195,7 +14197,7 @@ function showBookMenu(name, type) {
   const items = isDefault ? [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['🔄', '외웠음 표시 초기화', `cm();if(confirm('내 단어장의 외웠음 표시를 모두 초기화할까요? (헷갈림 표시는 유지)')){_resetBookMarks('${safeN}');}`],
-    ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){if(typeof _selectBook==='function')_selectBook('내 단어장');S.words=[];S.myWords=[];S.markMap={};S.learned=new Set();try{localStorage.setItem('wd-w','[]');localStorage.setItem('wd-mk','{}');localStorage.setItem('wd-lrn','[]');}catch(e){}sv();go();toast('🗑️ 전체 삭제 완료');}`],
+    ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){if(typeof _selectBook==='function')_selectBook('내 단어장');S.words=[];S.myWords=[];S.markMap={};S.myMarkMap={};S.learned=new Set();S.myLearned=S.learned;try{localStorage.setItem('wd-w','[]');localStorage.setItem('wd-mk','{}');localStorage.setItem('wd-lrn','[]');}catch(e){}sv();go();toast('🗑️ 전체 삭제 완료');}`],
   ] : [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['✏️', '이름 수정', `cm();const n=prompt('새 이름');if(n&&n.trim()){const b=S.books?.find(x=>x.name==='${safeN}');if(b){b.name=n.trim();sv();go();toast('이름 변경 완료!');}}`],
@@ -14220,7 +14222,7 @@ function _resetBookMarks(name){
     try{
       var mm=JSON.parse(localStorage.getItem('wd-mk')||'{}');
       Object.keys(mm).forEach(function(en){ if(mm[en]===1 && _mkMine(en)){ delete mm[en]; cleared.push(en); } });
-      localStorage.setItem('wd-mk', JSON.stringify(mm));
+      S.myMarkMap=mm; localStorage.setItem('wd-mk', JSON.stringify(mm));
     }catch(e){}
     // 현재 열려 있으면 작업사본(S.markMap)도
     if(S.currentBook==='내 단어장' && S.markMap){ cleared.forEach(function(en){ if(S.markMap[en]===1) delete S.markMap[en]; }); }
@@ -18732,7 +18734,7 @@ function doResetStudy() {
      로컬 사본이 병합·저장에서 전부 되살리던 근본 원인(내 단어장 1000개 부활 사건). */
   try{ (S.words||[]).forEach(function(w){ if(w&&w.en) _tombWord(w.en); }); }catch(e){}
   try{ (S.books||[]).forEach(function(b){ if(!b) return; var k=b.packId?('p:'+b.packId):('n:'+b.name); if(!S._tombBooks)S._tombBooks=[]; if(S._tombBooks.indexOf(k)<0)S._tombBooks.push(k); }); }catch(e){}
-  S.words=[]; S.myWords=[]; S.learned=new Set(); S.markMap={}; S.markDates={};
+  S.words=[]; S.myWords=[]; S.learned=new Set(); S.myLearned=S.learned; S.markMap={}; S.myMarkMap={}; S.markDates={};
   S.studyLog={}; S.attendCount=0; S.attendDates=[]; S.attendPopupShown='';
   S.bestScores={}; S.gSavedGame=null; S.idx=0;
   S._ownedPacks=[]; S._acc=[]; S._equipped=''; // 마켓 구매이력 + 장식품 초기화
@@ -19438,7 +19440,7 @@ auth.onAuthStateChanged(async user => {
               // streak/alStreak(연속 학습일): 최댓값
               if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=_data[k]; return; }   /* [스트릭 수정 20260722] Math.max 고착 제거 */
               // [전수점검 보강] '옛 서버가 새 로컬을 덮는' 필드 보존 병합
-              if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object') S.markMap=Object.assign({}, _data.markMap, S.markMap||{}); return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
+              if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object'){ S.myMarkMap=Object.assign({}, _data.markMap, S.myMarkMap||{}); if(!S.currentBook||S.currentBook==='내 단어장') S.markMap=S.myMarkMap; } return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
               if(k === '_ownedPacks'){ if(Array.isArray(_data._ownedPacks)) S._ownedPacks=Array.from(new Set([].concat(S._ownedPacks||[], _data._ownedPacks))); return; } // 구매이력: 합집합
               if(k === 'attendDates'){ if(Array.isArray(_data.attendDates)){ S.attendDates=Array.from(new Set([].concat(S.attendDates||[], _data.attendDates))); } return; } // 출석일: 합집합
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값

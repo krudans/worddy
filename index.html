@@ -692,6 +692,28 @@ function _bookDisplayName(b){
     return nm;
   }catch(e){ return (b&&b.name)||''; }
 }
+/* [드롭다운 단순화 20260723] 목록·선택창용 짧은 이름 — 챕터/개수 없이 책 이름만 */
+function _bookShortName(b){
+  try{
+    if(!b) return '';
+    var nm=String(b.name||'');
+    var src=b;
+    if(!src.isCurriculum && !src.packId){ var o=(S.books||[]).find(function(x){return x.name===nm;}); if(o) src=o; }
+    var base=nm.replace(/\s*_\s*Lv\.\s*\d+$/,'');
+    try{
+      if(src.packId && Array.isArray(S._marketPacks)){
+        var _pk=S._marketPacks.find(function(p){return p&&p.id===src.packId;});
+        if(_pk && _pk.courseId && _pk.tierIdx){
+          var _cn=String(_pk.courseName||base).trim();
+          var _tl=String(_pk.tierLabel||'').trim();
+          var _bm=_tl.match(/^(\d+)\s*권/);
+          base=(_cn+' '+(_bm?(_bm[1]+'권'):(_tl||(_pk.tierIdx+'권')))).replace(/\s+/g,' ').trim();
+        }
+      }
+    }catch(e){}
+    return base.split('·')[0].trim() || base;
+  }catch(e){ return (b&&b.name)||''; }
+}
 function _bookDisplayNameByName(nm){
   try{ var b=(S.books||[]).find(function(x){return x.name===nm;}); return b?_bookDisplayName(b):(nm||''); }catch(e){ return nm||''; }
 }
@@ -5879,17 +5901,39 @@ function sv() {
         (S.books||[]).forEach((b,i)=>{ try{ const _id=b.packId||('bk'+i); _bcol2.doc(_id).set({ name:b.name||'', packId:b.packId||null, order:i, fromMarket:!!b.fromMarket, markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{}, learned:(b.learned!=null?b.learned:0), deleted:false, updatedAt:_ts2 },{merge:true}).catch(()=>{}); }catch(_e){} });
         /* [삭제 전파 롤백 20260723] 크로스기기 위험(다른 기기가 진행 중인 책을 이 기기가 모르면 삭제 표시)으로 제거됨 */
       }catch(e){ console.warn('[분리이중쓰기] skip', e); } }
-      // 일별 백업 (하루 1번)
+      /* ══ [백업 강화 20260723] 하루 1번 일별 백업 + 진도가 늘면 즉시 스냅샷.
+         이전엔 books/words/xp/nick만 담아 챕터 통과(chPass)·나비·쿠폰이 유실되면 복구가 불가능했다.
+         이제 chPass·markMap·나비·컬렉션·쿠폰까지 담고, 챕터를 통과할 때마다 별도 스냅샷을 남긴다. ══ */
       const _bd = today();
+      const _mkBackup = function(){
+        return Object.assign({}, booksData, {
+          xp: S.xp, nick: S.nick, lid: S.lid, streak: S.streak,
+          // 진도 정본: 책별 챕터 통과·외움 표시
+          progress: (S.books||[]).map(function(b,i){
+            return { key:(b.packId||('bk'+i)), name:b.name||'', packId:b.packId||null,
+                     chPass:(b.chPass||[]).slice(), finalPassed:!!b.finalPassed, finalBadge:b.finalBadge||null,
+                     markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{} };
+          }),
+          myButterflies:(S.myButterflies||[]).slice(),
+          collection:(S._collection||[]).slice(),
+          bfCoupons:S.bfCoupons||0,
+          backupDate: _bd, backupAt: new Date().toISOString()
+        });
+      };
       const lastBackup = localStorage.getItem('wd-last-backup');
       if(lastBackup !== _bd && (S.books||[]).some(b=>(b.words||[]).length>0)) {
         localStorage.setItem('wd-last-backup', _bd);
-        db.collection('user_backups').doc(uid+'_'+_bd).set({
-          ...booksData,
-          xp: S.xp, nick: S.nick, lid: S.lid,
-          backupDate: _bd
-        }).catch(()=>{});
+        db.collection('user_backups').doc(uid+'_'+_bd).set(_mkBackup()).catch(()=>{});
       }
+      /* 챕터 통과 총합이 늘면(=진도 전진) 즉시 스냅샷 — 덮어써도 되돌릴 수 있게 */
+      try{
+        const _passTotal=(S.books||[]).reduce(function(a,b){ return a+((b.chPass||[]).filter(Boolean).length)+(b.finalPassed?100:0); },0);
+        const _lastPass=+(localStorage.getItem('wd-last-passtotal')||0);
+        if(_passTotal > _lastPass){
+          localStorage.setItem('wd-last-passtotal', String(_passTotal));
+          db.collection('user_backups').doc(uid+'_progress_'+_bd).set(_mkBackup()).catch(()=>{});
+        }
+      }catch(e){}
     }, 3000);
   }
 }
@@ -11088,7 +11132,7 @@ function renderGoalDashboard(){
   var bp=ctx.books.filter(function(b){return b.total>0;}).sort(function(a,b){return (b.memo/b.total)-(a.memo/a.total);}).map(function(b){
     var pc=Math.round(b.memo/b.total*100); var on=(b.name===sel);
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px'+(on?';background:var(--theme-tint);border-radius:8px;padding:3px 4px':'')+'">'+
-      '<div style="flex:0 0 96px;font-size:11px;color:'+(on?BLUE:'#374151')+';font-weight:'+(on?'800':'400')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(_bookDisplayNameByName(b.name))+'</div>'+
+      '<div style="flex:0 0 96px;font-size:11px;color:'+(on?BLUE:'#374151')+';font-weight:'+(on?'800':'400')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc((typeof _bookShortName==='function')?_bookShortName((S.books||[]).find(function(x){return x.name===b.name;})||b):b.name)+'</div>'+
       '<div style="flex:1;height:7px;border-radius:99px;background:#EEF2F7;overflow:hidden"><div style="width:'+Math.max(pc,pc>0?2:0)+'%;height:100%;background:'+BLUE+'"></div></div>'+
       '<div style="flex:0 0 74px;text-align:right;font-size:10px;color:#9CA3AF">'+_nf(b.memo)+'/'+_nf(b.total)+'·'+pc+'%</div></div>';
   }).join('');
@@ -11315,7 +11359,41 @@ function _studyGoalInner(){
   var SC=_bookColor(sel && sel!=='__all__' ? sel : cur);
   var chBook=(sel && sel!=='__all__') ? sel : cur;
   var ob=(typeof _orderBooks==='function')?_orderBooks(allBooks):allBooks;
-  var optsHtml=ob.map(function(b){ var _rb=(S.books||[]).find(function(x){return x.name===b.name;}); var _lk=!!(_rb && (((typeof _curriculumStageLocked==='function')&&_curriculumStageLocked(_rb))||((typeof _bookLocked==='function')&&_bookLocked(_rb)))); return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+(_lk?' style="color:#DC2626"':'')+'>'+_esc(_bookDisplayName(b))+' ('+_bookCntL(b)+'개)'+(_lk?' _ 사용불가':'')+'</option>'; }).join('');
+  /* [드롭다운 종류별 정렬 20260723] 📕 학습 코스 / 📗 내 책장 두 묶음으로 (단어장 목록 B구조와 동일) */
+  var _optOf=function(b){
+    var _rb=(S.books||[]).find(function(x){return x.name===b.name;});
+    var _lk=!!(_rb && (((typeof _curriculumStageLocked==='function')&&_curriculumStageLocked(_rb))||((typeof _bookLocked==='function')&&_bookLocked(_rb))));
+    if(_lk && b.name!==cur) return '';
+    var _pg='';
+    try{
+      if(_rb && (_rb.packId||_rb.isCurriculum)){
+        var _ct=(typeof _chapterCount==='function')?_chapterCount(_rb):0;
+        if(_ct) _pg=' · '+((_rb.chPass||[]).filter(Boolean).length)+'/'+_ct;
+      } else { _pg=' · '+_bookCntL(b)+'개'; }
+    }catch(e){}
+    return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+'>'+_esc(_bookShortName(_rb||b))+_pg+'</option>';
+  };
+  var _isCourseBook=function(b){
+    try{
+      var _rb=(S.books||[]).find(function(x){return x.name===b.name;});
+      if(!_rb) return false;
+      if(_rb.isCurriculum) return true;                                        // 레벨업 커리큘럼
+      if(typeof DEFGRP!=='undefined' && _rb.packId && DEFGRP.includes(_rb.packId)) return true;   // 기본 제공
+      if(_rb.packId && Array.isArray(S._marketPacks)){                          // 코스 소속 팩
+        var _pk=S._marketPacks.find(function(p){return p&&p.id===_rb.packId;});
+        if(_pk && _pk.courseId) return true;
+      }
+      return false;
+    }catch(e){ return false; }
+  };
+  var _g1='', _g2='';
+  ob.forEach(function(b){
+    var o=_optOf(b); if(!o) return;
+    if(b.name==='내 단어장') { _g2 += o; return; }
+    if(_isCourseBook(b)) _g1 += o; else _g2 += o;
+  });
+  var optsHtml = (_g1?'<optgroup label="📕 학습 코스">'+_g1+'</optgroup>':'')
+               + (_g2?'<optgroup label="📗 내 책장">'+_g2+'</optgroup>':'');
   var tab=window._planTab||'learn';
   var drop='<div style="position:relative;margin-bottom:13px">'+
     '<select onchange="_selectBook(this.value);go(\''+tab+'\')" style="width:100%;padding:11px 38px 11px 14px;border:1.5px solid var(--border,#E2E8F0);border-left:5px solid '+SC+';border-radius:12px;font-size:14px;font-weight:800;color:var(--text1,#111);background:var(--bg-card,#fff);appearance:none;-webkit-appearance:none;cursor:pointer;outline:none">'+optsHtml+'</select>'+
@@ -13072,7 +13150,25 @@ function rStudy() {
   // 상단 단어장 바 (학습 중)
   const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
   const _bkCur = S.currentBook||'내 단어장';
-  const _bkOpts = [{name:'내 단어장'}].concat((S.books||[]).map(function(b){return {name:b.name};})).map(function(b){return '<option value="'+_esc(b.name)+'"'+(b.name===_bkCur?' selected':'')+'>📚 '+_esc(_bookDisplayNameByName(b.name))+'</option>';}).join('');
+  /* [드롭다운 종류별 정렬 20260723] 📕 학습 코스 / 📗 내 책장 */
+  const _bkOpts = (function(){
+    var list=[{name:'내 단어장'}].concat((S.books||[]).map(function(b){return {name:b.name};}));
+    var g1='', g2='';
+    list.forEach(function(b){
+      var _rb=(S.books||[]).find(function(x){return x.name===b.name;});
+      var opt='<option value="'+_esc(b.name)+'"'+(b.name===_bkCur?' selected':'')+'>'+_esc((typeof _bookShortName==='function')?_bookShortName(_rb||b):b.name)+'</option>';
+      var isCourse=false;
+      try{
+        if(_rb){
+          if(_rb.isCurriculum) isCourse=true;
+          else if(typeof DEFGRP!=='undefined' && _rb.packId && DEFGRP.includes(_rb.packId)) isCourse=true;
+          else if(_rb.packId && Array.isArray(S._marketPacks)){ var _pk=S._marketPacks.find(function(p){return p&&p.id===_rb.packId;}); if(_pk&&_pk.courseId) isCourse=true; }
+        }
+      }catch(e){}
+      if(b.name==='내 단어장') g2+=opt; else if(isCourse) g1+=opt; else g2+=opt;
+    });
+    return (g1?'<optgroup label="📕 학습 코스">'+g1+'</optgroup>':'')+(g2?'<optgroup label="📗 내 책장">'+g2+'</optgroup>':'');
+  })();
   const booksBar = `<div class="hsb" style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-bottom:1px solid var(--border,#E5E7EB);padding:8px 16px;display:flex;align-items:center;gap:8px;overflow-x:auto;flex-shrink:0">
     <div style="position:relative;flex:1;min-width:0;max-width:66%">
       <select onchange="_selectBook(this.value);go('mybooks','list')" style="width:100%;background:var(--theme-tint);border:1.5px solid var(--theme-soft);border-radius:20px;padding:6px 30px 6px 13px;font-size:12px;font-weight:800;color:var(--theme);cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;text-overflow:ellipsis;white-space:nowrap">${_bkOpts}</select>
@@ -18808,7 +18904,21 @@ async function restoreFromBackup() {
           if(!confirm(d+' 백업에서 단어 '+total+'개를 복구할까요?')) return;
           if(b.books?.some(bk=>(bk.words||[]).length>0 || bk.packId)) { S.books = b.books; S.books.forEach(b=>{if(b.packId&&b.words!==undefined)delete b.words;}); localStorage.setItem('wd-bks', JSON.stringify(S.books)); }
           if(b.words?.length>0) { S.words = b.words; localStorage.setItem('wd-w', JSON.stringify(b.words)); }
-          sv(); cm(); go(); toast('✅ '+d+' 백업에서 단어 '+total+'개 복구!'); return;
+          /* [백업 강화 20260723] 진도(챕터 통과·외움 표시·나비·쿠폰)도 함께 복원 */
+          try{
+            (b.progress||[]).forEach(function(p){
+              var bk=(S.books||[]).find(function(x,i){ return (x.packId||('bk'+i))===p.key || (p.packId&&x.packId===p.packId) || x.name===p.name; });
+              if(!bk) return;
+              if(Array.isArray(p.chPass)) bk.chPass=p.chPass.slice();
+              if(p.finalPassed) { bk.finalPassed=true; bk.finalBadge=p.finalBadge||null; }
+              if(p.markMap && typeof p.markMap==='object') bk.markMap=Object.assign({}, p.markMap, bk.markMap||{});
+            });
+            if(typeof b.bfCoupons==='number' && b.bfCoupons>(S.bfCoupons||0)){ S.bfCoupons=b.bfCoupons; S.bfCouponsTs=Date.now(); localStorage.setItem('wd-coupons',S.bfCoupons); }
+            if(Array.isArray(b.myButterflies) && typeof _bfMerge==='function') _bfMerge(b.myButterflies, []);
+            if(Array.isArray(b.collection) && typeof _colMerge==='function') _colMerge(b.collection, []);
+            localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(function(x){ if(x&&x.packId){ var r=Object.assign({},x); delete r.words; return r; } return x; })));
+          }catch(e){}
+          sv(); cm(); go(); toast('✅ '+d+' 백업 복구 완료'+((b.progress||[]).length?' (진도 포함)':'')); return;
         }
       }
     }

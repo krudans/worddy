@@ -17691,7 +17691,30 @@ function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)retur
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
 function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[?？]$/.test(t))return true;return /(까요|ㄹ까요|을까요|나요|은가요|는가요|습니까|ㅂ니까|읍니까)[.\u2026]?$/.test(t);}
-function speak(text, lang, rate){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;window.speechSynthesis.cancel();var code=(window._normLang?window._normLang(lang,text):((lang==='ko'||/[\uAC00-\uD7A3]/.test(text))?'ko-KR':'en-US'));var isKo=code.toLowerCase().indexOf('ko')===0;var isEn=code.toLowerCase().indexOf('en')===0;var t=text.trim();var spoken;if(isKo){if(_isKoQuestion(t)){spoken=/[?？]$/.test(t)?t:t.replace(/[.\u2026]+$/,'')+'?';}else{spoken=/[.!?\u2026]$/.test(t)?t:t+'.';}}else{spoken=text;}var u=new SpeechSynthesisUtterance(spoken);u.lang=code;u.rate=(rate||(isKo?0.92:(isEn?0.85:0.9)));u.pitch=1.0;var v=(window._bestVoiceFor?window._bestVoiceFor(code):(window._bestVoice?window._bestVoice(isKo):null));if(v)u.voice=v;window.speechSynthesis.speak(u);}catch(e){}}
+/* ══ [TTS 프리즈 방지 20260723] Chrome 음성엔진이 멈추는 3가지 상황을 막는다.
+   ① 연타 — 같은 문장을 200ms 안에 다시 부르면 무시(큐 폭주 방지)
+   ② 정지 상태 고착 — speaking인데 진행이 없으면 cancel 후 재시도
+   ③ 장문 중단 — 15초 넘게 물려 있으면 강제 cancel (Chrome 알려진 버그) ══ */
+window._ttsGuard = window._ttsGuard || { last:'', lastAt:0, timer:null };
+function _ttsHardReset(){
+  try{
+    if(window._ttsGuard.timer){ clearTimeout(window._ttsGuard.timer); window._ttsGuard.timer=null; }
+    window.speechSynthesis.cancel();
+    if(window.speechSynthesis.paused) window.speechSynthesis.resume();
+  }catch(e){}
+}
+function speak(text, lang, rate){try{if(!('speechSynthesis'in window))return;text=String(text==null?'':text);if(!text.trim())return;
+  var _g=window._ttsGuard, _now=Date.now();
+  if(_g.last===text && (_now-_g.lastAt)<200) return;          // ① 연타 무시
+  _g.last=text; _g.lastAt=_now;
+  _ttsHardReset();                                              // ② 이전 발화 확실히 종료
+var code=(window._normLang?window._normLang(lang,text):((lang==='ko'||/[\uAC00-\uD7A3]/.test(text))?'ko-KR':'en-US'));var isKo=code.toLowerCase().indexOf('ko')===0;var isEn=code.toLowerCase().indexOf('en')===0;var t=text.trim();var spoken;if(isKo){if(_isKoQuestion(t)){spoken=/[?？]$/.test(t)?t:t.replace(/[.\u2026]+$/,'')+'?';}else{spoken=/[.!?\u2026]$/.test(t)?t:t+'.';}}else{spoken=text;}var u=new SpeechSynthesisUtterance(spoken);u.lang=code;u.rate=(rate||(isKo?0.92:(isEn?0.85:0.9)));u.pitch=1.0;var v=(window._bestVoiceFor?window._bestVoiceFor(code):(window._bestVoice?window._bestVoice(isKo):null));if(v)u.voice=v;window.speechSynthesis.speak(u);
+  /* ③ 15초 넘게 안 끝나면 강제 종료 — 화면이 멈춘 것처럼 보이는 것 방지 */
+  if(_g.timer) clearTimeout(_g.timer);
+  _g.timer=setTimeout(function(){ try{ if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); }catch(e){} }, 15000);
+  u.onend=function(){ try{ if(_g.timer){ clearTimeout(_g.timer); _g.timer=null; } }catch(e){} };
+  u.onerror=function(){ try{ _ttsHardReset(); }catch(e){} };
+}catch(e){ try{ _ttsHardReset(); }catch(_){} }}
 /* ===== 음성 엔진: 언어별 최적 성우 선택 (다국어 대응) ===== */
 (function(){
   if(!('speechSynthesis' in window)) return;

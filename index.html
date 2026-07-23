@@ -5847,6 +5847,37 @@ function sv() {
         const _ts2=firebase.firestore.FieldValue.serverTimestamp();
         const _bcol2=db.collection('users').doc(uid).collection('books');
         (S.books||[]).forEach((b,i)=>{ try{ const _id=b.packId||('bk'+i); _bcol2.doc(_id).set({ name:b.name||'', packId:b.packId||null, order:i, fromMarket:!!b.fromMarket, markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{}, learned:(b.learned!=null?b.learned:0), deleted:false, updatedAt:_ts2 },{merge:true}).catch(()=>{}); }catch(_e){} });
+        /* [삭제 전파 20260723] 묘비(_tombBooks)에 있는 책은 서브컬렉션에도 deleted:true로 표시.
+           이게 없으면 삭제한 책이 서브컬렉션에 계속 살아남아(잔재) 문서분리 전환 시 되살아날 수 있다.
+           묘비 키는 'n:책이름' / 'p:packId' 형식이므로 둘 다 대응. */
+        try{
+          const _tb = S._tombBooks || [];
+          /* 매 저장마다 돌면 write·read 낭비 → 묘비 목록이 바뀐 경우에만 전파 */
+          const _tbSig = _tb.length + '|' + (_tb[_tb.length-1] || '');
+          if(_tb.length && window.__tombPropSig !== _tbSig){
+            window.__tombPropSig = _tbSig;
+            const _alive = {};
+            (S.books||[]).forEach((b,i)=>{ _alive[b.packId||('bk'+i)] = 1; });
+            _tb.slice(-80).forEach(function(t){        // 최근 묘비만 (과도한 write 방지)
+              try{
+                var _key = String(t||'');
+                if(_key.indexOf('p:')===0){
+                  var _docId = _key.slice(2);                                  // 마켓팩: packId가 문서 id
+                  if(_alive[_docId]) return;                                   // 아직 보유 중이면 건드리지 않음
+                  _bcol2.doc(_docId).set({ deleted:true, deletedAt:_ts2, updatedAt:_ts2 },{merge:true}).catch(()=>{});
+                } else if(_key.indexOf('n:')===0){
+                  // 이름 기반(커리큘럼 등): 문서 id가 bk{index}라 이름으로 조회해 매칭
+                  var _nm = _key.slice(2);
+                  if(!_nm) return;
+                  if((S.books||[]).some(function(b){ return b && !b.packId && b.name===_nm; })) return;   // 아직 보유 중
+                  _bcol2.where('name','==',_nm).limit(3).get().then(function(qs){
+                    qs.forEach(function(d){ try{ d.ref.set({ deleted:true, deletedAt:_ts2, updatedAt:_ts2 },{merge:true}).catch(()=>{}); }catch(_e){} });
+                  }).catch(()=>{});
+                }
+              }catch(_e){}
+            });
+          }
+        }catch(e){}
       }catch(e){ console.warn('[분리이중쓰기] skip', e); } }
       // 일별 백업 (하루 1번)
       const _bd = today();

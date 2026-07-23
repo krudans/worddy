@@ -3451,17 +3451,30 @@ function rMarket() {
       style="width:100%;box-sizing:border-box;padding:10px 34px 10px 34px;border-radius:12px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;color:var(--text1,#111);outline:none">
     <span id="mkt-search-clear" onclick="var i=document.getElementById('mkt-search');if(i){i.value='';}_mktFilterInput('')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text3,#9CA3AF);cursor:pointer;font-weight:700;display:${(S._mktSearch||'')?'block':'none'}">✕</span>
   </div>
-  <div id="mkt-search-info" style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 8px;display:${query?'block':'none'}">${query?`'${(S._mktSearch||'').trim()}' 검색 결과 ${searchPacks.length}개`:''}</div>`;
+  <div id="mkt-search-info" style="font-size:11.5px;color:var(--text3,#9CA3AF);margin:0 2px 6px;display:${query?'block':'none'}">${query?`'${(S._mktSearch||'').trim()}' 검색 결과 ${searchPacks.length}개`:''}</div>`;
 
   // 카테고리 탭 + 정렬 + 새로고침 → [마켓 순서 재배치 20260722] 추천/코스/단어장 아래로 이동(_mktFilterBlock)
   let _mktFilterBlock = '';
-  if(!query){
-    _mktFilterBlock += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;margin-bottom:6px">' + cats.map(function(cat){var active=selCat===cat;return '<button onclick="S._mktCat=\''+cat+'\';go()" style="padding:5px 12px;border-radius:20px;border:1.5px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer;white-space:nowrap">'+cat+'</button>';}).join('') + '</div>';
+  /* [마켓 필터 압축 20260723] 카테고리·정렬·새로고침을 한 줄로 — 3줄이 세로로 쌓여 공간만 먹던 문제 해소 */
+  {
+    const _sortLabels = {kr:'기본', name:'이름순', read:'읽기 난이도', words:'단어수', owned:'보유'};
+    const _curSort = S._mktSort || 'kr';
+    const _catChips = query ? '' : cats.map(function(cat){
+      var active = selCat===cat;
+      var short = cat.replace(/^[^\w가-힣]+\s*/,'');
+      return '<button onclick="S._mktCat=\''+cat+'\';go()" style="flex-shrink:0;padding:5px 11px;border-radius:18px;border:1.5px solid '+(active?'var(--theme,#3B82F6)':'var(--border,#E5E7EB)')+';background:'+(active?'var(--theme-tint,#EFF6FF)':'var(--bg-card,#fff)')+';color:'+(active?'var(--theme,#3B82F6)':'var(--text2,#374151)')+';font-size:11px;font-weight:'+(active?800:600)+';cursor:pointer;white-space:nowrap">'+short+'</button>';
+    }).join('');
+    _mktFilterBlock += '<div class="hsb" style="display:flex;align-items:center;gap:6px;overflow-x:auto;margin-bottom:10px">'
+      + _catChips
+      + (_catChips?'<span style="flex-shrink:0;width:1px;height:16px;background:var(--border,#E5E7EB);margin:0 2px"></span>':'')
+      + '<select onchange="S._mktSort=this.value;S._mktShown=20;go()" style="flex-shrink:0;padding:5px 8px;border-radius:18px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);color:var(--text2,#374151);font-size:11px;font-weight:700;cursor:pointer;outline:none">'
+      + Object.keys(_sortLabels).map(function(k){ return '<option value="'+k+'"'+(_curSort===k?' selected':'')+'>'+_sortLabels[k]+'</option>'; }).join('')
+      + '</select>'
+      + '<button onclick="loadMarketPacks().then(()=>go())" title="목록 새로고침" style="flex-shrink:0;margin-left:auto;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,#374151)">⟳</button>'
+      + '</div>';
   }
-  _mktFilterBlock += '<div style="display:flex;gap:5px;margin-bottom:10px">' + sortBtns + '</div>';
-  _mktFilterBlock += `<button onclick="loadMarketPacks().then(()=>go())" style="width:100%;background:var(--bg-sub,var(--bg-sub,#F3F4F6));border:1.5px solid var(--border,var(--border,#E5E7EB));border-radius:12px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,var(--text2,#374151))">🔄 목록 새로고침</button>`;
   /* [원서 요청 서비스 20260720] 찾는 원서가 없을 때 요청 → book_requests 적재 → 관리자 등록 → 인앱 알림 */
-  html += `<button onclick="showBookRequest()" style="width:100%;margin-bottom:12px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);border:none;border-radius:12px;padding:11px;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff">📮 찾는 원서가 없나요? 요청하기 · 1주일 이내 올려드려요</button>`;
+  html += `<button onclick="showBookRequest()" style="width:100%;margin-bottom:10px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);border:none;border-radius:12px;padding:9px;font-size:12px;font-weight:800;cursor:pointer;color:#fff">📮 찾는 원서가 없나요? 요청하기 · 1주일 이내 올려드려요</button>`;
 
   /* [레벨↔원서 추천 20260721] 레벨 진단 결과와 팩 실측 난이도를 연결 — 진단의 사용 동기 부여.
      진단 전: 진단 유도 CTA / 진단 후: 내 수준 ±1 원서 추천 + 30일 경과 시 재진단 넛지 */
@@ -3517,20 +3530,34 @@ function rMarket() {
     const _loosePacks = filtered.filter(pk => !pk.courseId);
 
     if(_courseList.length){
-      html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 10px">
+      html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:2px 2px 8px">
         <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">🎯 목표별 코스</div>
         <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_courseList.length}개 코스</div></div>`;
       /* [책장형 마켓 20260722] 코스 = 가로 스크롤 책장(표지·제목·권수·읽기수준) */
       html += `<div class="hsb" style="display:flex;gap:12px;overflow-x:auto;padding:0 2px 8px;margin-bottom:6px;-webkit-overflow-scrolling:touch">`;
       _courseList.forEach(c => {
-        const cover = c.books.find(b => b.imageUrl);
+        /* [코스 카드 개선 20260723] 표지 여러 장을 겹쳐 책장처럼 — 빈 박스로 휑하던 문제 해소 */
+        const _covers = c.books.filter(b => b.imageUrl).slice(0,3);
         const bookCnt = c.books.length;
         const rd = c.books.map(b=>b.read&&b.read.idx).filter(v=>v!=null);
         const rdTxt = rd.length ? (typeof READ_BANDS!=='undefined' ? READ_BANDS[Math.round(rd.reduce((a,b)=>a+b,0)/rd.length)] : '') : '';
+        const _grad = ['linear-gradient(140deg,#60A5FA,#3B82F6)','linear-gradient(140deg,#A78BFA,#7C3AED)','linear-gradient(140deg,#34D399,#059669)','linear-gradient(140deg,#FBBF24,#F59E0B)','linear-gradient(140deg,#F472B6,#DB2777)'][(c.id||'').length % 5];
+        let _visual;
+        if(_covers.length){
+          _visual = `<div style="position:relative;width:80px;height:106px;margin:0 auto">`
+            + _covers.map((b,ci)=>{
+                const off = (_covers.length-1-ci);
+                return `<img src="${b.imageUrl}" style="position:absolute;left:${off*5}px;top:${off*3}px;width:${72-off*3}px;height:${98-off*4}px;border-radius:7px;object-fit:cover;box-shadow:0 2px 7px rgba(0,0,0,${0.10+ci*0.05});border:1px solid rgba(255,255,255,.7);z-index:${ci+1}">`;
+              }).join('')
+            + `</div>`;
+        } else {
+          _visual = `<div style="width:80px;height:106px;border-radius:9px;background:${_grad};margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;box-shadow:0 2px 8px rgba(0,0,0,.13)">
+              <span style="font-size:30px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.2))">${c.emoji||'📚'}</span>
+              <span style="font-size:9.5px;font-weight:800;color:rgba(255,255,255,.95)">${bookCnt}단계</span>
+            </div>`;
+        }
         html += `<div onclick="showCourseDetail('${c.id}')" class="pk-card" style="flex-shrink:0;width:92px;cursor:pointer;text-align:center">
-          ${cover
-            ? `<img src="${cover.imageUrl}" style="width:80px;height:106px;border-radius:9px;object-fit:cover;margin:0 auto;display:block;box-shadow:0 3px 9px rgba(0,0,0,.16);border:1px solid var(--border,#E5E7EB)">`
-            : `<div style="width:80px;height:106px;border-radius:9px;background:var(--bg-sub,#F1F5F9);margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:30px">${c.emoji||'📚'}</div>`}
+          ${_visual}
           <div style="font-size:11px;font-weight:700;color:var(--text1,#111);margin-top:6px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</div>
           <div style="font-size:10px;color:var(--text3,#9CA3AF);margin-top:1px">${bookCnt}권${rdTxt?' · '+rdTxt:''}</div>
         </div>`;

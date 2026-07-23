@@ -2969,6 +2969,7 @@ function rPackDetail() {
       <div style="flex:1;min-width:0;padding-top:2px">
         ${pk.courseName ? `<div style="font-size:11px;color:var(--text3,#9CA3AF);margin-bottom:2px">${pk.courseName}</div>` : ''}
         <div style="font-size:18px;font-weight:900;color:var(--text1,#111);line-height:1.25">${pk.name}</div>
+        ${(pk.author||pk.genre) ? `<div style="font-size:11.5px;color:var(--text3,#9CA3AF);margin-top:4px">${pk.author||''}${(pk.author&&pk.genre)?' · ':''}${pk.genre||''}${pk.series?` · <span style="color:var(--theme,#3B82F6);font-weight:700">${pk.series}</span>`:''}</div>` : ''}   <!-- [장르 서가 20260723] 저자·장르·시리즈 -->
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
           ${owned ? `<span style="background:${petCol.main}22;color:${petCol.main};font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px">✓ 보유 중</span>` : ''}
           ${_rb}
@@ -3509,14 +3510,29 @@ function rMarket() {
     }
 
     if(_loosePacks.length){
+      /* [장르 서가 20260723] 장르 칩으로 원서를 분류. 선택 시 해당 장르만 표시. */
+      const _genreMap = {};
+      _loosePacks.forEach(pk => { const g = pk.genre || ''; if(g) _genreMap[g] = (_genreMap[g]||0) + 1; });
+      const _genres = Object.keys(_genreMap).sort((a,b)=>_genreMap[b]-_genreMap[a]);
+      const _selGenre = S._mktGenre || '';
+      const _genreFiltered = _selGenre ? _loosePacks.filter(pk => (pk.genre||'') === _selGenre) : _loosePacks;
       if(_courseList.length){
         html += `<div style="display:flex;align-items:baseline;justify-content:space-between;margin:18px 2px 10px">
           <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">📚 원서 단어장</div>
-          <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_loosePacks.length}개</div></div>`;
+          <div style="font-size:10.5px;color:var(--text3,#9CA3AF)">${_genreFiltered.length}개</div></div>`;
+      }
+      if(_genres.length > 1 && !query){
+        html += `<div style="display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;-webkit-overflow-scrolling:touch">`;
+        html += `<button onclick="S._mktGenre='';S._mktShown=20;go()" style="flex-shrink:0;padding:6px 13px;border-radius:20px;border:1.5px solid ${!_selGenre?'var(--theme,#3B82F6)':'var(--border,#E5E7EB)'};background:${!_selGenre?'var(--theme-tint,#EFF6FF)':'var(--bg-card,#fff)'};color:${!_selGenre?'var(--theme,#3B82F6)':'var(--text2,#374151)'};font-size:11.5px;font-weight:${!_selGenre?800:600};cursor:pointer;white-space:nowrap">전체 ${_loosePacks.length}</button>`;
+        _genres.forEach(g => {
+          const on = _selGenre === g;
+          html += `<button onclick="S._mktGenre='${g.replace(/'/g,"\\'")}';S._mktShown=20;go()" style="flex-shrink:0;padding:6px 13px;border-radius:20px;border:1.5px solid ${on?'var(--theme,#3B82F6)':'var(--border,#E5E7EB)'};background:${on?'var(--theme-tint,#EFF6FF)':'var(--bg-card,#fff)'};color:${on?'var(--theme,#3B82F6)':'var(--text2,#374151)'};font-size:11.5px;font-weight:${on?800:600};cursor:pointer;white-space:nowrap">${g} ${_genreMap[g]}</button>`;
+        });
+        html += `</div>`;
       }
       /* [책장형 마켓 20260722] 낱개 단어장 = 3열 표지 그리드. 탭하면 상세(C안). ⓘ 펼침은 상세로 이동. */
       html += `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 8px">`;
-      (query ? _loosePacks : _loosePacks.slice(0, _mktShown)).forEach(pk => {   /* [검색 페이지네이션 해제 20260722] 검색 중엔 전체 표시 */
+      (query ? _genreFiltered : _genreFiltered.slice(0, _mktShown)).forEach(pk => {   /* [검색 페이지네이션 해제 20260722] 검색 중엔 전체 표시 */
         const owned = ownedPacks.includes(pk.id);
         const rd = (pk.read && pk.read.idx!=null && typeof READ_BANDS!=='undefined') ? READ_BANDS[Math.min(5,Math.max(0,pk.read.idx))] : '';
         const cover = pk.imageUrl
@@ -3532,9 +3548,9 @@ function rMarket() {
       html += `</div>`;
 
       /* [10개 페이지네이션 20260720] 남은 팩이 있으면 하단에 더 보기 버튼 */
-      if(!query && _loosePacks.length > _mktShown){   /* [검색 페이지네이션 해제 20260722] */
-        const _rem = _loosePacks.length - _mktShown;
-        html += `<button onclick="_mktShowMore()" style="width:100%;background:var(--bg-card,#fff);border:1.5px dashed var(--theme-soft,#BFDBFE);border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:var(--theme,#3B82F6);cursor:pointer;margin-top:16px">+ 단어장 ${Math.min(10,_rem)}개 더 보기 <span style="color:var(--text3,#9CA3AF);font-weight:600">(${_mktShown}/${_loosePacks.length})</span></button>`;
+      if(!query && _genreFiltered.length > _mktShown){   /* [장르 서가 20260723] 더보기도 장르 필터 기준 */
+        const _rem = _genreFiltered.length - _mktShown;
+        html += `<button onclick="_mktShowMore()" style="width:100%;background:var(--bg-card,#fff);border:1.5px dashed var(--theme-soft,#BFDBFE);border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:var(--theme,#3B82F6);cursor:pointer;margin-top:16px">+ 단어장 ${Math.min(10,_rem)}개 더 보기 <span style="color:var(--text3,#9CA3AF);font-weight:600">(${_mktShown}/${_genreFiltered.length})</span></button>`;
       }
     }
   }

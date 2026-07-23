@@ -2972,6 +2972,7 @@ function rPackDetail() {
         ${(pk.author||pk.genre) ? `<div style="font-size:11.5px;color:var(--text3,#9CA3AF);margin-top:4px">${pk.author||''}${(pk.author&&pk.genre)?' · ':''}${pk.genre||''}${pk.series?` · <span style="color:var(--theme,#3B82F6);font-weight:700">${pk.series}</span>`:''}</div>` : ''}   <!-- [장르 서가 20260723] 저자·장르·시리즈 -->
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
           ${owned ? `<span style="background:${petCol.main}22;color:${petCol.main};font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px">✓ 보유 중</span>` : ''}
+          ${(function(){ try{ var _ob=(S.books||[]).find(function(x){return x&&x.packId===pk.id;}); return (_ob && typeof _bookMastered==='function' && _bookMastered(_ob)) ? '<span style="background:#FEF3C7;color:#B45309;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px">🏅 완독</span>' : ''; }catch(e){ return ''; } })()}   <!-- [완독 배지 20260723] -->
           ${_rb}
           ${_wordLvTxt ? `<span style="background:var(--bg-sub,#F1F5F9);color:var(--text2,#374151);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px">${_wordLvTxt}</span>` : ''}
         </div>
@@ -3539,7 +3540,7 @@ function rMarket() {
           ? `<img src="${pk.imageUrl}" style="width:100%;aspect-ratio:3/4;border-radius:8px;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.14);border:1px solid var(--border,#E5E7EB)">`
           : `<div style="width:100%;aspect-ratio:3/4;border-radius:8px;background:var(--bg-sub,#F1F5F9);display:flex;align-items:center;justify-content:center;font-size:34px">${pk.emoji||'📚'}</div>`;
         html += `<div onclick="showPackDetail('${pk.id}')" style="cursor:pointer;text-align:center;position:relative">
-          ${owned?`<span style="position:absolute;top:5px;right:5px;background:${petCol.main};color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:20px;z-index:1">✓</span>`:''}
+          ${(function(){ try{ var _ob=(S.books||[]).find(function(x){return x&&x.packId===pk.id;}); if(_ob && typeof _bookMastered==='function' && _bookMastered(_ob)) return `<span style="position:absolute;top:5px;right:5px;background:#F59E0B;color:#fff;font-size:9px;font-weight:800;padding:2px 5px;border-radius:20px;z-index:1">🏅</span>`; }catch(e){} return owned?`<span style="position:absolute;top:5px;right:5px;background:${petCol.main};color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:20px;z-index:1">✓</span>`:''; })()}   <!-- [완독 배지 20260723] 완독이면 🏅, 보유만이면 ✓ -->
           ${cover}
           <div style="font-size:11px;font-weight:700;color:var(--text1,#111);margin-top:6px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(pk.name||'').split('·')[0].trim()}</div>
           <div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:1px">${rd||(_pkSpecLine(pk).split('·')[0].trim())}</div>
@@ -3973,7 +3974,22 @@ const ACHIEVEMENTS = [
   {id:'bf_10',        emoji:'🌈',name:'나비 10종',    desc:'나비 10종 수집',          check:()=>getMyButterflies().length>=10},
   {id:'bf_all',       emoji:'👑',name:'나비 도감 완성',desc:'나비 30종 전부 수집',    check:()=>getMyButterflies().length>=30},
   {id:'levelup_god',  emoji:'🌟',name:'나비의 신',    desc:'최고 레벨 달성',          check:()=>S.lid==='god'},
+  /* [완독 배지 20260723] 단어장(팩·커리큘럼)의 모든 챕터 미션을 통과하면 = 완독 */
+  {id:'finish_1',     emoji:'📕',name:'첫 완독',      desc:'단어장 1권 모든 챕터 통과', check:()=>_finishedBookCount()>=1},
+  {id:'finish_3',     emoji:'📚',name:'책벌레',       desc:'단어장 3권 완독',          check:()=>_finishedBookCount()>=3},
+  {id:'finish_10',    emoji:'🏅',name:'완독 마스터',  desc:'단어장 10권 완독',         check:()=>_finishedBookCount()>=10},
 ];
+
+/* [완독 배지 20260723] 완독(모든 챕터 통과) 단어장 수. 내 단어장(플랫)은 제외 — 챕터 미션이 없으므로. */
+function _finishedBookCount(){
+  try{
+    return (S.books||[]).filter(function(b){
+      if(!b) return false;
+      if(!(b.packId || b.isCurriculum)) return false;   // 챕터 학습 대상만
+      return _bookMastered(b);
+    }).length;
+  }catch(e){ return 0; }
+}
 
 function checkAchievements() {
   const done = new Set(S._achievements||[]);
@@ -13130,9 +13146,18 @@ function _showCourseChapters(bookName){
         +'</div>';
     }
     var done=chPass.filter(Boolean).length;
+    /* [완독 배지 20260723] 모든 챕터 통과 시 완독 배너 */
+    var _allDone = (typeof _bookMastered==='function') ? _bookMastered(b) : (done>=_cn && _cn>0);
+    var _finishBanner = _allDone
+      ? '<div style="background:linear-gradient(135deg,#FDE68A,#FCD34D);border-radius:12px;padding:11px 13px;margin-bottom:10px;display:flex;align-items:center;gap:9px">'
+        +'<span style="font-size:22px">🏅</span>'
+        +'<div><div style="font-size:13px;font-weight:900;color:#78350F">완독했어요!</div>'
+        +'<div style="font-size:10.5px;color:#92400E;margin-top:1px">모든 챕터 미션을 통과했습니다</div></div></div>'
+      : '';
     mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px;text-align:left">'
-      +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">'+((typeof _bookDisplayName==='function')?_bookDisplayName(b):b.name)+'</div>'
-      +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">200단어씩 5챕터 · 외우고 챕터 통과 시험(90점) 통과하면 나비 🦋 <b style="color:var(--theme,#1E5FA5)">'+done+'/5</b></div>'
+      +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">'+((typeof _bookDisplayName==='function')?_bookDisplayName(b):b.name)+(_allDone?' <span style="font-size:12px;color:#D97706">🏅 완독</span>':'')+'</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">'+_cn+'챕터 · 외우고 챕터 통과 시험(90점) 통과하면 나비 🦋 <b style="color:var(--theme,#1E5FA5)">'+done+'/'+_cn+'</b></div>'
+      +_finishBanner
       +rows
       +'<button onclick="cm()" style="width:100%;margin-top:14px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">닫기</button>'
       +'</div></div>';

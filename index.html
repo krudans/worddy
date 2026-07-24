@@ -2559,10 +2559,10 @@ function saveCollection(col) {
 // ── 반려나비 collection 묘비(tombstone): 삭제 전파(크로스기기) ──
 function _colTombGet(){ try{ return JSON.parse(localStorage.getItem('bw-col-tomb')||'[]'); }catch(e){ return []; } }
 function _colTombSet(arr){ try{ arr=Array.from(new Set(arr||[])); localStorage.setItem('bw-col-tomb',JSON.stringify(arr)); if(S.user&&S.user.uid&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({deletedCollection:arr},{merge:true}).catch(function(){}); } return arr; }catch(e){ return arr||[]; } }
-function _colTombAdd(ids){ ids=Array.isArray(ids)?ids:[ids]; var set=new Set(_colTombGet()); ids.forEach(function(id){ if(id) set.add(id); }); return _colTombSet([...set]); }
+function _colTombAdd(ids){ ids=Array.isArray(ids)?ids:[ids]; if(!S._colSessTomb)S._colSessTomb={}; ids.forEach(function(id){ if(id)S._colSessTomb[id]=1; }); var set=new Set(_colTombGet()); ids.forEach(function(id){ if(id) set.add(id); }); return _colTombSet([...set]); }
 function _colMerge(fireCol, fireTomb){
   var localCol=[]; try{ localCol=JSON.parse(localStorage.getItem('bw-collection')||'[]'); }catch(e){}
-  var tomb=new Set([].concat(Array.isArray(fireTomb)?fireTomb:[], _colTombGet()));
+  var tomb=new Set([].concat(Array.isArray(fireTomb)?fireTomb:[], Object.keys(S._colSessTomb||{})));   /* [묘비 정본화 20260724] */
   var seen=Object.create(null), out=[];
   [].concat(Array.isArray(fireCol)?fireCol:[], localCol).forEach(function(it){
     var id=it&&it.id;
@@ -10825,11 +10825,13 @@ function _bfClearSelToggle(id){ if(!window._bfSel)window._bfSel={}; if(window._b
 // 삭제한 나비 ID를 기록. 로그인 병합 시 합집합(획득 손실 방지)에서 묘비 ID를 빼서 삭제가 크로스기기로 전파되게 함.
 function _bfGetTomb(){ try{ return JSON.parse(localStorage.getItem('wd-bf-tomb')||'[]'); }catch(e){ return []; } }
 function _bfSetTomb(arr){ try{ arr=Array.from(new Set(arr||[])); S.bfTomb=arr; localStorage.setItem('wd-bf-tomb',JSON.stringify(arr)); if(S.user&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({deletedButterflies:arr},{merge:true}).catch(function(){}); } return arr; }catch(e){ return arr||[]; } }
-function _bfAddTomb(ids){ ids=Array.isArray(ids)?ids:[ids]; var set=new Set(_bfGetTomb()); ids.forEach(function(id){ if(id) set.add(id); }); return _bfSetTomb([...set]); }
+function _bfAddTomb(ids){ ids=Array.isArray(ids)?ids:[ids]; if(!S._bfSessTomb)S._bfSessTomb={}; ids.forEach(function(id){ if(id)S._bfSessTomb[id]=1; }); var set=new Set(_bfGetTomb()); ids.forEach(function(id){ if(id) set.add(id); }); return _bfSetTomb([...set]); }
 function _bfRemoveTomb(ids){ ids=Array.isArray(ids)?ids:[ids]; var rm=new Set(ids); return _bfSetTomb(_bfGetTomb().filter(function(id){ return !rm.has(id); })); }
 function _bfMerge(fireBf, fireTomb){
   var localBf=[]; try{ localBf=JSON.parse(localStorage.getItem('wd-butterflies')||'[]'); }catch(e){}
-  var tomb=new Set([].concat(Array.isArray(fireTomb)?fireTomb:[], _bfGetTomb()));
+  /* [묘비 정본화 20260724] 삭제는 삭제 순간 서버에 즉시 기록됨 → 서버 묘비가 정본.
+     낡은 로컬 묘비를 합쳐 서버를 덮으며 재획득 나비를 죽이던 결함 제거 — 로컬은 '이 세션 삭제'만 유효. */
+  var tomb=new Set([].concat(Array.isArray(fireTomb)?fireTomb:[], Object.keys(S._bfSessTomb||{})));
   var union=new Set([].concat(Array.isArray(fireBf)?fireBf:[], Array.isArray(localBf)?localBf:[]));
   var merged=[...union].filter(function(id){ return !tomb.has(id); });
   var tombArr=[...tomb];
@@ -15632,8 +15634,12 @@ function saveWordToCurrentBook(word) {
   const bookName = S.currentBook || '내 단어장';
   try{ if(word&&word.en) _untombWord(word.en); }catch(e){}
   if(bookName === '내 단어장') {
-    if(!S.words.find(w=>w.en.toLowerCase()===word.en.toLowerCase()))
-      S.words.push(word);
+    /* [정본 직결 20260724] 사전 담기 등 모든 추가가 정본(S.myWords)에 직접 저장·즉시 영속 — 뷰 참조 상태와 무관하게 담김 */
+    if(!Array.isArray(S.myWords)) S.myWords = Array.isArray(S.words)?S.words.slice():[];
+    if(!S.myWords.find(w=>w&&w.en&&w.en.toLowerCase()===word.en.toLowerCase())) S.myWords.push(word);
+    S.words = S.myWords;
+    try{ localStorage.setItem('wd-w', JSON.stringify(S.myWords)); }catch(e){}
+    if(typeof sv==='function') sv();
   } else {
     const bk = (S.books||[]).find(b=>b.name===bookName);
     if(bk) {

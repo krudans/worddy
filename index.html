@@ -13434,7 +13434,7 @@ function _showCourseChapters(bookName){
       var status, action;
       if(!unlocked){ status='<span style="color:#9CA3AF">🔒 잠김</span>'; action='<span style="font-size:10px;color:#9CA3AF">이전 챕터 통과 필요</span>'; }
       else if(passed){ status='<span style="color:#16A34A">✅ 완료 🦋</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:#fff;border:1px solid #E5E7EB;color:#6B7280;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">🔄 재학습</button>'; }
-      else if(allMem){ status='<span style="color:var(--theme,#1E5FA5)">거의 다 됐어요</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">이어서</button>'; }
+      else if(allMem){ status='<span style="color:#16A34A">다 외웠어요!</span>'; action='<button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b&&typeof _checkChapterDone===\'function\')_checkChapterDone(_b,'+c+')" style="background:#16A34A;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">✅ 완료 처리</button>'; }
       else { status='<span style="color:#6B7280">외우기 '+mem+'/'+slice.length+'</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">학습</button>'; }
       rows += '<div style="padding:11px 2px;border-top:'+(c>0?'1px solid #EEE':'none')+';opacity:'+(unlocked?'1':'.5')+'">'
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:'+(unlocked&&!passed?'6px':'0')+'"><span style="flex:1;font-size:13px;font-weight:700;color:#111">챕터 '+(c+1)+' <span style="font-size:10px;color:#9CA3AF;font-weight:400">'+(_chStart+1)+'~'+(_chStart+slice.length)+'</span></span><span style="font-size:11px;font-weight:700">'+status+'</span>'+action+'</div>'
@@ -14688,7 +14688,7 @@ function _chapterMemRatio(book, chIdx){
     var sl=(typeof _chapterSlice==='function')?_chapterSlice(book, chIdx):[];
     if(!sl.length) return 0;
     var mm=book.markMap||{};
-    var mem=sl.filter(function(w){ var en=(typeof w==='string')?w:(w&&w.en); return en && mm[en]===1; }).length;
+    var mem=sl.filter(function(w){ var en=(typeof w==='string')?w:(w&&w.en); if(!en) return false; var k=(typeof _mk==='function')?_mk(en):en; return mm[k]===1 || mm[en]===1; }).length;
     return mem/sl.length;
   }catch(e){ return 0; }
 }
@@ -14698,7 +14698,8 @@ function _checkChapterDone(book, chIdx){
     if(!book) return;
     if(!Array.isArray(book.chPass)) book.chPass=new Array((typeof _chapterCount==='function')?_chapterCount(book):5).fill(false);
     if(book.chPass[chIdx]) return;                       // 이미 완료
-    if(_chapterMemRatio(book, chIdx) < 1) return;        // 챕터 단어를 전부 외워야 완료
+    var _full = (_chapterMemRatio(book, chIdx) >= 1) || ((typeof _chapterMemorized==='function') && _chapterMemorized(book, chIdx));
+    if(!_full) return;   // 챕터 단어를 전부 외워야 완료 (판정 이중화 — 키 불일치로 침묵하던 결함 방지)
     book.chPass[chIdx]=true;
     S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now();
     if(typeof sv==='function') sv();

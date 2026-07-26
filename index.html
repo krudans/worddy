@@ -2259,10 +2259,6 @@ function savePartialGameScore() {
 /* saveGameScore: js/features.js 단일 정의로 통합 (중복 제거) */
 
 // XP 획득 (표시 포함)
-function earnXP(amount, reason) {
-  if(!amount || amount<=0) return;
-  addXP(amount, false);
-}
 
 // 단어 학습 시 XP
 
@@ -2389,13 +2385,6 @@ function useXP(cost, type) {
 }
 
 
-function buyAccessory(id, cost) {
-  if((S.xp||0)<cost){toast('XP 부족!');return;}
-  S.xp -= cost;
-  if(!S._acc) S._acc=[];
-  if(!S._acc.includes(id)) S._acc.push(id);
-  sv(); cm(); toast('🎉 '+id+' 획득!'); vib([100,50,200]);
-}
 
 
 
@@ -3434,58 +3423,10 @@ function _mktFilterInput(val){
   }, 180);
 }
 
-function togglePackPreview(packId) {
-  const el = document.getElementById('preview-'+packId);
-  if(!el) return;
-  el.style.display = el.style.display==='none' ? 'block' : 'none';
-}
 
 /* ══════ [마켓 팩 상세소개 20260720] 신간 공지와 동일한 구성(책 소개+단어장 특징+CEFR 막대·범례)을
    각 팩의 실데이터(desc·basis)와 BWD_META 실측 분포로 즉석 조립 — 전 팩·신규 팩 자동 적용.
    목록에선 접힘, "자세히 보기 ▾"로 펼침(lazy 렌더). ══════ */
-function _pkIntroHTML(pk){
-  try{
-    var ws=Array.isArray(pk.words)?pk.words:[];
-    var ens=ws.map(function(w){ return typeof w==='string'?w:(w&&w.en)||''; }).filter(Boolean);
-    var cnt=ens.length||pk.count||0;
-    var chN=_pkChapters(cnt);   /* [작은 팩 챕터 20260722] */
-    var dist={}, known=0;
-    try{ if(typeof _ensureBwdMeta==='function') _ensureBwdMeta(); }catch(e){}
-    try{ var M=(typeof BWD_META!=='undefined')?BWD_META:(window.BWD_META||null);
-      if(M){ ens.forEach(function(en){ var m=M[en]; var c=m&&m.cefr; if(c){ dist[c]=(dist[c]||0)+1; known++; } }); } }catch(e){}
-    var order=['A1','A2','B1','B2','C1','C2'];
-    var _CCOL={A1:'#34D399',A2:'#6EE7B7',B1:'#60A5FA',B2:'#3B82F6',C1:'#A78BFA',C2:'#8B5CF6'};
-    var minC=order.find(function(c){ return (dist[c]||0)>=Math.max(10,cnt*0.05); })||order.find(function(c){return dist[c];})||'';
-    /* [간소화 20260720] 책이름은 카드 제목에 있으므로: 단어수·챕터 한 줄 + 막대 + 컴팩트 범례만 */
-    /* [6단계 수준 표시 20260720] 스펙 줄 오른쪽에 평균 CEFR 기반 서술형 수준 평가(6단계) 배지 */
-    var lvlScale='';
-    if(known>0){
-      var _wsum=0; order.forEach(function(c,i){ _wsum+=i*(dist[c]||0); });
-      var avgIdx=Math.min(5, Math.max(0, Math.round(_wsum/known)));
-      var _LVTXT=['아주 평이한 수준','전반적으로 평이한 수준','중급 단어 위주','중상급 단어 위주','고급 단어 위주','전문가 수준의 단어'];
-      var _c=_CCOL[order[avgIdx]];
-      lvlScale='<span style="flex-shrink:0;background:'+_c+'22;color:'+_c+';border:1px solid '+_c+'55;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:800;filter:saturate(1.4) brightness(.82)">'+_LVTXT[avgIdx]+'</span>';
-    }
-    var _rb=_readBadge(pk,false);
-    var html='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
-      +'<div style="font-size:12.5px;font-weight:800;color:var(--text1,#111)">📚 '+cnt.toLocaleString()+'단어 · '+chN+'챕터'+(minC?(' · '+minC+'부터'):'')+'</div>'
-      +(_rb||lvlScale)+'</div>';   /* [읽기수준 이원화 20260721] 읽기 배지 우선, 없으면 어휘 배지 폴백 */
-    if(_rb&&lvlScale){ html+='<div style="display:flex;justify-content:flex-end;margin:-4px 0 6px">'+lvlScale.replace(/>([^<]+)<\/span>$/,'>단어: $1</span>')+'</div>'; }
-    if(known>0){
-      var segs=order.filter(function(c){return dist[c];});
-      var bar=segs.map(function(c){ var p=Math.round(dist[c]/known*1000)/10; return '<span style="display:block;width:'+p+'%;background:'+_CCOL[c]+'"></span>'; }).join('');
-      var legend=segs.map(function(c){ var p=Math.round(dist[c]/known*100); var L=(typeof CEFR_LABEL!=='undefined'&&CEFR_LABEL[c])||{name:''};
-        return '<div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--text2,#374151)">'
-        +'<span style="width:10px;height:10px;border-radius:3px;background:'+_CCOL[c]+';flex-shrink:0"></span>'
-        +'<b>'+c+' · '+L.name+'</b> <b style="color:var(--text1,#111)">'+p+'%</b> <span style="color:var(--text3,#9CA3AF)">('+dist[c].toLocaleString()+'개)</span></div>'; }).join('');
-      html+='<div style="display:flex;height:10px;border-radius:5px;overflow:hidden">'+bar+'</div>'+legend
-        +'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:6px">유럽 공통 어학 기준(CEFR) — 낮을수록 쉬운 단어예요</div>';
-    } else {
-      html+='<div style="font-size:11px;color:var(--text3,#9CA3AF)">난이도 정보를 준비 중이에요</div>';
-    }
-    return html;
-  }catch(e){ return '<div style="font-size:12px;color:var(--text3,#9CA3AF)">소개를 불러오지 못했어요</div>'; }
-}
 /* [A안 컴팩트 리스트 20260720] 카드 스펙 한 줄: 단어수·챕터·시작난이도(BWD_META 1회 계산 캐시) */
 function _pkSpecLine(pk){
   try{
@@ -3544,20 +3485,6 @@ function _doBuyPack(packId, opts) {
 /* _doRemovePack: js/features.js 단일 정의로 통합 (중복 제거) */
 
 
-function _doRemoveButterfly(bId) {
-  const owned = getMyButterflies().filter(id=>id!==bId);
-  localStorage.setItem('wd-butterflies', JSON.stringify(owned));
-  S.myButterflies = owned;
-  if(typeof _bfAddTomb==='function') _bfAddTomb([bId]);
-  // [도감/캐릭터 불일치 근본수정] 병합 우회 직접쓰기 폐기 → _bfMerge(합집합−묘비) 경유 push
-  //  (묘비는 위 _bfAddTomb에서 이미 반영. _bfMerge가 로컬∪서버-빈값−묘비로 재구성 후 myButterflies·deletedButterflies 동반 저장)
-  if(S.user && typeof db !== 'undefined') {
-    try{ _bfMerge([], []); }catch(e){ console.warn('나비 삭제 병합 오류', e); }
-  }
-  const b = BUTTERFLY_LIST.find(x=>x.id===bId);
-  toast('🗑️ '+(b?.name||bId)+' 삭제됨');
-  go();
-}
 
 function changeNickname() {
   const v = document.getElementById('cnk')?.value.trim();
@@ -3781,35 +3708,8 @@ function showAchievementToast(a) {
   setTimeout(()=>el.remove(),3000);
 }
 
-function getDailyChallenge() {
-  const t = today();
-  const seed = parseInt(t.replace(/-/g,'')) % 7;
-  const challenges = [
-    {id:'words20',  emoji:'📚', title:'단어 20개 학습',   desc:'오늘 단어 20개를 외워요',    check:()=>(S.studyLog[today()]?.words||0)>=20,  reward:50},
-    {id:'quiz10',   emoji:'🎯', title:'퀴즈 10문제',      desc:'오늘 퀴즈 10문제를 풀어요',   check:()=>(S.studyLog[today()]?.quiz||0)>=10,   reward:30},
-    {id:'combo5',   emoji:'⚡', title:'5연속 정답',        desc:'게임에서 5연속 정답!',         check:()=>(S._maxCombo||0)>=5,                  reward:40},
-    {id:'perfect',  emoji:'💯', title:'테스트 100%',      desc:'테스트를 완벽하게 통과해요',   check:()=>(S._hadPerfect||false),               reward:80},
-    {id:'words30',  emoji:'🌟', title:'단어 30개 학습',   desc:'오늘 단어 30개를 외워요',    check:()=>(S.studyLog[today()]?.words||0)>=30,  reward:70},
-    {id:'streak',   emoji:'🔥', title:'오늘 학습 완료',   desc:'오늘 미션 3개를 모두 완료해요',check:()=>{const l=S.studyLog[today()]||{};return l.words>=10&&l.quiz>=5&&Object.keys(S.bestScores||{}).length>0;},reward:100},
-  ];
-  return challenges[seed];
-}
 
 
-function claimDailyChallenge() {
-  const ch = getDailyChallenge();
-  if(!ch || !ch.check()) return;
-  const t = today();
-  if((S._dcClaimed||'')===t) { toast('이미 수령했어요!'); return; }
-  S._dcClaimed = t;
-  addXP(ch.reward);
-  checkAchievements();
-  sv();
-  document.getElementById('mr').innerHTML='';
-  toast('🎁 오늘의 도전 완료! +'+ch.reward+'XP 획득!');
-  vib([100,50,200,50,100]);
-  SFX.play('levelup');
-}
 
 
 function checkLearnMilestone() {
@@ -4741,12 +4641,6 @@ function attendDays(){
     const _active = Object.keys(S.studyLog||{}).filter(k=>{const v=(S.studyLog||{})[k]||{}; return (v.words||0)>0||(v.quiz||0)>0||(v.min||0)>0;});
     return new Set([...(Array.isArray(S.attendDates)?S.attendDates:[]), ..._active]).size;
   }catch(e){ return S.attendCount||0; }
-}
-function cycleMark(en) {
-  const cur = getMark(en);
-  const next = (cur+1)%3;
-  setMark(en, next);
-  return next;
 }
 const today = () => {
   const d = new Date();
@@ -6357,20 +6251,8 @@ function showLogin() {
   };
 }
 
-function svNick() {
-  const v=document.getElementById('nk')?.value.trim();
-  if(!v){toast('닉네임을 입력해주세요');return;}
-  S.nick=v; sv(); showSurvey();
-}
 
 // ── 학습 스타일 설문 ──
-function showSurvey() {
-  if(!window._popupOn || !window._popupOn('survey')) return;
-  document.getElementById('hd').style.display='none';
-  // nav 항상 표시
-  S.surveyAns = [];
-  renderSurveyQ(0);
-}
 function renderSurveyQ(qi) {
   if(qi>=SURVEY_QS.length) { finishSurvey(); return; }
   const q=SURVEY_QS[qi];
@@ -6466,24 +6348,6 @@ function showTestIntro(isRetry=false, skipWarn=false) {
 
 
 // system_words를 레벨테스트용으로 로드 (관리자 페이지 단어 사용)
-function loadTestWords(cb) {
-  if(typeof db==='undefined') { if(cb)cb(); return; }
-  window._testWordsByLevel = window._testWordsByLevel || {};
-  const fetch = db.collection('system_words').get()
-    .then(snap=>{
-      const byLv = {};
-      snap.docs.forEach(d=>{
-        const w = d.data();
-        if(!w || !w.en || !w.level) return;
-        const meaning = (w.meanings && w.meanings[0]) || w.kr;
-        if(!meaning) return;
-        (byLv[w.level] = byLv[w.level] || []).push({ en: w.en, kr: meaning, img: w.img||'📘' });
-      });
-      window._testWordsByLevel = byLv;
-    }).catch(()=>{});
-  const timeout = new Promise(res => setTimeout(res, 4000));
-  Promise.race([fetch, timeout]).finally(()=>{ if(cb)cb(); });
-}
 
 // ── 적응형 테스트 핵심 ──
 function renderAdaptiveQ() {
@@ -6895,17 +6759,6 @@ setTimeout(function() {
       if(typeof S!=='undefined' && S.tab==='mybooks' && S.stab==='learn') return true; // 플래시카드
       return false;
     }catch(e){ return false; }
-  }
-  function _forceExitMode(){
-    try{ window.speechSynthesis.cancel(); }catch(e){}
-    try{ window._autoPlaying=false; window._audPlaying=false; window._sdPlaying=false; }catch(e){}
-    try{ if(typeof S!=='undefined' && S._gameRunning && typeof savePartialGameScore==='function') savePartialGameScore(); }catch(e){}
-    try{ if(typeof _accrueGameTime==='function') _accrueGameTime(); }catch(e){}
-    try{ if(typeof _endStudySession==='function') _endStudySession(); }catch(e){}
-    try{ var n=document.getElementById('nav'); if(n)n.style.display=''; var h=document.getElementById('hd'); if(h)h.style.display=''; }catch(e){}
-    try{ if(typeof S!=='undefined') S._gameRunning=false; }catch(e){}
-    try{ if(typeof cm==='function') cm(); }catch(e){}
-    try{ if(typeof go==='function') go('home'); }catch(e){}
   }
   function _backHandler(){
     try{ history.pushState({_bg:1},'',location.href); }catch(e){}
@@ -10361,48 +10214,8 @@ function _planPaceCard(daily){
     '</div></div>';
 }
 
-function renderGoalDashboard(){
-  var ctx=window._planCtx=_planScopeData();
-  var sel=_planScopeSel(); if(!ctx.scopes[sel]) sel='__all__';
-  var BLUE='var(--theme)';
-  var opts=Object.keys(ctx.scopes).map(function(k){ var sc=ctx.scopes[k]; var pc=sc.total?Math.round(sc.memo/sc.total*100):0;
-    var nm=sc.label.length>14?sc.label.slice(0,13)+'…':sc.label;
-    return '<option value="'+_esc(k)+'"'+(k===sel?' selected':'')+'>'+_esc(nm)+' · '+pc+'%</option>'; }).join('');
-
-  var bp=ctx.books.filter(function(b){return b.total>0;}).sort(function(a,b){return (b.memo/b.total)-(a.memo/a.total);}).map(function(b){
-    var pc=Math.round(b.memo/b.total*100); var on=(b.name===sel);
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px'+(on?';background:var(--theme-tint);border-radius:8px;padding:3px 4px':'')+'">'+
-      '<div style="flex:0 0 96px;font-size:11px;color:'+(on?BLUE:'#374151')+';font-weight:'+(on?'800':'400')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc((typeof _bookShortName==='function')?_bookShortName((S.books||[]).find(function(x){return x.name===b.name;})||b):b.name)+'</div>'+
-      '<div style="flex:1;height:7px;border-radius:99px;background:#EEF2F7;overflow:hidden"><div style="width:'+Math.max(pc,pc>0?2:0)+'%;height:100%;background:'+BLUE+'"></div></div>'+
-      '<div style="flex:0 0 74px;text-align:right;font-size:10px;color:#9CA3AF">'+_nf(b.memo)+'/'+_nf(b.total)+'·'+pc+'%</div></div>';
-  }).join('');
-
-  var mx=Math.max.apply(null,ctx.act.concat([1]));
-  var sp=ctx.act.map(function(v,idx){var h=Math.max(2,Math.round(v/mx*38));var last=idx===ctx.act.length-1;return '<div style="flex:1;height:'+h+'px;border-radius:1.5px;background:'+(last?BLUE:'#D6DEE8')+'"></div>';}).join('');
-
-  return '<div style="background:var(--bg-card,#FFFFFF);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:10px">'+
-    '<div style="font-size:13px;font-weight:800;color:#111;margin-bottom:9px">🎯 학습 목표</div>'+
-    '<div style="font-size:10px;color:#6B7280;margin-bottom:6px">아래에서 단어장을 골라 목표를 세워보세요</div>'+
-    '<div style="position:relative;margin-bottom:13px">'+
-      '<select id="pl-scope" onchange="_planSelect(this.value)" style="appearance:none;-webkit-appearance:none;-moz-appearance:none;width:100%;padding:11px 40px 11px 13px;border:2px solid '+BLUE+';border-radius:11px;background:var(--theme-tint);color:'+BLUE+';font-size:14px;font-weight:800;cursor:pointer;outline:none">'+opts+'</select>'+
-      '<span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:#fff;background:'+BLUE+';width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px">▼</span>'+
-    '</div>'+
-    '<div id="pl-body">'+_planBodyHTML(sel)+'</div>'+
-    '<div style="font-size:10px;color:#9CA3AF;margin:13px 0 8px">단어장별 진척</div>'+bp+
-    '<div style="display:flex;align-items:center;gap:10px;margin-top:11px">'+
-      '<div style="flex:1"><div style="font-size:10px;color:#9CA3AF;margin-bottom:5px">최근 30일 학습 활동</div>'+
-        '<div style="display:flex;align-items:flex-end;gap:1.5px;height:38px">'+sp+'</div></div>'+
-      '<div style="display:flex;align-items:center;gap:5px;background:#FFF7ED;color:#D97706;padding:6px 10px;border-radius:9px;font-size:12px;font-weight:800">🔥 '+ctx.streak+'일</div>'+
-    '</div>'+
-    (ctx.weak>0?('<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6B7280;margin-top:9px">⚠️ 헷갈림에 머문 단어 <b style="color:#111">'+ctx.weak+'개</b> — 복습 권장</div>'):'')+
-  '</div>';
-}
 
 
-function _planSelect(key){
-  try{ localStorage.setItem('wd-plan-scope', key); }catch(e){console.warn('[wd-io:_planSelect]',e);}
-  var el=document.getElementById('pl-body'); if(el) el.innerHTML=_planBodyHTML(key);
-}
 
 function _planMarkDirty(){ var h=document.getElementById('pl-savehint'); if(h) h.textContent='변경됨 — 저장을 눌러 적용하세요'; var b=document.getElementById('pl-savebtn'); if(b) b.textContent='저장하기'; }
 function _planUpdatePace(daily){
@@ -10453,30 +10266,7 @@ function _planSave(){
   }catch(e){console.warn('[wd-io:_planSave]',e);}
 }
 
-function _planOpenSetup(){ try{ window._planAutoOpen=true; }catch(e){} if(typeof go==='function') go('learn'); }
 function _planToggleFull(){ var el=document.getElementById('pl-full'); var c=document.getElementById('pl-caret'); if(!el) return; var open=(el.style.display==='none'); el.style.display=open?'block':'none'; if(c) c.textContent=open?'▴':'▾'; }
-function renderGoalStrip(open){
-  var ctx=window._planCtx||(window._planCtx=_planScopeData());
-  var sel=_planScopeSel(); if(!ctx.scopes[sel]) sel='__all__';
-  var sc=ctx.scopes[sel]||ctx.scopes['__all__'];
-  var memo=sc.memo,total=sc.total,remaining=_planRemaining(memo,total);
-  var pct=total?Math.round(memo/total*100):0;
-  var plan=_planLoadFor(sel);
-  var maxDaily=Math.max(5,Math.min(100,remaining||10));
-  var daily=plan.daily!=null?plan.daily:20; daily=Math.max(1,Math.min(maxDaily,daily));
-  var BLUE='var(--theme)';
-  var pace=_planPace(sc.ens,daily,ctx.today,sel);
-  var right=remaining<=0?'🎉 다 외웠어요!':('📅 '+_planFmt(_planEtaDate(remaining,daily,ctx.today))+' 완료 예정');
-  var todayBadge = remaining<=0?'':('<span style="font-size:11px;color:'+(pace.todayMemo>=daily?'#16A34A':'#6B7280')+';font-weight:800">오늘 '+pace.todayMemo+'/'+daily+'</span>');
-  return '<div style="background:var(--bg-card,#fff);border-radius:14px;border:1px solid var(--border,#E2E8F0);padding:11px 13px;margin-bottom:8px">'+
-    '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
-      '<span style="font-size:14px">🎯</span>'+
-      '<span style="font-size:12px;color:#374151"><b style="color:'+BLUE+'">'+_esc(sc.label)+'</b> · '+pct+'%</span>'+
-      '<span style="font-size:12px;color:'+BLUE+';font-weight:800">'+right+'</span>'+
-      todayBadge+
-      '<button onclick="_planToggleFull()" style="margin-left:auto;font-size:11px;font-weight:800;color:'+BLUE+';background:var(--theme-tint);border:1.5px solid '+BLUE+';border-radius:8px;padding:5px 11px;cursor:pointer;white-space:nowrap">목표 설정 <span id="pl-caret">'+(open?'▴':'▾')+'</span></button>'+
-    '</div></div>';
-}
 function _planRefreshLearn(open){
   var c=document.getElementById('pl-learnblock'); if(!c) return;
   window._planCtx=_planScopeData();
@@ -11022,29 +10812,6 @@ function rHome() {
 }
 
 // ── 홈 XP 순위 렌더링 ──
-async function getRankSnap(){
-  const _t = (typeof today==='function')?today():new Date(Date.now()+9*36e5).toISOString().slice(0,10);
-  try{
-    const snapDoc = await db.collection('rankings').doc('snapshot').get();
-    if(snapDoc.exists){ const sd=snapDoc.data(); const _fresh = sd.updatedAt && (Date.now()-sd.updatedAt < 10*60*1000); if(sd.date===_t && _fresh && Array.isArray(sd.users) && sd.users.length>0){ return sd.users; } }
-  }catch(e){console.warn('[wd-io:getRankSnap]',e);}
-  try{
-    const us = await db.collection('users').get();
-    const weekAgo = new Date(Date.now()-7*864e5+9*36e5).toISOString().slice(0,10);
-    const monthAgo = new Date(Date.now()-30*864e5+9*36e5).toISOString().slice(0,10);
-    const arr = us.docs.map(function(d){
-      const x=d.data()||{}; const sl=x.studyLog||x.sl||{};
-      const day=(sl[_t]&&sl[_t].xp)||0;
-      const week=Object.keys(sl).filter(function(k){return k>=weekAgo;}).reduce(function(s,k){return s+((sl[k]&&sl[k].xp)||0);},0);
-      const month=Object.keys(sl).filter(function(k){return k>=monthAgo;}).reduce(function(s,k){return s+((sl[k]&&sl[k].xp)||0);},0);
-      const total=Object.values(sl).reduce(function(s,v){return s+((v&&v.xp)||0);},0)||x._totalXp||x.xp||0;
-      return {uid:d.id, nick:x.nick||'익명', streak:x.streak||0, day:day, week:week, month:month, total:total};
-    });
-    arr.sort(function(a,b){return b.total-a.total;});
-    try{ await db.collection('rankings').doc('snapshot').set({date:_t, users:arr, updatedAt:Date.now()}); }catch(e){console.warn('[wd-io:getRankSnap]',e);}
-    return arr;
-  }catch(e){ return []; }
-}
 
 function _defGroupPacks(){ return ['초등학교_8129','중학생_단어_3982','고등학생_수준_단어_7519']; }
 function _defGroupNames(){ return {'초등학교_8129':'초등학생 수준 단어','중학생_단어_3982':'중학생 수준 단어','고등학생_수준_단어_7519':'고등학생 수준 단어'}; }
@@ -11308,15 +11075,6 @@ function createBook() {
 
 
 // ── 목표 설정 ──
-function goalTab(t) {
-  document.getElementById('goal-date-view').style.display=t==='date'?'block':'none';
-  document.getElementById('goal-period-view').style.display=t==='period'?'block':'none';
-  document.getElementById('tab-date').style.background=t==='date'?'var(--theme)':'#F3F4F6';
-  document.getElementById('tab-date').style.color=t==='date'?'#fff':'#6B7280';
-  document.getElementById('tab-period').style.background=t==='period'?'var(--theme)':'#F3F4F6';
-  document.getElementById('tab-period').style.color=t==='period'?'#fff':'#6B7280';
-}
-function svGoal(){const d=document.getElementById('gd')?.value||S._goalDate;if(!d){toast('날짜를 선택하세요');return;}S.goal=d;S.goalTotal=S.words.length;sv();cm();go('home');toast('목표 설정 완료!');}
 
 // ── 레벨 모달 ──
 function showLevelModal() {
@@ -12206,50 +11964,6 @@ function _studyChapter(bookName, chIdx){
     _studyChapterDirect(bookName, chIdx);
   }catch(e){ _studyChapterDirect(bookName, chIdx); }
 }
-function _showCourseHelp(){
-  var mr=document.getElementById('mr'); if(!mr) return;
-  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:420px;text-align:left">'
-    +'<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:10px">🎯 레벨업 코스란?</div>'
-    +'<div style="font-size:12.5px;color:#374151;line-height:1.8;margin-bottom:14px">레벨테스트로 내 실력(1~10레벨)을 찾으면, 딱 맞는 <b>3단계 코스(3,000단어)</b>가 자동으로 만들어져요. 쉬운 단어부터 차근차근 정복하는 방식이에요.</div>'
-    +'<div style="background:#F8FAFC;border-radius:12px;padding:13px;margin-bottom:12px">'
-      +'<div style="font-size:12px;font-weight:800;color:#111;margin-bottom:8px">어떻게 진행되나요</div>'
-      +'<div style="font-size:12px;color:#374151;line-height:1.9">1. 레벨테스트(30문항)로 내 레벨 찾기<br>2. 내 레벨 + 다음 2단계 = 코스 3개 자동 생성<br>3. 코스마다 200단어씩 5챕터로 외우기<br>4. 챕터 시험(50문제) 90점 → 🦋 나비 + 다음 챕터 열림</div>'
-    +'</div>'
-    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
-      +'<div style="flex:1;background:#F0FDF4;border-radius:10px;padding:10px"><div style="font-size:11px;font-weight:800;color:#16A34A;margin-bottom:3px">👍 좋은 점</div><div style="font-size:11px;color:#15803D;line-height:1.6">내 수준 맞춤 · 작은 챕터로 부담↓ · 나비 보상</div></div>'
-      +'<div style="flex:1;background:#FFFBEB;border-radius:10px;padding:10px"><div style="font-size:11px;font-weight:800;color:#B45309;margin-bottom:3px">💡 알아둘 점</div><div style="font-size:11px;color:#92400E;line-height:1.6">챕터 순서대로 · 시험 90점 필요 · 재테스트 시 초기화</div></div>'
-    +'</div>'
-    +'<div style="font-size:11px;color:#6B7280;text-align:center;background:var(--theme-tint,#EEF3FA);border-radius:10px;padding:10px;margin-bottom:14px">💡 하루 한 챕터(200단어)씩 5일이면 코스 1개 완성!</div>'
-    +'<button onclick="cm()" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:800;cursor:pointer">확인</button>'
-    +'</div></div>';
-}
-function _showCourseMenu(){
-  try{
-    var mr=document.getElementById('mr'); if(!mr) return;
-    var _cur=(S.books||[]).filter(function(b){return b.isCurriculum&&b.level;}).sort(function(a,b){return (a.tier||0)-(b.tier||0);});
-    var lv=(_cur[0]&&_cur[0].level)||S._myLevel||'';
-    var nabi=_cur.reduce(function(s,b){return s+((b.chPass||[]).filter(Boolean).length);},0);
-    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:360px;text-align:left">'
-      +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:3px">🎯 레벨업 코스 관리</div>'
-      +'<div style="font-size:11.5px;color:#9CA3AF;margin-bottom:15px">내 레벨 '+lv+' · 3단계 코스 · 획득 나비 🦋'+nabi+'</div>'
-      +'<div onclick="cm();showTestIntro()" style="display:flex;align-items:center;gap:11px;padding:13px;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:9px;cursor:pointer"><span style="font-size:20px">🔄</span><div style="flex:1"><div style="font-size:13px;font-weight:800;color:#111">레벨 다시 테스트</div><div style="font-size:11px;color:#6B7280;margin-top:1px">새 레벨로 코스를 다시 만들어요 · 진도 초기화</div></div><span style="color:#B8AE96">›</span></div>'
-      +'<div onclick="_deleteCurriculum()" style="display:flex;align-items:center;gap:11px;padding:13px;border:1px solid #FCE4E4;border-radius:12px;margin-bottom:14px;cursor:pointer;background:#FEF6F6"><span style="font-size:20px">🗑</span><div style="flex:1"><div style="font-size:13px;font-weight:800;color:#DC2626">코스 전체 삭제</div><div style="font-size:11px;color:#B45B5B;margin-top:1px">챕터 진도·통과 기록이 사라져요</div></div><span style="color:#E0A0A0">›</span></div>'
-      +'<button onclick="cm()" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">닫기</button>'
-      +'</div></div>';
-  }catch(e){}
-}
-function _deleteCurriculum(){
-  try{
-    if(!confirm('레벨업 코스(3단계)를 모두 삭제할까요?\n챕터 진도와 통과 기록이 사라져요. 언제든 레벨테스트로 다시 만들 수 있어요.')) return;
-    if(typeof cm==='function') cm();
-    var curNames=(S.books||[]).filter(function(b){return b.isCurriculum;}).map(function(b){return b.name;});
-    S.books=(S.books||[]).filter(function(b){return !b.isCurriculum;});
-    if(curNames.indexOf(S.currentBook)>=0){ if(typeof _selectBook==='function') _selectBook('내 단어장'); else _toMyBook(); }
-    if(typeof sv==='function') sv();
-    if(typeof toast==='function') toast('🗑 레벨업 코스 삭제됨');
-    if(typeof go==='function') go('mybooks','list');
-  }catch(e){console.warn('[wd-io:_deleteCurriculum]',e);}
-}
 // ── 레벨 성장 그래프 ──────────────────────────────────────
 // tHistory 중 새 레벨테스트 기록(level 필드)만 사용. 재테스트할수록 성장이 눈에 보이게 한다.
 // 저장된 성장 기록 전체(최대 _TH_MAX). 차트는 여기서 창(window)을 잘라 본다.
@@ -12263,14 +11977,6 @@ function _growthData(){
   catch(e){ return []; }
 }
 // 헤더용 미니 추이: "Lv.1 → Lv.3  ▲2"
-function _growthBadgeHtml(){
-  var g=_growthData();
-  if(g.length<2) return '';
-  var first=g[0].level, last=g[g.length-1].level, d=last-first;
-  var col = d>0 ? '#16A34A' : (d<0 ? '#DC2626' : '#9CA3AF');
-  var arrow = d>0 ? '▲' : (d<0 ? '▼' : '=');
-  return '<span onclick="event.stopPropagation();showGrowthChart()" style="font-size:10px;background:#fff;border:1px solid '+col+'33;color:'+col+';padding:2px 7px;border-radius:8px;font-weight:800;cursor:pointer">Lv.'+first+' → Lv.'+last+' '+arrow+Math.abs(d)+'</span>';
-}
 // ── 성장 차트: 저장된 전체(최대 _TH_MAX)를 _TH_SHOW개씩 창(window)으로 본다 ──
 // 화살표 또는 드래그로 과거 기록 탐색. S._gcOff = 오른쪽 끝에서 뒤로 밀린 개수.
 function _gcWindow(){
@@ -12995,14 +12701,6 @@ function showGameSettings(gameId, tab) {
 }
 
 // ===== 콘텐츠 유형 판별 & 게임 게이트 (단어 / 숙어 / 문장) =====
-function wContentType(w){
-  var en=((w&&w.en)||'').trim();
-  if(!en) return 'word';
-  var sp=(en.match(/\s/g)||[]).length;
-  if(/[.?!]/.test(en) || sp>=3) return 'sentence';
-  if(sp>=1) return 'phrase';
-  return 'word';
-}
 function _wHasEx(w){ return !!((w&&w.ex&&String(w.ex).trim().length>3) || (w&&w.exList&&w.exList.length)); }
 function _isSingleWord(w){ var e=((w&&w.en)||'').trim(); return e.length>0 && !/\s/.test(e); }
 function gamePlayablePred(gameId){
@@ -13904,22 +13602,6 @@ async function handleBulkFile(file) {
 }
 
 
-async function extractFromText() {
-  const inp = document.getElementById('url-extract-inp')?.value?.trim();
-  if(!inp){toast('텍스트를 입력해주세요');return;}
-  cm();
-  S.ai=true; go('mybooks','add');
-  try {
-    // URL이면 먼저 내용 가져오기 (CORS 우회 불가, 텍스트 직접 처리)
-    const isUrl = inp.startsWith('http://') || inp.startsWith('https://');
-    const prompt = isUrl
-      ? `이 URL의 내용을 알 수 없으므로, URL 자체에서 단어를 추측해서 JSON 배열로 반환: ${inp}\n형식: [{"en":"word","kr":"뜻"}] (5~10개)`
-      : `아래 영어 텍스트에서 학습하기 좋은 단어 10~15개를 뽑아 JSON 배열로만 반환.\n형식: [{"en":"word","kr":"뜻"}]\n\n텍스트:\n${inp.slice(0,2000)}`;
-    const _txt5 = await geminiText(prompt, 800);
-    showExtracted(parseGeminiJson(_txt5));
-  } catch(e) { if(e.message!=='NO_KEY') toast(e.message||'추출 실패'); }
-  S.ai=false; go('mybooks','add');
-}
 
 function openNaverDict() {
   const en=(document.getElementById('ne')?.value||S.nEn).trim();
@@ -14601,84 +14283,6 @@ const GCFG=[
   {id:'ssort',ic:'🔊',nm:'문장 단어 순서 맞추기',dc:'음성→순서',grad:'#E65100'},
 ];
 
-function rGameCenter(){
-  const curWords = getCurrentBookWords ? getCurrentBookWords() : S.words;
-  const curBookName = S.currentBook || '내 단어장';
-  const hw = curWords.length >= 2;
-
-  // 주요 3종 퀴즈
-  const mainGames=[
-    {id:'flip',ic:'⚡',nm:'깜빡이',dc:'단어를 빠르게 반복 노출',bg:'var(--theme)'},
-    {id:'quiz',ic:'🎯',nm:'뜻 고르기 퀴즈',dc:'4지선다로 뜻을 맞춰요',bg:'#16A34A'},
-    {id:'typing',ic:'✏️',nm:'발음 듣고 받아쓰기',dc:'단어를 직접 입력해요',bg:'#E65100'},
-  ].filter(function(g){return !_gameLangBlocked(g.id);});
-
-  // 더보기 게임
-  const moreGames=[
-    {id:'fill',ic:'📝',nm:'예문 빈칸 채우기'},{id:'match',ic:'⚡',nm:'빠르게 짝 맞추기'},
-    {id:'sentence',ic:'🔤',nm:'한글문장 영작하기'},
-    {id:'ssort',ic:'🔀',nm:'문장 단어 순서 맞추기'},{id:'wordfind',ic:'🔍',nm:'격자에서 단어 찾기'},
-  ].filter(function(g){return !_gameLangBlocked(g.id);});
-
-  const parts=[];
-  parts.push('<div class="pad">');
-  parts.push(cbrow('재미있는 게임으로 단어 정복! 🎮',S.lid,'happy'));
-
-  // 현재 단어장 표시
-  parts.push(`<div style="background:var(--bg-card,var(--bg-card,#FFFFFF));border-radius:12px;border:1px solid var(--border,var(--border,#E5E7EB));padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:16px">📖</span>
-      <div>
-        <div style="font-size:12px;color:var(--text3,#9CA3AF)">현재 단어장</div>
-        <div style="font-size:14px;font-weight:800;color:var(--text1,#111)">${curBookName} <span style="font-size:12px;font-weight:600;color:var(--theme)">(${curWords.length}개)</span></div>
-      </div>
-    </div>
-    <button onclick="S.stab='books';go('mybooks')" style="background:var(--btn-gray,#F3F4F6);border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2,#374151)">변경</button>
-  </div>`);
-  if(!hw) {
-    parts.push(`<div style="background:#FFF7ED;border-radius:16px;border:1.5px solid #FDE68A;padding:14px;text-align:center;margin-bottom:12px">
-      <div style="font-size:13px;color:#D97706;font-weight:600">📚 "${curBookName}"에 단어가 2개 이상 있어야 게임을 시작할 수 있어요!</div>
-      <button class="btn bb" onclick="S.stab='add';go('mybooks')" style="margin-top:10px">단어 추가하러 가기</button>
-    </div>`);
-  }
-
-
-  // 메인 3종
-  parts.push('<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">');
-  mainGames.forEach(g=>{
-    parts.push(`<div onclick="${hw?`showGameSettings('${g.id}')`:''}" style="background:${g.bg};border-radius:18px;padding:18px;cursor:${hw?'pointer':'default'};opacity:${hw?1:.5};display:flex;align-items:center;gap:14px">
-      <div style="font-size:40px">${g.ic}</div>
-      <div>
-        <div style="font-size:16px;font-weight:800;color:#fff">${g.nm}</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.75)">${g.dc}</div>
-      </div>
-      <div style="margin-left:auto;font-size:22px;color:rgba(255,255,255,.6)">›</div>
-    </div>`);
-  });
-  parts.push('</div>');
-
-  // 오답 노트
-  parts.push(showWrongNoteBtn());
-
-  // 더보기 게임
-  parts.push(`<div style="border-top:1.5px solid #E5E7EB;padding-top:14px">
-    <div style="font-size:13px;font-weight:700;color:#9CA3AF;margin-bottom:10px">더 많은 게임</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-${moreGames.map(g=>`<button onclick="${hw?`showGameSettings('${g.id}')`:''}" style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;font-size:12px;font-weight:700;cursor:pointer;color:#374151;text-align:center;font-family:inherit;opacity:${hw?1:.5}"> <div style="font-size:24px;margin-bottom:5px">${g.ic}</div>${g.nm} </button>`).join('')}
-    </div>
-  </div>`);
-
-  // 암기 모드 바로가기
-  parts.push(`<div style="border-top:1.5px solid #E5E7EB;padding-top:14px">
-    <div style="font-size:13px;font-weight:700;color:#9CA3AF;margin-bottom:10px">🎧 암기 모드</div>
-    <div style="display:flex;gap:8px">
-${[['🎤','발음 듣고 따라 말하기',"startMode('auto')",['#FDF2F8','#EC4899']],['🗣️','뜻 보고 영어로 말하기',"startMode('speak')",['#FDF4FF','var(--theme)']]].map(([ic,lb,fn,[bg,c]])=>` <button onclick="${fn}" style="flex:1;background:${bg};border:1.5px solid ${c}33;border-radius:12px;padding:10px 6px;cursor:pointer;text-align:center"> <div style="font-size:22px;margin-bottom:3px">${ic}</div> <div style="font-size:11px;font-weight:700;color:${c}">${lb}</div> </button>`).join('')}
-    </div>
-  </div>`);
-
-  parts.push('</div>');
-  return parts.join('');
-}
 
 
 function startGameW(id, ws) {
@@ -14966,25 +14570,6 @@ function rGameDone(){
 }
 
 const GGRADS={quiz:'var(--theme)',fill:'#D97706',wordfind:'#16A34A',chain:'var(--theme)',match:'#0D9488',sentence:'#E91E63',scramble:'#EC4899',wordle:'#92400E',typing:'#15803D',wc:'#0369A1',ssort:'#E65100',listen:'#880E4F'};
-function ghdr(title,prog){
-  const grd=GGRADS[S.gameId]||GGRADS.quiz;
-  const right=Object.values(S.gResultMap||{}).filter(v=>v===true).length;
-  const wrong=Object.values(S.gResultMap||{}).filter(v=>v===false).length;
-  const total=S.gWords?S.gWords.length:0;
-  const cur=S.gIdx||0;
-  const pct=total>0?Math.round((cur/total)*100):0;
-  const scoreStr=(right>0||wrong>0)
-    ?'<span style="font-size:13px;font-weight:800;color:#86EFAC">✅'+right+'</span> <span style="font-size:13px;font-weight:800;color:#FECACA">❌'+wrong+'</span>'
-    :'<span style="font-size:12px;color:rgba(255,255,255,.8)">'+prog+'</span>';
-  return '<div style="background:'+grd+';flex-shrink:0">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px">'
-    +''
-    +'<div style="text-align:center"><div style="font-size:14px;font-weight:900;color:#fff">'+title+'</div></div>'
-    +'<div>'+scoreStr+'</div>'
-    +'</div>'
-    +(total>0?'<div style="background:rgba(0,0,0,.2);height:3px"><div style="height:100%;background:rgba(255,255,255,.6);width:'+pct+'%;transition:width .3s"></div></div>':'')
-    +'</div>';
-}
 
 function gameBg(gid){
   var m={quiz:'#16213E',listenq:'#0B2540',fill:'#2A1E0E',wordfind:'#0E2A1A',match:'#06292B',sentence:'#2A1030',scramble:'#2E0F22',typing:'#0F2A14',wc:'#0A2438',ssort:'#2E1A08'};
@@ -14997,14 +14582,6 @@ function gameAccent(gid){
 function ghdrDark(title, prog){
   if(typeof S!=='undefined' && S._inChExam && typeof _chExamBanner==='function'){ return _chExamBanner(); }
   return '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px;flex-shrink:0"><div><div style="font-size:16px;font-weight:900">'+title+'</div><div style="font-size:10px;color:#94A3B8">'+(prog||'')+'</div></div><div style="display:flex;align-items:center;gap:8px"><span id="game-clock" style="font-size:13px;font-weight:900;font-family:monospace;color:#fff;background:rgba(255,255,255,.12);border-radius:20px;padding:5px 12px">0:00</span><button onclick="exitConfirm()" style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);border-radius:20px;padding:7px 14px;color:#FCA5A5;font-size:13px;font-weight:700;cursor:pointer">\u2715 \ub098\uac00\uae30</button></div></div>';
-}
-function _gameQuit(){
-  if(typeof SFX!=='undefined'&&SFX.stopBG)SFX.stopBG();
-  if(typeof savePartialGameScore==='function')savePartialGameScore();
-  S._gameRunning=false;S.gDone=true;
-  if(S._gameUsed)S._gameUsed[S.gameId||'default']=[];
-  if(typeof cm==='function')cm();
-  go(S._prevTab||'game');
 }
 function _learnHdrHTML(list){ var arr=list||[]; var n=arr.length, m=0; for(var i=0;i<n;i++){ try{ if((getMark(arr[i].en)||0)===1) m++; }catch(e){} }
   /* [챕터 표시 20260724] 지금 몇 챕터를 공부 중인지 헤더에 명시 — 없어서 "1챕터인 줄 알았는데 2챕터 완료"로 혼동됨 */
@@ -15772,16 +15349,6 @@ function chkAnsInput(v){
   var d = r ? ((S.gameSettings&&S.gameSettings.autoNext)?Math.round((S.gameSettings.autoNextSec||1.0)*1000):800) : 3000;
   if(S.gameSettings&&S.gameSettings.autoNext){setTimeout(function(){ if(S.gAns&&S.gIdx===qi){S.gAns=null;S.gRes=null;S.gIdx++;go();} }, d);}
 }
-function chkT2(inputVal, ok2){
-  if(ok2==null){ var _w=(S.gWords||[])[S.gIdx]; ok2=_w?_w.en:''; }
-  const v=(inputVal||'').trim();
-  const r=ansEq(inputVal, ok2);
-  S.gAns=true; S.gRes=r?'ok':'ng';
-  if(r){S.gScore+=100;ok();S.gResultMap[S.gIdx]=true;}
-  else{ng();toast('❌ 정답: '+ok2);S.gResultMap[S.gIdx]=false;}
-  _gQuizXP(); go();
-  setTimeout(()=>{S.gIdx++;S.gAns=false;S.gRes=null;S.gInput='';if(S.gIdx>=S.gWords.length)S.gDone=true;go();},1000);
-}
 
 // 단어 완성하기
 function rWC(){
@@ -16038,7 +15605,6 @@ function nxtSB(){
   go();
 }
 
-function svChain(){if(!S.chIn.trim())return;S.chStory+='\n'+S.chIn.trim();S.chIdx++;S.chIn='';S.gScore+=100;if(!S.gResultMap)S.gResultMap={};S.gResultMap[S.chIdx-1]=true;S.gIdx=S.chIdx;addXP(xp('chain_step'));ok();if(S.chIdx>=4){S.chDone=true; try{ if(typeof saveGameScore==='function' && !S._chainSaved){ S._chainSaved=true; saveGameScore(); } }catch(e){} }go();}
 
 function buildWF(src){
   const _gs=S.gameSettings||{};
@@ -16193,8 +15759,6 @@ function selWF(r,c){
   go();
 }
 
-function scoreW(g,t){const r=Array(t.length).fill('absent'),tA=[...t],gA=[...g];gA.forEach((c,i)=>{if(c===tA[i]){r[i]='correct';tA[i]=gA[i]=null;}});gA.forEach((c,i)=>{if(!c)return;const j=tA.indexOf(c);if(j>-1){r[i]='present';tA[j]=null;}});return r;}
-function subW(t){const v=S.wIn.toLowerCase().trim();if(v.length!==t.length)return;const ng2=[...S.wGuess,v];S.wGuess=ng2;S.wIn='';if(!S.gResultMap)S.gResultMap={};if(v===t){S.wWon=true;S.wOver=true;ok();S.gResultMap[t]=true;if(typeof logStudy==='function')_gQuizXP();}else if(ng2.length>=6){S.wOver=true;ng();S.gResultMap[t]=false;if(typeof logStudy==='function')_gQuizXP();}go();}
 
 function _bestVoice(isKo){try{var vs=window.speechSynthesis.getVoices()||[];if(isKo){return vs.find(function(v){return /ko/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /ko/i.test(v.lang);})||null;}return vs.find(function(v){return /^en/i.test(v.lang)&&/google/i.test(v.name);})||vs.find(function(v){return /^en/i.test(v.lang);})||null;}catch(e){return null;}}
 function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[?？]$/.test(t))return true;return /(까요|ㄹ까요|을까요|나요|은가요|는가요|습니까|ㅂ니까|읍니까)[.\u2026]?$/.test(t);}

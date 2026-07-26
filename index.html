@@ -2031,20 +2031,28 @@ function checkSharedWordBook() {
   if(!shared)return;
   try{
     const data=JSON.parse(decodeURIComponent(escape(atob(shared))));
-    if(!data.name||!data.words)return;
+    if(!data.name||!Array.isArray(data.words)||!data.words.length)return;   /* [공유 XSS 방어 20260725] words 배열 검증 */
     const mr=document.getElementById('mr'); if(!mr)return;
     const safeData=JSON.stringify(data).replace(/"/g,'&quot;');
-    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:17px;font-weight:800;margin-bottom:6px">📚 단어장 공유됨</div><div style="font-size:13px;color:#6B7280;margin-bottom:16px">"'+data.name+'" ('+data.words.length+'개 단어)</div><div style="display:flex;gap:8px"><button onclick="importSharedBook(this)" data-book="'+safeData+'" style="flex:2;background:var(--theme);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">📥 내 단어장에 추가</button><button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button></div></div></div>';
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()"><div style="font-size:17px;font-weight:800;margin-bottom:6px">📚 단어장 공유됨</div><div style="font-size:13px;color:#6B7280;margin-bottom:16px">"'+_esc(data.name)+'" ('+data.words.length+'개 단어)</div><div style="display:flex;gap:8px"><button onclick="importSharedBook(this)" data-book="'+safeData+'" style="flex:2;background:var(--theme);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">📥 내 단어장에 추가</button><button onclick="cm()" style="flex:1;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">닫기</button></div></div></div>';
   }catch(e){}
 }
 
 function importSharedBook(btn) {
   const data=JSON.parse(btn.dataset.book.replace(/&quot;/g,'"'));
   if(!S.books)S.books=[];
-  let name=data.name,cnt=1;
-  while(S.books.find(b=>b.name===name)||name==='내 단어장')name=data.name+'('+( ++cnt)+')';
-  S.books.push({name,words:data.words,markMap:{},learned:[]});
-  sv();cm();toast('✅ "'+name+'" 추가 완료! ('+data.words.length+'개)');go('mybooks');
+  /* [공유 XSS 방어 20260725] 공유 URL은 신뢰불가 입력 → 이름·단어 문자열에서 <> 제거,
+     en 있는 객체만, 최대 500개로 제한(스크립트 주입·오염 차단). 렌더 경로가 innerHTML이라 진입 시 정화. */
+  var _clean=function(s){ return String(s==null?'':s).replace(/[<>]/g,''); };
+  var _srcName=(_clean(data.name).slice(0,40))||'공유 단어장';
+  var _words=(Array.isArray(data.words)?data.words:[]).filter(function(w){return w&&w.en;}).slice(0,500).map(function(w){
+    var o={}; Object.keys(w).forEach(function(k){ o[k]=(typeof w[k]==='string')?_clean(w[k]):w[k]; }); return o;
+  });
+  if(!_words.length){ toast('가져올 단어가 없어요'); return; }
+  let name=_srcName,cnt=1;
+  while(S.books.find(b=>b.name===name)||name==='내 단어장')name=_srcName+'('+( ++cnt)+')';
+  S.books.push({name,words:_words,markMap:{},learned:[]});
+  sv();cm();toast('✅ "'+name+'" 추가 완료! ('+_words.length+'개)');go('mybooks');
 }
 
 function getTodayWord() {
@@ -6899,23 +6907,6 @@ setTimeout(function() {
     try{ if(typeof cm==='function') cm(); }catch(e){}
     try{ if(typeof go==='function') go('home'); }catch(e){}
   }
-  function _confirmExit(){
-    if(document.getElementById('back-exit-confirm')) return;
-    var ov=document.createElement('div');
-    ov.id='back-exit-confirm';
-    ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:24px';
-    ov.innerHTML='<div style="background:#1E293B;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px 20px;max-width:300px;width:100%;text-align:center;box-shadow:0 12px 44px rgba(0,0,0,.45)">'
-      +'<div style="font-size:30px;margin-bottom:8px">📚</div>'
-      +'<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:6px">학습을 끝낼까요?</div>'
-      +'<div style="font-size:12px;color:#94A3B8;margin-bottom:18px">지금까지 공부한 시간이 저장됩니다</div>'
-      +'<div style="display:flex;gap:8px">'
-      +'<button id="bec-no" style="flex:1;background:rgba(255,255,255,.1);border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">계속 학습</button>'
-      +'<button id="bec-yes" style="flex:1;background:#EF4444;border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:800;cursor:pointer">끝내기</button>'
-      +'</div></div>';
-    document.body.appendChild(ov);
-    var no=document.getElementById('bec-no'); if(no) no.onclick=function(){ ov.remove(); };
-    var yes=document.getElementById('bec-yes'); if(yes) yes.onclick=function(){ ov.remove(); _forceExitMode(); };
-  }
   function _backHandler(){
     try{ history.pushState({_bg:1},'',location.href); }catch(e){}
     var bec=document.getElementById('back-exit-confirm'); if(bec){ bec.remove(); return; }
@@ -8300,24 +8291,6 @@ function getButterflyCharSVG(bId, sz=60, owned=true) {
     }
   } catch(_) {}
 
-  function makeSVG(cfg) {
-    const {fw1,fw2,hw1,hw2,fw_s,hw_s,dots,veins,body_c,anten_c,mark_c,id}=cfg;
-    return `<svg width="${s}" height="${s}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
-<defs><radialGradient id="fg_${id}" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="${fw1}" stop-opacity="0.9"/><stop offset="100%" stop-color="${fw2}"/></radialGradient>
-<radialGradient id="hg_${id}" cx="45%" cy="40%" r="60%"><stop offset="0%" stop-color="${hw1}" stop-opacity="0.85"/><stop offset="100%" stop-color="${hw2}"/></radialGradient></defs>
-<path d="M50,52 Q22,18 8,28 Q4,44 14,52 Q28,58 50,54Z" fill="url(#fg_${id})" stroke="${fw_s}" stroke-width="0.8"/>
-<path d="M50,52 Q78,18 92,28 Q96,44 86,52 Q72,58 50,54Z" fill="url(#fg_${id})" stroke="${fw_s}" stroke-width="0.8"/>
-<path d="M50,54 Q28,60 18,72 Q20,82 32,78 Q44,68 50,60Z" fill="url(#hg_${id})" stroke="${hw_s}" stroke-width="0.7"/>
-<path d="M50,54 Q72,60 82,72 Q80,82 68,78 Q56,68 50,60Z" fill="url(#hg_${id})" stroke="${hw_s}" stroke-width="0.7"/>
-${veins}${dots}
-<ellipse cx="50" cy="60" rx="3" ry="16" fill="${body_c}"/>
-<ellipse cx="50" cy="43" rx="4" ry="5" fill="${body_c}"/>
-<path d="M48,38 Q40,26 36,18" stroke="${anten_c}" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-<circle cx="36" cy="18" r="2.5" fill="${mark_c}"/>
-<path d="M52,38 Q60,26 64,18" stroke="${anten_c}" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-<circle cx="64" cy="18" r="2.5" fill="${mark_c}"/>
-</svg>`;
-  }
 
   // 실사 나비 SVG - viewBox="0 0 100 100" 정사각형 통일
   // 공통 구조: 앞날개(forewing) 크고 삼각, 뒷날개(hindwing) 작고 둥근, 몸통, 더듬이
@@ -13674,15 +13647,6 @@ function rAdd() {
   const addTab = S._addTab||'text';
 
   // 단어장 저장 헬퍼
-  function _saveWord(w) {
-    w = _enrichFromDict(w);
-    if(curBook!=='내 단어장') {
-      const bk=(S.books||[]).find(b=>b.name===curBook);
-      if(bk && bk.packId) { toast('마켓팩은 단어를 추가할 수 없어요','err'); return; }
-      if(bk){if(!bk.words)bk.words=[];bk.words.push(w);}
-      else S.words.push(w);
-    } else S.words.push(w);
-  }
 
   // ── 탭별 콘텐츠 빌더 ──
   const tabContents = {

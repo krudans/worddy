@@ -3434,7 +3434,7 @@ function _bpReadTiers() {
     var lb = document.getElementById('bp-label-' + i); if (lb) t.label = lb.value;
   });
   var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
-  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); _bp.readAr=((document.getElementById('bp-read-ar')||{}).value||'').trim(); _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim(); _bp.author=((document.getElementById('bp-author')||{}).value||'').trim(); _bp.desc=((document.getElementById('bp-desc')||{}).value||'').trim(); }   /* [한 줄 소개 20260725] 공지가 쓰는 desc를 폼에서 수집 — 이전엔 입력란 자체가 없어 원서팩 desc가 항상 비었음 */
+  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); _bp.readAr=((document.getElementById('bp-read-ar')||{}).value||'').trim(); _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim(); _bp.author=((document.getElementById('bp-author')||{}).value||'').trim(); _bp.desc=((document.getElementById('bp-desc')||{}).value||'').trim(); _bp.nameKo=((document.getElementById('bp-nameKo')||{}).value||'').trim(); }   /* [한 줄 소개 20260725] 공지가 쓰는 desc를 폼에서 수집 — 이전엔 입력란 자체가 없어 원서팩 desc가 항상 비었음 / [제목 형식 20260725] 한글 제목 수집 */
   else { _bp.courseId = g('bp-courseId').trim(); _bp.courseName = g('bp-courseName').trim(); _bp.courseEmoji = g('bp-courseEmoji').trim() || '📚'; }
 }
 
@@ -3693,10 +3693,19 @@ async function _bpFetchMeta(title){
   var out={title:'',author:'',desc:'',subjects:[],cover:''};
   try{
     if(!title||!String(title).trim()) return out;
-    var q=encodeURIComponent(String(title).trim());
-    /* subject(분류)는 fields로 명시해야 응답에 들어온다 — 빠뜨리면 항상 빈 배열이 된다. */
+    /* [검색어 정리 20260725] 팩 이름은 "Animal Farm / 동물농장", "Sapiens · 사피엔스",
+       "The Witches by Roald Dahl"처럼 부제·역제·저자가 섞여 있어 그대로 검색하면 엉뚱한 판본이 잡혔다.
+       실측 오류: Sapiens → 한국어판 역자('김 누리'), The Witches → 학습가이드 출판사('SuperSummary').
+       → 구분자 앞부분만, 'by 저자' 제거, 비ASCII(한글) 제거해 영문 원제로 검색한다. */
+    var _qs=String(title).split(/[\/·|]/)[0]
+      .replace(/\bby\s+[A-Z][A-Za-z.'-]+(\s+[A-Z][A-Za-z.'-]+)*/i,'')
+      .replace(/[^\x20-\x7E]/g,' ').replace(/\s+/g,' ').trim();
+    if(!_qs) _qs=String(title).trim();
+    var q=encodeURIComponent(_qs);
+    /* subject(분류)는 fields로 명시해야 응답에 들어온다 — 빠뜨리면 항상 빈 배열이 된다.
+       language=eng: 번역본이 원작보다 먼저 잡히는 것을 막는다. */
     var _fld='key,title,author_name,cover_i,edition_count,first_publish_year,subject';
-    var res=await fetch('https://openlibrary.org/search.json?q='+q+'&limit=20&fields='+_fld).then(function(r){return r.json();});
+    var res=await fetch('https://openlibrary.org/search.json?q='+q+'&limit=20&language=eng&fields='+_fld).then(function(r){return r.json();});
     var docs=(res.docs||[]).filter(function(d){return d&&d.title;});
     if(!docs.length) return out;
     /* [판본 선택 20260725] 제목 완전일치만 믿으면 각색·동명이서가 잡힌다.
@@ -3705,7 +3714,7 @@ async function _bpFetchMeta(title){
        규칙: 완전일치 중 판본 3개 이상 → 그것. 없으면 부분일치 중 판본 최다 → 그것.
              둘 다 없으면 Open Library 관련도 1위(원제가 다른 경우). 10종 실측 전부 정확 확인. */
     var _nm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
-    var _q=_nm(title), _byEd=function(a,b){ return (b.edition_count||0)-(a.edition_count||0); };
+    var _q=_nm(_qs), _byEd=function(a,b){ return (b.edition_count||0)-(a.edition_count||0); };
     var _cand=docs.slice(0,10);
     var _ex=_cand.filter(function(d){ return _nm(d.title)===_q; }).sort(_byEd);
     var _pt=_cand.filter(function(d){ var t=_nm(d.title); return t.indexOf(_q)>=0||_q.indexOf(t)>=0; }).sort(_byEd);
@@ -3773,17 +3782,33 @@ async function showMetaFix(){
     var newA=String(m.author||'').trim(), newD=String(m.desc||'').trim();
     var needA=newA && newA!==curA;
     var needD=newD && !curD;          // 소개는 비어 있을 때만 채운다(관리자가 쓴 글 보호)
-    if(needA||needD){
+    /* [제목 형식 20260725] 이름이 "영문 / 한글"이 아닌 팩은 한글 제목을 직접 넣을 칸을 준다.
+       한글 제목은 국내 출간명이라 조회로 알 수 없다 → 지어내지 않고 사람이 입력한다(빈 칸이면 적용 안 함). */
+    var curN=String(p.name||p.id);
+    var needN=!(/\s[\/·|]\s/.test(curN) && /[가-힣]/.test(curN));
+    if(needA||needD||needN){
       var idx=window.__mfx.length;
-      window.__mfx.push({id:p.id, name:p.name||p.id, author:needA?newA:'', desc:needD?newD:''});
+      window.__mfx.push({id:p.id, name:curN, author:needA?newA:'', desc:needD?newD:'',
+                         needName:needN, nameEn:(m.title||curN)});
       if(list) list.insertAdjacentHTML('beforeend',
         '<div style="border-bottom:1px solid #F1F5F9;padding:8px 4px;font-size:12px">'
         +'<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">'
-        +'<input type="checkbox" class="mfx-ck" data-i="'+idx+'" checked style="margin-top:3px">'
+        /* [기본 체크 정책 20260725] 소개 추가(빈 칸 채우기)는 안전하므로 기본 체크,
+           지은이 변경은 조회가 틀릴 수 있어(실측: 사피엔스→역자, The Witches→출판사) 기본 해제.
+           관리자가 눈으로 확인하고 직접 켜야 적용된다. */
+        +'<input type="checkbox" class="mfx-ck" data-i="'+idx+'"'+(needA?'':' checked')+' style="margin-top:3px">'
         +'<div style="flex:1;min-width:0">'
         +'<div style="font-weight:800;color:#111">'+esc(p.name||p.id)+'</div>'
-        +(needA?('<div style="color:#B45309;margin-top:2px">지은이: <s style="color:#9CA3AF">'+esc(curA||'(없음)')+'</s> → <b>'+esc(newA)+'</b></div>'):'')
+        +(needA?('<div style="color:#B45309;margin-top:2px">지은이: <s style="color:#9CA3AF">'+esc(curA||'(없음)')+'</s> → <b>'+esc(newA)+'</b>'
+                 +' <span style="color:#DC2626;font-weight:800">⚠ 확인 필요</span>'
+                 +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">번역본·해설서가 잡히면 역자/출판사가 저자로 올 수 있습니다. 맞을 때만 체크하세요.</div></div>'):'')
         +(needD?('<div style="color:#15803D;margin-top:2px">소개 추가: '+esc(newD.slice(0,90))+(newD.length>90?'…':'')+'</div>'):'')
+        +(needN?('<div style="margin-top:4px;color:#1D4ED8">제목 형식: <b>'+esc(curN)+'</b> → "영문 / 한글"'
+                 +'<div style="display:flex;gap:6px;align-items:center;margin-top:3px" onclick="event.preventDefault();event.stopPropagation()">'
+                 +'<input class="mfx-en" data-i="'+idx+'" value="'+esc(m.title||curN)+'" placeholder="영문 원제" style="flex:1;min-width:0;padding:6px 8px;border:1.5px solid #D1D5DB;border-radius:7px;font-size:12px">'
+                 +'<span style="color:#9CA3AF">/</span>'
+                 +'<input class="mfx-ko" data-i="'+idx+'" value="" placeholder="한글 제목 (비우면 이름 변경 안 함)" style="flex:1;min-width:0;padding:6px 8px;border:1.5px solid #D1D5DB;border-radius:7px;font-size:12px">'
+                 +'</div></div>'):'')
         +'</div></label></div>');
     }
     await new Promise(function(r){ setTimeout(r,120); });   // Open Library 예의상 간격
@@ -3794,7 +3819,7 @@ async function showMetaFix(){
 async function applyMetaFix(){
   var cks=document.querySelectorAll('.mfx-ck');
   var sel=[];
-  cks.forEach(function(c){ if(c.checked){ var r=(window.__mfx||[])[+c.getAttribute('data-i')]; if(r) sel.push(r); } });
+  cks.forEach(function(c){ if(c.checked){ var i=+c.getAttribute('data-i'); var r=(window.__mfx||[])[i]; if(r){ r._i=i; sel.push(r); } } });
   if(!sel.length){ toast('선택된 항목이 없어요','err'); return; }
   var prog=document.getElementById('mfx-prog');
   var ok=0, fail=0;
@@ -3802,6 +3827,13 @@ async function applyMetaFix(){
     var r=sel[i], up={};
     if(r.author) up.author=r.author;
     if(r.desc) up.desc=r.desc;
+    /* [제목 형식 20260725] 한글 제목을 적은 경우에만 이름을 "영문 / 한글"로 바꾼다. 비우면 그대로 둔다. */
+    if(r.needName){
+      var enEl=document.querySelector('.mfx-en[data-i="'+r._i+'"]');
+      var koEl=document.querySelector('.mfx-ko[data-i="'+r._i+'"]');
+      var en=((enEl||{}).value||'').trim(), ko=((koEl||{}).value||'').trim();
+      if(en&&ko){ up.name=en+' / '+ko; up.nameEn=en; up.nameKo=ko; }
+    }
     if(!Object.keys(up).length) continue;
     if(prog) prog.textContent='적용 중... ('+(i+1)+'/'+sel.length+') '+r.name;
     try{ await db.collection('packs').doc(r.id).set(up,{merge:true}); ok++; }catch(e){ fail++; }
@@ -3954,7 +3986,9 @@ async function _bpRegister() {
         if(_i2===null && results[0] && results[0].fkIdx!=null){ _i2=results[0].fkIdx; _auto=true; }
         if(_i2!==null) _readObj={ar:isNaN(_a2)?null:_a2, lexile:isNaN(_l2)?null:_l2, idx:_i2, auto:_auto, fk:(results[0]&&results[0].fkGrade)||null};
       }catch(e){}   /* [읽기수준 입력 20260721] */
-      docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
+      /* [제목 형식 20260725] 저장 이름은 "영문 원제 / 한글 제목". 한글이 없으면 영문만. */
+      var _fullName=(_bp.nameKo&&_bp.nameKo.trim()) ? (_bp.name+' / '+_bp.nameKo.trim()) : _bp.name;
+      docs.push({ id: _bp.packId, data: Object.assign({ name: _fullName, nameEn: _bp.name, nameKo:(_bp.nameKo||'').trim(), emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
     } else {
       var total = _bp.tiers.length;
       var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
@@ -3993,7 +4027,11 @@ function rBP2() {
   if (m === 'book') {
     meta = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">packId (영문 소문자·숫자·_)</label><input id="bp-packId" value="' + esc(_bp.packId) + '" placeholder="the_little_prince" onblur="this.value=_bpSlug(this.value)" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
-      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">단어장 이름</label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="어린 왕자" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      /* [제목 형식 20260725] 단어장 이름은 "영문 원제 / 한글 제목"으로 통일한다.
+         한 칸에 자유롭게 적게 두니 'MATILDA', 'Microsoft Word - hatchet.rtf'처럼 제각각이 됐다.
+         → 영문·한글을 따로 받아 저장할 때 합친다. 영문만 있으면 영문만 저장된다. */
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">영문 제목 <span style="color:#9CA3AF;font-weight:600">(원제)</span></label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="Charlotte\'s Web" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">한글 제목 <span style="color:#9CA3AF;font-weight:600">(국내 출간 제목 · 최종 이름은 "영문 / 한글")</span></label><input id="bp-nameKo" value="' + esc(_bp.nameKo||'') + '" placeholder="샬롯의 거미줄" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><div id="bp-name-prev" style="font-size:10.5px;color:#9CA3AF;margin-top:3px"></div></div>' +
       /* [책 정보 조회 20260725] 지은이는 원문 텍스트 정규식 추측이라 자주 틀렸다(실측: 'George Orwel'처럼 잘림).
          Open Library 조회 버튼을 붙여 관리자가 등록 전에 지은이·소개·표지를 확인·수정할 수 있게 한다. */
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">지은이 <span style="color:#9CA3AF;font-weight:600">(자동 추출 · 수정 가능)</span></label><div style="display:flex;gap:6px"><input id="bp-author" value="' + esc(_bp.author||'') + '" placeholder="Roald Dahl" style="flex:1;min-width:0;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><button type="button" onclick="_bpLookupBook()" style="background:#0F766E;color:#fff;border:none;border-radius:8px;padding:9px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">🔎 책 정보 조회</button></div><div id="bp-lookup-msg" style="font-size:10.5px;color:#9CA3AF;margin-top:3px">단어장 이름으로 Open Library에서 지은이·소개·표지를 가져옵니다. 비어 있는 칸만 채우고, 이미 입력한 값은 그대로 둡니다.</div></div>' +
@@ -4090,6 +4128,18 @@ function rBP2() {
     '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ <b>텍스트 PDF</b>: PDF.js가 글자 추출(무료) → 단어 선정도 <b>규칙 기반(사전+빈도, 무료)</b>이 기본. AI 없이 처리됩니다.<br>※ <b>스캔(이미지) PDF</b>: 글자가 없으면 자동으로 <b>AI(Gemini) OCR</b>로 페이지 이미지에서 글자를 추출합니다(페이지당 1회 호출, 최대 40쪽).<br>※ 뜻·발음·예문·이모지는 앱이 사전에서 자동 보완. CEFR 챕터(200단어씩)는 앱이 학습 시 자동 분할.</div>' +
     '</div>';
   try{ setTimeout(_bpLexileBadge, 30); }catch(e){}   /* [Lexile 적용버튼 20260722] 초기 배지 */
+  /* [제목 형식 20260725] 두 칸을 입력하는 동안 최종 이름을 즉시 보여준다. */
+  try{
+    var _pv=function(){
+      var e=((document.getElementById('bp-name')||{}).value||'').trim();
+      var k=((document.getElementById('bp-nameKo')||{}).value||'').trim();
+      var el=document.getElementById('bp-name-prev'); if(!el) return;
+      el.textContent = e ? ('최종 이름: '+(k?(e+' / '+k):e)) : '';
+      el.style.color = (e&&k)?'#16A34A':'#9CA3AF';
+    };
+    ['bp-name','bp-nameKo'].forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('input',_pv); });
+    setTimeout(_pv,40);
+  }catch(e){}
   /* [책 정보 자동조회 20260725] 원서 파일을 읽어 이름이 잡히면 1회 자동 조회해서
      지은이·소개·표지를 미리 채워 둔다(빈 칸만). 관리자는 등록 전에 확인·수정하면 된다.
      같은 책 이름으로는 다시 조회하지 않는다(중복 호출 방지). */

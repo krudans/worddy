@@ -3745,6 +3745,71 @@ async function _bpFetchMeta(title){
     return out;
   }catch(e){ return out; }
 }
+/* [책 정보 일괄 보정 20260725] 이미 등록된 원서팩들은 지은이가 원문 정규식 추측값이라 오타가 있고
+   (실측: 'George Orwel', 'E.B. White') 소개(desc)는 대부분 비어 있다.
+   Open Library로 조회해 표로 보여주고, 관리자가 체크한 것만 적용한다. 임의로 덮어쓰지 않는다. */
+async function showMetaFix(){
+  var packs=(window._adminPacks||[]).filter(function(p){ return !(p.cat==='🎯 목표별 코스'||p.courseId); });
+  if(!packs.length){ toast('먼저 팩 목록을 불러오세요','err'); return; }
+  var mr=document.getElementById('mr')||document.getElementById('modal-root');
+  if(!mr){ mr=document.createElement('div'); mr.id='mr'; document.body.appendChild(mr); }
+  mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:860px;text-align:left">'
+    +'<h3 style="font-size:18px;font-weight:900;margin-bottom:4px">🔎 책 정보 일괄 보정</h3>'
+    +'<p style="font-size:11.5px;color:#6B7280;margin-bottom:10px">원서팩 '+packs.length+'개를 Open Library에서 조회합니다. <b>비어 있거나 조회값과 다른 항목만</b> 표시하고, 체크한 것만 적용합니다.</p>'
+    +'<div id="mfx-prog" style="font-size:12px;color:#1E5FA5;font-weight:700;margin-bottom:8px">준비 중...</div>'
+    +'<div id="mfx-list" style="max-height:52vh;overflow-y:auto;border:1px solid #E5E7EB;border-radius:10px;padding:8px"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<button class="btn bb" style="flex:1" onclick="applyMetaFix()">✅ 체크한 항목 적용</button>'
+    +'<button class="btn bgr" onclick="cm()">닫기</button></div>'
+    +'</div></div>';
+  window.__mfx=[];
+  var prog=document.getElementById('mfx-prog'), list=document.getElementById('mfx-list');
+  for(var i=0;i<packs.length;i++){
+    var p=packs[i];
+    if(prog) prog.textContent='조회 중... ('+(i+1)+'/'+packs.length+') '+(p.name||p.id);
+    var m={};
+    try{ m=await _bpFetchMeta(p.name||p.id); }catch(e){ m={}; }
+    var curA=String(p.author||'').trim(), curD=String(p.desc||'').trim();
+    var newA=String(m.author||'').trim(), newD=String(m.desc||'').trim();
+    var needA=newA && newA!==curA;
+    var needD=newD && !curD;          // 소개는 비어 있을 때만 채운다(관리자가 쓴 글 보호)
+    if(needA||needD){
+      var idx=window.__mfx.length;
+      window.__mfx.push({id:p.id, name:p.name||p.id, author:needA?newA:'', desc:needD?newD:''});
+      if(list) list.insertAdjacentHTML('beforeend',
+        '<div style="border-bottom:1px solid #F1F5F9;padding:8px 4px;font-size:12px">'
+        +'<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">'
+        +'<input type="checkbox" class="mfx-ck" data-i="'+idx+'" checked style="margin-top:3px">'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:800;color:#111">'+esc(p.name||p.id)+'</div>'
+        +(needA?('<div style="color:#B45309;margin-top:2px">지은이: <s style="color:#9CA3AF">'+esc(curA||'(없음)')+'</s> → <b>'+esc(newA)+'</b></div>'):'')
+        +(needD?('<div style="color:#15803D;margin-top:2px">소개 추가: '+esc(newD.slice(0,90))+(newD.length>90?'…':'')+'</div>'):'')
+        +'</div></label></div>');
+    }
+    await new Promise(function(r){ setTimeout(r,120); });   // Open Library 예의상 간격
+  }
+  if(prog) prog.textContent='조회 완료 — 보정 후보 '+window.__mfx.length+'건 (체크 해제하면 제외됩니다)';
+  if(list && !window.__mfx.length) list.innerHTML='<div style="text-align:center;color:#9CA3AF;padding:24px">보정할 항목이 없습니다.</div>';
+}
+async function applyMetaFix(){
+  var cks=document.querySelectorAll('.mfx-ck');
+  var sel=[];
+  cks.forEach(function(c){ if(c.checked){ var r=(window.__mfx||[])[+c.getAttribute('data-i')]; if(r) sel.push(r); } });
+  if(!sel.length){ toast('선택된 항목이 없어요','err'); return; }
+  var prog=document.getElementById('mfx-prog');
+  var ok=0, fail=0;
+  for(var i=0;i<sel.length;i++){
+    var r=sel[i], up={};
+    if(r.author) up.author=r.author;
+    if(r.desc) up.desc=r.desc;
+    if(!Object.keys(up).length) continue;
+    if(prog) prog.textContent='적용 중... ('+(i+1)+'/'+sel.length+') '+r.name;
+    try{ await db.collection('packs').doc(r.id).set(up,{merge:true}); ok++; }catch(e){ fail++; }
+  }
+  if(prog) prog.textContent='완료 — 적용 '+ok+'건'+(fail?(' · 실패 '+fail+'건'):'');
+  toast('✅ '+ok+'건 적용 완료','ok');
+  try{ rPK(); }catch(e){}
+}
 /* [책 정보 조회 20260725] ②단계에서 관리자가 눌러 확인·수정하는 경로.
    비어 있는 칸만 채운다(관리자가 입력한 값은 절대 덮지 않는다). */
 async function _bpLookupBook(){
@@ -4606,6 +4671,7 @@ async function rPK(){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn bg" onclick="showAddPack()">➕ 새 팩</button>
         <button class="btn bg" onclick="pkApplyCopy()" title="모든 팩에 한 줄 소개·구성 기준을 일괄 반영">📝 소개문구 일괄반영</button>
+        <button class="btn bp" onclick="showMetaFix()" title="Open Library에서 지은이·소개를 조회해 비어있거나 다른 팩을 골라 채웁니다">🔎 책 정보 일괄 보정</button>
         <button class="btn bp" onclick="showManageCats()">📂 카테고리 관리</button>
         <button class="btn" onclick="activateAllPacks()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #BBF7D0;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">✅ 전체 활성화</button>
         <button class="btn" onclick="showEnrichDict()" style="background:#FEF3C7;color:#B45309;border:1.5px solid #FDE68A;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">🦋 Butterfly Word Dic 교체</button>
@@ -8054,11 +8120,29 @@ async function bqDismiss(id){
 /* [신간 공지 20260722] 최신 등록순 팩 목록 모달 → 클릭 시 bqNotice(packId) */
 async function showNewBookNotice(){
   var wrap=document.getElementById('modal-root')||document.body;
+  /* [공지 만들기 응답성 20260725] 증상: 버튼을 눌러도 몇 초간 먹통 → 여러 번 클릭 → 모달이 겹쳐 쌓임.
+     원인: 팩 61개를 words(1,000개)·표지(data URL 30~50KB)까지 통째로 내려받는 동안 아무 표시가 없었고,
+           중복 실행을 막는 장치도 없었다. 이미 받아둔 목록(window._adminPacks)이 있어도 매번 다시 받았다.
+     조치: ① 즉시 로딩 표시 ② 중복 실행 차단 ③ 캐시 재사용. */
+  if(window.__nbLoading) return;
+  window.__nbLoading=1;
+  var _ov=document.createElement('div');
+  _ov.className='__nb-overlay';
+  _ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  _ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:22px 26px;font-size:14px;font-weight:700;color:#374151">⏳ 단어장 목록 불러오는 중...</div>';
+  document.body.appendChild(_ov);
   var packs=[];
   try{
-    var snap=await db.collection('packs').get();
-    packs=snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()||{}); });
-  }catch(e){ toast('팩 목록을 불러오지 못했어요','err'); return; }
+    if(Array.isArray(window._adminPacks) && window._adminPacks.length){
+      packs=window._adminPacks.map(function(p){ return Object.assign({}, p); });   // 이미 받아둔 것 재사용
+    } else {
+      var snap=await db.collection('packs').get();
+      packs=snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()||{}); });
+      window._adminPacks=packs;   // 클릭 시 재조회하지 않도록 캐시
+    }
+  }catch(e){ _ov.remove(); window.__nbLoading=0; toast('팩 목록을 불러오지 못했어요','err'); return; }
+  finally{ window.__nbLoading=0; }
+  _ov.remove();
   // 최신 등록순 정렬 (createdAt desc, 없으면 뒤로)
   packs.sort(function(a,b){ var ta=Date.parse(a.createdAt||0)||0, tb=Date.parse(b.createdAt||0)||0; return tb-ta; });
   var _RB=['그림책·입문','초등 저학년','초등 고학년','청소년','고등·성인','고전·전문'];
@@ -8084,8 +8168,21 @@ async function showNewBookNotice(){
   var div=document.createElement('div'); div.innerHTML=html; document.body.appendChild(div.firstChild);
 }
 function _pickNewBookNotice(packId){
-  var m=document.querySelector('[style*="position:fixed"][style*="9999"]'); if(m)m.remove();
-  bqNotice(packId);
+  /* [공지 만들기 응답성 20260725] 조립에 시간이 걸리는데 아무 반응이 없어 여러 번 클릭 → 모달이 겹쳤다.
+     겹친 목록을 모두 걷어내고, 진행 표시를 띄운 뒤, 중복 실행을 막는다. */
+  if(window.__bqBusy) return;
+  window.__bqBusy=1;
+  document.querySelectorAll('[style*="position:fixed"][style*="9999"], .__nb-overlay').forEach(function(el){ el.remove(); });
+  var ov=document.createElement('div');
+  ov.className='__nb-overlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:22px 26px;font-size:14px;font-weight:700;color:#374151">⏳ 공지 만드는 중...</div>';
+  document.body.appendChild(ov);
+  setTimeout(function(){
+    Promise.resolve(bqNotice(packId)).catch(function(){}).then(function(){
+      ov.remove(); window.__bqBusy=0;
+    });
+  }, 20);
 }
 async function bqNotice(packId){
   if(!packId){ packId=prompt('공지로 만들 팩 ID를 입력하세요 (packs 문서 ID)'); if(packId===null) return; packId=(packId||'').trim(); }
@@ -8152,13 +8249,14 @@ async function bqNotice(packId){
   var _au=(p.author||'').trim();
   var _gn=(p.cat||'').replace(/^[^\w가-힣]+/,'').trim();
   var _ds=(p.desc||'').trim();
-  var body=coverHTML
-    +(_au?('✍️ '+_au+'\n'):'')
+  /* [공지 편집창 20260725] 사람이 고치는 글(body)과 기계가 만든 부분(표지·배지·그래프)을 분리 보관.
+     게시·AI다듬기·미리보기 모두 이 분리를 전제로 동작한다. */
+  var body=(_au?('✍️ '+_au+'\n'):'')
     +(_gn?('📂 '+_gn+'\n'):'')
     +(_au||_gn?'\n':'')
     +(_ds?(_ds+'\n\n'):'')
-    +'📦 '+cnt.toLocaleString()+'단어 · '+chN+'개 챕터'
-    +(chartHTML?('\n'+chartHTML):'');
+    +'📦 '+cnt.toLocaleString()+'단어 · '+chN+'개 챕터';
+  window.__bqParts={cover:coverHTML||'', chart:chartHTML||'', packId:packId};
   var mr=document.getElementById('mr')||document.getElementById('modal-root');
   if(!mr){ mr=document.createElement('div'); mr.id='mr'; document.body.appendChild(mr); }
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:560px;text-align:left">'
@@ -8166,20 +8264,27 @@ async function bqNotice(packId){
     +'<p style="font-size:11.5px;color:#6B7280;margin-bottom:12px">팩 데이터로 자동 조립했어요. 자유롭게 수정한 뒤 게시하세요. (게시 즉시 앱 홈 공지에 노출)</p>'
     +'<input id="bqn-title" class="input" value="'+title.replace(/"/g,'&quot;')+'" style="margin-bottom:8px">'
     +'<input id="bqn-sub" class="input" value="'+subtitle.replace(/"/g,'&quot;')+'" style="margin-bottom:8px">'
-    +'<textarea id="bqn-body" class="input" style="min-height:220px;font-size:13px;line-height:1.7">'+body.replace(/</g,'&lt;')+'</textarea>'
+    /* [공지 편집창 20260725] 증상: 편집창에 표지 base64(30~50KB)와 그래프 HTML이 그대로 들어가
+       사람이 읽지도 고치지도 못했다. → 편집창에는 사람이 쓰는 글만 두고,
+       표지·읽기수준 배지·난이도 그래프는 기계가 만든 부분이므로 따로 보관했다가 게시할 때 자동으로 붙인다.
+       아래 미리보기는 앱에 보일 실제 모습이다. */
+    +'<label style="display:block;font-size:11px;font-weight:800;color:#6B7280;margin:2px 0 4px">본문 (표지·그래프는 자동으로 붙습니다)</label>'
+    +'<textarea id="bqn-body" oninput="bqPreview()" class="input" style="min-height:120px;font-size:13px;line-height:1.7">'+body.replace(/</g,'&lt;')+'</textarea>'
+    +'<div style="font-size:11px;font-weight:800;color:#6B7280;margin:12px 0 5px">미리보기 — 앱에 이렇게 보입니다</div>'
+    +'<div id="bqn-preview" style="border:1px solid #E5E7EB;border-radius:12px;padding:12px;background:#fff;max-height:300px;overflow-y:auto;font-size:13px;line-height:1.6"></div>'
     +'<div style="display:flex;gap:8px;margin-top:10px">'
     +'<button class="btn bp" style="flex:1" onclick="bqNoticeAI(\''+packId+'\')">✨ AI로 홍보문 다듬기</button>'
     +'<button class="btn bb" style="flex:1" onclick="bqNoticePost()">📤 공지 게시</button>'
     +'<button class="btn bgr" onclick="cm()">닫기</button></div>'
     +'</div></div>';
+  try{ bqPreview(); }catch(e){}
 }
 async function bqNoticeAI(packId){
   var b=document.getElementById('bqn-body'); if(!b) return;
   var t=(document.getElementById('bqn-title')||{}).value||'';
-  /* [공지 CEFR 그래프 20260720] 그래프 HTML은 AI 입력에서 분리해 보존 — AI는 텍스트만 다듬고 그래프는 그대로 재부착 */
-  var full=b.value;
-  var imgM=full.match(/^\s*<img[^>]*>/); var img=imgM?imgM[0]:''; if(img) full=full.slice(imgM[0].length);   /* [공지 표지 20260722] 표지 태그 분리 보존 */
-  var cut=full.indexOf('<div'); var txt=cut>=0?full.slice(0,cut):full; var chart=cut>=0?full.slice(cut):'';
+  /* [공지 편집창 20260725] 표지·그래프는 __bqParts에 따로 있으므로 편집창 값이 곧 사람 글이다.
+     (예전엔 편집창 안에서 img/div를 잘라내야 했다) */
+  var txt=b.value;
   try{ toast('✨ AI 작성 중...','ok');
     /* [공지 간결화 20260725] AI 다듬기도 새 구조에 맞춘다.
        기존 프롬프트는 '📖 이런 책이에요 / ✨ 단어장 특징' 옛 구조를 유지하라고 지시해서,
@@ -8190,14 +8295,27 @@ async function bqNoticeAI(packId){
       +'2) 책 소개 문장만 자연스러운 한국어 1~2문장(120자 이내)으로 다듬어라. 초안에 소개가 없으면 새로 지어내지 말고 그대로 비워 둬라.\n'
       +'3) 홍보 문구·특징 나열·마켓 유도 문장을 새로 만들지 마라. 전체 200자 이내.\n'
       +'4) 결과 본문만 출력.\n\n제목: '+t+'\n\n'+txt, 400);
-    if(out&&out.trim()) b.value=img+out.trim()+(chart?('\n'+chart):'');
+    if(out&&out.trim()){ b.value=out.trim(); try{ bqPreview(); }catch(e){} }
     toast('✨ 완료 — 확인 후 게시하세요','ok');
   }catch(e){ toast('AI 실패: '+e.message,'err'); }
+}
+/* [공지 편집창 20260725] 편집창의 사람 글 + 보관해둔 표지·그래프를 합쳐 앱에 보일 최종 HTML을 만든다.
+   미리보기와 게시가 같은 함수를 쓰므로 화면에서 본 그대로 게시된다. */
+function bqCompose(){
+  var bd=((document.getElementById('bqn-body')||{}).value||'').trim();
+  var P=window.__bqParts||{};
+  return (P.cover||'')+bd+(P.chart?('\n'+P.chart):'');
+}
+function bqPreview(){
+  var el=document.getElementById('bqn-preview'); if(!el) return;
+  /* 앱 공지는 content를 innerHTML로 그리고 줄바꿈은 white-space로 처리한다 — 같은 조건으로 보여준다. */
+  el.style.whiteSpace='pre-wrap';
+  el.innerHTML=bqCompose();
 }
 async function bqNoticePost(){
   var t=((document.getElementById('bqn-title')||{}).value||'').trim();
   var st=((document.getElementById('bqn-sub')||{}).value||'').trim();
-  var bd=((document.getElementById('bqn-body')||{}).value||'').trim();
+  var bd=bqCompose().trim();
   if(!t||!bd){ toast('제목과 내용을 입력하세요','err'); return; }
   try{
     await db.collection('announcements').add({ title:t, content:bd, subtitle:st, active:true,

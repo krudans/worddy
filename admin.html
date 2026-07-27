@@ -3434,7 +3434,7 @@ function _bpReadTiers() {
     var lb = document.getElementById('bp-label-' + i); if (lb) t.label = lb.value;
   });
   var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
-  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); _bp.readAr=((document.getElementById('bp-read-ar')||{}).value||'').trim(); _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim(); _bp.author=((document.getElementById('bp-author')||{}).value||'').trim(); }
+  if (_bp.mode === 'book') { _bp.packId = g('bp-packId').trim(); _bp.name = g('bp-name').trim(); _bp.emoji = g('bp-emoji').trim() || '📖'; _bp.cat = g('bp-cat'); _bp.imageUrl = ((document.getElementById('bp-imageUrl')||{}).value||'').trim(); _bp.readAr=((document.getElementById('bp-read-ar')||{}).value||'').trim(); _bp.readLx=((document.getElementById('bp-read-lexile')||{}).value||'').trim(); _bp.author=((document.getElementById('bp-author')||{}).value||'').trim(); _bp.desc=((document.getElementById('bp-desc')||{}).value||'').trim(); }   /* [한 줄 소개 20260725] 공지가 쓰는 desc를 폼에서 수집 — 이전엔 입력란 자체가 없어 원서팩 desc가 항상 비었음 */
   else { _bp.courseId = g('bp-courseId').trim(); _bp.courseName = g('bp-courseName').trim(); _bp.courseEmoji = g('bp-courseEmoji').trim() || '📚'; }
 }
 
@@ -3745,6 +3745,33 @@ async function _bpFetchMeta(title){
     return out;
   }catch(e){ return out; }
 }
+/* [책 정보 조회 20260725] ②단계에서 관리자가 눌러 확인·수정하는 경로.
+   비어 있는 칸만 채운다(관리자가 입력한 값은 절대 덮지 않는다). */
+async function _bpLookupBook(){
+  var msg=document.getElementById('bp-lookup-msg');
+  var nameEl=document.getElementById('bp-name');
+  var title=((nameEl||{}).value||'').trim();
+  if(!title){ if(msg){ msg.style.color='#DC2626'; msg.textContent='단어장 이름을 먼저 입력하세요.'; } return; }
+  if(msg){ msg.style.color='#1E5FA5'; msg.textContent='🔎 Open Library 조회 중...'; }
+  var m={};
+  try{ m=await _bpFetchMeta(title); }catch(e){ m={}; }
+  var got=[];
+  var au=document.getElementById('bp-author');
+  if(au && !au.value.trim() && m.author){ au.value=m.author; got.push('지은이'); }
+  var ds=document.getElementById('bp-desc');
+  if(ds && !ds.value.trim() && m.desc){ ds.value=m.desc; got.push('소개'); }
+  var iv=document.getElementById('bp-imageUrl');
+  if(iv && !iv.value.trim() && m.cover){
+    iv.value=m.cover;
+    var pv=document.getElementById('bp-img-prev');
+    if(pv) pv.innerHTML='<img src="'+m.cover+'" style="width:34px;height:46px;object-fit:cover;border-radius:5px;border:1px solid #E5E7EB">';
+    got.push('표지');
+  }
+  if(msg){
+    if(got.length){ msg.style.color='#16A34A'; msg.textContent='✅ '+got.join(' · ')+' 채움'+(m.author?(' — 지은이: '+m.author):'')+' (확인 후 수정 가능)'; }
+    else { msg.style.color='#9CA3AF'; msg.textContent=(m.author||m.desc||m.cover)?'이미 입력된 값이 있어 덮지 않았습니다.':'검색 결과를 찾지 못했습니다 — 직접 입력하세요.'; }
+  }
+}
 async function _bpFetchCover(title){
   try{
     if(!title||!String(title).trim()) return '';
@@ -3902,7 +3929,10 @@ function rBP2() {
     meta = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">packId (영문 소문자·숫자·_)</label><input id="bp-packId" value="' + esc(_bp.packId) + '" placeholder="the_little_prince" onblur="this.value=_bpSlug(this.value)" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">단어장 이름</label><input id="bp-name" value="' + esc(_bp.name) + '" placeholder="어린 왕자" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
-      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">지은이 <span style="color:#9CA3AF;font-weight:600">(자동 추출 · 수정 가능)</span></label><input id="bp-author" value="' + esc(_bp.author||'') + '" placeholder="Roald Dahl" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
+      /* [책 정보 조회 20260725] 지은이는 원문 텍스트 정규식 추측이라 자주 틀렸다(실측: 'George Orwel'처럼 잘림).
+         Open Library 조회 버튼을 붙여 관리자가 등록 전에 지은이·소개·표지를 확인·수정할 수 있게 한다. */
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">지은이 <span style="color:#9CA3AF;font-weight:600">(자동 추출 · 수정 가능)</span></label><div style="display:flex;gap:6px"><input id="bp-author" value="' + esc(_bp.author||'') + '" placeholder="Roald Dahl" style="flex:1;min-width:0;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"><button type="button" onclick="_bpLookupBook()" style="background:#0F766E;color:#fff;border:none;border-radius:8px;padding:9px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">🔎 책 정보 조회</button></div><div id="bp-lookup-msg" style="font-size:10.5px;color:#9CA3AF;margin-top:3px">단어장 이름으로 Open Library에서 지은이·소개·표지를 가져옵니다. 비어 있는 칸만 채우고, 이미 입력한 값은 그대로 둡니다.</div></div>' +
+      '<div><label style="font-size:11px;font-weight:800;color:#6B7280">한 줄 소개 <span style="color:#9CA3AF;font-weight:600">(공지에 그대로 쓰입니다 · 비우면 생략)</span></label><textarea id="bp-desc" rows="2" placeholder="예) 동물들이 농장을 점령한 뒤 권력이 어떻게 변질되는지 그린 우화" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px;resize:vertical">' + esc(_bp.desc||'') + '</textarea></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">책 표지 <span style="color:#9CA3AF;font-weight:600">(비우면 자동 검색)</span></label><div style="display:flex;align-items:center;gap:8px"><label style="font-size:12px;color:#fff;background:#1E5FA5;padding:8px 12px;border-radius:8px;font-weight:800;cursor:pointer;white-space:nowrap">🖼️ 이미지 선택<input type="file" accept="image/*" onchange="pkImgUpload(this,\'bp-img-prev\',\'bp-imageUrl\')" style="display:none"></label><input type="hidden" id="bp-imageUrl" value="' + esc(_bp.imageUrl||'') + '"><span id="bp-img-prev">' + (_bp.imageUrl?('<img src="'+_bp.imageUrl+'" style="width:34px;height:46px;object-fit:cover;border-radius:5px;border:1px solid #E5E7EB">'):'<span style="font-size:11px;color:#9CA3AF">미등록 → 자동</span>') + '</span></div></div>' +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">읽기 수준 <span style="color:#9CA3AF;font-weight:600">(Lexile 입력 시 공인값 우선 · 비우면 원문 자동 산출)</span></label><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="bp-read-ar" type="number" step="0.1" placeholder="AR(선택)" value="' + (_bp.readAr||'') + '" style="width:76px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><input id="bp-read-lexile" type="number" placeholder="Lexile" value="' + (_bp.readLx||'') + '" oninput="_bpLexileBadge()" style="width:84px;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:12px"><button type="button" onclick="_bpOpenLexile()" style="background:#0F766E;color:#fff;border:none;border-radius:8px;padding:9px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">📊 Lexile 조회</button><button type="button" onclick="_bpApplyLexile()" style="background:#1E5FA5;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap">✓ 적용</button><span id="bp-read-badge" style="margin-left:2px"></span></div><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">조회 버튼 → 공식 사이트에서 값 확인 후 입력(예: 840) → [적용]을 누르면 읽기 수준과 단어 개수가 바뀝니다. 비우면 원문 난이도로 자동.</div></div>'  +
       '<div><label style="font-size:11px;font-weight:800;color:#6B7280">이모지</label><input id="bp-emoji" value="' + esc(_bp.emoji) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13px"></div>' +
@@ -3995,6 +4025,18 @@ function rBP2() {
     '<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.7">※ <b>텍스트 PDF</b>: PDF.js가 글자 추출(무료) → 단어 선정도 <b>규칙 기반(사전+빈도, 무료)</b>이 기본. AI 없이 처리됩니다.<br>※ <b>스캔(이미지) PDF</b>: 글자가 없으면 자동으로 <b>AI(Gemini) OCR</b>로 페이지 이미지에서 글자를 추출합니다(페이지당 1회 호출, 최대 40쪽).<br>※ 뜻·발음·예문·이모지는 앱이 사전에서 자동 보완. CEFR 챕터(200단어씩)는 앱이 학습 시 자동 분할.</div>' +
     '</div>';
   try{ setTimeout(_bpLexileBadge, 30); }catch(e){}   /* [Lexile 적용버튼 20260722] 초기 배지 */
+  /* [책 정보 자동조회 20260725] 원서 파일을 읽어 이름이 잡히면 1회 자동 조회해서
+     지은이·소개·표지를 미리 채워 둔다(빈 칸만). 관리자는 등록 전에 확인·수정하면 된다.
+     같은 책 이름으로는 다시 조회하지 않는다(중복 호출 방지). */
+  try{
+    if(_bp.mode==='book'){
+      var _nm2=((document.getElementById('bp-name')||{}).value||'').trim();
+      var _auEl=document.getElementById('bp-author');
+      var _dsEl=document.getElementById('bp-desc');
+      var _needs=(!_auEl||!_auEl.value.trim())||(!_dsEl||!_dsEl.value.trim());
+      if(_nm2 && _needs && _bp._lookedUp!==_nm2){ _bp._lookedUp=_nm2; setTimeout(function(){ try{ _bpLookupBook(); }catch(e){} }, 120); }
+    }
+  }catch(e){}
 }
 
 

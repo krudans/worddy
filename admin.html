@@ -3694,15 +3694,24 @@ async function _bpFetchMeta(title){
   try{
     if(!title||!String(title).trim()) return out;
     var q=encodeURIComponent(String(title).trim());
-    var res=await fetch('https://openlibrary.org/search.json?q='+q+'&limit=20').then(function(r){return r.json();});
-    var docs=(res.docs||[]);
+    /* subject(분류)는 fields로 명시해야 응답에 들어온다 — 빠뜨리면 항상 빈 배열이 된다. */
+    var _fld='key,title,author_name,cover_i,edition_count,first_publish_year,subject';
+    var res=await fetch('https://openlibrary.org/search.json?q='+q+'&limit=20&fields='+_fld).then(function(r){return r.json();});
+    var docs=(res.docs||[]).filter(function(d){return d&&d.title;});
     if(!docs.length) return out;
-    var t=String(title).trim().toLowerCase();
-    var exact=docs.find(function(d){return String(d.title||'').trim().toLowerCase()===t;});
-    // 표지 있는 판본을 우선(표지도 같이 얻기 위함), 없으면 판본수 많은 것
-    var withCover=docs.filter(function(d){return d.cover_i;});
-    var pick=exact||withCover.sort(function(a,b){return (b.edition_count||0)-(a.edition_count||0);})[0]
-             ||docs.sort(function(a,b){return (b.edition_count||0)-(a.edition_count||0);})[0];
+    /* [판본 선택 20260725] 제목 완전일치만 믿으면 각색·동명이서가 잡힌다.
+       실측: "The Little Prince" 완전일치 1위 = 판본 1개짜리 2013년 각색판(작가 Thomas Barichella),
+             정작 원작은 원제 "Le petit prince"(판본 688)로 등록돼 완전일치가 안 됨.
+       규칙: 완전일치 중 판본 3개 이상 → 그것. 없으면 부분일치 중 판본 최다 → 그것.
+             둘 다 없으면 Open Library 관련도 1위(원제가 다른 경우). 10종 실측 전부 정확 확인. */
+    var _nm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); };
+    var _q=_nm(title), _byEd=function(a,b){ return (b.edition_count||0)-(a.edition_count||0); };
+    var _cand=docs.slice(0,10);
+    var _ex=_cand.filter(function(d){ return _nm(d.title)===_q; }).sort(_byEd);
+    var _pt=_cand.filter(function(d){ var t=_nm(d.title); return t.indexOf(_q)>=0||_q.indexOf(t)>=0; }).sort(_byEd);
+    var pick=(_ex.length&&(_ex[0].edition_count||0)>=3) ? _ex[0]
+            :(_pt.length&&(_pt[0].edition_count||0)>=3) ? _pt[0]
+            :(_ex.length? _ex[0] : _cand[0]);
     if(!pick) return out;
     out.title=String(pick.title||'').trim();
     out.author=(Array.isArray(pick.author_name)&&pick.author_name[0])?String(pick.author_name[0]).trim():'';

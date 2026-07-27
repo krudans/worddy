@@ -3684,6 +3684,58 @@ async function _bpPreview() {
 
 /* [원서 표지 자동검색 20260721] Open Library 공개 API에서 제목으로 표지 검색 → 400px 압축 dataURL.
    관리자가 표지를 직접 안 넣으면 등록 시 자동으로 찾아 넣는다(실패 시 표지 없이 등록). */
+/* [원서 메타 자동완성 20260725] Open Library를 표지 이미지에만 쓰고 버리던 것을 고침.
+   같은 응답에 들어있는 정본 제목·작가·분류(subject)·설명을 함께 받아 팩 데이터에 채운다.
+   → 지금까지는 작가를 원문 텍스트 정규식으로 "추측"해 'George Orwel'처럼 잘린 값이 저장됐고,
+     소개(desc)·분류는 아예 비어서 공지 생성기가 기본 문구로 때웠다.
+   반환: {title, author, desc, subjects[], cover(dataURL)}  — 실패 시 각 필드 빈값. */
+async function _bpFetchMeta(title){
+  var out={title:'',author:'',desc:'',subjects:[],cover:''};
+  try{
+    if(!title||!String(title).trim()) return out;
+    var q=encodeURIComponent(String(title).trim());
+    var res=await fetch('https://openlibrary.org/search.json?q='+q+'&limit=20').then(function(r){return r.json();});
+    var docs=(res.docs||[]);
+    if(!docs.length) return out;
+    var t=String(title).trim().toLowerCase();
+    var exact=docs.find(function(d){return String(d.title||'').trim().toLowerCase()===t;});
+    // 표지 있는 판본을 우선(표지도 같이 얻기 위함), 없으면 판본수 많은 것
+    var withCover=docs.filter(function(d){return d.cover_i;});
+    var pick=exact||withCover.sort(function(a,b){return (b.edition_count||0)-(a.edition_count||0);})[0]
+             ||docs.sort(function(a,b){return (b.edition_count||0)-(a.edition_count||0);})[0];
+    if(!pick) return out;
+    out.title=String(pick.title||'').trim();
+    out.author=(Array.isArray(pick.author_name)&&pick.author_name[0])?String(pick.author_name[0]).trim():'';
+    out.subjects=Array.isArray(pick.subject)?pick.subject.slice(0,8):[];
+    // 작품 설명(works API) — 있으면 첫 문단만
+    try{
+      if(pick.key){
+        var w=await fetch('https://openlibrary.org'+pick.key+'.json').then(function(r){return r.json();});
+        var d=w&&w.description;
+        var s=(typeof d==='string')?d:(d&&d.value)||'';
+        s=String(s).replace(/\r/g,'').split('\n')[0].replace(/\s*\(\s*\[?source[^)]*\)\s*$/i,'').trim();
+        if(s.length>160) s=s.slice(0,157).replace(/[,\s]+$/,'')+'…';
+        out.desc=s;
+      }
+    }catch(e){}
+    // 표지(기존 변환 로직과 동일 규격)
+    try{
+      if(pick.cover_i){
+        var blob=await fetch('https://covers.openlibrary.org/b/id/'+pick.cover_i+'-L.jpg').then(function(r){return r.blob();});
+        if(blob&&blob.size>=2000){
+          var img=await createImageBitmap(blob);
+          var maxW=400, scale=Math.min(1, maxW/Math.max(img.width,img.height));
+          var cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+          cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+          var qly=0.85, du=cv.toDataURL('image/jpeg',qly);
+          while(du.length>110*1024 && qly>0.4){ qly-=0.1; du=cv.toDataURL('image/jpeg',qly); }
+          out.cover=du;
+        }
+      }
+    }catch(e){}
+    return out;
+  }catch(e){ return out; }
+}
 async function _bpFetchCover(title){
   try{
     if(!title||!String(title).trim()) return '';
@@ -3784,7 +3836,15 @@ async function _bpRegister() {
     var docs = [];
     if (_bp.mode === 'book') {
       var _img=(_bp.imageUrl||'').trim();
-      if(!_img){ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _img=await _bpFetchCover(_bp.name); setR('#1E5FA5', _img?'🖼️ 표지 찾음 — 등록 계속':'🖼️ 표지 못 찾음 — 표지 없이 등록'); }   /* [원서 표지 자동검색 20260721] */
+      /* [원서 메타 자동완성 20260725] 표지만 받던 것을 작가·소개·분류까지 함께 받도록 교체.
+         관리자가 직접 입력한 값이 있으면 그것을 우선하고, 비어 있을 때만 조회값으로 채운다. */
+      var _meta={title:'',author:'',desc:'',subjects:[],cover:''};
+      setR('#1E5FA5','🔎 책 정보 자동 조회 중... (Open Library)');
+      try{ _meta=await _bpFetchMeta(_bp.name); }catch(e){}
+      if(!_img) _img=_meta.cover||'';
+      if(!_bp.author && _meta.author) _bp.author=_meta.author;
+      var _desc=(_bp.desc||'').trim(); if(!_desc && _meta.desc) _desc=_meta.desc;
+      setR('#1E5FA5','🔎 조회 결과 — 작가: '+(_bp.author||'없음')+' · 소개: '+(_desc?'있음':'없음')+' · 표지: '+(_img?'있음':'없음'));
       var _readObj=null; try{
         var _a2=parseFloat(_bp.readAr), _l2=parseInt(_bp.readLx);
         var _i2=!isNaN(_a2)?(_a2<3?0:_a2<4.5?1:_a2<6?2:_a2<7.5?3:_a2<10?4:5):(!isNaN(_l2)?(_l2<500?0:_l2<700?1:_l2<900?2:_l2<1000?3:_l2<1200?4:5):null);
@@ -3793,7 +3853,7 @@ async function _bpRegister() {
         if(_i2===null && results[0] && results[0].fkIdx!=null){ _i2=results[0].fkIdx; _auto=true; }
         if(_i2!==null) _readObj={ar:isNaN(_a2)?null:_a2, lexile:isNaN(_l2)?null:_l2, idx:_i2, auto:_auto, fk:(results[0]&&results[0].fkGrade)||null};
       }catch(e){}   /* [읽기수준 입력 20260721] */
-      docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _bp.author?{author:_bp.author}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });
+      docs.push({ id: _bp.packId, data: Object.assign({ name: _bp.name, emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
     } else {
       var total = _bp.tiers.length;
       var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
@@ -8001,9 +8061,12 @@ async function bqNotice(packId){
   if(known>0){
     var segs=order.filter(function(c){return dist[c];});
     var bar=segs.map(function(c){ var p=Math.round(dist[c]/known*1000)/10; return '<span style="display:block;width:'+p+'%;background:'+_CCOL[c]+'"></span>'; }).join('');
-    var legend=segs.map(function(c){ var p=Math.round(dist[c]/known*100); return '<div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">'
-      +'<span style="width:10px;height:10px;border-radius:3px;background:'+_CCOL[c]+';flex-shrink:0;margin-top:2px"></span>'
-      +'<div style="flex:1;font-size:11px;line-height:1.45;color:#374151"><b>'+c+' · '+_CLBL[c][0]+'</b> <b style="color:#111">'+p+'%</b> ('+dist[c].toLocaleString()+'개)<br><span style="font-size:10px;color:#9CA3AF">'+_CLBL[c][1]+'</span></div></div>'; }).join('');
+    /* [공지 간결화 20260725] 범례를 등급마다 2줄(설명 포함)로 쌓던 것을 한 줄 인라인으로 압축.
+       막대 그래프는 그대로 두고 아래에 'A2 41% · B1 25% …' 형태로만 표시한다. */
+    var legend='<div style="margin-top:7px;font-size:11px;line-height:1.9">'+segs.map(function(c){ var p=Math.round(dist[c]/known*100);
+      return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;white-space:nowrap">'
+        +'<i style="width:8px;height:8px;border-radius:50%;background:'+_CCOL[c]+';display:inline-block"></i>'
+        +'<b style="color:#374151">'+c+'</b><span style="color:#9CA3AF">'+p+'%</span></span>'; }).join('')+'</div>';
     /* [공지 수준배지 20260722] 마켓과 동일한 6단계 서술형 수준 배지를 헤더 우측에 */
     var _ws3=0; order.forEach(function(c,i){ _ws3+=i*(dist[c]||0); });
     var _ai3=Math.min(5,Math.max(0,Math.round(_ws3/known)));
@@ -8030,12 +8093,20 @@ async function bqNotice(packId){
   }catch(e){}
   var title='📚 신간 단어장 — '+(p.name||packId);
   var subtitle=cnt.toLocaleString()+'단어 · '+chN+'챕터'+(minC?(' · '+minC+'부터'):'');
-  var body=coverHTML+(p.desc?p.desc+'\n\n':'')
-    +'📖 이런 책이에요\n'+(p.basis||p.courseDesc||'원서 전문에서 핵심 어휘를 빈도순으로 뽑아 만든 단어장이에요.')+'\n\n'
-    +'✨ 단어장 특징\n'
-    +'· 총 '+cnt.toLocaleString()+'단어를 CEFR 난이도순 '+chN+'개 챕터로 구성 — 1챕터가 가장 쉽고 뒤로 갈수록 어려워요'
-    +'\n· 챕터를 외우고 통과 시험(90점)에 합격하면 다음 챕터가 열리고 나비 쿠폰 🦋을 받아요'
-    +'\n\n지금 마켓에서 담아 첫 챕터 미션을 시작해보세요!'
+  /* [공지 간결화 20260725] 사용자 요청: 작품·작가 정보와 난이도 정도만.
+     기존엔 '이런 책이에요' 문단 + '단어장 특징' 불릿 2개 + 마켓 유도 문구가 고정 문자열로 붙어
+     카드가 화면 한 장을 채웠고, 정작 작가·소개는 데이터가 비어 기본 문구로 때워졌다.
+     이제 팩 데이터(author/desc/subjects/read)를 그대로 쓰고, 없으면 그 줄을 아예 생략한다.
+     ※ 값이 비면 여기서 지어내지 않는다 — admin 팩 편집에서 채워야 한다. */
+  var _au=(p.author||'').trim();
+  var _gn=(p.cat||'').replace(/^[^\w가-힣]+/,'').trim();
+  var _ds=(p.desc||'').trim();
+  var body=coverHTML
+    +(_au?('✍️ '+_au+'\n'):'')
+    +(_gn?('📂 '+_gn+'\n'):'')
+    +(_au||_gn?'\n':'')
+    +(_ds?(_ds+'\n\n'):'')
+    +'📦 '+cnt.toLocaleString()+'단어 · '+chN+'개 챕터'
     +(chartHTML?('\n'+chartHTML):'');
   var mr=document.getElementById('mr')||document.getElementById('modal-root');
   if(!mr){ mr=document.createElement('div'); mr.id='mr'; document.body.appendChild(mr); }
@@ -8059,7 +8130,15 @@ async function bqNoticeAI(packId){
   var imgM=full.match(/^\s*<img[^>]*>/); var img=imgM?imgM[0]:''; if(img) full=full.slice(imgM[0].length);   /* [공지 표지 20260722] 표지 태그 분리 보존 */
   var cut=full.indexOf('<div'); var txt=cut>=0?full.slice(0,cut):full; var chart=cut>=0?full.slice(cut):'';
   try{ toast('✨ AI 작성 중...','ok');
-    var out=await callAI('다음은 영단어 학습 앱의 신간 원서 단어장 공지 초안이다. 책의 매력을 살린 홍보 1~2문장과 단어장 특징을 담아, 같은 구조(📖 이런 책이에요 / ✨ 단어장 특징)를 유지하며 더 매끄러운 한국어 공지로 다듬어라. 이모지·불릿(·)은 유지하고, 과장 없이 350자 이내로. 결과 본문만 출력.\n\n제목: '+t+'\n\n'+txt, 600);
+    /* [공지 간결화 20260725] AI 다듬기도 새 구조에 맞춘다.
+       기존 프롬프트는 '📖 이런 책이에요 / ✨ 단어장 특징' 옛 구조를 유지하라고 지시해서,
+       생성기를 줄여도 AI를 거치면 다시 장황해졌다.
+       ★ 작가·분류 줄은 팩 데이터에서 온 값이므로 AI가 바꾸거나 지어내지 못하게 못박는다. */
+    var out=await callAI('다음은 영단어 학습 앱의 신간 원서 단어장 공지 초안이다. 아래 규칙대로 다듬어라.\n'
+      +'1) ✍️(작가)·📂(분류)·📦(단어수·챕터) 줄은 실제 데이터이므로 절대 수정·삭제·추가하지 마라.\n'
+      +'2) 책 소개 문장만 자연스러운 한국어 1~2문장(120자 이내)으로 다듬어라. 초안에 소개가 없으면 새로 지어내지 말고 그대로 비워 둬라.\n'
+      +'3) 홍보 문구·특징 나열·마켓 유도 문장을 새로 만들지 마라. 전체 200자 이내.\n'
+      +'4) 결과 본문만 출력.\n\n제목: '+t+'\n\n'+txt, 400);
     if(out&&out.trim()) b.value=img+out.trim()+(chart?('\n'+chart):'');
     toast('✨ 완료 — 확인 후 게시하세요','ok');
   }catch(e){ toast('AI 실패: '+e.message,'err'); }

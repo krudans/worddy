@@ -5434,7 +5434,7 @@ window._toggleAutoLock = function() {
       bar.innerHTML = '<div style="font-size:12px;color:#FCA5A5;font-weight:700;margin-bottom:7px">🔒 화면 잠금 중</div>'
         + '<div style="display:flex;align-items:center;gap:10px">'
         + '<div style="flex:1;min-width:0;text-align:left">'
-        + '<div style="font-size:10px;color:rgba(252,165,165,.85);margin-bottom:4px">🔓 5초간 길게 눌러 해제</div>'
+        + '<div style="font-size:10px;color:rgba(252,165,165,.85);margin-bottom:4px">🔓 5초간 길게 눌러 해제 · 👆👆 화면 톡톡 2번 = 외웠음</div>'
         + '<div style="height:6px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden"><div id="auto-lock-fill" style="height:100%;width:0%;background:#EF4444"></div></div>'
         + '</div>'
         + '<button id="auto-lock-memo" style="flex-shrink:0;background:linear-gradient(135deg,#22C55E,#16A34A);border:none;border-radius:12px;padding:11px 16px;color:#fff;font-size:13px;font-weight:800;pointer-events:auto;cursor:pointer;white-space:nowrap;box-shadow:0 2px 10px rgba(34,197,94,.4)">✅ 외웠음</button>'
@@ -5463,7 +5463,23 @@ window._toggleAutoLock = function() {
         if(p >= 100) { _holdStart = 0; _stopIv(); window._toggleAutoLock(); }
       };
       const _startHold = (e) => { if(e && e.preventDefault) e.preventDefault(); if(_holdStart) return; _holdStart = performance.now(); _stopIv(); _holdIv = setInterval(_tick, 50); };
-      const _endHold = (e) => { if(e && e.preventDefault) e.preventDefault(); _holdStart = 0; _stopIv(); const f = _fill(); if(f) f.style.width = '0%'; };
+      /* [톡톡 2번 = 외웠음 20260803] 잠금 중 화면 아무데나 '짧게 두 번' 두드리면 외웠음.
+         - 짧은 탭(300ms 미만)만 카운트 → 주머니 속 눌림·긴 접촉은 무시
+         - 두 탭 간격 500ms 이내여야 인정 → 우연한 단일 터치로는 안 찍힘
+         - 해제는 기존대로 5초 길게 누르기(짧은 탭과 겹치지 않음) */
+      let _tapT = 0;
+      const _endHold = (e) => {
+        if(e && e.preventDefault) e.preventDefault();
+        const held = _holdStart ? (performance.now() - _holdStart) : 9999;
+        _holdStart = 0; _stopIv(); const f = _fill(); if(f) f.style.width = '0%';
+        if(held < 300){
+          const now = performance.now();
+          if(now - _tapT < 500){
+            _tapT = 0;
+            try{ var aw=window._autoWords||[]; var en=aw[window._autoIdx]?aw[window._autoIdx].en:null; if(en&&window._autoMarkMemorized){ window._autoMarkMemorized(en); if(window._buzz) window._buzz([30,60,30]); } }catch(err){}
+          } else { _tapT = now; }
+        } else { _tapT = 0; }
+      };
       overlay.addEventListener('touchstart', _startHold, {passive:false});
       overlay.addEventListener('touchend', _endHold, {passive:false});
       overlay.addEventListener('touchcancel', _endHold, {passive:false});

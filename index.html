@@ -4381,6 +4381,54 @@ function _markTodayMemorized(){
     if(S.studyLog[t] && Array.isArray(S.studyLog[t].markedEns)) S.studyLog[t].marked = S.studyLog[t].markedEns.length;
   }catch(e){}
 }
+/* ══ [외웠음 클릭 피드백 · 단일 소스 20260803] ═══════════════════════════════
+   외웠음 버튼의 "눌림 효과 · 진동 · 확정색"을 여기 한 곳에서만 정의한다.
+   플래시카드(rLearn) · 자동학습(_markBtn) · 화면잠금 바가 전부 이 함수만 호출하므로,
+   피드백을 바꾸려면 이 블록만 고치면 모든 화면에 반영된다.
+   (개별 화면 HTML 안에 색·transform 을 직접 써넣지 않는다 — 임시방편 금지 원칙) */
+window._buzz = function(pat){
+  try{ if(typeof S!=='undefined' && S._haptic===false) return; if(navigator.vibrate) navigator.vibrate(pat||35); }catch(e){}
+};
+// 누르는 순간: 안으로 쑥 들어가는 효과 + 기기 진동
+window._memoFxDown = function(el){
+  try{ if(!el) return;
+    el.style.transition='transform .05s ease-out,background .05s,box-shadow .05s';
+    el.style.transform='scale(0.90)';
+    el.style.background='#0F5132';
+    el.style.color='#fff';
+    el.style.boxShadow='inset 0 4px 12px rgba(0,0,0,.55)';
+    window._buzz(35);
+  }catch(e){}
+};
+// 떼는 순간: 다시 튀어나오면서 '조금 진한 녹색'으로 확정 — 눌린 게 눈에 확실히 보이게
+window._memoFxOn = function(el){
+  try{ if(!el) return;
+    el.style.transition='transform .18s cubic-bezier(.2,1.6,.4,1),background .18s,box-shadow .18s';
+    el.style.transform='scale(1.04)';
+    el.style.background='#15803D';
+    el.style.color='#fff';
+    el.style.boxShadow='0 0 0 3px rgba(34,197,94,.5),0 8px 20px rgba(21,128,61,.55)';
+    setTimeout(function(){ try{ el.style.transform='scale(1)'; }catch(e){} }, 180);
+  }catch(e){}
+};
+/* 외웠음 탭 처리(자동학습·쉐도잉·말하기 공용).
+   확정색을 눈으로 확인할 시간(220ms)을 준 뒤 실제 마크·재렌더한다.
+   자동학습은 _autoMarkMemorized 가 자체 지연(450ms)을 갖고 있어 즉시 위임한다. */
+window._memoTap = function(en, val){
+  try{
+    if(val===1 && window._curRender && window._curRender===window._autoRender && window._autoMarkMemorized){
+      window._autoMarkMemorized(en); return;
+    }
+  }catch(e){}
+  setTimeout(function(){
+    try{ window._markBtnXP(en, val); if(window._curRender) window._curRender(); }catch(e){console.warn('[wd-io:_memoTap]',e);}
+  }, val===1?220:0);
+};
+// 플래시카드 전용(목록 진행·챕터 완료 연결은 _doMark 가 담당)
+window._doMarkFx = function(el, val){
+  try{ if(val===1) window._memoFxOn(el); }catch(e){}
+  setTimeout(function(){ try{ window._doMark(val); }catch(e){console.warn('[wd-io:_doMarkFx]',e);} }, val===1?220:0);
+};
 window._markBtnXP = function(wordEn, val) {
   const prevMark = getMark(wordEn);
   setMark(wordEn, val);
@@ -4408,8 +4456,8 @@ function _markBtn(wordEn) {
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:transform .12s,filter .12s,background .2s,color .2s;background:${freshBg};color:${freshColor}">
       📝 미암기
     </button>
-    <button onpointerdown="this.style.transform='scale(0.9)';this.style.background='#16A34A';this.style.color='#fff';this.style.boxShadow='0 0 0 4px rgba(34,197,94,.35)'"
-      onclick="if(window._curRender&&window._curRender===window._autoRender&&window._autoMarkMemorized){window._autoMarkMemorized('${safe}')}else{window._markBtnXP('${safe}',${isMemorized?0:1});window._curRender&&window._curRender()}"
+    <button onpointerdown="window._memoFxDown(this)" onpointerup="window._memoFxOn(this)" onpointercancel="this.style.transform=''"
+      onclick="window._memoTap('${safe}',${isMemorized?0:1})"
       style="padding:10px 24px;border-radius:24px;border:none;font-size:13px;font-weight:800;cursor:pointer;transition:transform .12s,box-shadow .12s,background .2s,color .2s;background:${memoBg};color:${memoColor};box-shadow:${memoShadow}">
       ✅ 외웠음
     </button>
@@ -5291,6 +5339,64 @@ window._requestWakeLock = async function() {
 window._releaseWakeLock = function() {
   try { if(window._wakeLock) { window._wakeLock.release(); window._wakeLock = null; } } catch(e) {}
 };
+
+/* ══ [화면 안 보고 외웠음 · 미디어키 20260803] ═══════════════════════════════
+   목표: 자동학습 중 화면을 보지 않고 '외웠음'을 체크한다.
+   ── 사실관계(중요) ──
+   웹 페이지(PWA 포함)는 안드로이드 '볼륨 키'(갤럭시 맨 위 버튼) 입력을 받을 수 없다.
+   볼륨 키는 OS가 먼저 가져가고 keydown 이벤트 자체가 페이지로 오지 않는다. 브라우저 정책이라
+   코드로 우회할 방법이 없다(우회하는 척하는 코드를 넣지 않는다).
+   ── 그래서 실제로 되는 길 ──
+   Media Session API. 페이지가 오디오를 재생 중이면 이어폰/블루투스 버튼과 잠금화면 미디어
+   컨트롤이 페이지로 들어온다. 자동학습은 TTS라 미디어 세션을 잡지 못하므로,
+   무음 오디오를 루프 재생해 세션을 소유한 뒤 '다음 곡' = 외웠음 으로 연결한다.
+   ── 기본 OFF ──
+   무음 재생이 기기에 따라 TTS 오디오 포커스와 겹칠 수 있어, 자동학습 설정의
+   '🎧 이어폰 버튼' 옵션을 켠 사람에게만 동작한다(_auto.mediaKey). */
+function _silentWavURL(){
+  var sr=8000, n=sr;                                  // 1초 무음
+  var buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+  function ws(o,s){ for(var i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); }
+  ws(0,'RIFF'); v.setUint32(4,36+n*2,true); ws(8,'WAVEfmt '); v.setUint32(16,16,true);
+  v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true); ws(36,'data'); v.setUint32(40,n*2,true);
+  return URL.createObjectURL(new Blob([buf],{type:'audio/wav'}));
+}
+window._autoMediaKeys = function(on){
+  try{
+    if(!('mediaSession' in navigator)) return;
+    var _clear=function(){ ['play','pause','stop','nexttrack','previoustrack'].forEach(function(a){ try{ navigator.mediaSession.setActionHandler(a,null); }catch(e){} }); };
+    if(!on){
+      try{ if(window._mkAudio){ window._mkAudio.pause(); } }catch(e){}
+      try{ navigator.mediaSession.playbackState='none'; }catch(e){}
+      _clear(); return;
+    }
+    if(!window._mkAudio){
+      var a=new Audio(_silentWavURL());
+      a.loop=true; a.volume=0.0001; a.preload='auto';
+      try{ a.setAttribute('playsinline',''); }catch(e){}
+      window._mkAudio=a;
+    }
+    var p=window._mkAudio.play(); if(p&&p.catch) p.catch(function(){});
+    try{ navigator.mediaSession.metadata=new MediaMetadata({title:'⏭ 다음곡 버튼 = 외웠음 체크', artist:'Butterfly Word · 자동학습', album:'화면 안 보고 학습'}); }catch(e){}
+    try{ navigator.mediaSession.playbackState='playing'; }catch(e){}
+    navigator.mediaSession.setActionHandler('nexttrack', function(){
+      try{ var aw=window._autoWords||[]; var w=aw[window._autoIdx]; if(w&&window._autoMarkMemorized){ window._autoMarkMemorized(w.en); if(window._buzz) window._buzz([30,60,30]); } }catch(e){}
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', function(){
+      try{ window._autoIdx=Math.max(0,(window._autoIdx||0)-1); window._autoRender&&window._autoRender(); window._autoSpeakNow&&window._autoSpeakNow(); }catch(e){}
+    });
+    navigator.mediaSession.setActionHandler('play', function(){ try{ if(!window._autoPlaying) window._autoPlayScroll&&window._autoPlayScroll(); }catch(e){} });
+    navigator.mediaSession.setActionHandler('pause', function(){ try{ if(window._autoPlaying) window._autoPlayScroll&&window._autoPlayScroll(); }catch(e){} });
+  }catch(e){console.warn('[wd-io:_autoMediaKeys]',e);}
+};
+function _arToggleMediaKey(){
+  if(window._auto) window._auto.mediaKey=!window._auto.mediaKey;
+  if(typeof sv==='function') sv();   // wd-auto 로 영속화(자동학습 옵션과 동일 경로)
+  window._autoMediaKeys(!!(window._auto&&window._auto.mediaKey));
+  if(typeof toast==='function') toast((window._auto&&window._auto.mediaKey)?'🎧 이어폰/잠금화면의 ⏭ 버튼 = 외웠음':'🎧 이어폰 버튼 연결 해제');
+  window._autoRender&&window._autoRender();
+}
 // [설정 유실 방지 핵심수정] 말하기/듣기/쉐도잉의 현재 설정값은 window._* 에 있고 나갈 때만 S._* 로 동기화된다.
 //  안드로이드 등에서 백그라운드 강제종료가 동기화보다 먼저 일어나면 변경이 유실되므로, 저장 직전에 강제 플러시한다.
 function _flushModeSettings(){
@@ -5332,14 +5438,16 @@ window._toggleAutoLock = function() {
         + '<div style="height:6px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden"><div id="auto-lock-fill" style="height:100%;width:0%;background:#EF4444"></div></div>'
         + '</div>'
         + '<button id="auto-lock-memo" style="flex-shrink:0;background:linear-gradient(135deg,#22C55E,#16A34A);border:none;border-radius:12px;padding:11px 16px;color:#fff;font-size:13px;font-weight:800;pointer-events:auto;cursor:pointer;white-space:nowrap;box-shadow:0 2px 10px rgba(34,197,94,.4)">✅ 외웠음</button>'
-        + '</div>';
+        + '</div>'
+        /* [확인 표시 20260803] 눌렀다는 증거가 사라지지 않도록 남기는 누적 표시 (_autoMarkMemorized 가 갱신) */
+        + '<div id="auto-lock-cnt" style="margin-top:8px;font-size:11px;font-weight:800;color:'+(window._autoMemoCnt?'#4ADE80':'rgba(255,255,255,.45)')+'">'+(window._autoMemoCnt?('✅ 지금까지 '+window._autoMemoCnt+'개 외웠음'):'✅ 외웠음 버튼으로 체크하세요')+'</div>';
       overlay.appendChild(bar);
       var _memoBtn = bar.querySelector('#auto-lock-memo');
       if(_memoBtn){
-        var _doMemo = function(e){ if(e){e.preventDefault();e.stopPropagation();} try{ var aw=window._autoWords||[]; var en=aw[window._autoIdx]?aw[window._autoIdx].en:null; if(en&&window._autoMarkMemorized) window._autoMarkMemorized(en); }catch(err){} };
-        _memoBtn.addEventListener('touchstart', function(e){ e.stopPropagation(); }, {passive:false});
+        var _doMemo = function(e){ if(e){e.preventDefault();e.stopPropagation();} try{ window._memoFxOn && window._memoFxOn(_memoBtn); }catch(err){} try{ var aw=window._autoWords||[]; var en=aw[window._autoIdx]?aw[window._autoIdx].en:null; if(en&&window._autoMarkMemorized) window._autoMarkMemorized(en); }catch(err){} };
+        _memoBtn.addEventListener('touchstart', function(e){ e.stopPropagation(); try{ window._memoFxDown && window._memoFxDown(_memoBtn); }catch(err){} }, {passive:false});
         _memoBtn.addEventListener('touchend', _doMemo, {passive:false});
-        _memoBtn.addEventListener('mousedown', function(e){ e.stopPropagation(); });
+        _memoBtn.addEventListener('mousedown', function(e){ e.stopPropagation(); try{ window._memoFxDown && window._memoFxDown(_memoBtn); }catch(err){} });
         _memoBtn.addEventListener('click', _doMemo);
       }
 
@@ -5436,17 +5544,18 @@ function showAutoMode() {
     if(!en) { en = aw[window._autoIdx] ? aw[window._autoIdx].en : null; }
     if(!en) return;
     if(typeof window._markBtnXP === "function") window._markBtnXP(en, 1);
-    try {
-      var _btns = document.querySelectorAll("button");
-      for(var _i=0;_i<_btns.length;_i++){
-        if(_btns[_i].textContent.indexOf("외웠음")>=0){
-          _btns[_i].style.background="#22C55E";
-          _btns[_i].style.color="#fff";
-          _btns[_i].style.borderColor="#22C55E";
-          break;
-        }
-      }
-    } catch(e){}
+    /* [잠금 중 '녹색 원복' 근본수정 20260803]
+       예전 코드: 문서에서 "외웠음"이 들어간 '아무 버튼이나' 첫 번째를 찾아 초록으로 칠했다.
+       화면잠금 중에는 그게 실제로 누른 잠금바 버튼이 아니라 그 아래 카드의 버튼이었고,
+       450ms 뒤 다음 단어로 다시 그려지면서 원복돼 "체크가 풀린 것처럼" 보였다(2026-08-03 신고).
+       → 누른 버튼의 피드백은 _memoFxOn 이 담당하고,
+         여기서는 절대 사라지지 않는 누적 카운터만 올려 '확실히 처리됐음'을 남긴다. */
+    try{
+      window._autoMemoCnt=(window._autoMemoCnt||0)+1;
+      var _lc=document.getElementById('auto-lock-cnt');
+      if(_lc){ _lc.textContent='✅ 지금까지 '+window._autoMemoCnt+'개 외웠음'; _lc.style.color='#4ADE80'; }
+      if(window._buzz) window._buzz(35);
+    }catch(e){}
     setTimeout(function(){
       try {
         var arr = window._autoWords || [];
@@ -5463,6 +5572,8 @@ function showAutoMode() {
     return en;
   };
   window._studyActive=true; if(typeof _startStudySession==='function')_startStudySession(); else _LT.start();
+  window._autoMemoCnt=0;                                       // 이 자동학습 세션에서 외운 개수(잠금바 확인 표시용)
+  try{ if(window._auto && window._auto.mediaKey) window._autoMediaKeys(true); }catch(e){}   // 🎧 이어폰 ⏭ = 외웠음
   
   // 렌더 함수
   
@@ -5542,7 +5653,7 @@ window._autoRender = function() {
 
     // 예문읽기 토글 (켜면 단어 발음 뒤 예문 1개를 읽음)
     var exOn = parseInt(A.exCount??0) > 0;
-    var optItems = [['예문 읽기','_arSetExCount('+(exOn?0:1)+')',exOn],['반복','_arToggleLoop()',!!A.loop],['발음 듣고 따라 말하기','_arToggleShadow()',!!A.shadow]];
+    var optItems = [['예문 읽기','_arSetExCount('+(exOn?0:1)+')',exOn],['반복','_arToggleLoop()',!!A.loop],['발음 듣고 따라 말하기','_arToggleShadow()',!!A.shadow],['🎧 이어폰 ⏭ = 외웠음','_arToggleMediaKey()',!!A.mediaKey]];
 
     function row(label, btns) {
       return '<div style="margin-bottom:5px"><div style="font-size:9px;color:var(--panel-text3,#9CA3AF);margin-bottom:2px">'+label+'</div>'
@@ -5681,6 +5792,7 @@ const cm = () => {
   window._releaseWakeLock();
   window._autoPlaying = false;
   try{clearInterval(window._ttsKeepAlive);}catch(e){}
+  try{ window._autoMediaKeys && window._autoMediaKeys(false); }catch(e){}   // 무음 오디오·미디어키 핸들러 해제
   window._autoLocked = false;
   window._autoActive = false; window._spkActive = false; window._sdActive = false;
   const overlay = document.getElementById('auto-lock-overlay');
@@ -6863,7 +6975,15 @@ function go(tab,sub) {
   if(tab==='ranking') S.tab='ranking';
   if(tab==='game') S.tab='game';
   if(sub) S.stab=sub;
-  if(sub==='learn') S._lsetOpen=false; // [학습설정접힘] 플래시카드 진입 시 학습 설정 접힌 채 시작(재렌더는 인자없는 go()라 미해당)
+  if(sub==='learn'||tab==='learn'){
+    S._lsetOpen=false; // [학습설정접힘] 플래시카드 진입 시 학습 설정 접힌 채 시작(재렌더는 인자없는 go()라 미해당)
+    /* [학습목록 재구성 · 근본수정 20260803]
+       _flipWords 는 "학습 중에 카드 순서가 흔들리지 않게" 두는 목록 스냅샷이다.
+       진입할 때 비우지 않으면, 이전에 보던(그 사이 전부 외운) 목록이 그대로 되살아나
+       '미암기'로 설정해도 외운 단어가 그대로 나온다. 화면에 '새로' 들어올 때는 항상 다시 만든다.
+       (인자 없는 go() 재렌더는 tab/sub 가 없으므로 여기 걸리지 않아 학습 중 순서는 그대로 유지) */
+    S._flipWords=null; S._flashShuffled=null; S._flashSig=null; S._lastFilter=null; S.idx=0; S.flip=false;
+  }
   // 상단 헤더 벌거지 미니 상태
   const hdrEl=document.getElementById('hdr');
   if(hdrEl) {
@@ -6873,7 +6993,7 @@ function go(tab,sub) {
     const _hStudied = S._dailyStudiedMin||0;
     const _hPct = Math.min(100, Math.round(_hStudied/_hGoal*100));
     hdrEl.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:3px 14px 0">
-      <div style="display:inline-block;animation:float 3.5s ease-in-out infinite;flex-shrink:0">${typeof charSVGAnimated==="function"?charSVGAnimated(lvInfo.id,20,"normal"):"<span style='font-size:14px'>"+lvI.emoji+"</span>"}</div>
+      <div style="display:inline-block;animation:float 3.5s ease-in-out infinite;flex-shrink:0">${typeof charSVGAnimated==="function"?charSVGAnimated(lvI.id,20,"normal"):"<span style='font-size:14px'>"+lvI.emoji+"</span>"}</div>
       <div style="flex:1;font-size:10px;font-weight:700;color:var(--hd-title,#FFFFFF);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Butterfly Word · 단어를 외울수록 애벌레가 자라나요</div>
     </div>
     <div style="margin:3px 14px 0;height:3px;background:rgba(0,0,0,.07);border-radius:99px;overflow:hidden">
@@ -7395,7 +7515,7 @@ function finishChapterExam(){
     var gotNabi=false;
     if(passed && b){
       if(!Array.isArray(b.chPass)) b.chPass=new Array(CH_N).fill(false);
-      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now(); gotNabi=true; }
+      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; if(typeof _advanceChapterScope==='function') _advanceChapterScope(b, ex.chIdx); S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now(); gotNabi=true; }
       if(typeof sv==='function') sv();
     }
     S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
@@ -12897,6 +13017,29 @@ function _chapterMemRatio(book, chIdx){
   }catch(e){ return 0; }
 }
 /* 챕터 학습 중/후에 호출 — 90% 넘으면 자동으로 챕터 완료 처리 */
+/* ══ [챕터 스코프 이동 · 단일 소스 · 근본수정 20260803] ═══════════════════════
+   '챕터 통과(chPass[i]=true)'가 학습 스코프(S._studyChapterIdx)를 바꾸는 유일한 원천이다.
+   기존 결함: _gcbwRaw() 는 S._studyChapterIdx 가 null 일 때만 활성 챕터를 자동 계산한다.
+     → 3챕터를 통과해도 스코프가 2(=3챕터)에 그대로 머물러,
+       4챕터 학습으로 들어가도 '이미 전부 외운 3챕터 단어'가 그대로 나왔다.
+     → 게다가 rLearn 의 목록 스냅샷(_flipWords)이 살아남아 '미암기' 필터까지 무시됐다.
+       (앱을 껐다 켜면 스코프가 null 로 초기화돼 저절로 정상화되던 이유가 이것)
+   → 통과가 확정되는 자리(자동완료 _checkChapterDone · 통과시험 finishChapterExam)에서
+     이 함수 하나만 호출한다. 통과 경로가 늘어나도 여기만 부르면 된다.
+   주의: 드롭다운으로 '지나간 챕터'를 일부러 고르는 복습 경로는 _studyChapter() 가
+         스코프를 직접 지정하므로 이 함수의 영향을 받지 않는다. */
+function _advanceChapterScope(book, chIdx){
+  try{
+    if(!book || book.name!==S.currentBook) return;
+    var _nxCh=(typeof _activeChapterIdx==='function')?_activeChapterIdx(book):null;
+    var _totCh=(typeof _chapterCount==='function')?_chapterCount(book):(chIdx+2);
+    if(_nxCh==null || _nxCh<0 || _nxCh===chIdx) _nxCh=Math.min(chIdx+1, Math.max(0,(_totCh||chIdx+2)-1));
+    S._studyChapterIdx=_nxCh;
+    S._chReview=0;                       // 복습 모드 해제 → 새 챕터가 정상 렌더
+    // 학습 목록 캐시 폐기 → 다음 렌더에서 새 챕터 단어로 다시 만들고 '미암기' 필터도 다시 적용
+    S._flashSig=null; S._flipWords=null; S._flashShuffled=null; S._lastFilter=null; S.idx=0; S.flip=false;
+  }catch(e){console.warn('[wd-io:_advanceChapterScope]',e);}
+}
 function _checkChapterDone(book, chIdx, force){
   try{
     if(!book) return;
@@ -12905,6 +13048,7 @@ function _checkChapterDone(book, chIdx, force){
     var _full = (_chapterMemRatio(book, chIdx) >= 1) || ((typeof _chapterMemorized==='function') && _chapterMemorized(book, chIdx));
     if(!force && !_full) return;   /* [수동 완료 20260724] 수동 버튼(force)은 판정 어긋나도 통과 — 침묵 차단 */   // 챕터 단어를 전부 외워야 완료 (판정 이중화 — 키 불일치로 침묵하던 결함 방지)
     book.chPass[chIdx]=true;
+    _advanceChapterScope(book, chIdx);
     S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now();
     if(typeof sv==='function') sv();
     var total=(typeof _chapterCount==='function')?_chapterCount(book):5;
@@ -13138,7 +13282,7 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   var isMemorized = curMark === 1;
   html += '<div style="padding:0 16px 8px;display:flex;gap:10px;flex-shrink:0">';
   html += '<button onpointerdown="this.style.transform=\'scale(0.94)\';this.style.filter=\'brightness(1.3)\'" onpointerup="this.style.transform=\'\';this.style.filter=\'\'" onpointerleave="this.style.transform=\'\';this.style.filter=\'\'" onclick="window._doMark(0)" style="flex:1;height:52px;border:none;border-radius:14px;font-size:14px;font-weight:900;cursor:pointer;transition:transform .12s,filter .12s,background .2s,color .2s;background:'+(!isMemorized?'rgba(148,163,184,.3)':'rgba(255,255,255,.08)')+';color:'+(!isMemorized?'#CBD5E1':'rgba(255,255,255,.4)')+'">📝 미암기</button>';
-  html += '<button onpointerdown="this.style.transform=\'scale(0.94)\';this.style.background=\'#16A34A\';this.style.color=\'#fff\'" onclick="window._doMark(1)" style="flex:1;height:52px;border:none;border-radius:14px;font-size:14px;font-weight:900;cursor:pointer;transition:transform .12s,box-shadow .12s,background .2s,color .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
+  html += '<button onpointerdown="window._memoFxDown(this)" onpointerup="window._memoFxOn(this)" onpointercancel="this.style.transform=\'\'" onclick="window._doMarkFx(this,1)" style="flex:1;height:52px;border:none;border-radius:14px;font-size:14px;font-weight:900;cursor:pointer;transition:transform .12s,box-shadow .12s,background .2s,color .2s;background:'+(isMemorized?'rgba(34,197,94,.85)':'rgba(255,255,255,.1)')+';color:'+(isMemorized?'#fff':'rgba(255,255,255,.6)')+';box-shadow:'+(isMemorized?'0 4px 16px rgba(34,197,94,.35)':'none')+'">✅ 외웠음</button>';
   html += '</div>';
 
   // ── 이전/다음 버튼 (마크버튼과 틀 통일) ──

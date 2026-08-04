@@ -6378,10 +6378,12 @@ function showTestIntro(isRetry=false, skipWarn=false) {
       <div style="background:var(--theme-tint);border-radius:14px;padding:14px;margin-bottom:14px;text-align:left">
         <div style="font-size:13px;font-weight:700;color:var(--theme);margin-bottom:8px">📌 이렇게 진행돼요</div>
         <div style="font-size:12px;color:#374151;line-height:1.9">
-          🎯 각 레벨의 단어로 뜻 맞추기<br>
+          🎯 단어·듣기·읽기·쓰기를 한 번에 진단<br>
+          ✍️ 직접 입력·문장 만들기 문항 — 찍기가 안 통해요<br>
           📈 레벨 1부터, 잘 맞히면 다음 레벨로<br>
-          🛑 한 레벨에서 3개 틀리면 내 레벨 확정<br>
-          ⏱️ 문제당 10초 · 실력 따라 문항 수 달라져요
+          ⚖️ 경계 레벨은 확인 라운드로 한 번 더 검증<br>
+          🤷 모르면 찍지 말고 '모름'을 누르세요<br>
+          ⏱️ 문항당 10~30초 · 결과에서 영역별 레벨까지 보여드려요
         </div>
       </div>
       ${isRetry?`<div style="background:#FFF8E1;border-radius:12px;padding:10px;margin-bottom:14px;font-size:13px;color:#E65100">현재 레벨: ${typeof charSVGAnimated==="function"?"<span style='display:inline-block;vertical-align:middle'>"+charSVGAnimated(S.lid,16,"normal")+"</span>":lv(S.lid).emoji} ${lv(S.lid).name}</div>`:''}
@@ -6965,6 +6967,10 @@ function _doAppExit(){
   }, 200);
 }
 function go(tab,sub) {
+  /* [결과화면 보호 20260804] 레벨테스트 결과 화면이 떠 있는 동안:
+     - 인자 없는 재렌더(동기화 리스너 등)는 무시 → 결과가 사라지지 않는다
+     - 사용자가 탭을 눌러 이동하면 플래그를 풀고 정상 진행 */
+  if(S._ltResultShowing){ if(!tab) return; S._ltResultShowing=false; }
   console.log('[앱] go', tab||S.tab);
   try{ if(!window._backNavigating){ if(!window._navStack)window._navStack=[]; if(S.tab && (S.tab!==tab || (S.stab||null)!==(sub||null))){ window._navStack.push({tab:S.tab,sub:S.stab||null}); if(window._navStack.length>50)window._navStack.shift(); } } }catch(e){}
   if(S._gameStartTs && !S._gameRunning && typeof _accrueGameTime==='function'){ _accrueGameTime(); }
@@ -7753,7 +7759,7 @@ function _ltChipUndo(pi){
 }
 function _ltExit(){
   if(!confirm('레벨테스트를 그만둘까요? 진행 상황은 저장되지 않아요.')) return;
-  _ltClearTimer(); S._inInitLevelTest=false; S._lt=null;
+  _ltClearTimer(); S._inInitLevelTest=false; S._ltResultShowing=false; S._lt=null;
   try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; var nv=document.getElementById('nav'); if(nv) nv.style.display=''; }catch(e){}
   if(typeof go==='function') go('mybooks','books');
 }
@@ -7850,6 +7856,7 @@ function startInitialLevelExam(){
       return;
     }
     _ltClearTimer();
+    S._ltResultShowing=false;
     S._lt={ level:1, qi:0, wrong:0, lastPassed:0, used:{}, correctTotal:0, qTotal:0, cur:null, ans:false, res:null, stage:'main', confirmDone:false, confirmLevel:0, cqi:0, cc:0, areaStats:{}, levelStats:{}, wrongWords:[] };   /* [혼합문항+확인라운드 20260803] */
     S._inInitLevelTest=true; S._prevTab=S.tab;
     try{ var hd=document.getElementById('hd'); if(hd) hd.style.display='none'; var nv=document.getElementById('nav'); if(nv) nv.style.display='none'; }catch(e){}
@@ -7984,6 +7991,7 @@ function _ltFinish(){
     if(typeof addXP==='function') addXP(correctTotal*2);
     if(typeof sv==='function') sv();
     var _lvStats=lt.levelStats||{}, _wrong=(lt.wrongWords||[]);
+    S._ltResultShowing=true;   /* [결과화면 보호 20260804] 동기화 리스너의 go() 재렌더가 결과를 덮지 못하게 */
     window.__ltResult={ placement:placement, correctTotal:correctTotal, qTotal:qTotal, wrongWords:_wrong.slice(), levelStats:_lvStats, areas:areas, conf:conf };
     S._lt=null;
     var tierName=['다지기','도약','정복'], courseRows='';
@@ -12291,53 +12299,83 @@ function _gcShift(delta){
 }
 // 차트 영역만 다시 그림(모달 재생성 없음 → 스크롤 위치 유지)
 function _gcRender(){
+  /* [전체 그래프 개편 20260804 · 시안⑤] 구간 띠(왕초보~중상급) 배경 + 영역별 보기.
+     S._gcArea: 'all'=종합+영역 겹쳐보기 / 'v'|'l'|'r'|'w'=해당 영역만 크게.
+     영역 데이터는 tHistory.areas(표준 진단의 영역 분해)에서 — 없는 회차는 건너뛰고 이어 그린다. */
   var host=document.getElementById('gcChart'); if(!host) return;
   var wnd=_gcWindow(), g=wnd.g;
   if(!g.length){ host.innerHTML=''; return; }
-  var W=300, H=120, pad=22;
-  var maxL=Math.max(10, Math.max.apply(null,g.map(function(h){return h.level;})));
-  var minL=Math.max(1, Math.min.apply(null,g.map(function(h){return h.level;}))-1);
-  var span=Math.max(1,maxL-minL);
-  var stepX = g.length>1 ? (W-pad*2)/(g.length-1) : 0;
-  function X(i){ return pad + i*stepX; }
-  function Y(l){ return H-pad - ((l-minL)/span)*(H-pad*2); }
-  var pts=g.map(function(h,i){ return X(i)+','+Y(h.level); }).join(' ');
-  var dots=g.map(function(h,i){
-    return '<circle cx="'+X(i)+'" cy="'+Y(h.level)+'" r="4" fill="#1E5FA5" stroke="#fff" stroke-width="2"/>'
-      +'<text x="'+X(i)+'" y="'+(Y(h.level)-9)+'" text-anchor="middle" font-size="9" font-weight="800" fill="#1E5FA5">'+h.level+'</text>';
-  }).join('');
-  // 축 라벨(날짜). 같은 날만 있으면 가운데 한 번.
+  var area=S._gcArea||'all';
+  var W=300, H=112;
+  var stepX = g.length>1 ? 260/(g.length-1) : 0;
+  function X(i){ return g.length>1 ? Math.round(20+i*stepX) : 150; }
+  var AMETA={v:['🔤 단어','#3B82F6'], l:['🎧 듣기','#8B5CF6'], r:['📖 읽기','#16A34A'], w:['✍️ 쓰기','#F97316']};
+  function lineOf(getter, color, width, withDots, labelLast){
+    var pts=[]; g.forEach(function(h,i){ var v=getter(h); if(v!=null) pts.push([X(i), _lvBandY(v), v, i]); });
+    if(!pts.length) return '';
+    var d=pts.map(function(p,i){return (i?'L':'M')+p[0]+','+p[1];}).join(' ');
+    var svg='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="'+width+'" stroke-linecap="round" stroke-linejoin="round"/>';
+    if(withDots) pts.forEach(function(p,i){
+      var lastP=(i===pts.length-1);
+      svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(lastP?5:3.5)+'" fill="'+(lastP?color:'#fff')+'" stroke="'+(lastP?'#fff':color)+'" stroke-width="2"/>';
+      if(labelLast&&lastP) svg+='<text x="'+Math.max(16,p[0]-11)+'" y="'+(p[1]<20?(p[1]+18):(p[1]-10))+'" font-size="10" fill="'+color+'" text-anchor="middle" font-weight="900">Lv.'+p[2]+'</text>';
+    });
+    return svg;
+  }
+  var lines='';
+  if(area==='all'){
+    Object.keys(AMETA).forEach(function(a){ lines+=lineOf(function(h){return h.areas?h.areas[a]:null;}, AMETA[a][1], 1.8, false, false); });
+    lines+=lineOf(function(h){return h.level;}, '#1E5FA5', 2.8, true, true);
+  } else {
+    lines+=lineOf(function(h){return h.level;}, '#CBD5E1', 1.5, false, false);   // 종합은 흐리게 참고선
+    lines+=lineOf(function(h){return h.areas?h.areas[area]:null;}, AMETA[area][1], 2.8, true, true);
+  }
+  if(area!=='all' && lines.indexOf('circle')<0){
+    lines+='<text x="150" y="60" font-size="10" fill="#9CA3AF" text-anchor="middle" font-weight="700">이 영역 기록이 아직 없어요 — 표준 진단을 보면 채워져요</text>';
+  }
+  // 축 라벨(날짜)
   var lbl='';
   if(g.length>1){
     var same=g.every(function(h){ return h.date===g[0].date; });
-    if(same) lbl='<div style="text-align:center;font-size:9px;color:#9CA3AF;margin-top:2px">'+_thAxisLabel(g[0])+'</div>';
-    else {
-      var md=g[Math.floor((g.length-1)/2)];
-      lbl='<div style="display:flex;justify-content:space-between;font-size:9px;color:#9CA3AF;margin-top:2px">'
-        +'<span>'+_thAxisLabel(g[0])+'</span>'+(g.length>2?'<span>'+_thAxisLabel(md)+'</span>':'')
-        +'<span>'+_thAxisLabel(g[g.length-1])+'</span></div>';
+    if(same) lbl='<text x="150" y="110" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(g[0])+'</text>';
+    else{
+      var mi=Math.floor((g.length-1)/2);
+      lbl='<text x="'+X(0)+'" y="110" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(g[0])+'</text>'
+        +(g.length>2?'<text x="'+X(mi)+'" y="110" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(g[mi])+'</text>':'')
+        +'<text x="'+X(g.length-1)+'" y="110" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(g[g.length-1])+'</text>';
     }
   }
-  var canOld = wnd.off < wnd.maxOff;    // 더 과거로
-  var canNew = wnd.off > 0;             // 더 최근으로
+  var canOld = wnd.off < wnd.maxOff;
+  var canNew = wnd.off > 0;
   var range = wnd.n>wnd.w ? ((wnd.start+1)+'–'+wnd.end+' / '+wnd.n+'회') : (wnd.n+'회');
   var btn='background:#fff;border:1px solid #E5E7EB;border-radius:8px;width:28px;height:28px;font-size:13px;cursor:pointer;flex-shrink:0;color:#374151';
   var btnOff='background:#F8F9FA;border:1px solid #F1F3F5;border-radius:8px;width:28px;height:28px;font-size:13px;flex-shrink:0;color:#D1D5DB;cursor:default';
+  // 범례(전체 보기일 때 영역 색)
+  var legend = area==='all'
+    ? '<div style="display:flex;gap:8px;justify-content:center;margin-top:4px;font-size:8.5px;font-weight:700;flex-wrap:wrap">'
+      +'<span style="color:#1E5FA5">━ 종합</span>'
+      +Object.keys(AMETA).map(function(a){return '<span style="color:'+AMETA[a][1]+'">━ '+AMETA[a][0]+'</span>';}).join('')
+      +'</div>'
+    : '';
   host.innerHTML=
      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
       +'<button id="gcPrev" aria-label="이전 기록" '+(canOld?'onclick="_gcShift(1)"':'disabled')+' style="'+(canOld?btn:btnOff)+'">‹</button>'
       +'<div id="gcRange" style="flex:1;text-align:center;font-size:10px;color:#9CA3AF;font-weight:700">'+range+'</div>'
       +'<button id="gcNext" aria-label="다음 기록" '+(canNew?'onclick="_gcShift(-1)"':'disabled')+' style="'+(canNew?btn:btnOff)+'">›</button>'
     +'</div>'
-    +'<div id="gcDrag" style="background:#F8F9FA;border:1px solid #E5E7EB;border-radius:12px;padding:6px;touch-action:pan-y;cursor:'+(wnd.n>wnd.w?'grab':'default')+'">'
+    +'<div id="gcDrag" style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:6px;touch-action:pan-y;cursor:'+(wnd.n>wnd.w?'grab':'default')+'">'
       +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;pointer-events:none">'
-        +'<polyline points="'+pts+'" fill="none" stroke="#1E5FA5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
-        +dots
-      +'</svg>'+lbl
+        +'<rect x="0" y="0" width="300" height="22" fill="#F5F3FF"/><rect x="0" y="22" width="300" height="33" fill="#EFF6FF"/><rect x="0" y="55" width="300" height="33" fill="#F0FDF4"/><rect x="0" y="88" width="300" height="22" fill="#FEFCE8"/>'
+        +'<text x="297" y="13" font-size="7.5" fill="#8B5CF6" text-anchor="end" font-weight="700">중상급 9~10</text><text x="297" y="35" font-size="7.5" fill="#3B82F6" text-anchor="end" font-weight="700">중급 6~8</text><text x="297" y="68" font-size="7.5" fill="#16A34A" text-anchor="end" font-weight="700">기초 3~5</text><text x="297" y="101" font-size="7.5" fill="#CA8A04" text-anchor="end" font-weight="700">왕초보 1~2</text>'
+        +lines+lbl
+      +'</svg>'
+      +legend
+      +'<div style="font-size:8.5px;color:#9CA3AF;text-align:center;margin-top:3px;font-weight:700">왕초보=초등 · 기초=중학 · 중급=고등 · 중상급=수능 이상</div>'
     +'</div>'
     +(wnd.n>wnd.w?'<div style="text-align:center;font-size:9.5px;color:#C4C4C4;margin-top:4px">← 좌우로 밀어 과거 기록 보기 →</div>':'');
   _gcBindDrag();
 }
+function _gcSetArea(a){ S._gcArea=a; _gcRender(); try{ document.querySelectorAll('.gc-chip').forEach(function(c){ var on=c.getAttribute('data-a')===a; c.style.background=on?'#111827':'#fff'; c.style.color=on?'#fff':(c.getAttribute('data-c')||'#374151'); c.style.borderColor=on?'#111827':'#E5E7EB'; }); }catch(e){} }
 // 드래그(마우스·터치)로 창 이동. 한 칸 ≈ 28px.
 // [주의] _gcRender()가 gcDrag를 새로 만들기 때문에, window 리스너를 매번 붙이면 누적된다.
 //        window 리스너는 최초 1회만 등록하고 드래그 상태는 _gcDrag 전역에 둔다.
@@ -12379,6 +12417,7 @@ function _gcBindDrag(){
 }
 function showGrowthChart(){
   S._gcOff=0;   // 항상 최신 구간부터
+  S._gcArea='all';   // [영역별 보기 20260804] 진입 시 전체 보기
   try{ _gcDragEnd(); }catch(e){}   // 이전 드래그 잔상 제거
   var all=_growthAll();
   var mr=document.getElementById('mr'); if(!mr) return;
@@ -12396,16 +12435,29 @@ function showGrowthChart(){
   var rows=all.slice().reverse().map(function(h){
     var acc=(h.qTotal&&h.correct!=null)?Math.round(h.correct/h.qTotal*100)+'%':'-';
     var k=_thKey(h).replace(/'/g,"\\'");
-    return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6">'
-      +'<span style="color:#6B7280;flex:1">'+h.date+'</span>'
-      +'<span style="font-weight:800;color:#1E5FA5;width:52px;text-align:center">레벨 '+h.level+'</span>'
-      +'<span style="color:#9CA3AF;width:62px;text-align:right">정답률 '+acc+'</span>'
+    /* [영역 미니칩 20260804] 표준 진단의 영역 분해 결과가 있으면 회차별로 함께 표시 */
+    var ac='';
+    if(h.areas){
+      var AA=[['v','🔤','#1E5FA5'],['l','🎧','#7C3AED'],['r','📖','#16A34A'],['w','✍️','#EA580C']];
+      ac='<span style="display:inline-flex;gap:3px">'+AA.map(function(m){ var lv=h.areas[m[0]]; return '<span style="font-size:9px;font-weight:800;color:'+(lv==null?'#C0C6CE':m[2])+'">'+m[1]+(lv==null?'—':lv)+'</span>'; }).join('')+'</span>';
+    }
+    return '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;padding:6px 2px;border-bottom:1px solid #F3F4F6;flex-wrap:wrap">'
+      +'<span style="color:#6B7280">'+h.date+'</span>'
+      +'<span style="font-weight:800;color:#1E5FA5">레벨 '+h.level+'</span>'
+      +ac
+      +'<span style="color:#9CA3AF;margin-left:auto">'+acc+'</span>'
       +'<button onclick="event.stopPropagation();_thDelete(\''+k+'\')" title="이 기록 삭제" style="background:#F3F4F6;border:none;border-radius:7px;width:24px;height:24px;font-size:11px;color:#9CA3AF;cursor:pointer;flex-shrink:0">✕</button>'
       +'</div>';
   }).join('');
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:360px;text-align:left">'
     +'<div style="font-size:16px;font-weight:900;color:#111;margin-bottom:2px">📈 내 레벨 성장</div>'
     +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">레벨테스트 '+all.length+'회 · <b style="color:'+dCol+'">'+dTxt+'</b></div>'
+    +'<div style="display:flex;gap:5px;margin-bottom:8px;overflow-x:auto;-webkit-overflow-scrolling:touch">'
+      +[['all','전체','#111827'],['v','🔤 단어','#1E5FA5'],['l','🎧 듣기','#7C3AED'],['r','📖 읽기','#16A34A'],['w','✍️ 쓰기','#EA580C']].map(function(m){
+        var on=(S._gcArea||'all')===m[0];
+        return '<button class="gc-chip" data-a="'+m[0]+'" data-c="'+m[2]+'" onclick="_gcSetArea(\''+m[0]+'\')" style="background:'+(on?'#111827':'#fff')+';color:'+(on?'#fff':m[2])+';border:1.5px solid '+(on?'#111827':'#E5E7EB')+';border-radius:20px;padding:5px 11px;font-size:10.5px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0">'+m[1]+'</button>';
+      }).join('')
+    +'</div>'
     +'<div id="gcChart" style="margin-bottom:12px"></div>'
     +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:4px">전체 기록 <span style="font-weight:600;color:#9CA3AF">('+all.length+'건)</span></div>'
     +'<div style="max-height:190px;overflow-y:auto;-webkit-overflow-scrolling:touch">'+rows+'</div>'

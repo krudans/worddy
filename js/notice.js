@@ -9,19 +9,50 @@ window.renderHomeNotice = async function() {
       .orderBy('createdAt','desc').limit(5).get();
     const notices = snap.docs.map(d=>d.data()).filter(d=>d.active!==false).slice(0,5);
     if(!notices.length) { el.innerHTML=''; return; }
-    const items = notices.map(n => `
+    /* [공지 접기 20260804] 긴 공지는 앞부분(제목·요약·표지 소개, 약 190px)만 보이고
+       '자세히 보기 ▾'로 나머지(특징·난이도 그래프)를 펼친다. 짧은 공지는 버튼 없이 전체 표시.
+       저장된 공지 내용은 건드리지 않는 표시 계층 처리 — 모든 공지에 자동 적용. */
+    const items = notices.map((n,i) => `
       <div style="padding:12px 14px;border-radius:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:8px">
         <div style="font-size:13px;font-weight:800;color:#1E5FA5;margin-bottom:${n.subtitle||n.content?'4px':'0'}">📢 ${n.title||''}</div>
         ${n.subtitle ? '<div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">'+n.subtitle+'</div>' : ''}
-        ${n.content  ? '<div style="font-size:12px;color:#374151;line-height:1.7;white-space:pre-wrap">'+n.content+'</div>' : ''}
+        ${n.content  ? '<div style="position:relative"><div id="ntc-body-'+i+'" data-collapsed="1" style="font-size:12px;color:#374151;line-height:1.7;white-space:pre-wrap;max-height:190px;overflow:hidden">'+n.content+'</div>'
+          +'<div id="ntc-fade-'+i+'" style="position:absolute;left:0;right:0;bottom:0;height:46px;background:linear-gradient(rgba(239,246,255,0),#EFF6FF);pointer-events:none"></div></div>'
+          +'<button id="ntc-more-'+i+'" onclick="window._ntcToggle('+i+')" style="width:100%;margin-top:7px;background:#fff;border:1.5px solid #BFDBFE;border-radius:10px;padding:8px;font-size:11.5px;font-weight:800;color:#1E5FA5;cursor:pointer">자세히 보기 ▾</button>' : ''}
       </div>`).join('');
     el.innerHTML =
       '<div style="background:var(--bg-card,#fff);border-radius:18px;border:1.5px solid var(--border,#E5E7EB);padding:14px;margin-bottom:4px">' +
         '<div style="font-size:13px;font-weight:800;color:var(--text1,#111);margin-bottom:12px">📢 공지사항</div>' +
         items +
       '</div>';
+    // 짧은 공지(접힌 높이보다 조금 긴 정도까지)는 접기 장치 제거 — 버튼만 덜렁 남지 않게
+    notices.forEach((n,i)=>{
+      const b=document.getElementById('ntc-body-'+i);
+      if(!b) return;
+      if(b.scrollHeight <= 240){
+        b.style.maxHeight='none'; b.setAttribute('data-collapsed','0');
+        const f=document.getElementById('ntc-fade-'+i); if(f) f.remove();
+        const m=document.getElementById('ntc-more-'+i); if(m) m.remove();
+      }
+    });
   } catch(e) { el.innerHTML=''; }
 }
+
+// [공지 접기 20260804] 자세히 보기 ▾ / 접기 ▴ 토글
+window._ntcToggle = function(i){
+  const b=document.getElementById('ntc-body-'+i), f=document.getElementById('ntc-fade-'+i), m=document.getElementById('ntc-more-'+i);
+  if(!b) return;
+  if(b.getAttribute('data-collapsed')==='1'){
+    b.style.maxHeight='none'; b.setAttribute('data-collapsed','0');
+    if(f) f.style.display='none';
+    if(m) m.textContent='접기 ▴';
+  } else {
+    b.style.maxHeight='190px'; b.setAttribute('data-collapsed','1');
+    if(f) f.style.display='';
+    if(m) m.textContent='자세히 보기 ▾';
+    try{ b.closest('div[style*="border-radius:12px"]').scrollIntoView({block:'nearest'}); }catch(e){}
+  }
+};
 
 // 관리자 공지 작성
 window.showAdminNoticeEditor = function() {

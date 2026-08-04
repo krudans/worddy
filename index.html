@@ -2694,6 +2694,50 @@ function _pkCefr(pk) {
   return { c, n };
 }
 
+/* ══ [팩 앱레벨 분석 20260804] 팩 단어를 우리 10레벨 체계(CEFR+빈도 상위 1만)에 대조해
+   Lv.1~10 위치 분포로 팩 레벨을 산정한다. 근거가 데이터에 있는 산정:
+   - 각 단어의 레벨 = 상위 1만 내 위치(1000개 단위) · 1만 밖(더 어려운 단어)은 '10+'
+   - 팩 레벨(lv) = 중앙값(단어의 절반이 이 레벨 이하) · lo/hi = 25%/75% 지점(분포 폭)
+   관리자 등록 시 계산해 저장(pk.wlv)한 값을 우선 쓰고, 없으면 이 자리에서 계산(같은 공식). */
+function _pkAppLevel(pk){
+  try{
+    if(!pk) return null;
+    if(pk.wlv && pk.wlv.lv) return pk.wlv;                        // 관리자 저장 근거 우선
+    window._pkLvCache=window._pkLvCache||{};
+    if(window._pkLvCache[pk.id]) return window._pkLvCache[pk.id];
+    var sorted=(typeof _lvlSorted==='function')?_lvlSorted():[];
+    if(!sorted.length) return null;
+    if(!window._lvRankMap){ var mp=Object.create(null); for(var i=0;i<sorted.length;i++) mp[sorted[i]]=(i/1000|0)+1; window._lvRankMap=mp; }
+    var mp2=window._lvRankMap;
+    var ws=(typeof getBookWords==='function' && pk.words===undefined)?[]:(pk.words||[]);
+    if(!ws.length && typeof getPackWords==='function'){ try{ ws=getPackWords(pk)||[]; }catch(e){} }
+    if(!ws.length) return null;
+    var lvs=[], dist={}, out10=0, miss=0;
+    ws.forEach(function(w){
+      var en=String((w&&w.en)||'').toLowerCase().trim(); if(!en){miss++;return;}
+      var L=mp2[en];
+      if(L==null){ if(typeof BWD_DICT!=='undefined'&&BWD_DICT[en]){ L=11; out10++; } else { miss++; return; } }
+      lvs.push(L); dist[L>10?'10+':L]=(dist[L>10?'10+':L]||0)+1;
+    });
+    if(lvs.length<20) return null;                                 // 표본 부족 시 산정 안 함(억지 금지)
+    lvs.sort(function(a,b){return a-b;});
+    function pct(p){ return Math.min(10, lvs[Math.min(lvs.length-1, Math.floor(lvs.length*p))]); }
+    var r={ lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length, cover:Math.round(lvs.length/(lvs.length+miss)*100), dist:dist };
+    window._pkLvCache[pk.id]=r;
+    return r;
+  }catch(e){ return null; }
+}
+/* 내 레벨 대비 관계 태그: 진단 레벨(S._myLevel)과 팩 레벨 비교 */
+function _pkLvRelTag(lv){
+  try{
+    var my=S._myLevel|0; if(!my||!lv) return '';
+    var d=lv-my;
+    if(d<=-2) return '<span style="background:#F0FDF4;color:#16A34A;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px">복습용 · 쉬움</span>';
+    if(d>=3) return '<span style="background:#FEF2F2;color:#DC2626;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px">큰 도전 · 어려움</span>';
+    if(d>=2) return '<span style="background:#FFF7ED;color:#EA580C;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px">도전</span>';
+    return '<span style="background:#EFF6FF;color:#1E5FA5;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px">내 레벨(Lv.'+my+')과 잘 맞아요</span>';
+  }catch(e){ return ''; }
+}
 // 대표 레벨 = 가장 많은 CEFR 등급
 function _pkLevel(pk) {
   const { c } = _pkCefr(pk);
@@ -2881,7 +2925,25 @@ function rPackDetail() {
 
   // 난이도 분포 (기본 펼침 — 상세 진입 시 바로 보이도록)
   acc += _accRow('diff', '📊', '난이도 구성', _wordLvTxt || 'CEFR',
-    `${_pkCefrBar(pk, 9)}
+    `${(function(){
+      /* [단어 레벨 비교 20260804] 팩 단어의 앱 레벨(Lv.1~10) 분포 + 내 레벨 위치 표시 */
+      var wl=_pkAppLevel(pk); if(!wl) return '';
+      var my=S._myLevel|0;
+      var bars=''; var mx=1; for(var L=1;L<=10;L++){ mx=Math.max(mx,(wl.dist&&wl.dist[L])||0); }
+      for(var L2=1;L2<=10;L2++){
+        var v=(wl.dist&&wl.dist[L2])||0, hpx=Math.max(2,Math.round(v/mx*34));
+        var isMy=(my===L2);
+        bars+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">'
+          +'<div style="width:70%;height:'+hpx+'px;background:'+(L2<=wl.lv?'var(--theme,#3B82F6)':'#CBD5E1')+';border-radius:2px 2px 0 0;align-self:center;margin-top:'+(34-hpx)+'px"></div>'
+          +'<div style="font-size:8px;font-weight:'+(isMy?900:600)+';color:'+(isMy?'#DC2626':'var(--text3,#9CA3AF)')+'">'+L2+(isMy?'<br>내레벨':'')+'</div>'
+        +'</div>';
+      }
+      return '<div style="background:var(--bg-sub,#F8FAFC);border-radius:10px;padding:10px 12px;margin-bottom:10px">'
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-size:12px;font-weight:900;color:var(--text1,#111)">이 단어장은 <span style="color:var(--theme,#1E5FA5)">단어 Lv.'+wl.lv+'</span> 수준</span>'+_pkLvRelTag(wl.lv)+'</div>'
+        +'<div style="display:flex;align-items:flex-end;gap:2px;height:48px">'+bars+'</div>'
+        +'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:6px;line-height:1.6">근거: 수록 단어 '+wl.n+'개를 앱 레벨체계(CEFR+빈도 상위 1만)에 대조 — 절반이 Lv.'+wl.lv+' 이하, 대부분 Lv.'+wl.lo+'~'+wl.hi+' 구간'+(wl.cover<90?(' · 대조율 '+wl.cover+'%'):'')+'</div>'
+      +'</div>';
+    })()}${_pkCefrBar(pk, 9)}
      <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:9px;line-height:1.6">읽기 수준은 책 자체의 난이도, 단어 난이도는 이 단어장에서 외울 어휘 수준이에요. 배지의 ⓘ를 눌러 자세히 볼 수 있어요.</div>`, true);
 
   // 구성 기준
@@ -3205,9 +3267,10 @@ function rMarket() {
   else if(mktSort==='read') filtered = filtered.slice().sort((a,b)=>{ const ai=(a.read&&a.read.idx!=null)?a.read.idx:99, bi=(b.read&&b.read.idx!=null)?b.read.idx:99; return ai!==bi ? ai-bi : (a.name||'').localeCompare(b.name||''); });   /* [읽기순 정렬 20260722] 읽기 밴드 쉬운→어려운, 미지정은 뒤로 */
   else if(mktSort==='words') filtered = filtered.slice().sort((a,b)=>((b.words||[]).length||(b.count||0))-((a.words||[]).length||(a.count||0)));
   else if(mktSort==='owned') filtered = filtered.slice().sort((a,b)=>{ const ao=ownedPacks.includes(a.id),bo=ownedPacks.includes(b.id); return ao===bo?0:ao?-1:1; });
+  else if(mktSort==='lv') filtered = filtered.slice().sort((a,b)=>{ const al=(_pkAppLevel(a)||{}).lv||99, bl=(_pkAppLevel(b)||{}).lv||99; return al!==bl ? al-bl : (a.name||'').localeCompare(b.name||''); });   /* [레벨순 정렬 20260804] 단어 앱레벨 낮은→높은, 미산정은 뒤 */
 
   // 정렬 버튼 HTML
-  const sortBtns = [['kr','기본'],['name','이름순'],['read','읽기 난이도'],['words','단어수'],['owned','보유']].map(function(item){
+  const sortBtns = [['kr','기본'],['lv','단어 레벨순'],['name','이름순'],['read','읽기 난이도'],['words','단어수'],['owned','보유']].map(function(item){
     var v=item[0],lb=item[1],active=mktSort===v;
     return '<button onclick="S._mktSort=\''+v+'\';go()" style="padding:4px 10px;border-radius:14px;border:1px solid '+(active?'var(--theme)':'#E5E7EB')+';background:'+(active?'var(--theme-tint)':'#fff')+';color:'+(active?'var(--theme)':'#374151')+';font-size:11px;font-weight:'+(active?700:400)+';cursor:pointer">'+lb+'</button>';
   }).join('');
@@ -3289,7 +3352,9 @@ function rMarket() {
 
   // ── 팩 목록 영역 (검색 시 이 안쪽만 부분 교체) ──
   // [마켓 순서 재배치 20260722] 헤더+요청+추천 위 → 검색·필터·정렬은 여기(목록 직전)
-  html += _mktSearchBlock + _mktFilterBlock;
+  /* [정렬 칩 복원 20260804] sortBtns가 정의만 되고 화면에 없었음(죽은 변수) → 검색창 아래에 노출.
+     '단어 레벨순'을 포함해 정렬을 실제로 쓸 수 있게 한다. */
+  html += _mktSearchBlock + '<div style="display:flex;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;margin-bottom:8px">'+sortBtns+'</div>' + _mktFilterBlock;
   html += '<div id="mkt-list">';
   if(!packs.length) {
     html += `<div style="text-align:center;padding:48px 20px">
@@ -3389,6 +3454,7 @@ function rMarket() {
           </div>
           <div style="font-size:11px;font-weight:700;color:var(--text1,#111);margin-top:6px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(pk.name||'').split('·')[0].trim()}</div>
           <div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:1px">${rd||(_pkSpecLine(pk).split('·')[0].trim())}</div>
+          ${(function(){ var wl=_pkAppLevel(pk); if(!wl) return ''; var my=S._myLevel|0; var c=my?(wl.lv-my<=-2?'#16A34A':(wl.lv-my>=2?'#EA580C':'#1E5FA5')):'#6B7280'; return '<div style="font-size:9px;font-weight:800;color:'+c+';margin-top:2px">단어 Lv.'+wl.lv+(my?(' · 내 Lv.'+my):'')+'</div>'; })()}
         </div>`;
       });
       html += `</div>`;

@@ -4159,14 +4159,16 @@ async function _bpRegister() {
       }catch(e){}   /* [읽기수준 입력 20260721] */
       /* [제목 형식 20260725] 저장 이름은 "영문 원제 / 한글 제목". 한글이 없으면 영문만. */
       var _fullName=(_bp.nameKo&&_bp.nameKo.trim()) ? (_bp.name+' / '+_bp.nameKo.trim()) : _bp.name;
-      docs.push({ id: _bp.packId, data: Object.assign({ name: _fullName, nameEn: _bp.name, nameKo:(_bp.nameKo||'').trim(), emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
+      var _wlv1=null; try{ await _cwLoadDicts(); _wlv1=_wlvAnalyze(toWords(results[0].selected)); }catch(e){}   /* [앱레벨 자동 분석 20260804] */
+      docs.push({ id: _bp.packId, data: Object.assign({ name: _fullName, nameEn: _bp.name, nameKo:(_bp.nameKo||'').trim(), emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _wlv1?{wlv:_wlv1}:{}, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
     } else {
       var total = _bp.tiers.length;
       var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
       for (var i = 0; i < _bp.tiers.length; i++) {
         var label = (_bp.tiers[i].label || (i + 1) + '단계').trim();
         var _cRead=null; try{ if(results[i]&&results[i].fkIdx!=null) _cRead={ar:null,lexile:null,idx:results[i].fkIdx,auto:true,fk:results[i].fkGrade||null}; }catch(e){}   /* [읽기수준 자동산출 20260722] 코스 각 권도 원문 FK로 개별 부여 */
-        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _cImg?{imageUrl:_cImg}:{}, _cRead?{read:_cRead}:{}) });
+        var _wlvT=null; try{ await _cwLoadDicts(); _wlvT=_wlvAnalyze(toWords(results[i].selected)); }catch(e){}   /* [앱레벨 자동 분석 20260804] */
+        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _wlvT?{wlv:_wlvT}:{}, _cImg?{imageUrl:_cImg}:{}, _cRead?{read:_cRead}:{}) });
       }
     }
     var overwritten = [];
@@ -4813,6 +4815,51 @@ async function saveCourseCopy(courseId) {
   }
 }
 
+/* ══ [팩 앱레벨 자동 분석 20260804] 팩 단어를 10레벨 체계(CEFR+빈도 상위 1만)에 대조 →
+   {lv:중앙값, lo/hi:25/75%, n:대조 단어수, cover:대조율%, dist:레벨별 개수}. 앱과 동일 공식.
+   등록 시 자동 저장(wlv)·기존 팩 일괄 분석 버튼에서 사용. */
+function _wlvRankMap(){
+  if(window._wlvMap) return window._wlvMap;
+  var sorted=_cwDefaultSorted();
+  var mp=Object.create(null); for(var i=0;i<sorted.length;i++) mp[sorted[i]]=(i/1000|0)+1;
+  window._wlvMap=mp; return mp;
+}
+function _wlvAnalyze(words){
+  try{
+    var mp=_wlvRankMap(), D=_cwD()||{};
+    var lvs=[], dist={}, miss=0;
+    (words||[]).forEach(function(w){
+      var en=String((w&&w.en)||w||'').toLowerCase().trim(); if(!en){miss++;return;}
+      var L=mp[en];
+      if(L==null){ if(D[en]){ L=11; } else { miss++; return; } }
+      lvs.push(L); dist[L>10?'10+':L]=(dist[L>10?'10+':L]||0)+1;
+    });
+    if(lvs.length<20) return null;
+    lvs.sort(function(a,b){return a-b;});
+    function pct(p){ return Math.min(10, lvs[Math.min(lvs.length-1, Math.floor(lvs.length*p))]); }
+    return { lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length, cover:Math.round(lvs.length/(lvs.length+miss)*100), dist:dist, at:new Date().toISOString() };
+  }catch(e){ return null; }
+}
+/* 기존 팩 전체 일괄 분석 → packs.{id}.wlv 저장 */
+async function _wlvBackfill(){
+  try{
+    await _cwLoadDicts();
+    if(!_cwD()||!_cwM()){ toast('사전 로드 실패','err'); return; }
+    var packs=window._adminPacks||[];
+    if(!packs.length){ toast('팩 목록을 먼저 여세요','err'); return; }
+    if(!confirm(packs.length+'개 팩의 단어 레벨을 분석해 저장할까요?\n(앱 마켓의 레벨 표시·정렬 근거가 됩니다)')) return;
+    var okN=0, skip=0;
+    for(var i=0;i<packs.length;i++){
+      var p=packs[i];
+      var r=_wlvAnalyze(p.words||[]);
+      if(!r){ skip++; continue; }
+      try{ await db.collection('packs').doc(p.id).update({wlv:r}); p.wlv=r; okN++; }catch(e){ skip++; }
+      if(i%5===0) toast('분석 중… '+(i+1)+'/'+packs.length);
+    }
+    toast('✅ 레벨 분석 저장 완료: '+okN+'개 (건너뜀 '+skip+')','ok');
+    rPK();
+  }catch(e){ toast('일괄 분석 실패: '+e.message,'err'); }
+}
 async function rPK(){
   document.getElementById('main-inner').innerHTML='<div style="color:#9CA3AF;text-align:center;padding:40px">로딩 중...</div>';
   try {
@@ -4893,6 +4940,7 @@ async function rPK(){
         <button class="btn bg" onclick="showAddPack()">➕ 새 팩</button>
         <button class="btn bg" onclick="pkApplyCopy()" title="모든 팩에 한 줄 소개·구성 기준을 일괄 반영">📝 소개문구 일괄반영</button>
         <button class="btn bp" onclick="showMetaFix()" title="Open Library에서 지은이·소개를 조회해 비어있거나 다른 팩을 골라 채웁니다">🔎 책 정보 일괄 보정</button>
+        <button class="btn bb" onclick="_wlvBackfill()" title="모든 팩의 단어를 10레벨 체계에 대조해 팩 레벨(wlv)을 저장 — 앱 마켓의 레벨 표시·정렬 근거">📶 단어 레벨 일괄 분석</button>
         <button class="btn bp" onclick="showManageCats()">📂 카테고리 관리</button>
         <button class="btn" onclick="activateAllPacks()" style="background:#F0FDF4;color:#16A34A;border:1.5px solid #BBF7D0;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">✅ 전체 활성화</button>
         <button class="btn" onclick="showEnrichDict()" style="background:#FEF3C7;color:#B45309;border:1.5px solid #FDE68A;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">🦋 Butterfly Word Dic 교체</button>

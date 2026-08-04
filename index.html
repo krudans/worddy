@@ -713,6 +713,20 @@ function _bookShortName(b){
 function _bookDisplayNameByName(nm){
   try{ var b=(S.books||[]).find(function(x){return x.name===nm;}); return b?_bookDisplayName(b):(nm||''); }catch(e){ return nm||''; }
 }
+/* [진도 보존 안전장치 복구 20260804] 재진단 후 "기존 코스에 진도가 있으면 물어보고 재생성"하는
+   판정 함수가 코드에서 사라져 있던 결함(호출부만 남아 항상 '진도 없음' 처리 → 조용히 재생성).
+   이번 라이브 검증에서 발견. 커리큘럼 책에 통과 챕터·외운 단어·학습 기록이 하나라도 있으면 '진도 있음'. */
+function _curriculumHasProgress(){
+  try{
+    return (S.books||[]).some(function(b){
+      if(!b||!b.isCurriculum) return false;
+      if((b.chPass||[]).some(Boolean)) return true;
+      if(b.markMap && Object.keys(b.markMap).length>0) return true;
+      var ln=Array.isArray(b.learned)?b.learned.length:(b.learned&&b.learned.size)||0;
+      return ln>0;
+    });
+  }catch(e){ return true; }   // 판정 불가 시 안전하게 '진도 있음' → 자동 재생성 금지
+}
 function _generateCurriculum(startLevel){
   try{
     startLevel = Math.max(1, Math.min(CW_MAXLEVEL, startLevel|0)) || 5;

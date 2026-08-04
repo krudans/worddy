@@ -7568,10 +7568,11 @@ function _levelExamReady(){
 function _ltClearTimer(){ if(window._ltIV){clearInterval(window._ltIV);window._ltIV=null;} if(window._ltTO){clearTimeout(window._ltTO);window._ltTO=null;} }
 function _ltArmTimer(){
   _ltClearTimer();
-  if(!S._inInitLevelTest || !S._lt || S._lt.ans) return;
-  var total=10, left=total, qi=S._lt.qi, lv0=S._lt.level;
+  var lt=S._lt;
+  if(!S._inInitLevelTest || !lt || lt.ans || !lt.cur) return;
+  var total=(lt.cur.tl||10), left=total, myQ=lt.cur;   /* [혼합문항 20260803] 유형별 제한시간(입력·문장형은 길게) */
   window._ltIV=setInterval(function(){
-    if(!S._inInitLevelTest || !S._lt || S._lt.ans || S._lt.qi!==qi || S._lt.level!==lv0){ _ltClearTimer(); return; }
+    if(!S._inInitLevelTest || !S._lt || S._lt.ans || S._lt.cur!==myQ){ _ltClearTimer(); return; }
     left--;
     var fill=document.getElementById('lt-gauge-fill'), num=document.getElementById('lt-gauge-num');
     if(fill) fill.style.width=Math.max(0,left/total*100)+'%';
@@ -7579,58 +7580,176 @@ function _ltArmTimer(){
     if(left<=0){ _ltClearTimer(); if(S._lt && !S._lt.ans) _ltAnswer(-1); }
   }, 1000);
 }
-function _ltPickQuestion(level){
-  var band=_levelWords(level)||[];
-  if(band.length<4) return null;
-  S._lt.used=S._lt.used||{};
-  var usedSet=S._lt.used[level]||(S._lt.used[level]=Object.create(null));
-  var cands=band.filter(function(w){ return w && w.en && w.kr && !usedSet[w.en]; });
+/* ══ [레벨테스트 대개편 1차 20260803] 혼합 문항 + 운 제거 ═══════════════════════
+   목표: "운 좋게 통과"를 구조적으로 막고, 표준 진단 한 번으로 4영역(단어·듣기·읽기·쓰기)을 함께 잰다.
+   ── 문항 배치(레벨당 10): 뜻고르기4 · 듣기2 · 읽기(예문 빈칸)2 · 쓰기2(직접입력1·듣고 문장만들기1)
+      직접입력·문장만들기는 찍기가 불가능해 4지선다 운(25%)이 크게 줄어든다.
+   ── 모름 버튼: 전 문항 제공(오답과 동일 처리) — 찍기 대신 모름을 유도.
+   ── 확인 라운드: 레벨 탈락 시 '직전 통과 레벨'에서 5문항 재검증. 3개 미만이면 한 레벨 낮춰 판정.
+   ── 영역 레벨: 영역 정답률이 전체 정답률 대비 ±12%p/±28%p 차이나면 종합 레벨에서 ±1/±2 보정(추정치).
+      문항 4개 미만 영역은 null(— 표시) — 억지 추정 금지.
+   ── 폴백: 예문(ex5) 없거나 TTS 불가 → 해당 문항은 자동으로 뜻고르기/직접입력으로 대체. */
+var _LT_TYPES=['v','v','l','r','v','wt','l','r','v','ws'];
+var _LT_CONFIRM=['v','wt','l','r','v'];
+var _LT_TL={v:10,l:15,r:15,wt:20,ws:30};
+var _LT_AREA={v:'v',l:'l',r:'r',wt:'w',ws:'w'};
+var _LT_AREA_NAME={v:'\ud83d\udd24 \ub2e8\uc5b4',l:'\ud83c\udfa7 \ub4e3\uae30',r:'\ud83d\udcd6 \uc77d\uae30',w:'\u270d\ufe0f \uc4f0\uae30'};
+function _ltTTSok(){ try{ return 'speechSynthesis' in window; }catch(e){ return false; } }
+function _ltSpeak(txt){ try{ if(!_ltTTSok()||!txt) return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(txt)); u.lang='en-US'; u.rate=0.82; if(window._bestVoiceFor){ var v=window._bestVoiceFor('en-US'); if(v) u.voice=v; } window.speechSynthesis.speak(u); }catch(e){} }
+function _ltFirstMean(w){ return (w.meanings&&w.meanings[0]) || String(w.kr||'').split(/[;\u2219\u00b7\u3001,]+/)[0].trim(); }
+function _ltEscRe(x){ return String(x).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+function _ltPickWord(level, need){
+  var band=_levelWords(level)||[]; if(band.length<4) return null;
+  var lt=S._lt; lt.used=lt.used||{}; var usedSet=lt.used[level]||(lt.used[level]=Object.create(null));
+  var cands=band.filter(function(w){
+    if(!w||!w.en||!w.kr||usedSet[w.en]) return false;
+    if(need==='plain' && !/^[a-z]{2,12}$/i.test(w.en)) return false;
+    return true;
+  });
   if(!cands.length) return null;
-  var word=cands[Math.floor(Math.random()*cands.length)];
-  usedSet[word.en]=1;
-  function firstMean(w){ return (w.meanings&&w.meanings[0]) || String(w.kr||'').split(/[;∙·、,]+/)[0].trim(); }
-  var correctKr=firstMean(word);
-  var others=band.filter(function(w){ return w.en!==word.en && w.kr && firstMean(w)!==correctKr; });
-  for(var i=others.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=others[i]; others[i]=others[j]; others[j]=t; }
+  if(need==='sent'){
+    for(var t=0;t<30 && cands.length;t++){
+      var i=Math.floor(Math.random()*cands.length); var w=cands[i];
+      var sx=(typeof _ex5One==='function')?_ex5One(w.en):null;
+      if(sx&&sx.en&&new RegExp('\\b'+_ltEscRe(w.en)+'\\b','i').test(sx.en)){ usedSet[w.en]=1; return {w:w,s:sx}; }
+      cands.splice(i,1);
+    }
+    return null;
+  }
+  var word=cands[Math.floor(Math.random()*cands.length)]; usedSet[word.en]=1; return word;
+}
+function _ltShuf(arr){ for(var i=arr.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+function _ltKrChoices(level, word){
+  var band=_levelWords(level)||[];
+  var correctKr=_ltFirstMean(word);
+  var others=_ltShuf(band.filter(function(w){ return w.en!==word.en && w.kr && _ltFirstMean(w)!==correctKr; }).slice());
   var wrongs=[], seen=Object.create(null); seen[correctKr]=1;
-  for(var k=0;k<others.length && wrongs.length<3;k++){ var m=firstMean(others[k]); if(m && !seen[m]){ seen[m]=1; wrongs.push(m); } }
-  while(wrongs.length<3) wrongs.push('(다른 뜻)');
-  var choices=[correctKr].concat(wrongs);
-  for(var a=choices.length-1;a>0;a--){ var b=Math.floor(Math.random()*(a+1)); var tt=choices[a]; choices[a]=choices[b]; choices[b]=tt; }
-  return { en:word.en, kr:correctKr, choices:choices, correctIdx:choices.indexOf(correctKr), img:word.img||'' };
+  for(var k=0;k<others.length&&wrongs.length<3;k++){ var m=_ltFirstMean(others[k]); if(m&&!seen[m]){ seen[m]=1; wrongs.push(m); } }
+  while(wrongs.length<3) wrongs.push('(\ub2e4\ub978 \ub73b)');
+  var choices=_ltShuf([correctKr].concat(wrongs));
+  return {choices:choices, correctIdx:choices.indexOf(correctKr), kr:correctKr};
+}
+function _ltEnChoices(level, word){
+  var band=_levelWords(level)||[];
+  var others=_ltShuf(band.filter(function(w){ return w.en!==word.en && /^[a-z]+$/i.test(w.en||''); }).slice());
+  var wrongs=others.slice(0,3).map(function(w){return w.en;});
+  while(wrongs.length<3) wrongs.push('(\ub2e4\ub978 \ub2e8\uc5b4)');
+  var choices=_ltShuf([word.en].concat(wrongs));
+  return {choices:choices, correctIdx:choices.indexOf(word.en)};
+}
+function _ltMakeQ(level, type){
+  try{
+    if((type==='l'||type==='ws') && !_ltTTSok()) type=(type==='l')?'v':'wt';
+    if(type==='v'||type==='l'){
+      var w=_ltPickWord(level,null); if(!w) return null;
+      var c=_ltKrChoices(level,w);
+      return {t:type,a:_LT_AREA[type],en:w.en,kr:c.kr,choices:c.choices,correctIdx:c.correctIdx,img:w.img||'',tl:_LT_TL[type]};
+    }
+    if(type==='r'){
+      var ps=_ltPickWord(level,'sent');
+      if(!ps) return _ltMakeQ(level,'v');
+      var blank=String(ps.s.en).replace(new RegExp('\\b'+_ltEscRe(ps.w.en)+'\\b','i'),'_____');
+      var ec=_ltEnChoices(level,ps.w);
+      return {t:'r',a:'r',en:ps.w.en,kr:_ltFirstMean(ps.w),sent:blank,sentKr:(ps.s.kr||''),choices:ec.choices,correctIdx:ec.correctIdx,tl:_LT_TL.r};
+    }
+    if(type==='wt'){
+      var w2=_ltPickWord(level,'plain'); if(!w2) return _ltMakeQ(level,'v');
+      return {t:'wt',a:'w',en:w2.en,kr:_ltFirstMean(w2),tl:_LT_TL.wt};
+    }
+    if(type==='ws'){
+      var ps2=_ltPickWord(level,'sent');
+      if(ps2){
+        var words=String(ps2.s.en).replace(/[\u201c\u201d"]/g,'').trim().split(/\s+/);
+        if(words.length>=4&&words.length<=9&&words.every(function(x){return /^[\x20-\x7E]+$/.test(x);})){
+          return {t:'ws',a:'w',en:ps2.w.en,kr:_ltFirstMean(ps2.w),sentWords:words,chips:_ltShuf(words.slice()),placed:[],sentKr:(ps2.s.kr||''),tl:_LT_TL.ws};
+        }
+      }
+      return _ltMakeQ(level,'wt');
+    }
+  }catch(e){}
+  return null;
+}
+function _ltAsk(q){
+  var lt=S._lt;
+  lt.cur=q; lt.ans=false; lt.res=null;
+  _ltRender(); _ltArmTimer();
+  if(q.t==='l') setTimeout(function(){ if(S._lt&&S._lt.cur===q&&!S._lt.ans) _ltSpeak(q.en); },350);
+  if(q.t==='ws') setTimeout(function(){ if(S._lt&&S._lt.cur===q&&!S._lt.ans) _ltSpeak(q.sentWords.join(' ')); },350);
 }
 function _ltNext(){
-  if(!S._lt) return;
-  if(S._lt.wrong>=3){ _ltFinish(); return; }          // 이 레벨 실패 → 직전 통과 레벨로 판정
-  if(S._lt.qi>=10){                                     // 이 레벨 10문제 통과
-    S._lt.lastPassed=S._lt.level;
-    S._lt.level++; S._lt.qi=0; S._lt.wrong=0;
-    if(S._lt.level>CW_MAXLEVEL){ _ltFinish(); return; } // 전부 통과 → 최고 레벨
+  var lt=S._lt; if(!lt) return;
+  if(lt.stage==='confirm'){
+    if(lt.cqi>=_LT_CONFIRM.length){ _ltFinish(); return; }
+    var cq=_ltMakeQ(lt.confirmLevel,_LT_CONFIRM[lt.cqi]);
+    if(!cq){ lt.cqi++; lt.cc++; return _ltNext(); }   // 출제 불가 문항은 통과 처리(불이익 금지)
+    return _ltAsk(cq);
   }
-  var q=_ltPickQuestion(S._lt.level);
-  if(!q){ S._lt.lastPassed=S._lt.level; S._lt.level++; S._lt.qi=0; S._lt.wrong=0; if(S._lt.level>CW_MAXLEVEL){ _ltFinish(); return; } return _ltNext(); }
-  S._lt.cur=q; S._lt.ans=false; S._lt.res=null;
+  if(lt.wrong>=3){
+    if(lt.lastPassed>=1 && !lt.confirmDone){          // [확인 라운드] 경계 레벨 재검증 — 운 통과 차단
+      lt.stage='confirm'; lt.confirmDone=true; lt.confirmLevel=lt.lastPassed; lt.cqi=0; lt.cc=0;
+      return _ltNext();
+    }
+    _ltFinish(); return;
+  }
+  if(lt.qi>=10){
+    lt.lastPassed=lt.level; lt.level++; lt.qi=0; lt.wrong=0;
+    if(lt.level>CW_MAXLEVEL){ _ltFinish(); return; }
+  }
+  var q=_ltMakeQ(lt.level,_LT_TYPES[lt.qi]||'v');
+  if(!q){ lt.lastPassed=lt.level; lt.level++; lt.qi=0; lt.wrong=0; if(lt.level>CW_MAXLEVEL){ _ltFinish(); return; } return _ltNext(); }
+  _ltAsk(q);
+}
+function _ltMark(correct,resVal){
+  var lt=S._lt; if(!lt||lt.ans||!lt.cur) return;
+  _ltClearTimer();
+  lt.ans=true; lt.res=(resVal===undefined?null:resVal);
+  var q=lt.cur, L=(lt.stage==='confirm')?lt.confirmLevel:lt.level;
+  if(!lt.levelStats) lt.levelStats={};
+  if(!lt.levelStats[L]) lt.levelStats[L]={c:0,t:0};
+  lt.levelStats[L].t++;
+  if(!lt.areaStats) lt.areaStats={};
+  if(!lt.areaStats[q.a]) lt.areaStats[q.a]={c:0,t:0};
+  lt.areaStats[q.a].t++;
+  if(correct){ if(typeof ok==='function') ok(); lt.correctTotal++; lt.levelStats[L].c++; lt.areaStats[q.a].c++; if(lt.stage==='confirm') lt.cc++; }
+  else{ if(typeof ng==='function') ng();
+    if(lt.stage!=='confirm') lt.wrong++;
+    if(!lt.wrongWords) lt.wrongWords=[];
+    lt.wrongWords.push({en:q.en, kr:q.kr, level:L});
+    if(typeof _wrongAdd==='function') _wrongAdd({en:q.en, kr:q.kr}, 'level');
+  }
+  if(lt.stage==='confirm') lt.cqi++; else lt.qi++;
+  lt.qTotal++;
   _ltRender();
-  _ltArmTimer();
+  window._ltTO=setTimeout(function(){ if(!S._lt) return; S._lt.cur=null; _ltNext(); }, correct?600:1400);
 }
 function _ltAnswer(idx){
-  if(!S._lt || S._lt.ans) return;
-  _ltClearTimer();
-  S._lt.ans=true; S._lt.res=idx;
-  var correct=(idx===S._lt.cur.correctIdx);
-  var _L=S._lt.level;
-  if(!S._lt.levelStats) S._lt.levelStats={};
-  if(!S._lt.levelStats[_L]) S._lt.levelStats[_L]={c:0,t:0};
-  S._lt.levelStats[_L].t++;
-  if(correct){ if(typeof ok==='function') ok(); S._lt.correctTotal++; S._lt.levelStats[_L].c++; }
-  else { if(typeof ng==='function') ng(); S._lt.wrong++;
-    if(!S._lt.wrongWords) S._lt.wrongWords=[];
-    var _q=S._lt.cur; if(_q){ S._lt.wrongWords.push({en:_q.en, kr:_q.choices[_q.correctIdx], level:_L});
-      if(typeof _wrongAdd==='function') _wrongAdd({en:_q.en, kr:_q.choices[_q.correctIdx]}, 'level'); }
+  var lt=S._lt; if(!lt||lt.ans||!lt.cur) return;
+  if(idx===-1){ _ltMark(false,-1); return; }          // 시간초과
+  if(lt.cur.correctIdx==null) return;                  // 선택형이 아닌 문항 보호
+  _ltMark(idx===lt.cur.correctIdx, idx);
+}
+function _ltDunno(){ var lt=S._lt; if(!lt||lt.ans) return; _ltMark(false,-2); }
+function _ltTypedSubmit(){
+  var lt=S._lt; if(!lt||lt.ans||!lt.cur||lt.cur.t!=='wt') return;
+  var el=document.getElementById('lt-type-inp'); var v=el?String(el.value||'').trim():'';
+  if(!v){ if(typeof toast==='function') toast('\uc815\ub2f5\uc744 \uc785\ub825\ud558\uac70\ub098 \ubaa8\ub984\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694'); return; }
+  _ltMark(v.toLowerCase()===String(lt.cur.en).toLowerCase(), v);
+}
+function _ltChipTap(i){
+  var lt=S._lt; if(!lt||lt.ans||!lt.cur||lt.cur.t!=='ws') return;
+  var q=lt.cur;
+  if(q.placed.indexOf(i)>=0) return;
+  q.placed.push(i);
+  if(q.placed.length>=q.chips.length){
+    var made=q.placed.map(function(x){return q.chips[x];}).join(' ');
+    _ltMark(made===q.sentWords.join(' '), made);
+    return;
   }
-  S._lt.qi++; S._lt.qTotal++;
   _ltRender();
-  window._ltTO=setTimeout(function(){ if(!S._lt) return; S._lt.cur=null; _ltNext(); }, correct?600:1100);
+}
+function _ltChipUndo(pi){
+  var lt=S._lt; if(!lt||lt.ans||!lt.cur||lt.cur.t!=='ws') return;
+  lt.cur.placed.splice(pi,1); _ltRender();
 }
 function _ltExit(){
   if(!confirm('레벨테스트를 그만둘까요? 진행 상황은 저장되지 않아요.')) return;
@@ -7638,38 +7757,83 @@ function _ltExit(){
   try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; var nv=document.getElementById('nav'); if(nv) nv.style.display=''; }catch(e){}
   if(typeof go==='function') go('mybooks','books');
 }
-function _ltRender(){
-  var lt=S._lt; if(!lt||!lt.cur) return;
-  var q=lt.cur;
-  var wrongDots=''; for(var i=0;i<3;i++){ wrongDots+='<span style="display:inline-block;width:16px;height:16px;border-radius:50%;margin-left:3px;vertical-align:middle;background:'+(i<lt.wrong?'#DC2626':'#E5E7EB')+';border:2px solid '+(i<lt.wrong?'#FECDD3':'#D1D5DB')+'"></span>'; }
-  var choicesHtml=q.choices.map(function(c,ri){
+function _ltChoicesHtml(q,lt,mono){
+  return '<div style="display:flex;flex-direction:column;gap:9px">'+q.choices.map(function(c,ri){
     var bg='#fff',col='#374151',bd='#E5E7EB';
     if(lt.ans){
       if(ri===q.correctIdx){bg='#F0FDF4';col='#16A34A';bd='#86EFAC';}
       else if(ri===lt.res){bg='#FFF1F2';col='#DC2626';bd='#FECDD3';}
     }
-    return '<button onclick="_ltAnswer('+ri+')" style="background:'+bg+';color:'+col+';border:2px solid '+bd+';border-radius:14px;padding:15px 10px;font-size:15px;font-weight:600;cursor:'+(lt.ans?'default':'pointer')+';width:100%;text-align:center">'+c+'</button>';
-  }).join('');
+    return '<button onclick="_ltAnswer('+ri+')" style="background:'+bg+';color:'+col+';border:2px solid '+bd+';border-radius:14px;padding:14px 10px;font-size:15px;font-weight:'+(mono?700:600)+';cursor:'+(lt.ans?'default':'pointer')+';width:100%;text-align:center'+(mono?';font-family:monospace':'')+'">'+c+'</button>';
+  }).join('')+'</div>';
+}
+function _ltRender(){
+  var lt=S._lt; if(!lt||!lt.cur) return;
+  var q=lt.cur, isC=(lt.stage==='confirm');
+  var wrongDots=''; for(var i=0;i<3;i++){ wrongDots+='<span style="display:inline-block;width:16px;height:16px;border-radius:50%;margin-left:3px;vertical-align:middle;background:'+(i<lt.wrong?'#DC2626':'#E5E7EB')+';border:2px solid '+(i<lt.wrong?'#FECDD3':'#D1D5DB')+'"></span>'; }
+  var areaChip='<span style="font-size:10px;font-weight:800;background:#EEF3FA;color:var(--theme,#1E5FA5);border-radius:8px;padding:2px 8px">'+(_LT_AREA_NAME[q.a]||'')+((q.t==='wt'||q.t==='ws')?' \u00b7 \ucc0d\uae30 \ubd88\uac00':'')+'</span>';
+  var body='';
+  if(q.t==='v'){
+    body='<div style="background:#F8F9FA;border-radius:20px;padding:26px 20px;text-align:center;border:1.5px solid #E5E7EB;margin-bottom:12px">'
+      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">\uc774 \ub2e8\uc5b4\uc758 \ub73b\uc740?</div>'
+      +'<div style="font-size:32px;font-weight:900;color:#111">'+q.en+'</div></div>'
+      +_ltChoicesHtml(q,lt,false);
+  } else if(q.t==='l'){
+    body='<div style="background:#F8F9FA;border-radius:20px;padding:22px 20px;text-align:center;border:1.5px solid #E5E7EB;margin-bottom:12px">'
+      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:10px">\ubc1c\uc74c\uc744 \ub4e3\uace0 \ub73b\uc744 \uace0\ub974\uc138\uc694</div>'
+      +'<button onclick="_ltSpeak(S._lt&&S._lt.cur?S._lt.cur.en:\'\')" style="width:64px;height:64px;border-radius:50%;border:none;background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:#fff;font-size:26px;cursor:pointer;box-shadow:0 4px 14px rgba(139,92,246,.35)">\ud83d\udd0a</button>'
+      +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">\ud83d\udd0a \ubc84\ud2bc\uc73c\ub85c \ub2e4\uc2dc \ub4e4\uc744 \uc218 \uc788\uc5b4\uc694</div>'
+      +(lt.ans?'<div style="font-size:15px;font-weight:900;color:#111;margin-top:8px">'+q.en+'</div>':'')
+      +'</div>'
+      +_ltChoicesHtml(q,lt,false);
+  } else if(q.t==='r'){
+    body='<div style="background:#F8F9FA;border-radius:20px;padding:20px;border:1.5px solid #E5E7EB;margin-bottom:12px">'
+      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;text-align:center">\ube48\uce78\uc5d0 \ub4e4\uc5b4\uac08 \ub2e8\uc5b4\ub294?</div>'
+      +'<div style="font-size:16.5px;font-weight:700;color:#111;line-height:1.7;text-align:center">'+q.sent+'</div>'
+      +(q.sentKr?'<div style="font-size:12px;color:#9CA3AF;margin-top:7px;text-align:center">'+q.sentKr+'</div>':'')
+      +'</div>'
+      +_ltChoicesHtml(q,lt,true);
+  } else if(q.t==='wt'){
+    var _okT=lt.ans&&String(lt.res).toLowerCase()===String(q.en).toLowerCase();
+    body='<div style="background:#F8F9FA;border-radius:20px;padding:22px 20px;text-align:center;border:1.5px solid #E5E7EB;margin-bottom:12px">'
+      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">\uc774 \ub73b\uc758 \uc601\uc5b4 \ub2e8\uc5b4\ub97c \uc9c1\uc811 \uc785\ub825\ud558\uc138\uc694</div>'
+      +'<div style="font-size:27px;font-weight:900;color:#111">'+q.kr+'</div></div>'
+      +(lt.ans
+        ? '<div style="background:'+(_okT?'#F0FDF4;border:2px solid #86EFAC':'#FFF1F2;border:2px solid #FECDD3')+';border-radius:14px;padding:14px;text-align:center;font-size:15px;font-weight:800;color:#111">\uc815\ub2f5: '+q.en+' '+(_okT?'\u2b55':('\u274c'+(lt.res===-1?' (\uc2dc\uac04\ucd08\uacfc)':lt.res===-2?' (\ubaa8\ub984)':' (\ub0b4 \ub2f5: '+lt.res+')')))+'</div>'
+        : '<input id="lt-type-inp" autocomplete="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key===\'Enter\')_ltTypedSubmit()" placeholder="\uc601\uc5b4\ub85c \uc785\ub825" style="width:100%;box-sizing:border-box;padding:14px;border:2px solid var(--theme-soft,#BFD7F0);border-radius:14px;font-size:17px;font-family:monospace;outline:none;text-align:center">'
+          +'<button onclick="_ltTypedSubmit()" style="width:100%;margin-top:9px;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:900;cursor:pointer">\ud655\uc778</button>');
+  } else if(q.t==='ws'){
+    var placedHtml=q.placed.map(function(x,pi){ return '<button onclick="_ltChipUndo('+pi+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:9px;padding:8px 11px;font-size:14px;font-weight:800;cursor:pointer">'+q.chips[x]+'</button>'; }).join('');
+    var poolHtml=q.chips.map(function(c,ci){ var used=q.placed.indexOf(ci)>=0; return '<button '+(used?'disabled':'onclick="_ltChipTap('+ci+')"')+' style="background:'+(used?'#F1F3F5':'#fff')+';color:'+(used?'#C0C6CE':'#374151')+';border:2px solid '+(used?'#E9ECEF':'#D6E4F7')+';border-radius:9px;padding:8px 11px;font-size:14px;font-weight:700;cursor:'+(used?'default':'pointer')+'">'+c+'</button>'; }).join('');
+    var _okS=lt.ans&&lt.res===q.sentWords.join(' ');
+    body='<div style="background:#F8F9FA;border-radius:20px;padding:18px;border:1.5px solid #E5E7EB;margin-bottom:12px">'
+      +'<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">'
+        +'<button onclick="_ltSpeak(S._lt&&S._lt.cur&&S._lt.cur.sentWords?S._lt.cur.sentWords.join(\' \'):\'\')" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#F97316,#EA580C);color:#fff;font-size:17px;cursor:pointer;flex-shrink:0">\ud83d\udd0a</button>'
+        +'<div style="font-size:11.5px;color:#6B7280;line-height:1.5">\ub4e4\uc740 \ubb38\uc7a5\uc744 \ub2e8\uc5b4 \uce74\ub4dc\ub85c \uc644\uc131\ud558\uc138\uc694'+(q.sentKr?'<br><b style="color:#374151">'+q.sentKr+'</b>':'')+'</div>'
+      +'</div>'
+      +'<div style="min-height:46px;background:#fff;border:1.5px dashed var(--theme-soft,#BFD7F0);border-radius:12px;padding:7px;display:flex;gap:6px;flex-wrap:wrap">'+placedHtml+'</div>'
+      +(lt.ans?'<div style="margin-top:8px;background:'+(_okS?'#F0FDF4;border:1.5px solid #86EFAC':'#FFF1F2;border:1.5px solid #FECDD3')+';border-radius:11px;padding:10px;font-size:13px;font-weight:700;color:#111;text-align:center">'+(_okS?'\u2b55 ':'\u274c ')+'\uc815\ub2f5: '+q.sentWords.join(' ')+'</div>':'')
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'+poolHtml+'</div>';
+  }
   document.getElementById('body').innerHTML=
     '<div class="pad" style="padding-top:14px">'
     +'<div style="background:#fff;border-radius:16px;padding:13px 15px;border:1.5px solid #E5E7EB;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">'
-        +'<span style="font-size:14px;font-weight:900;color:var(--theme)">레벨 '+lt.level+' 도전 중</span>'
-        +'<span style="font-size:11px;color:#9CA3AF">'+lt.qTotal+'번째 · 이 레벨 '+lt.qi+'/10</span>'
+        +'<span style="font-size:14px;font-weight:900;color:'+(isC?'#B45309':'var(--theme)')+'">'+(isC?('\u2696\ufe0f \ud655\uc778 \ub77c\uc6b4\ub4dc \u2014 \ub808\ubca8 '+lt.confirmLevel+' \uc7ac\uac80\uc99d'):('\ub808\ubca8 '+lt.level+' \ub3c4\uc804 \uc911'))+'</span>'
+        +'<span style="font-size:11px;color:#9CA3AF">'+(isC?('\ubb38\ud56d '+Math.min(lt.cqi+1,_LT_CONFIRM.length)+'/'+_LT_CONFIRM.length):(lt.qTotal+'\ubc88\uc9f8 \u00b7 \uc774 \ub808\ubca8 '+lt.qi+'/10'))+'</span>'
       +'</div>'
       +'<div style="display:flex;align-items:center;justify-content:space-between">'
-        +'<div style="display:flex;align-items:center"><span style="font-size:11px;color:#DC2626;font-weight:700;margin-right:1px">오답</span>'+wrongDots+'<span style="font-size:11px;color:#9CA3AF;margin-left:7px">3개면 판정</span></div>'
-        +'<span id="lt-gauge-num" style="font-size:12px;font-weight:800;color:var(--theme)">10초</span>'
+        +'<div style="display:flex;align-items:center;gap:6px">'+areaChip+(isC?'':('<span style="display:inline-flex;align-items:center"><span style="font-size:11px;color:#DC2626;font-weight:700;margin-right:1px">\uc624\ub2f5</span>'+wrongDots+'</span>'))+'</div>'
+        +'<span id="lt-gauge-num" style="font-size:12px;font-weight:800;color:var(--theme)">'+(q.tl||10)+'\ucd08</span>'
       +'</div>'
       +'<div style="height:6px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin-top:8px"><div id="lt-gauge-fill" style="width:100%;height:100%;background:var(--theme);transition:width .35s linear"></div></div>'
     +'</div>'
-    +'<div style="background:#F8F9FA;border-radius:20px;padding:30px 20px;text-align:center;border:1.5px solid #E5E7EB;margin-bottom:14px">'
-      +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">이 단어의 뜻은?</div>'
-      +'<div style="font-size:32px;font-weight:900;color:#111">'+q.en+'</div>'
-    +'</div>'
-    +'<div style="display:flex;flex-direction:column;gap:9px">'+choicesHtml+'</div>'
-    +'<button onclick="_ltExit()" style="margin-top:16px;width:100%;background:none;border:none;color:#9CA3AF;font-size:12px;cursor:pointer">테스트 그만두기</button>'
+    +body
+    +(lt.ans?'':'<button onclick="_ltDunno()" style="margin-top:12px;width:100%;background:#F3F4F6;border:none;border-radius:12px;padding:11px;color:#6B7280;font-size:12.5px;font-weight:800;cursor:pointer">\ud83e\udd37 \ubaa8\ub984 \u2014 \ucc0d\uc9c0 \uc54a\uc744\ub798\uc694</button>')
+    +'<button onclick="_ltExit()" style="margin-top:10px;width:100%;background:none;border:none;color:#9CA3AF;font-size:12px;cursor:pointer">\ud14c\uc2a4\ud2b8 \uadf8\ub9cc\ub450\uae30</button>'
     +'</div>';
+  var inp=document.getElementById('lt-type-inp'); if(inp) setTimeout(function(){ try{inp.focus();}catch(e){} },60);
 }
 function startInitialLevelExam(){
   try{
@@ -7686,11 +7850,72 @@ function startInitialLevelExam(){
       return;
     }
     _ltClearTimer();
-    S._lt={ level:1, qi:0, wrong:0, lastPassed:0, used:{}, correctTotal:0, qTotal:0, cur:null, ans:false, res:null };
+    S._lt={ level:1, qi:0, wrong:0, lastPassed:0, used:{}, correctTotal:0, qTotal:0, cur:null, ans:false, res:null, stage:'main', confirmDone:false, confirmLevel:0, cqi:0, cc:0, areaStats:{}, levelStats:{}, wrongWords:[] };   /* [혼합문항+확인라운드 20260803] */
     S._inInitLevelTest=true; S._prevTab=S.tab;
     try{ var hd=document.getElementById('hd'); if(hd) hd.style.display='none'; var nv=document.getElementById('nav'); if(nv) nv.style.display='none'; }catch(e){}
     _ltNext();
   }catch(e){ if(typeof toast==='function') toast('레벨테스트 시작 실패','err'); }
+}
+/* ── [레벨 눈금 통일 20260803] 앱 내 레벨 표기는 Lv.1~10 하나만 쓴다.
+   구간명은 한글(왕초보/기초/중급/중상급 + 학교 수준), CEFR(A1~B2)은 결과 화면 '국제기준 참고' 한 줄로만. */
+function _lvBandName(l){
+  if(l<=2) return {nm:'왕초보', sc:'초등 수준', c:'#CA8A04'};
+  if(l<=5) return {nm:'기초', sc:'중학 수준', c:'#16A34A'};
+  if(l<=8) return {nm:'중급', sc:'고등 수준', c:'#3B82F6'};
+  return {nm:'중상급', sc:'수능 이상', c:'#8B5CF6'};
+}
+function _lvBandDesc(l){
+  var b=_lvBandName(l);
+  var top={'왕초보':2,'기초':5,'중급':8,'중상급':10}[b.nm];
+  if(l>=10) return '최고 단계예요 — 이제 유지가 목표!';
+  if(l===top) return b.nm+'의 마지막 단계 — 다음은 '+_lvBandName(l+1).nm+'(Lv.'+(l+1)+')이에요';
+  return b.nm+' 단계를 지나는 중 — 다음 목표는 Lv.'+(l+1)+'이에요';
+}
+function _lvBandLegendHTML(){
+  function cell(bg,c1,t1,t2){ return '<span style="flex:1;text-align:center;background:'+bg+';border-radius:7px;padding:4px 0;font-size:8.5px;font-weight:800;color:'+c1+'">'+t1+'<br><span style="font-weight:600;opacity:.75">'+t2+'</span></span>'; }
+  return '<div style="display:flex;gap:4px;margin-top:8px">'
+    +cell('#FEFCE8','#CA8A04','Lv.1~2 왕초보','초등 수준')
+    +cell('#F0FDF4','#16A34A','Lv.3~5 기초','중학 수준')
+    +cell('#EFF6FF','#3B82F6','Lv.6~8 중급','고등 수준')
+    +cell('#F5F3FF','#8B5CF6','Lv.9~10 중상급','수능 이상')
+    +'</div>';
+}
+/* [영역 레벨 추정 20260803] 영역 정답률이 전체 대비 ±12%p/±28%p 차이나면 종합 레벨 ±1/±2 보정.
+   문항 4개 미만 영역은 null(화면에서 '문항 부족') — 데이터 없이 숫자를 지어내지 않는다. */
+function _ltAreaLevels(lt, placement){
+  var out={v:null,l:null,r:null,w:null};
+  try{
+    var oAcc=lt.qTotal?(lt.correctTotal/lt.qTotal):0;
+    ['v','l','r','w'].forEach(function(a){
+      var st=(lt.areaStats||{})[a];
+      if(!st||st.t<4) return;
+      var d=(st.c/st.t)-oAcc;
+      var adj=d>=0.28?2:(d>=0.12?1:(d<=-0.28?-2:(d<=-0.12?-1:0)));
+      out[a]=Math.max(1,Math.min(CW_MAXLEVEL,placement+adj));
+    });
+  }catch(e){}
+  return out;
+}
+function _ltAreaProfileHTML(areas){
+  if(!areas) return '';
+  var META=[['v','🔤 단어','#3B82F6'],['l','🎧 듣기','#8B5CF6'],['r','📖 읽기','#16A34A'],['w','✍️ 쓰기','#F97316']];
+  var have=META.filter(function(m){return areas[m[0]]!=null;});
+  if(!have.length) return '';
+  var rows=META.map(function(m){
+    var lv=areas[m[0]];
+    if(lv==null) return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11.5px;width:52px;font-weight:800;color:#9CA3AF">'+m[1]+'</span><div style="flex:1;height:7px;background:#F1F5F9;border-radius:99px"></div><span style="font-size:10px;color:#9CA3AF">문항 부족</span></div>';
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11.5px;width:52px;font-weight:800;color:#374151">'+m[1]+'</span><div style="flex:1;height:7px;background:#E5E7EB;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:'+(lv*10)+'%;background:'+m[2]+'"></span></div><span style="font-size:11px;font-weight:900;color:'+m[2]+';width:34px;text-align:right">Lv.'+lv+'</span></div>';
+  }).join('');
+  var tip='';
+  try{
+    var best=null,worst=null;
+    have.forEach(function(m){ if(!best||areas[m[0]]>areas[best[0]]) best=m; if(!worst||areas[m[0]]<areas[worst[0]]) worst=m; });
+    if(best&&worst&&areas[best[0]]>areas[worst[0]]){
+      var rec={l:'자동학습(듣기 반복)',w:'받아쓰기·문장 순서 게임',r:'예문 빈칸 게임',v:'플래시카드'}[worst[0]];
+      tip='<div style="background:#F8FAFC;border-radius:10px;padding:9px 11px;font-size:10.5px;color:#374151;line-height:1.6;margin-top:4px">💪 <b>'+best[1]+'</b>이 강점이에요. <b>'+worst[1]+'</b>이 낮아요 — '+rec+'를 추천해요.</div>';
+    }
+  }catch(e){}
+  return '<div style="text-align:left;background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;padding:12px 13px;margin-bottom:8px"><div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:8px">영역 프로필 <span style="font-weight:600;color:#9CA3AF;font-size:10px">— 표준 진단 한 번으로 함께 측정돼요</span></div>'+rows+tip+'</div>';
 }
 function _lvCefr(l){ return ({1:'A1',2:'A1~A2',3:'A2',4:'A2',5:'A2~B1',6:'B1',7:'B1',8:'B1',9:'B1~B2',10:'B2'})[l]||''; }
 function _ltReviewWrong(){
@@ -7715,7 +7940,24 @@ function _ltFinish(){
     _ltClearTimer();
     var lt=S._lt||{};
     var placement=Math.max(1, Math.min(CW_MAXLEVEL, lt.lastPassed||0)); // 직전 통과 레벨(레벨1 실패=최소 1)
+    /* [확인 라운드 판정 20260803] 경계 레벨 5문항 재검증에서 3개 미만이면 한 레벨 낮춰 판정 — 운 통과 차단 */
+    var confNote='';
+    if(lt.confirmDone){
+      if((lt.cc||0)>=3){ confNote='경계 레벨 2회 검증 완료'; }
+      else if(placement>1){ placement=placement-1; confNote='확인 라운드 결과 한 레벨 낮춰 판정'; }
+      else { confNote='확인 라운드 결과 반영'; }
+    }
     var correctTotal=lt.correctTotal||0, qTotal=lt.qTotal||0;
+    /* [확신도 20260803] 판정 레벨·다음 레벨의 정답률 여유로 계산하는 추정치(55~99%). 낮으면 재진단 권유 용도 */
+    var _stC=lt.levelStats||{};
+    function _accL(L){ var st=_stC[L]; return (st&&st.t)?Math.round(st.c/st.t*100):null; }
+    var _aP=_accL(placement), _aF=_accL(placement+1);
+    var conf=70;
+    if(_aP!=null) conf+=Math.round((_aP-70)*0.4);
+    if(_aF!=null) conf+=Math.round((70-_aF)*0.2);
+    if(lt.confirmDone) conf+=((lt.cc||0)>=3?6:-6);
+    conf=Math.max(55,Math.min(99,conf));
+    var areas=(typeof _ltAreaLevels==='function')?_ltAreaLevels(lt,placement):null;
     S._inInitLevelTest=false;
     // [진도 보존] 기존 커리큘럼에 학습 진도가 있으면 자동 덮어쓰기하지 않고 결과 화면에서 물어본다.
     var _hadProgress = (typeof _curriculumHasProgress==='function') && _curriculumHasProgress();
@@ -7728,19 +7970,20 @@ function _ltFinish(){
     }
     try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
     try{ localStorage.setItem('wd-tested','1'); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
-    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal});
+    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf});   /* [영역 프로필 20260803] */
       if(S.tHistory.length>_TH_MAX) S.tHistory=S.tHistory.slice(-_TH_MAX);   // 서버·병합과 동일한 상한 유지
       localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
     if(typeof addXP==='function') addXP(correctTotal*2);
     if(typeof sv==='function') sv();
     var _lvStats=lt.levelStats||{}, _wrong=(lt.wrongWords||[]);
-    window.__ltResult={ placement:placement, correctTotal:correctTotal, qTotal:qTotal, wrongWords:_wrong.slice(), levelStats:_lvStats };
+    window.__ltResult={ placement:placement, correctTotal:correctTotal, qTotal:qTotal, wrongWords:_wrong.slice(), levelStats:_lvStats, areas:areas, conf:conf };
     S._lt=null;
     var tierName=['다지기','도약','정복'], courseRows='';
     for(var t=0;t<3;t++){ var cl=Math.min(placement+t, CW_MAXLEVEL); courseRows+='<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;background:'+(t===0?'var(--theme-tint,#EEF3FA)':'#F8F9FA')+';border:1px solid '+(t===0?'var(--theme-soft,#BFD7F0)':'#E5E7EB')+';margin-bottom:6px"><span style="font-size:15px">'+(t===0?'▶️':'🔒')+'</span><span style="flex:1;font-size:13px;font-weight:700;color:#374151">레벨업 '+(t+1)+'단계</span><span style="font-size:10px;background:#fff;color:var(--theme,#1E5FA5);padding:2px 8px;border-radius:8px;font-weight:700">레벨 '+cl+'</span></div>'; }
     try{ var hd=document.getElementById('hd'); if(hd) hd.style.display=''; var nv=document.getElementById('nav'); if(nv) nv.style.display=''; }catch(e){}
     var _pctAll = qTotal?Math.round(correctTotal/qTotal*100):0;
     var _cefr = (typeof _lvCefr==='function')?_lvCefr(placement):'';
+    var _bnR = _lvBandName(placement);
     var _statRows='';
     Object.keys(_lvStats).map(Number).sort(function(a,b){return a-b;}).forEach(function(L){
       var s=_lvStats[L], p=s.t?Math.round(s.c/s.t*100):0;
@@ -7758,10 +8001,14 @@ function _ltFinish(){
         +'<div style="font-size:48px;margin-bottom:6px">🎯</div>'
         +'<div style="font-size:22px;font-weight:900;color:#111;margin-bottom:2px">레벨테스트 완료!</div>'
         +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+qTotal+'문제 중 '+correctTotal+'개 정답 · 정답률 '+_pctAll+'%</div>'
-        +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:16px">'
+        +'<div style="background:var(--theme-tint,#EEF3FA);border:2px solid var(--theme,#1E5FA5);border-radius:16px;padding:16px;margin-bottom:10px">'
           +'<div style="font-size:12px;color:var(--theme,#1E5FA5);font-weight:700;margin-bottom:2px">나의 레벨</div>'
-          +'<div style="font-size:26px;font-weight:900;color:var(--theme,#1E5FA5)">레벨 '+placement+(_cefr?' <span style="font-size:13px;font-weight:700">· CEFR '+_cefr+'</span>':'')+'</div>'
+          +'<div style="font-size:27px;font-weight:900;color:var(--theme,#1E5FA5)">Lv.'+placement+' <span style="font-size:14px;color:#111">· '+_bnR.nm+' <span style="font-size:11.5px;color:#6B7280;font-weight:700">('+_bnR.sc+')</span></span></div>'
+          +'<div style="font-size:11px;font-weight:800;color:#16A34A;margin-top:5px">판정 확신도 '+conf+'%'+(confNote?' · '+confNote:'')+'</div>'
+          +(_cefr?'<div style="font-size:9.5px;color:#9CA3AF;margin-top:4px">국제기준(CEFR)으로는 '+_cefr+'이에요 — 앱에서는 Lv.1~10만 써요</div>':'')
         +'</div>'
+        +_ltAreaProfileHTML(areas)
+        +'<div style="margin-bottom:14px">'+_lvBandLegendHTML()+'</div>'
       +'</div>'
       +(_statRows?'<div style="text-align:left;margin-bottom:16px"><div style="font-size:12px;font-weight:800;color:#374151;margin-bottom:8px">📊 레벨별 정답률</div>'+_statRows+'</div>':'')
       +(window.__ltNeedsConfirm
@@ -10715,68 +10962,38 @@ function rHome() {
     var _DOT='width:7px;height:7px;border-radius:50%;background:var(--theme,#3B82F6);flex-shrink:0';
     var _HDT='flex:1;font-size:12.5px;font-weight:800;color:var(--text1,#111827)';
     var _MORE='font-size:10.5px;color:var(--theme,#3B82F6);font-weight:700';
-    if(_gh.length>=2){
-      var _f=_gh[0].level, _l=_gh[_gh.length-1].level, _d=_l-_f;
-      var _c=_d>0?'#16A34A':(_d<0?'#DC2626':'var(--text3,#9CA3AF)');
-      var _dt=_d>0?('▲'+_d+' 상승'):(_d<0?('▼'+Math.abs(_d)+' 하락'):'변화 없음');
-      // 추이 막대(최근 5회) + 날짜 라벨(처음/중간/마지막)
-      var _rc=_gh.slice(-_TH_BARS);
-      var _mx=Math.max.apply(null,_rc.map(function(h){return h.level;}));
-      // 기록이 적으면 막대가 왼쪽에 몰려 카드가 비어 보인다.
-      // → 개수에 따라 간격과 막대 폭 상한을 키워 가로를 채운다(3건 이상이면 거의 100% 채움).
-      //   1~2건은 늘려도 남으므로 가운데 정렬.
-      var _nb=_rc.length;
-      var _gap = _nb<=2 ? 18 : (_nb<=4 ? 14 : (_nb<=6 ? 10 : 6));
-      var _cap = 88;                                   // 막대 하나가 지나치게 뚱뚱해지지 않도록
-      var _just = _nb<=2 ? 'center' : 'space-between';
-      var _bars=_rc.map(function(h,bi){
-        var _hp=Math.max(18, Math.round(h.level/Math.max(1,_mx)*100));
-        var _bg=(bi===_rc.length-1)?'var(--theme,#3B82F6)':'var(--theme-soft,#BFDBFE)';
-        return '<i style="flex:1;max-width:'+_cap+'px;height:'+_hp+'%;background:'+_bg+';border-radius:3px 3px 0 0;display:block"></i>';
-      }).join('');
-      var _lbl='';
-      if(_rc.length>1){
-        // 표시 구간의 날짜가 전부 같으면(하루에 여러 번 응시) 날짜를 가운데 한 번만 적는다.
-        var _sameDay=_rc.every(function(h){ return h.date===_rc[0].date; });
-        if(_sameDay){
-          _lbl='<div style="text-align:center;font-size:9px;color:var(--text3,#9CA3AF);margin-top:5px">'+_thAxisLabel(_rc[0])+'</div>';
-        } else {
-          var _md=_rc[Math.floor((_rc.length-1)/2)];
-          _lbl='<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3,#9CA3AF);margin-top:5px">'
-            +'<span>'+_thAxisLabel(_rc[0])+'</span>'
-            +(_rc.length>2?'<span>'+_thAxisLabel(_md)+'</span>':'')
-            +'<span>'+_thAxisLabel(_rc[_rc.length-1])+'</span></div>';
-        }
+    if(_gh.length>=1){
+      /* [홈 레벨 카드 · A안 컴팩트 20260804] 레벨 타일 + 한글 단계명 + 영역 4색 미니바 한 줄.
+         눈금은 Lv.1~10 하나. 상세(성장 차트·범례·재진단)는 '전체 그래프' 화면에서. */
+      var _last=_gh[_gh.length-1], _l=_last.level;
+      var _d=(_gh.length>=2)?(_l-_gh[0].level):0;
+      var _bn=_lvBandName(_l);
+      var _ar=null; for(var _gi=_gh.length-1;_gi>=0;_gi--){ if(_gh[_gi].areas){ _ar=_gh[_gi].areas; break; } }
+      var _AM=[['v','🔤','#3B82F6'],['l','🎧','#8B5CF6'],['r','📖','#16A34A'],['w','✍️','#F97316']];
+      var _miniBars, _miniText;
+      if(_ar){
+        _miniBars='<div style="display:flex;gap:4px;margin-top:6px">'+_AM.map(function(m){
+          var lv=_ar[m[0]];
+          return '<span style="flex:1;height:5px;background:var(--bg-sub,#E5E7EB);border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:'+(lv==null?0:lv*10)+'%;background:'+m[2]+';border-radius:99px"></span></span>';
+        }).join('')+'</div>';
+        _miniText='<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:4px;font-weight:700">'+_AM.map(function(m){ var lv=_ar[m[0]]; return m[1]+(lv==null?'—':lv); }).join(' · ')+'</div>';
+      } else {
+        _miniBars='';
+        _miniText='<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:5px;font-weight:700">다시 진단하면 단어·듣기·읽기·쓰기 영역 레벨이 채워져요</div>';
       }
       parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
-        +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 레벨 성장</span><span style="'+_MORE+'">그래프 ›</span></div>'
-        +'<div style="display:flex;align-items:center;gap:14px">'
-          +'<div style="text-align:center;flex:0 0 auto;min-width:52px"><div style="font-size:26px;font-weight:900;color:var(--theme,#3B82F6);line-height:1">'+_l+'</div>'
-            +'<div style="font-size:9.5px;font-weight:800;margin-top:3px;color:'+_c+';white-space:nowrap">'+_dt+'</div></div>'
-          +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex:0 0 auto"></div>'
+        +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 영어 레벨</span><span style="'+_MORE+'">전체 그래프 ›</span></div>'
+        +'<div style="display:flex;align-items:center;gap:11px">'
+          +'<div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--theme,#3B82F6),#6D28D9);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex-shrink:0;box-shadow:0 3px 10px rgba(59,130,246,.28)">'
+            +'<span style="font-size:8px;font-weight:700;opacity:.85;line-height:1">LEVEL</span><span style="font-size:20px;font-weight:900;line-height:1.1">'+_l+'</span></div>'
           +'<div style="flex:1;min-width:0">'
-            +'<div style="display:flex;align-items:flex-end;justify-content:'+_just+';gap:'+_gap+'px;height:36px">'+_bars+'</div>'
-            +_lbl
+            +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:13px;font-weight:900;color:var(--text1,#111)">'+_bn.nm+' <span style="font-size:10.5px;color:var(--text3,#6B7280);font-weight:800">('+_bn.sc+')</span></span>'
+            +(_d>0?'<span style="font-size:9.5px;font-weight:800;background:#DCFCE7;color:#16A34A;border-radius:8px;padding:2px 7px">▲'+_d+'</span>':(_d<0?'<span style="font-size:9.5px;font-weight:800;background:#FEF2F2;color:#DC2626;border-radius:8px;padding:2px 7px">▼'+Math.abs(_d)+'</span>':''))+'</div>'
+            +_miniBars
+            +_miniText
           +'</div>'
         +'</div>'
         +'</div>');
-    } else if(_gh.length===1){
-      var _h0=_gh[0];
-      var _acc=(_h0.qTotal&&_h0.correct!=null)?Math.round(_h0.correct/_h0.qTotal*100):null;
-      var _cf=(typeof _lvCefr==='function')?_lvCefr(_h0.level):'';
-      var _nx=Math.min(10,(_h0.level||1)+1);
-      parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
-        +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 레벨</span><span style="'+_MORE+'">다시 진단 ›</span></div>'
-        +'<div style="display:flex;align-items:center;gap:14px">'
-          +'<div style="text-align:center;flex-shrink:0"><div style="font-size:26px;font-weight:900;color:var(--theme,#3B82F6);line-height:1">'+_h0.level+'</div>'
-            +(_cf?'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);font-weight:700;margin-top:3px">CEFR '+_cf+'</div>':'')+'</div>'
-          +'<div style="width:1px;height:34px;background:var(--border,#E5E7EB);flex-shrink:0"></div>'
-          +'<div style="flex:1;min-width:0">'
-            +(_acc!=null?('<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px"><span style="color:var(--text3,#9CA3AF)">정답률</span><b style="font-weight:800;color:var(--text2,#374151)">'+_acc+'%</b></div>'
-              +'<div style="height:5px;background:var(--bg-sub,#F1F3F5);border-radius:20px;overflow:hidden"><span style="display:block;height:100%;width:'+_acc+'%;background:var(--theme,#3B82F6);border-radius:20px"></span></div>'):'')
-            +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:7px"><span style="color:var(--text3,#9CA3AF)">다음 목표</span><b style="font-weight:800;color:var(--text2,#374151)">레벨 '+_nx+'</b></div>'
-          +'</div>'
-        +'</div></div>');
     } else {
       /* [레벨 진단 히어로 20260720] 진단 전 소형 카드는 배너 아래 히어로 카드로 대체 — 중복 방지 위해 미표시 */
     }

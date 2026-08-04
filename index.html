@@ -7871,6 +7871,14 @@ function _lvBandDesc(l){
   if(l===top) return b.nm+'의 마지막 단계 — 다음은 '+_lvBandName(l+1).nm+'(Lv.'+(l+1)+')이에요';
   return b.nm+' 단계를 지나는 중 — 다음 목표는 Lv.'+(l+1)+'이에요';
 }
+function _lvBandY(l){ /* 성장 차트 세로 좌표(0~110 뷰박스). 구간 띠(22/33/33/22)와 정확히 일치 */
+  l=Math.max(1,Math.min(10,l)); var y;
+  if(l<=2) y=110-(l/2)*22;
+  else if(l<=5) y=88-((l-2)/3)*33;
+  else if(l<=8) y=55-((l-5)/3)*33;
+  else y=22-((l-8)/2)*22;
+  return Math.max(8,Math.min(102,Math.round(y)));
+}
 function _lvBandLegendHTML(){
   function cell(bg,c1,t1,t2){ return '<span style="flex:1;text-align:center;background:'+bg+';border-radius:7px;padding:4px 0;font-size:8.5px;font-weight:800;color:'+c1+'">'+t1+'<br><span style="font-weight:600;opacity:.75">'+t2+'</span></span>'; }
   return '<div style="display:flex;gap:4px;margin-top:8px">'
@@ -10981,6 +10989,32 @@ function rHome() {
         _miniBars='';
         _miniText='<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:5px;font-weight:700">다시 진단하면 단어·듣기·읽기·쓰기 영역 레벨이 채워져요</div>';
       }
+      /* [기본 그래프 유지 20260804] 컴팩트 카드에도 성장 추이 그래프는 남긴다(2회 이상 기록 시).
+         구간 띠+한글 라벨이 범례를 겸하고, 아래 한 줄로 학교 수준 대응을 항상 표기. */
+      var _chart='';
+      if(_gh.length>=2){
+        var _rc=_gh.slice(-_TH_BARS), _n=_rc.length;
+        var _pts=_rc.map(function(h,i){ return [(_n===1)?150:(20+Math.round(i*(260/(_n-1)))), _lvBandY(h.level)]; });
+        var _line=_pts.map(function(p,i){return (i?'L':'M')+p[0]+','+p[1];}).join(' ');
+        var _areaP=_line+' L'+_pts[_n-1][0]+',110 L'+_pts[0][0]+',110 Z';
+        var _dots=_pts.map(function(p,i){ return (i===_n-1)?('<circle cx="'+p[0]+'" cy="'+p[1]+'" r="5" fill="var(--theme,#3B82F6)" stroke="#fff" stroke-width="2.5"/><text x="'+Math.min(280,Math.max(14,p[0]))+'" y="'+Math.max(10,p[1]-11)+'" font-size="10" fill="var(--theme,#1E5FA5)" text-anchor="middle" font-weight="900">Lv.'+_rc[i].level+'</text>'):('<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3.5" fill="#fff" stroke="#93C5FD" stroke-width="2"/>'); }).join('');
+        var _mid=Math.floor((_n-1)/2);
+        var _sameDay=_rc.every(function(h){ return h.date===_rc[0].date; });
+        var _lbl=_sameDay
+          ? '<text x="150" y="108" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(_rc[0])+'</text>'
+          : ('<text x="'+_pts[0][0]+'" y="108" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(_rc[0])+'</text>'
+            +(_n>2?'<text x="'+_pts[_mid][0]+'" y="108" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(_rc[_mid])+'</text>':'')
+            +'<text x="'+_pts[_n-1][0]+'" y="108" font-size="8" fill="#9CA3AF" text-anchor="middle">'+_thAxisLabel(_rc[_n-1])+'</text>');
+        _chart='<div style="margin-top:10px">'
+          +'<svg viewBox="0 0 300 112" style="width:100%;display:block">'
+          +'<rect x="0" y="0" width="300" height="22" fill="#F5F3FF"/><rect x="0" y="22" width="300" height="33" fill="#EFF6FF"/><rect x="0" y="55" width="300" height="33" fill="#F0FDF4"/><rect x="0" y="88" width="300" height="22" fill="#FEFCE8"/>'
+          +'<text x="296" y="14" font-size="8" fill="#8B5CF6" text-anchor="end" font-weight="700">중상급 9~10</text><text x="296" y="36" font-size="8" fill="#3B82F6" text-anchor="end" font-weight="700">중급 6~8</text><text x="296" y="69" font-size="8" fill="#16A34A" text-anchor="end" font-weight="700">기초 3~5</text><text x="296" y="102" font-size="8" fill="#CA8A04" text-anchor="end" font-weight="700">왕초보 1~2</text>'
+          +'<path d="'+_areaP+'" fill="rgba(59,130,246,.14)"/>'
+          +'<path d="'+_line+'" fill="none" stroke="var(--theme,#3B82F6)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+          +_dots+_lbl+'</svg>'
+          +'<div style="font-size:8.5px;color:var(--text3,#9CA3AF);text-align:center;margin-top:3px;font-weight:700">왕초보=초등 · 기초=중학 · 중급=고등 · 중상급=수능 이상</div>'
+          +'</div>';
+      }
       parts.push('<div onclick="showGrowthChart()" style="'+_CW+'">'
         +'<div style="'+_HD+'"><span style="'+_DOT+'"></span><span style="'+_HDT+'">내 영어 레벨</span><span style="'+_MORE+'">전체 그래프 ›</span></div>'
         +'<div style="display:flex;align-items:center;gap:11px">'
@@ -10993,6 +11027,7 @@ function rHome() {
             +_miniText
           +'</div>'
         +'</div>'
+        +_chart
         +'</div>');
     } else {
       /* [레벨 진단 히어로 20260720] 진단 전 소형 카드는 배너 아래 히어로 카드로 대체 — 중복 방지 위해 미표시 */

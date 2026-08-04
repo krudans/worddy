@@ -333,6 +333,7 @@ textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
       <div class="ni" onclick="T('bq')" id="ni-bq"><span class="ic">📮</span>원서 요청<span id="bq-new-badge" style="display:none;margin-left:auto;background:#EF4444;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px"></span></div>
       <div class="ni" onclick="T('st')" id="ni-st"><span class="ic">⚙️</span>앱 설정</div>
       <div class="ni" onclick="T('lv')" id="ni-lv"><span class="ic">🎓</span>레벨 관리</div>
+      <div class="ni" onclick="T('cw')" id="ni-cw"><span class="ic">📚</span>레벨 단어장</div>
       <div class="ss">나비 & 게임</div>
       <div class="ni" onclick="T('bf')" id="ni-bf"><span class="ic">🦋</span>나비 관리</div>
       <div class="ni" onclick="T('cp')" id="ni-cp"><span class="ic">🎫</span>쿠폰 관리</div>
@@ -2544,12 +2545,182 @@ const cm=()=>{const ma=document.getElementById('ma');if(ma)ma.innerHTML='';const
 const today=()=>new Date().toISOString().slice(0,10);
 const isSuperAdmin=()=>SUPER_ADMINS.includes(currentAdmin?.email)||currentAdmin?.isSuperAdmin;
 
+// ══════════════════════════════════
+// 📚 레벨 단어장 (커리큘럼·레벨테스트 정본 관리) — 2026-08-04 신설
+//   기준: 1차 CEFR(A1→C2) · 2차 실제 빈도(BWD_WORDLIST 코퍼스 순위) · 상위 10,000 = 레벨 1~10 × 1,000
+//   각 레벨 1,000개를 200개씩 챕터 1~5로 사용(앱과 동일 규칙).
+//   저장: settings/curriculum_level_N {words:[en×1000]} — 저장 시 앱이 이 정본을 우선 사용,
+//   삭제 시 앱은 기본 계산(CEFR+빈도)으로 복귀.
+// ══════════════════════════════════
+var _cwLv=1, _cwCh=0, _cwWords={}, _cwSaved={}, _cwDirty={};
+function _cwD(){ try{ return BWD_DICT; }catch(e){ return window.BWD_DICT||null; } }
+function _cwM(){ try{ return BWD_META; }catch(e){ return window.BWD_META||null; } }
+function _cwWL(){ try{ return BWD_WORDLIST; }catch(e){ return window.BWD_WORDLIST||null; } }
+function _cwLoadDicts(){
+  return new Promise(function(res){
+    if(_cwD() && _cwM() && _cwWL()){ res(); return; }
+    var files=['js/bwd-wordlist.js','js/bwd-dict.js','js/bwd-meta-1.js','js/bwd-meta-2.js'];
+    var left=files.length;
+    files.forEach(function(f){
+      var sc=document.createElement('script'); sc.src=f+'?cb='+Date.now();
+      sc.onload=sc.onerror=function(){ if(--left===0) res(); };
+      document.head.appendChild(sc);
+    });
+  });
+}
+var _CW_JUNK={"aberdeenshire":1,"abuja":1,"acl":1,"aclu":1,"agm":1,"ahem":1,"ahhh":1,"ahmedabad":1,"airbnb":1,"andaman":1,"andhra":1,"anfield":1,"angkor":1,"anglesey":1,"arjuna":1,"armagh":1,"arsene":1,"arte":1,"artemis":1,"arun":1,"arya":1,"ashraf":1,"assange":1,"astana":1,"avg":1,"aww":1,"awww":1,"baddest":1,"bce":1,"begining":1,"bestest":1,"bhai":1,"bharatiya":1,"bihar":1,"bloomsbury":1,"bmi":1,"bmx":1,"bossing":1,"bournemouth":1,"bpa":1,"bpm":1,"bratislava":1,"brexit":1,"bros":1,"bsc":1,"buckinghamshire":1,"camo":1,"cassius":1,"celt":1,"ceos":1,"ctrl":1,"cymru":1,"declan":1,"dez":1,"diy":1,"djs":1,"dslr":1,"eachother":1,"emt":1,"esl":1,"eur":1,"ew":1,"fav":1,"feelin":1,"filipina":1,"focussing":1,"footy":1,"freakin":1,"gbp":1,"girly":1,"gpa":1,"gujarati":1,"gunna":1,"hampden":1,"hangin":1,"havin":1,"hiya":1,"holi":1,"hyung":1,"ii":1,"inbetween":1,"ipswich":1,"kami":1,"kiddo":1,"kowloon":1,"lpg":1,"lte":1,"luv":1,"meh":1,"minaj":1,"misc":1,"mmm":1,"mornin":1,"movin":1,"nawaz":1,"nev":1,"occured":1,"ofcourse":1,"ohhh":1,"oof":1,"oppa":1,"payed":1,"pct":1,"pics":1,"playin":1,"priya":1,"qr":1,"runnin":1,"shhh":1,"sittin":1,"sooo":1,"sooooo":1,"tellin":1,"truely":1,"tsp":1,"uhm":1,"utc":1,"ute":1,"vac":1,"veg":1,"vocab":1,"walkin":1,"whatcha":1,"woah":1,"xs":1};
+var _CW_PLKEEP={news:1,glasses:1,means:1,clothes:1,arms:1,goods:1,customs:1,manners:1,thanks:1,stairs:1,savings:1,belongings:1,surroundings:1,headquarters:1,series:1,species:1,works:1,premises:1,odds:1,outskirts:1,remains:1,spectacles:1,damages:1,regards:1,greetings:1,congratulations:1,effects:1,contents:1,feelings:1,directions:1,wages:1,earnings:1,headphones:1,pants:1,jeans:1,shorts:1,goggles:1,quarters:1,guts:1,brains:1,papers:1,riches:1};
+function _cwJ(){ return (typeof _CW_JUNK==='object'&&_CW_JUNK)?_CW_JUNK:{}; }
+function _cwPK(){ return (typeof _CW_PLKEEP==='object'&&_CW_PLKEEP)?_CW_PLKEEP:{}; }
+function _cwIsRegPlural(w,keySet){
+  if(!w||w.length<4||w.indexOf(' ')>=0||w.charAt(w.length-1)!=='s') return false;
+  if(/(ss|us|is|ous)$/.test(w)) return false;
+  if(_cwPK()[w]) return false;
+  var c=[]; if(/ies$/.test(w))c.push(w.slice(0,-3)+'y'); if(/ves$/.test(w)){c.push(w.slice(0,-3)+'f');c.push(w.slice(0,-3)+'fe');} if(/es$/.test(w))c.push(w.slice(0,-2)); c.push(w.slice(0,-1));
+  for(var i=0;i<c.length;i++){ if(keySet[c[i]]) return true; }
+  return false;
+}
+function _cwDefaultSorted(){
+  if(window._cwSortedCache) return window._cwSortedCache;
+  var D=_cwD()||{}, M=_cwM()||{}, WL=_cwWL()||[];
+  var order={A1:0,A2:1,B1:2,B2:3,C1:4,C2:5}, keys=Object.keys(M), arr=[];
+  var keySet=Object.create(null); keys.forEach(function(k){keySet[k]=1;});
+  var rank=Object.create(null);
+  WL.forEach(function(w,i){ if(rank[w]==null) rank[w]=i; });
+  keys.forEach(function(k,i){
+    var m=M[k];
+    if(m&&m.cefr&&D[k]&&!_cwIsRegPlural(k,keySet)&&!_cwJ()[k]&&!/고유/.test((D[k].pos)||'')){
+      var c=String(m.cefr).toUpperCase();
+      arr.push({en:k, r:(order[c]!=null?order[c]:9), f:(rank[k]!=null?rank[k]:9e9), i:i});
+    }
+  });
+  arr.sort(function(a,b){ return (a.r-b.r)||(a.f-b.f)||(a.i-b.i); });
+  window._cwSortedCache=arr.slice(0,10000).map(function(x){return x.en;});
+  return window._cwSortedCache;
+}
+async function rCW(){
+  _cwInit();
+  var main=document.getElementById('main-inner');
+  main.innerHTML='<div class="es"><div class="ei">📚</div><p>사전 데이터 로드 중… (최초 1회, 20MB)</p></div>';
+  await _cwLoadDicts();
+  if(!_cwD()||!_cwM()){ main.innerHTML='<div class="es"><div class="ei">⚠️</div><p>사전 로드 실패 — 새로고침 후 다시 시도해주세요</p></div>'; return; }
+  // 저장된 정본 로드
+  _cwSaved={};
+  try{
+    for(var L=1;L<=10;L++){
+      var d=await db.collection('settings').doc('curriculum_level_'+L).get();
+      if(d.exists){ var v=d.data()||{}; if(Array.isArray(v.words)&&v.words.length) _cwSaved[L]={words:v.words, updatedAt:v.updatedAt||''}; }
+    }
+  }catch(e){}
+  _cwWords={};
+  _cwRender();
+}
+function _cwInit(){ if(typeof _cwWords==='undefined'||!_cwWords) _cwWords={}; if(typeof _cwSaved==='undefined'||!_cwSaved) _cwSaved={}; if(typeof _cwDirty==='undefined'||!_cwDirty) _cwDirty={}; if(typeof _cwLv==='undefined'||!_cwLv) _cwLv=1; if(typeof _cwCh==='undefined'||_cwCh==null) _cwCh=0; }
+function _cwEffective(L){ // 화면 편집본 > 저장 정본 > 기본 계산
+  _cwInit();
+  if(_cwWords[L]) return _cwWords[L];
+  if(_cwSaved[L]) { _cwWords[L]=_cwSaved[L].words.slice(0,1000); return _cwWords[L]; }
+  _cwWords[L]=_cwDefaultSorted().slice((L-1)*1000,L*1000); return _cwWords[L];
+}
+function _cwRender(){
+  _cwInit();
+  var main=document.getElementById('main-inner');
+  var lvBtns=''; for(var L=1;L<=10;L++){
+    var on=(L===_cwLv), saved=!!_cwSaved[L], dirty=!!_cwDirty[L];
+    lvBtns+='<button onclick="_cwSelLv('+L+')" style="position:relative;padding:9px 0;border-radius:11px;border:2px solid '+(on?'#1E5FA5':'#E5E7EB')+';background:'+(on?'#1E5FA5':'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:13px;font-weight:800;cursor:pointer">Lv.'+L
+      +(saved?'<span style="position:absolute;top:-7px;right:-4px;background:#16A34A;color:#fff;font-size:8.5px;font-weight:800;border-radius:8px;padding:1px 5px">정본</span>':'')
+      +(dirty?'<span style="position:absolute;top:-7px;left:-4px;background:#F59E0B;color:#fff;font-size:8.5px;font-weight:800;border-radius:8px;padding:1px 5px">수정중</span>':'')
+      +'</button>';
+  }
+  var L=_cwLv, words=_cwEffective(L), src=_cwSaved[L]?('🟢 관리자 정본 사용 중 (저장: '+String(_cwSaved[L].updatedAt).slice(0,10)+')'):'⚪ 기본 계산 사용 중 (CEFR+빈도) — 저장하면 정본이 됩니다';
+  var chBtns=''; for(var c=0;c<5;c++){
+    var cw=words.slice(c*200,(c+1)*200);
+    chBtns+='<button onclick="_cwSelCh('+c+')" style="flex:1;padding:8px 0;border-radius:10px;border:1.5px solid '+(c===_cwCh?'#1E5FA5':'#E5E7EB')+';background:'+(c===_cwCh?'#EEF3FA':'#fff')+';color:'+(c===_cwCh?'#1E5FA5':'#6B7280')+';font-size:12px;font-weight:800;cursor:pointer">'+(c+1)+'챕터<br><span style="font-size:10px;font-weight:600">'+cw.length+'개</span></button>';
+  }
+  var ch=words.slice(_cwCh*200,(_cwCh+1)*200);
+  // 검증
+  var dupIn={}, dups=[]; words.forEach(function(w){ if(dupIn[w]) dups.push(w); dupIn[w]=1; });
+  var _DD=_cwD()||{};
+  var unknown=words.filter(function(w){ return !_DD[w]; });
+  var others={}; for(var OL=1;OL<=10;OL++){ if(OL===L) continue; (_cwWords[OL]||(_cwSaved[OL]&&_cwSaved[OL].words)||_cwDefaultSorted().slice((OL-1)*1000,OL*1000)).forEach(function(w){ others[w]=OL; }); }
+  var cross=words.filter(function(w){ return others[w]; });
+  var valid = '<span style="color:'+(words.length===1000?'#16A34A':'#DC2626')+'">총 '+words.length+'/1000</span>'
+    +' · <span style="color:'+(dups.length?'#DC2626':'#16A34A')+'">레벨 내 중복 '+dups.length+'</span>'
+    +' · <span style="color:'+(cross.length?'#DC2626':'#16A34A')+'">타 레벨과 중복 '+cross.length+'</span>'
+    +' · <span style="color:'+(unknown.length?'#DC2626':'#16A34A')+'">사전에 없는 단어 '+unknown.length+'</span>';
+  var issues='';
+  if(dups.length) issues+='<div style="font-size:11px;color:#DC2626;margin-top:4px">중복: '+dups.slice(0,10).join(', ')+(dups.length>10?' 외 '+(dups.length-10):'')+'</div>';
+  if(cross.length) issues+='<div style="font-size:11px;color:#DC2626;margin-top:4px">타 레벨 중복: '+cross.slice(0,10).map(function(w){return w+'(Lv'+others[w]+')';}).join(', ')+(cross.length>10?' 외 '+(cross.length-10):'')+'</div>';
+  if(unknown.length) issues+='<div style="font-size:11px;color:#DC2626;margin-top:4px">사전 없음: '+unknown.slice(0,10).join(', ')+(unknown.length>10?' 외 '+(unknown.length-10):'')+'</div>';
+  main.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">'
+      +'<h2 style="font-size:22px;font-weight:900">📚 레벨 단어장 (커리큘럼·레벨테스트)</h2>'
+      +'<span style="font-size:11px;color:#6B7280">기준: 1차 CEFR(A1→C2) · 2차 코퍼스 빈도 · 레벨당 1,000단어 = 200×5챕터</span>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin-bottom:12px">'+lvBtns+'</div>'
+    +'<div class="card" style="margin-bottom:12px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+        +'<div style="font-size:13px;font-weight:800">'+src+'</div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+          +'<button class="btn bb" style="font-size:12px;padding:8px 14px" onclick="_cwSave()">💾 이 레벨 정본으로 저장</button>'
+          +'<button class="btn" style="font-size:12px;padding:8px 14px;background:#EEF3FA;color:#1E5FA5;border:1.5px solid #BFD7F0" onclick="_cwRegen()">🔄 기준(CEFR+빈도)으로 재생성</button>'
+          +(_cwSaved[L]?'<button class="btn" style="font-size:12px;padding:8px 14px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3" onclick="_cwDelete()">🗑 정본 삭제(기본 계산 복귀)</button>':'')
+        +'</div>'
+      +'</div>'
+      +'<div style="font-size:12px;font-weight:700;margin-bottom:4px">'+valid+'</div>'+issues
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:10px">'+chBtns+'</div>'
+    +'<div class="card">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        +'<div class="ct" style="margin:0">Lv.'+L+' · '+(_cwCh+1)+'챕터 단어 ('+ch.length+'개) — 한 줄에 한 단어, 위→아래 = 출제·학습 순서</div>'
+        +'<button class="btn" style="font-size:11.5px;padding:6px 12px" onclick="_cwApplyText()">✏️ 아래 수정 내용 반영</button>'
+      +'</div>'
+      +'<textarea id="cw-ta" spellcheck="false" style="width:100%;height:420px;box-sizing:border-box;border:1.5px solid #D1D5DB;border-radius:10px;padding:12px;font-size:13px;font-family:monospace;line-height:1.6">'+ch.join('\n')+'</textarea>'
+      +'<div style="font-size:11px;color:#9CA3AF;margin-top:6px">💡 단어를 추가·삭제·순서변경 후 [수정 내용 반영] → 검증 확인 → [정본으로 저장]. 저장하면 앱(레벨테스트·레벨업 코스 새 생성)이 즉시 이 목록을 사용합니다. 이미 학습 중인 사용자의 기존 코스 단어는 바뀌지 않습니다.</div>'
+    +'</div>';
+}
+function _cwSelLv(L){ _cwLv=L; _cwCh=0; _cwRender(); }
+function _cwSelCh(c){ _cwApplyText(true); _cwCh=c; _cwRender(); }
+function _cwApplyText(silent){
+  try{
+    var ta=document.getElementById('cw-ta'); if(!ta) return;
+    var lines=ta.value.split(/\r?\n/).map(function(x){return x.trim().toLowerCase();}).filter(Boolean);
+    var L=_cwLv, words=_cwEffective(L).slice();
+    var next=words.slice(0,_cwCh*200).concat(lines, words.slice((_cwCh+1)*200));
+    _cwWords[L]=next; _cwDirty[L]=true;
+    if(!silent) _cwRender();
+  }catch(e){ toast('반영 실패: '+e.message,'err'); }
+}
+function _cwRegen(){
+  if(!confirm('레벨 '+_cwLv+' 단어를 기준(CEFR+빈도) 계산값으로 다시 만들까요? 화면의 수정 내용은 사라집니다.')) return;
+  _cwWords[_cwLv]=_cwDefaultSorted().slice((_cwLv-1)*1000,_cwLv*1000); _cwDirty[_cwLv]=true; _cwRender();
+}
+async function _cwSave(){
+  try{
+    _cwApplyText(true);
+    var L=_cwLv, words=(_cwWords[L]||[]).map(function(x){return String(x).trim().toLowerCase();}).filter(Boolean);
+    var seen={}, dedup=[]; words.forEach(function(w){ if(!seen[w]){ seen[w]=1; dedup.push(w); } });
+    if(dedup.length!==1000 && !confirm('단어가 '+dedup.length+'개입니다(권장 1000). 그래도 저장할까요?')) return;
+    await db.collection('settings').doc('curriculum_level_'+L).set({ words:dedup, updatedAt:new Date().toISOString(), source:'admin', count:dedup.length });
+    _cwSaved[L]={words:dedup, updatedAt:new Date().toISOString()}; _cwWords[L]=dedup; _cwDirty[L]=false;
+    toast('✅ 레벨 '+L+' 정본 저장 완료 ('+dedup.length+'단어) — 앱이 이 목록을 사용합니다','ok');
+    _cwRender();
+  }catch(e){ toast('저장 실패: '+e.message,'err'); }
+}
+async function _cwDelete(){
+  if(!confirm('레벨 '+_cwLv+' 정본을 삭제하고 기본 계산(CEFR+빈도)으로 되돌릴까요?')) return;
+  try{
+    await db.collection('settings').doc('curriculum_level_'+_cwLv).delete();
+    delete _cwSaved[_cwLv]; delete _cwWords[_cwLv]; _cwDirty[_cwLv]=false;
+    toast('삭제 완료 — 기본 계산 사용','ok'); _cwRender();
+  }catch(e){ toast('삭제 실패: '+e.message,'err'); }
+}
 function T(tab){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const el=document.getElementById('ni-'+tab);if(el)el.classList.add('on');
-  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',bp:'원서 → 팩 만들기',bq:'원서 요청',lv:'레벨 관리',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
+  const titles={db:'대시보드',an:'이용 분석',wd:'단어 관리',dict:'Butterfly Dic',pk:'마켓 팩',bp:'원서 → 팩 만들기',bq:'원서 요청',lv:'레벨 관리',cw:'레벨 단어장 (커리큘럼·레벨테스트)',nt:'공지사항',us:'회원 관리',po:'콕 찌르기',adm:'관리자 관리',st:'앱 설정',bf:'나비 관리',cp:'쿠폰 관리',ad:'광고 배너',cv:'회화 문장',xp:'XP 설정',pop:'팝업 관리'};
   const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[tab]||'관리자';
-  const _fn=({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,bq:rBQ,lv:rLV,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab];
+  const _fn=({db:rDB,an:rAN,wd:rWD,dict:rDICT,pk:rPK,bp:rBP2,bq:rBQ,lv:rLV,cw:rCW,nt:rNT,us:rUS,po:rPO,adm:rADM,st:rST,bf:rBF,cp:rCP,ad:rAD,cv:rCV,xp:rXP,pop:rPOP})[tab];
   if(_fn){ const _r=_fn(); if(tab==='db'){ Promise.resolve(_r).then(function(){ try{ _renderAiProviderCard(); }catch(e){} }); } }
 }
 

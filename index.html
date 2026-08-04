@@ -573,10 +573,18 @@ function _lvlSorted(){
   if(window._lwSorted) return window._lwSorted;
   try{
     if(typeof BWD_META==='undefined' || typeof BWD_DICT==='undefined') return [];
+    /* ══ [분류 근거 수정 20260804] 2차 정렬을 '실제 빈도'로 교체 ══
+       기존 결함: 2차 정렬이 사전 파일 등재순이었는데 그 파일이 알파벳순이라,
+       레벨·챕터가 알파벳 구간으로 잘렸다(레벨1 5챕터에 m~p 단어만 나오고,
+       lunch/lunchtime·meet/meeting 같은 어근 가족이 연달아 나오던 원인).
+       수정: 1차 CEFR(A1→C2) 유지 · 2차 BWD_WORDLIST(코퍼스 빈도 순위, 5만 단어) ·
+             3차(빈도 미상 104개) 기존 순서로 뒤에. → "흔한 단어일수록 앞 챕터" 근거 확립. */
     var order={A1:0,A2:1,B1:2,B2:3,C1:4,C2:5}, keys=Object.keys(BWD_META), arr=[];
     var keySet=Object.create(null); for(var q=0;q<keys.length;q++) keySet[keys[q]]=1;
-    for(var i=0;i<keys.length;i++){ var k=keys[i], m=BWD_META[k]; if(m && m.cefr && BWD_DICT[k] && !_isRegPlural(k, keySet) && !_LW_JUNK[k] && !/고유/.test(BWD_DICT[k].pos||'')){ var c=String(m.cefr).toUpperCase(); arr.push({en:k, r:(order[c]!=null?order[c]:9), i:i}); } }
-    arr.sort(function(a,b){ return (a.r-b.r) || (a.i-b.i); });
+    var rank=Object.create(null);
+    try{ if(typeof BWD_WORDLIST!=='undefined'){ for(var f=0;f<BWD_WORDLIST.length;f++){ var fw=BWD_WORDLIST[f]; if(rank[fw]==null) rank[fw]=f; } } }catch(e){}
+    for(var i=0;i<keys.length;i++){ var k=keys[i], m=BWD_META[k]; if(m && m.cefr && BWD_DICT[k] && !_isRegPlural(k, keySet) && !_LW_JUNK[k] && !/고유/.test(BWD_DICT[k].pos||'')){ var c=String(m.cefr).toUpperCase(); arr.push({en:k, r:(order[c]!=null?order[c]:9), f:(rank[k]!=null?rank[k]:9e9), i:i}); } }
+    arr.sort(function(a,b){ return (a.r-b.r) || (a.f-b.f) || (a.i-b.i); });
     window._lwSorted = arr.slice(0,10000).map(function(x){return x.en;});
     return window._lwSorted;
   }catch(e){ return []; }
@@ -585,11 +593,34 @@ function _lvlSorted(){
 function _levelWords(level){
   level = Math.max(1, Math.min(CW_MAXLEVEL, level|0));
   if(window._lwCache[level] && window._lwCache[level].length) return window._lwCache[level];
-  var sorted=_lvlSorted(); if(!sorted.length) return [];
-  var slice=sorted.slice((level-1)*1000, level*1000);
+  /* [관리자 정본 우선 20260804] 관리자 페이지에서 저장한 레벨 단어장(settings/curriculum_level_N)이
+     있으면 그것이 정본. 없으면 기존 계산(CEFR+빈도) 사용. */
+  var ov=(window._lvOverride||{})[level];
+  var slice;
+  if(Array.isArray(ov) && ov.length>=100){ slice=ov.slice(0,1000); }
+  else{
+    var sorted=_lvlSorted(); if(!sorted.length) return [];
+    slice=sorted.slice((level-1)*1000, level*1000);
+  }
   var out=slice.map(function(en){ return _enrichFromDict({en:en}); });
   if(out.length) window._lwCache[level]=out;
   return out;
+}
+/* [관리자 정본 로더 20260804] 로그인 후 1회, settings 컬렉션에서 레벨 단어장 오버라이드를 읽는다.
+   비차단·실패 무해(없으면 기본 계산 사용). 로드되면 캐시 무효화로 즉시 반영. */
+async function _loadLevelOverrides(){
+  try{
+    if(typeof db==='undefined' || window._lvOverrideLoaded) return;
+    window._lvOverrideLoaded=true;
+    var found=false, ov={};
+    for(var L=1;L<=CW_MAXLEVEL;L++){
+      try{
+        var d=await db.collection('settings').doc('curriculum_level_'+L).get();
+        if(d.exists){ var v=d.data()||{}; if(Array.isArray(v.words)&&v.words.length>=100){ ov[L]=v.words; found=true; } }
+      }catch(e){}
+    }
+    if(found){ window._lvOverride=ov; window._lwCache={}; console.log('[레벨 단어장] 관리자 정본 로드: 레벨 '+Object.keys(ov).join(',')); }
+  }catch(e){console.warn('[wd-io:_loadLevelOverrides]',e);}
 }
 function _bookMastered(book){
   /* [완독 기준 변경 20260723] 완독 = 최종 테스트 통과(finalPassed). 챕터만 다 해선 완독이 아니다.
@@ -606,6 +637,12 @@ function _curriculumStageLocked(book){
     if(!book || !book.isCurriculum || !(book.tier>1)) return false;
     var prev=(S.books||[]).filter(function(x){return x.isCurriculum && x.tier===book.tier-1;})[0];
     if(!prev) return false;
+    /* ══ [진급 규칙 수정 20260804] 이전 단계의 챕터를 전부 통과(각 90점 시험 합격)했으면 다음 단계 개방. ══
+       기존 결함: '외웠음 표시 80%'만 인정 → 5개 챕터를 시험으로 전부 통과한 사용자가
+       (외웠음 표시를 덜 눌렀다는 이유로) 2단계에 못 들어가는 모순(2026-08-04 실측: 챕터 5/5 통과·외움 27% → 잠김).
+       챕터 통과가 곧 검증된 진급 근거이므로 1순위로 인정하고, 80% 외움은 보조 경로로 유지. */
+    var totalCh=(typeof _chapterCount==='function')?_chapterCount(prev):5;
+    if(((prev.chPass||[]).slice(0,totalCh).filter(Boolean).length)>=totalCh) return false;
     var ws=(typeof getBookWords==='function')?getBookWords(prev):[]; if(!ws.length) return false;
     var mm=prev.markMap||{}, mem=ws.filter(function(w){return mm[w.en]===1;}).length;
     return (mem/ws.length*100) < 80;
@@ -7705,6 +7742,11 @@ function _ltNext(){
     return _ltAsk(cq);
   }
   if(lt.wrong>=3){
+    /* [하강 탐색 20260804] 시작 레벨(>1)에서 바로 탈락 = 아직 통과한 레벨이 없음 → 아래로 내려가며 탐색 */
+    if(lt.lastPassed<1 && lt.level>1){
+      lt.descending=true; lt.level--; lt.qi=0; lt.wrong=0;
+      return _ltNext();
+    }
     if(lt.lastPassed>=1 && !lt.confirmDone){          // [확인 라운드] 경계 레벨 재검증 — 운 통과 차단
       lt.stage='confirm'; lt.confirmDone=true; lt.confirmLevel=lt.lastPassed; lt.cqi=0; lt.cc=0;
       return _ltNext();
@@ -7712,7 +7754,9 @@ function _ltNext(){
     _ltFinish(); return;
   }
   if(lt.qi>=10){
-    lt.lastPassed=lt.level; lt.level++; lt.qi=0; lt.wrong=0;
+    lt.lastPassed=lt.level;
+    if(lt.descending){ _ltFinish(); return; }   /* [하강 탐색] 내려가다 통과한 레벨 = 판정 레벨 */
+    lt.level++; lt.qi=0; lt.wrong=0;
     if(lt.level>CW_MAXLEVEL){ _ltFinish(); return; }
   }
   var q=_ltMakeQ(lt.level,_LT_TYPES[lt.qi]||'v');
@@ -7730,6 +7774,8 @@ function _ltMark(correct,resVal){
   if(!lt.areaStats) lt.areaStats={};
   if(!lt.areaStats[q.a]) lt.areaStats[q.a]={c:0,t:0};
   lt.areaStats[q.a].t++;
+  if(resVal===-1) lt.timeout=(lt.timeout||0)+1;
+  if(resVal===-2) lt.dunno=(lt.dunno||0)+1;
   if(correct){ if(typeof ok==='function') ok(); lt.correctTotal++; lt.levelStats[L].c++; lt.areaStats[q.a].c++; if(lt.stage==='confirm') lt.cc++; }
   else{ if(typeof ng==='function') ng();
     if(lt.stage!=='confirm') lt.wrong++;
@@ -7871,7 +7917,15 @@ function startInitialLevelExam(){
     }
     _ltClearTimer();
     S._ltResultShowing=false;
-    S._lt={ level:1, qi:0, wrong:0, lastPassed:0, used:{}, correctTotal:0, qTotal:0, cur:null, ans:false, res:null, stage:'main', confirmDone:false, confirmLevel:0, cqi:0, cc:0, areaStats:{}, levelStats:{}, wrongWords:[] };   /* [혼합문항+확인라운드 20260803] */
+    /* ══ [신뢰도 개선 · 적응형 시작 20260804] 재응시는 '지난 판정 바로 아래'에서 시작 ══
+       매번 레벨 1부터 걸으면 시험이 길어져 피로 오차가 커지고, 초반 실수로 실력보다
+       한참 낮게 판정되는 요동(1→4→1)이 생겼다. 이전 기록이 있으면 그 -1 레벨에서 시작:
+       - 시작 레벨을 통과하면 위로(기존과 동일)
+       - 시작 레벨에서 탈락하면 한 레벨씩 '아래로' 내려가며 실력 지점을 찾는다(하강 탐색). */
+    var _prevLv=0;
+    try{ var _ph=(typeof _growthAll==='function')?_growthAll():[]; if(_ph.length) _prevLv=_ph[_ph.length-1].level|0; }catch(e){}
+    var _startLv=Math.max(1, Math.min(CW_MAXLEVEL, (_prevLv>1?_prevLv-1:1)));
+    S._lt={ level:_startLv, startLevel:_startLv, descending:false, qi:0, wrong:0, lastPassed:0, used:{}, correctTotal:0, qTotal:0, dunno:0, timeout:0, cur:null, ans:false, res:null, stage:'main', confirmDone:false, confirmLevel:0, cqi:0, cc:0, areaStats:{}, levelStats:{}, wrongWords:[] };   /* [혼합문항+확인라운드 20260803] */
     S._inInitLevelTest=true; S._prevTab=S.tab;
     try{ var hd=document.getElementById('hd'); if(hd) hd.style.display='none'; var nv=document.getElementById('nav'); if(nv) nv.style.display='none'; }catch(e){}
     _ltNext();
@@ -7977,6 +8031,12 @@ function _ltFinish(){
       else { confNote='확인 라운드 결과 반영'; }
     }
     var correctTotal=lt.correctTotal||0, qTotal=lt.qTotal||0;
+    /* ══ [무효 응시 필터 20260804] 시간초과+모름이 40% 이상이거나 10문항 미만이면
+       '집중이 어려웠던 응시'로 보고, 이전 기록이 있는 사용자는 성장 기록에 남기지 않는다.
+       (25% 정답률짜리 이탈 응시가 정식 레벨로 기록돼 그래프가 널뛰던 원인 차단) ══ */
+    var _skips=(lt.timeout||0)+(lt.dunno||0);
+    var _hasHistory=false; try{ _hasHistory=((typeof _growthAll==='function')?_growthAll():[]).length>0; }catch(e){}
+    var invalidRun = _hasHistory && (qTotal<10 || (qTotal>0 && _skips/qTotal>=0.4));
     /* [확신도 20260803] 판정 레벨·다음 레벨의 정답률 여유로 계산하는 추정치(55~99%). 낮으면 재진단 권유 용도 */
     var _stC=lt.levelStats||{};
     function _accL(L){ var st=_stC[L]; return (st&&st.t)?Math.round(st.c/st.t*100):null; }
@@ -7985,6 +8045,7 @@ function _ltFinish(){
     if(_aP!=null) conf+=Math.round((_aP-70)*0.4);
     if(_aF!=null) conf+=Math.round((70-_aF)*0.2);
     if(lt.confirmDone) conf+=((lt.cc||0)>=3?6:-6);
+    try{ var _hh2=(typeof _growthAll==='function')?_growthAll():[]; var _pv2=_hh2.length?_hh2[_hh2.length-1].level:null; if(_pv2!=null&&Math.abs(placement-_pv2)>=3) conf=Math.min(conf,70); }catch(e){}   /* [급변 시 확신도 하향 20260804] */
     conf=Math.max(55,Math.min(99,conf));
     var areas=(typeof _ltAreaLevels==='function')?_ltAreaLevels(lt,placement):null;
     S._inInitLevelTest=false;
@@ -7993,13 +8054,13 @@ function _ltFinish(){
     window.__ltPendingLevel = placement;
     window.__ltPrevLevel = S._myLevel;
     window.__ltNeedsConfirm = _hadProgress;
-    if(!_hadProgress){
+    if(!_hadProgress && !invalidRun){
       S._myLevel=placement; try{localStorage.setItem('wd-lt-date',String(Date.now()));}catch(e){console.warn('[wd-io:_ltFinish]',e);} /* [레벨↔원서 추천 20260721] 진단일 기록 */
       try{ _generateCurriculum(placement); }catch(e){}
     }
     try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
     try{ localStorage.setItem('wd-tested','1'); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
-    try{ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf});   /* [영역 프로필 20260803] */
+    try{ if(!invalidRun){ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf}); }   /* [영역 프로필 20260803][무효 응시는 기록 제외 20260804] */
       if(S.tHistory.length>_TH_MAX) S.tHistory=S.tHistory.slice(-_TH_MAX);   // 서버·병합과 동일한 상한 유지
       localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
     if(typeof addXP==='function') addXP(correctTotal*2);
@@ -8037,6 +8098,8 @@ function _ltFinish(){
           +'<div style="font-size:11px;font-weight:800;color:#16A34A;margin-top:5px">판정 확신도 '+conf+'%'+(confNote?' · '+confNote:'')+'</div>'
           +(_cefr?'<div style="font-size:9.5px;color:#9CA3AF;margin-top:4px">국제기준(CEFR)으로는 '+_cefr+'이에요 — 앱에서는 Lv.1~10만 써요</div>':'')
         +'</div>'
+        +(invalidRun?('<div style="background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:12px;padding:11px 13px;margin-bottom:10px;font-size:12px;color:#C2410C;font-weight:700;text-align:left">🤔 시간초과·모름이 많았어요('+_skips+'/'+qTotal+'). 집중이 어려우셨던 것 같아 <b>이번 결과는 성장 기록에 남기지 않았어요.</b> 준비되면 다시 진단해보세요.</div>'):'')
+        +(function(){ try{ if(invalidRun) return ''; var _hh=(typeof _growthAll==='function')?_growthAll():[]; var _pv=(_hh.length>=2)?_hh[_hh.length-2].level:null; if(_pv!=null&&Math.abs(placement-_pv)>=3){ return '<div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:11px 13px;margin-bottom:10px;font-size:12px;color:#92400E;font-weight:700;text-align:left">⚠️ 지난 진단(Lv.'+_pv+')과 차이가 커요. 컨디션 영향일 수 있으니 <b>다른 날 한 번 더 진단</b>해 확인하는 걸 추천해요.</div>'; } }catch(e){} return ''; })()
         +_ltAreaProfileHTML(areas)
         +'<div style="margin-bottom:14px">'+_lvBandLegendHTML()+'</div>'
       +'</div>'
@@ -13561,7 +13624,10 @@ frontContent+='<div style="font-size:10px;color:var(--panel-text3,#9CA3AF);margi
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex-shrink:0">';
   html += '<div style="display:flex;align-items:center;gap:10px">';
   html += '';
-  html += '<div><div style="font-size:11px;color:rgba(255,255,255,.5)">'+(idx+1)+' / '+total+'</div>'+_learnHdrHTML(S._flipWords||words)+'</div>';
+  /* [헤더 집계 수정 20260804] 기존엔 '미암기 필터로 걸러진 목록'을 기준으로 세서
+     "외울 196 · 외운 0"처럼 합계가 챕터 200개에 못 미치게 보였다(챕터 단어가 200개 안 되는 걸로 오인).
+     → 챕터 전체 단어(allFw) 기준으로 집계: 외울(미암기)+외운 = 챕터 전체. */
+  html += '<div><div style="font-size:11px;color:rgba(255,255,255,.5)">'+(idx+1)+' / '+total+'</div>'+_learnHdrHTML(allFw)+'</div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
   html += '<button onclick="event.stopPropagation();toggleFav(\''+w.en.replace(/'/g,"\\'")+'\')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:0">'+(isFav?'⭐':'☆')+'</button>';
@@ -17635,6 +17701,7 @@ auth.onAuthStateChanged(async user => {
       localStorage.setItem('wd-uid', user.uid);
     }catch(e){console.warn('[wd-io:anon]',e);}
     try{ if(typeof _syncGeminiKey==='function') _syncGeminiKey(user.uid); }catch(e){}   // [AI 키 계정 동기화 20260803] 비차단
+    try{ if(typeof _loadLevelOverrides==='function') _loadLevelOverrides(); }catch(e){}   // [레벨 단어장 관리자 정본 20260804] 비차단
     // ── STEP 1: localStorage 즉시 복원 (동기, 빠름) ──
     setSplash(20, '데이터 복원 중...', '로컬 데이터 불러오는 중');
     try {

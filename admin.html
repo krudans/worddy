@@ -4803,17 +4803,19 @@ function _wlvRankMap(){
 function _wlvAnalyze(words){
   try{
     var mp=_wlvRankMap(), D=_cwD()||{};
-    var lvs=[], dist={}, miss=0;
+    /* [산정 보정 20260805] 대표 레벨 = 일반 어휘(상위 1만 안)의 중앙값. 특수 단어(1만 밖)는 x10%로 별도 표기.
+       — 특수 명사가 많은 책(어린왕자 등)이 왜곡되게 높게 나오던 문제 수정. 앱과 동일 공식(v2). */
+    var lvs=[], dist={}, out10=0, miss=0;
     (words||[]).forEach(function(w){
       var en=String((w&&w.en)||w||'').toLowerCase().trim(); if(!en){miss++;return;}
       var L=mp[en];
-      if(L==null){ if(D[en]){ L=11; } else { miss++; return; } }
-      lvs.push(L); dist[L>10?'10+':L]=(dist[L>10?'10+':L]||0)+1;
+      if(L==null){ if(D[en]){ out10++; dist['10+']=(dist['10+']||0)+1; } else { miss++; } return; }
+      lvs.push(L); dist[L]=(dist[L]||0)+1;
     });
     if(lvs.length<20) return null;
     lvs.sort(function(a,b){return a-b;});
-    function pct(p){ return Math.min(10, lvs[Math.min(lvs.length-1, Math.floor(lvs.length*p))]); }
-    return { lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length, cover:Math.round(lvs.length/(lvs.length+miss)*100), dist:dist, at:new Date().toISOString() };
+    function pct(p){ return lvs[Math.min(lvs.length-1, Math.floor(lvs.length*p))]; }
+    return { lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length+out10, cover:Math.round((lvs.length+out10)/(lvs.length+out10+miss)*100), x10:Math.round(out10/(lvs.length+out10)*100), dist:dist, v:2, at:new Date().toISOString() };
   }catch(e){ return null; }
 }
 /* [분석 결과 표시 20260804] 팩 수정 모달·목록에 단어 레벨 분석을 상세히 보여준다 */
@@ -4827,7 +4829,9 @@ function _wlvCardHTML(w){
   return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
     +'<span style="background:#1E5FA5;color:#fff;font-size:12px;font-weight:900;border-radius:10px;padding:3px 11px">단어 Lv.'+w.lv+'</span>'
     +'<span style="font-size:11px;color:#374151;font-weight:700">주 분포 Lv.'+w.lo+'~'+w.hi+'</span>'
+    +(w.x10!=null?'<span style="background:#F5F3FF;color:#7C3AED;font-size:10.5px;font-weight:800;border-radius:10px;padding:3px 9px">이 책만의 특수 단어 '+w.x10+'%</span>':'')
     +'<span style="font-size:10.5px;color:#9CA3AF">대조 '+w.n+'단어 · 대조율 '+w.cover+'%'+(w.at?(' · '+String(w.at).slice(0,10)):'')+'</span>'
+    +(w.v!==2?'<span style="background:#FFF7ED;color:#C2410C;font-size:10px;font-weight:800;border-radius:10px;padding:3px 9px">구버전 산정 — 재분석 필요</span>':'')
   +'</div>'
   +'<div style="display:flex;align-items:flex-end;gap:2px">'+bars+'</div>'
   +'<div style="font-size:10px;color:#9CA3AF;margin-top:6px;line-height:1.6">근거: 수록 단어를 앱 레벨체계(CEFR+빈도 상위 1만 · 레벨당 1,000단어)에 대조한 분포. 팩 레벨 = 단어의 절반이 그 이하인 중앙값 · 10+ = 상위 1만 밖 고급 단어. 앱 마켓의 "단어 Lv" 표시·"단어 레벨순" 정렬이 이 값을 사용합니다.</div>';

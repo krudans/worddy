@@ -2702,7 +2702,7 @@ function _pkCefr(pk) {
 function _pkAppLevel(pk){
   try{
     if(!pk) return null;
-    if(pk.wlv && pk.wlv.lv) return pk.wlv;                        // 관리자 저장 근거 우선
+    if(pk.wlv && pk.wlv.lv && pk.wlv.v===2) return pk.wlv;        // 관리자 저장 근거 우선(보정 공식 v2만 — 구버전 왜곡값은 재계산)
     window._pkLvCache=window._pkLvCache||{};
     if(window._pkLvCache[pk.id]) return window._pkLvCache[pk.id];
     var sorted=(typeof _lvlSorted==='function')?_lvlSorted():[];
@@ -2712,17 +2712,21 @@ function _pkAppLevel(pk){
     var ws=(typeof getBookWords==='function' && pk.words===undefined)?[]:(pk.words||[]);
     if(!ws.length && typeof getPackWords==='function'){ try{ ws=getPackWords(pk)||[]; }catch(e){} }
     if(!ws.length) return null;
+    /* [산정 보정 20260805] 대표 레벨 = '일반 어휘(상위 1만 안)'의 중앙값.
+       기존엔 상위 1만 밖 특수 단어(바오밥·가로등지기류)를 Lv.11로 쳐서 중앙값에 포함 →
+       특수 명사가 많은 책(어린왕자 32%)이 실제 어휘 수준과 무관하게 높게 나오던 왜곡(2026-08-05 실측).
+       특수 단어는 비율(x10%)로 따로 표기해 정보를 잃지 않는다. */
     var lvs=[], dist={}, out10=0, miss=0;
     ws.forEach(function(w){
       var en=String((w&&w.en)||'').toLowerCase().trim(); if(!en){miss++;return;}
       var L=mp2[en];
-      if(L==null){ if(typeof BWD_DICT!=='undefined'&&BWD_DICT[en]){ L=11; out10++; } else { miss++; return; } }
-      lvs.push(L); dist[L>10?'10+':L]=(dist[L>10?'10+':L]||0)+1;
+      if(L==null){ if(typeof BWD_DICT!=='undefined'&&BWD_DICT[en]){ out10++; dist['10+']=(dist['10+']||0)+1; } else { miss++; } return; }
+      lvs.push(L); dist[L]=(dist[L]||0)+1;
     });
     if(lvs.length<20) return null;                                 // 표본 부족 시 산정 안 함(억지 금지)
     lvs.sort(function(a,b){return a-b;});
-    function pct(p){ return Math.min(10, lvs[Math.min(lvs.length-1, Math.floor(lvs.length*p))]); }
-    var r={ lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length, cover:Math.round(lvs.length/(lvs.length+miss)*100), dist:dist };
+    function pct(p){ return lvs[Math.min(lvs.length-1, Math.floor(lvs.length*p))]; }
+    var r={ lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length+out10, cover:Math.round((lvs.length+out10)/(lvs.length+out10+miss)*100), x10:Math.round(out10/(lvs.length+out10)*100), dist:dist, v:2 };
     window._pkLvCache[pk.id]=r;
     return r;
   }catch(e){ return null; }
@@ -2941,7 +2945,7 @@ function rPackDetail() {
       return '<div style="background:var(--bg-sub,#F8FAFC);border-radius:10px;padding:10px 12px;margin-bottom:10px">'
         +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-size:12px;font-weight:900;color:var(--text1,#111)">이 단어장은 <span style="color:var(--theme,#1E5FA5)">단어 Lv.'+wl.lv+'</span> 수준</span>'+_pkLvRelTag(wl.lv)+'</div>'
         +'<div style="display:flex;align-items:flex-end;gap:2px;height:48px">'+bars+'</div>'
-        +'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:6px;line-height:1.6">근거: 수록 단어 '+wl.n+'개를 앱 레벨체계(CEFR+빈도 상위 1만)에 대조 — 절반이 Lv.'+wl.lv+' 이하, 대부분 Lv.'+wl.lo+'~'+wl.hi+' 구간'+(wl.cover<90?(' · 대조율 '+wl.cover+'%'):'')+'</div>'
+        +'<div style="font-size:9.5px;color:var(--text3,#9CA3AF);margin-top:6px;line-height:1.6">근거: 수록 단어 '+wl.n+'개를 앱 레벨체계(CEFR+빈도 상위 1만)에 대조 — 일반 어휘의 절반이 Lv.'+wl.lv+' 이하, 대부분 Lv.'+wl.lo+'~'+wl.hi+' 구간'+(wl.x10?(' · <b style="color:#7C3AED">이 책만의 특수 단어 '+wl.x10+'%</b>'):'')+(wl.cover<90?(' · 대조율 '+wl.cover+'%'):'')+'</div>'
       +'</div>';
     })()}${_pkCefrBar(pk, 9)}
      <div style="font-size:10.5px;color:var(--text3,#9CA3AF);margin-top:9px;line-height:1.6">읽기 수준은 책 자체의 난이도, 단어 난이도는 이 단어장에서 외울 어휘 수준이에요. 배지의 ⓘ를 눌러 자세히 볼 수 있어요.</div>`, true);

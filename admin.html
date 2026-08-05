@@ -4136,7 +4136,11 @@ async function _bpRegister() {
       /* [제목 형식 20260725] 저장 이름은 "영문 원제 / 한글 제목". 한글이 없으면 영문만. */
       var _fullName=(_bp.nameKo&&_bp.nameKo.trim()) ? (_bp.name+' / '+_bp.nameKo.trim()) : _bp.name;
       var _wlv1=null; try{ await _cwLoadDicts(); _wlv1=_wlvAnalyze(toWords(results[0].selected)); }catch(e){}   /* [앱레벨 자동 분석 20260804] */
-      docs.push({ id: _bp.packId, data: Object.assign({ name: _fullName, nameEn: _bp.name, nameKo:(_bp.nameKo||'').trim(), emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _wlv1?{wlv:_wlv1}:{}, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
+      /* [자동등록 종합 판단 20260805] 분석 결과를 구성 기준(basis)에 자동 합성 —
+         마켓 카드·상세·공지가 '무슨 근거로 이 레벨인지'를 사람 손 없이 갖게 된다 */
+      var _autoBasis='원서 본문 빈도 분석';
+      if(_wlv1){ _autoBasis+=' · 단어 Lv.'+_wlv1.lv+' (주 분포 Lv.'+_wlv1.lo+'~'+_wlv1.hi+')'+(_wlv1.x10?(' · 이 책만의 특수 단어 '+_wlv1.x10+'%'):''); }
+      docs.push({ id: _bp.packId, data: Object.assign({ name: _fullName, nameEn: _bp.name, nameKo:(_bp.nameKo||'').trim(), emoji: _bp.emoji, cat: _bp.cat, words: toWords(results[0].selected), count: results[0].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _wlv1?{wlv:_wlv1, basis:_autoBasis}:{}, _bp.author?{author:_bp.author}:{}, _desc?{desc:_desc}:{}, (_meta.subjects&&_meta.subjects.length)?{subjects:_meta.subjects}:{}, _img?{imageUrl:_img}:{}, _readObj?{read:_readObj}:{}) });   /* [원서 메타 자동완성 20260725] desc·subjects 저장 추가 — 이전엔 원서팩에 소개가 아예 저장되지 않아 공지가 기본 문구로 때워졌음 */
     } else {
       var total = _bp.tiers.length;
       var _cImg=''; try{ setR('#1E5FA5','🖼️ 표지 자동 검색 중... (Open Library)'); _cImg=await _bpFetchCover(_bp.courseName); }catch(e){}   /* [원서 표지 자동검색 20260721] 코스명 기준 1회 → 전 권 공통 */
@@ -4144,7 +4148,8 @@ async function _bpRegister() {
         var label = (_bp.tiers[i].label || (i + 1) + '단계').trim();
         var _cRead=null; try{ if(results[i]&&results[i].fkIdx!=null) _cRead={ar:null,lexile:null,idx:results[i].fkIdx,auto:true,fk:results[i].fkGrade||null}; }catch(e){}   /* [읽기수준 자동산출 20260722] 코스 각 권도 원문 FK로 개별 부여 */
         var _wlvT=null; try{ await _cwLoadDicts(); _wlvT=_wlvAnalyze(toWords(results[i].selected)); }catch(e){}   /* [앱레벨 자동 분석 20260804] */
-        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _wlvT?{wlv:_wlvT}:{}, _cImg?{imageUrl:_cImg}:{}, _cRead?{read:_cRead}:{}) });
+        var _autoBasisT='원서 본문 빈도 분석'; if(_wlvT){ _autoBasisT+=' · 단어 Lv.'+_wlvT.lv+' (주 분포 Lv.'+_wlvT.lo+'~'+_wlvT.hi+')'+(_wlvT.x10?(' · 특수 단어 '+_wlvT.x10+'%'):''); }
+        docs.push({ id: _bp.courseId + '_' + (i + 1), data: Object.assign({ name: _bp.courseName + ' · ' + label, courseId: _bp.courseId, courseName: _bp.courseName, emoji: _bp.courseEmoji, cat: '🎯 목표별 코스', tierIdx: (i + 1), tierLabel: label, tierTotal: total, words: toWords(results[i].selected), count: results[i].selected.length, createdAt: new Date().toISOString(), source: '원서AI추출' }, _wlvT?{wlv:_wlvT}:{}, _wlvT?{wlv:_wlvT, basis:_autoBasisT}:{}, _cImg?{imageUrl:_cImg}:{}, _cRead?{read:_cRead}:{}) });
       }
     }
     var overwritten = [];

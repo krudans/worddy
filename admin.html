@@ -2559,7 +2559,7 @@ function _cwWL(){ try{ return BWD_WORDLIST; }catch(e){ return window.BWD_WORDLIS
 function _cwLoadDicts(){
   return new Promise(function(res){
     if(_cwD() && _cwM() && _cwWL()){ res(); return; }
-    var files=['js/bwd-wordlist.js','js/bwd-dict.js','js/bwd-meta-1.js','js/bwd-meta-2.js'];
+    var files=['js/bwd-wordlist.js','js/bwd-dict.js','js/bwd-meta-1.js','js/bwd-meta-2.js','js/bwd-pron.js'];
     var left=files.length;
     files.forEach(function(f){
       var sc=document.createElement('script'); sc.src=f+'?cb='+Date.now();
@@ -2598,13 +2598,31 @@ function _cwDefaultSorted(){
   window._cwSortedCache=arr.slice(0,10000).map(function(x){return x.en;});
   return window._cwSortedCache;
 }
+/* [저장 라우터 20260804] 팩 단어 저장의 단일 관문.
+   - 일반 팩: packs/{id} (기존과 동일)
+   - 레벨 단어장 가상 팩(_cwLevel): settings/curriculum_level_N 정본으로 저장 (마켓 packs 오염 금지)
+   단어 목록 UI(showPackWords)의 모든 편집이 이 관문을 지나므로 레벨 정본도 같은 UI로 관리된다. */
+async function _packWordsPersist(p){
+  if(!p) return;
+  if(p._cwLevel){
+    var seen={}, arr=[];
+    (p.words||[]).forEach(function(w){ var en=String((w&&w.en)||'').toLowerCase().trim(); if(en&&!seen[en]){ seen[en]=1; arr.push(en); } });
+    await db.collection('settings').doc('curriculum_level_'+p._cwLevel).set({words:arr, updatedAt:new Date().toISOString(), source:'admin', count:arr.length});
+    try{ _cwInit(); _cwSaved[p._cwLevel]={words:arr, updatedAt:new Date().toISOString()}; _cwWords[p._cwLevel]=arr.slice(); }catch(e){}
+    toast('✅ 레벨 '+p._cwLevel+' 정본 저장 ('+arr.length+'단어) — 앱이 즉시 사용','ok');
+    return;
+  }
+  await db.collection('packs').doc(p.id).set({...p, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+}
+// ══════════════════════════════════
+// 📚 레벨 단어장 — 목록·편집은 마켓 팩과 동일한 단어 목록 UI(showPackWords)를 그대로 사용
+// ══════════════════════════════════
 async function rCW(){
   _cwInit();
   var main=document.getElementById('main-inner');
-  main.innerHTML='<div class="es"><div class="ei">📚</div><p>사전 데이터 로드 중… (최초 1회, 20MB)</p></div>';
+  main.innerHTML='<div class="es"><div class="ei">📚</div><p>사전 데이터 로드 중… (최초 1회)</p></div>';
   await _cwLoadDicts();
   if(!_cwD()||!_cwM()){ main.innerHTML='<div class="es"><div class="ei">⚠️</div><p>사전 로드 실패 — 새로고침 후 다시 시도해주세요</p></div>'; return; }
-  // 저장된 정본 로드
   _cwSaved={};
   try{
     for(var L=1;L<=10;L++){
@@ -2613,106 +2631,64 @@ async function rCW(){
     }
   }catch(e){}
   _cwWords={};
-  _cwRender();
+  _cwRenderTable();
 }
-function _cwInit(){ if(typeof _cwWords==='undefined'||!_cwWords) _cwWords={}; if(typeof _cwSaved==='undefined'||!_cwSaved) _cwSaved={}; if(typeof _cwDirty==='undefined'||!_cwDirty) _cwDirty={}; if(typeof _cwLv==='undefined'||!_cwLv) _cwLv=1; if(typeof _cwCh==='undefined'||_cwCh==null) _cwCh=0; }
-function _cwEffective(L){ // 화면 편집본 > 저장 정본 > 기본 계산
+function _cwInit(){ if(typeof _cwWords==='undefined'||!_cwWords) _cwWords={}; if(typeof _cwSaved==='undefined'||!_cwSaved) _cwSaved={}; }
+function _cwEffective(L){
   _cwInit();
   if(_cwWords[L]) return _cwWords[L];
-  if(_cwSaved[L]) { _cwWords[L]=_cwSaved[L].words.slice(0,1000); return _cwWords[L]; }
+  if(_cwSaved[L]){ _cwWords[L]=_cwSaved[L].words.slice(0,1000); return _cwWords[L]; }
   _cwWords[L]=_cwDefaultSorted().slice((L-1)*1000,L*1000); return _cwWords[L];
 }
-function _cwRender(){
+function _cwBandName(L){ return L<=2?'왕초보 · 초등':(L<=5?'기초 · 중학':(L<=8?'중급 · 고등':'중상급 · 수능+')); }
+function _cwRenderTable(){
   _cwInit();
-  var main=document.getElementById('main-inner');
-  var lvBtns=''; for(var L=1;L<=10;L++){
-    var on=(L===_cwLv), saved=!!_cwSaved[L], dirty=!!_cwDirty[L];
-    lvBtns+='<button onclick="_cwSelLv('+L+')" style="position:relative;padding:9px 0;border-radius:11px;border:2px solid '+(on?'#1E5FA5':'#E5E7EB')+';background:'+(on?'#1E5FA5':'#fff')+';color:'+(on?'#fff':'#374151')+';font-size:13px;font-weight:800;cursor:pointer">Lv.'+L
-      +(saved?'<span style="position:absolute;top:-7px;right:-4px;background:#16A34A;color:#fff;font-size:8.5px;font-weight:800;border-radius:8px;padding:1px 5px">정본</span>':'')
-      +(dirty?'<span style="position:absolute;top:-7px;left:-4px;background:#F59E0B;color:#fff;font-size:8.5px;font-weight:800;border-radius:8px;padding:1px 5px">수정중</span>':'')
-      +'</button>';
+  var rows='';
+  for(var L=1;L<=10;L++){
+    var eff=_cwEffective(L), saved=_cwSaved[L];
+    rows+='<tr style="border-bottom:1px solid #F2F4F6">'
+      +'<td style="padding:10px;text-align:center"><div style="font-size:14px;font-weight:900;color:#1E5FA5">Lv.'+L+'</div><div style="font-size:10px;color:#9CA3AF;white-space:nowrap">'+_cwBandName(L)+'</div></td>'
+      +'<td style="padding:10px;text-align:center">'+(saved
+        ?'<span style="background:#DCFCE7;color:#16A34A;font-size:10.5px;font-weight:800;border-radius:10px;padding:3px 9px;white-space:nowrap">정본 · '+String(saved.updatedAt).slice(0,10)+'</span>'
+        :'<span style="background:#F1F5F9;color:#64748B;font-size:10.5px;font-weight:700;border-radius:10px;padding:3px 9px;white-space:nowrap">기본 계산</span>')+'</td>'
+      +'<td style="padding:10px;text-align:center;font-weight:800;color:'+(eff.length===1000?'#0F172A':'#DC2626')+'">'+eff.length.toLocaleString()+'</td>'
+      +'<td style="padding:10px;font-size:11px;color:#64748B;font-family:ui-monospace,Menlo,monospace;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+eff.slice(0,5).join(', ')+' …</td>'
+      +'<td style="padding:10px;white-space:nowrap;text-align:right">'
+        +'<button class="btn bb" style="font-size:11.5px;padding:6px 12px" onclick="_cwOpenWords('+L+')">📋 단어 목록·편집</button> '
+        +(saved?'<button class="btn" style="font-size:11.5px;padding:6px 12px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3" onclick="_cwDeleteOverride('+L+')">🗑 정본 삭제</button>':'')
+      +'</td>'
+    +'</tr>';
   }
-  var L=_cwLv, words=_cwEffective(L), src=_cwSaved[L]?('🟢 관리자 정본 사용 중 (저장: '+String(_cwSaved[L].updatedAt).slice(0,10)+')'):'⚪ 기본 계산 사용 중 (CEFR+빈도) — 저장하면 정본이 됩니다';
-  var chBtns=''; for(var c=0;c<5;c++){
-    var cw=words.slice(c*200,(c+1)*200);
-    chBtns+='<button onclick="_cwSelCh('+c+')" style="flex:1;padding:8px 0;border-radius:10px;border:1.5px solid '+(c===_cwCh?'#1E5FA5':'#E5E7EB')+';background:'+(c===_cwCh?'#EEF3FA':'#fff')+';color:'+(c===_cwCh?'#1E5FA5':'#6B7280')+';font-size:12px;font-weight:800;cursor:pointer">'+(c+1)+'챕터<br><span style="font-size:10px;font-weight:600">'+cw.length+'개</span></button>';
-  }
-  var ch=words.slice(_cwCh*200,(_cwCh+1)*200);
-  // 검증
-  var dupIn={}, dups=[]; words.forEach(function(w){ if(dupIn[w]) dups.push(w); dupIn[w]=1; });
-  var _DD=_cwD()||{};
-  var unknown=words.filter(function(w){ return !_DD[w]; });
-  var others={}; for(var OL=1;OL<=10;OL++){ if(OL===L) continue; (_cwWords[OL]||(_cwSaved[OL]&&_cwSaved[OL].words)||_cwDefaultSorted().slice((OL-1)*1000,OL*1000)).forEach(function(w){ others[w]=OL; }); }
-  var cross=words.filter(function(w){ return others[w]; });
-  var valid = '<span style="color:'+(words.length===1000?'#16A34A':'#DC2626')+'">총 '+words.length+'/1000</span>'
-    +' · <span style="color:'+(dups.length?'#DC2626':'#16A34A')+'">레벨 내 중복 '+dups.length+'</span>'
-    +' · <span style="color:'+(cross.length?'#DC2626':'#16A34A')+'">타 레벨과 중복 '+cross.length+'</span>'
-    +' · <span style="color:'+(unknown.length?'#DC2626':'#16A34A')+'">사전에 없는 단어 '+unknown.length+'</span>';
-  var issues='';
-  if(dups.length) issues+='<div style="font-size:11px;color:#DC2626;margin-top:4px">중복: '+dups.slice(0,10).join(', ')+(dups.length>10?' 외 '+(dups.length-10):'')+'</div>';
-  if(cross.length) issues+='<div style="font-size:11px;color:#DC2626;margin-top:4px">타 레벨 중복: '+cross.slice(0,10).map(function(w){return w+'(Lv'+others[w]+')';}).join(', ')+(cross.length>10?' 외 '+(cross.length-10):'')+'</div>';
-  if(unknown.length) issues+='<div style="font-size:11px;color:#DC2626;margin-top:4px">사전 없음: '+unknown.slice(0,10).join(', ')+(unknown.length>10?' 외 '+(unknown.length-10):'')+'</div>';
-  main.innerHTML=
+  document.getElementById('main-inner').innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">'
       +'<h2 style="font-size:22px;font-weight:900">📚 레벨 단어장 (커리큘럼·레벨테스트)</h2>'
       +'<span style="font-size:11px;color:#6B7280">기준: 1차 CEFR(A1→C2) · 2차 코퍼스 빈도 · 레벨당 1,000단어 = 200×5챕터</span>'
     +'</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin-bottom:12px">'+lvBtns+'</div>'
-    +'<div class="card" style="margin-bottom:12px">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
-        +'<div style="font-size:13px;font-weight:800">'+src+'</div>'
-        +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-          +'<button class="btn bb" style="font-size:12px;padding:8px 14px" onclick="_cwSave()">💾 이 레벨 정본으로 저장</button>'
-          +'<button class="btn" style="font-size:12px;padding:8px 14px;background:#EEF3FA;color:#1E5FA5;border:1.5px solid #BFD7F0" onclick="_cwRegen()">🔄 기준(CEFR+빈도)으로 재생성</button>'
-          +(_cwSaved[L]?'<button class="btn" style="font-size:12px;padding:8px 14px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3" onclick="_cwDelete()">🗑 정본 삭제(기본 계산 복귀)</button>':'')
-        +'</div>'
-      +'</div>'
-      +'<div style="font-size:12px;font-weight:700;margin-bottom:4px">'+valid+'</div>'+issues
-    +'</div>'
-    +'<div style="display:flex;gap:6px;margin-bottom:10px">'+chBtns+'</div>'
-    +'<div class="card">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-        +'<div class="ct" style="margin:0">Lv.'+L+' · '+(_cwCh+1)+'챕터 단어 ('+ch.length+'개) — 한 줄에 한 단어, 위→아래 = 출제·학습 순서</div>'
-        +'<button class="btn" style="font-size:11.5px;padding:6px 12px" onclick="_cwApplyText()">✏️ 아래 수정 내용 반영</button>'
-      +'</div>'
-      +'<textarea id="cw-ta" spellcheck="false" style="width:100%;height:420px;box-sizing:border-box;border:1.5px solid #D1D5DB;border-radius:10px;padding:12px;font-size:13px;font-family:monospace;line-height:1.6">'+ch.join('\n')+'</textarea>'
-      +'<div style="font-size:11px;color:#9CA3AF;margin-top:6px">💡 단어를 추가·삭제·순서변경 후 [수정 내용 반영] → 검증 확인 → [정본으로 저장]. 저장하면 앱(레벨테스트·레벨업 코스 새 생성)이 즉시 이 목록을 사용합니다. 이미 학습 중인 사용자의 기존 코스 단어는 바뀌지 않습니다.</div>'
+    +'<div class="card"><div class="tw"><table style="width:100%">'
+    +'<tr><th>레벨</th><th>상태</th><th>단어수</th><th>시작 단어(출제 순서)</th><th style="text-align:right">관리</th></tr>'
+    +rows
+    +'</table></div>'
+    +'<div style="font-size:11px;color:#9CA3AF;margin-top:10px;line-height:1.8">💡 <b style="color:#374151">[단어 목록·편집]은 마켓 팩과 동일한 단어 목록 화면</b>(검색 · 챕터 1~5 필터 · 단어 추가/수정/삭제 · 중복 검사)을 그대로 사용합니다. 거기서 고치면 <b style="color:#16A34A">자동으로 정본에 저장</b>되어 앱(레벨테스트 · 새 레벨업 코스)이 즉시 사용합니다. [정본 삭제] 시 기본 계산(CEFR+빈도)으로 복귀. 이미 학습 중인 사용자의 기존 코스 단어는 바뀌지 않습니다.</div>'
     +'</div>';
 }
-function _cwSelLv(L){ _cwLv=L; _cwCh=0; _cwRender(); }
-function _cwSelCh(c){ _cwApplyText(true); _cwCh=c; _cwRender(); }
-function _cwApplyText(silent){
-  try{
-    var ta=document.getElementById('cw-ta'); if(!ta) return;
-    var lines=ta.value.split(/\r?\n/).map(function(x){return x.trim().toLowerCase();}).filter(Boolean);
-    var L=_cwLv, words=_cwEffective(L).slice();
-    var next=words.slice(0,_cwCh*200).concat(lines, words.slice((_cwCh+1)*200));
-    _cwWords[L]=next; _cwDirty[L]=true;
-    if(!silent) _cwRender();
-  }catch(e){ toast('반영 실패: '+e.message,'err'); }
+/* 레벨 단어장을 '가상 팩'으로 만들어 기존 단어 목록 UI(showPackWords)로 연다 */
+function _cwOpenWords(L){
+  var eff=_cwEffective(L);
+  var D=_cwD()||{}, P=(function(){ try{ return BWD_PRON; }catch(e){ return window.BWD_PRON||{}; } })()||{};
+  var words=eff.map(function(en){ var d=D[en]||{}; var e5=(window.BWD_EX5||{})[en]||{}; return {en:en, kr:d.kr||'', ex:d.ex||'', pos:d.pos||'', ph:P[en]||'', img:e5.img||''}; });
+  var vp={id:'cwlv_'+L, name:'📚 레벨 '+L+' 단어장 (커리큘럼 정본)', words:words, count:words.length, _cwLevel:L};
+  window._adminPacks=window._adminPacks||[];
+  var i=window._adminPacks.findIndex(function(x){return x&&x.id===vp.id;});
+  if(i>=0) window._adminPacks[i]=vp; else window._adminPacks.push(vp);
+  showPackWords(vp.id);
 }
-function _cwRegen(){
-  if(!confirm('레벨 '+_cwLv+' 단어를 기준(CEFR+빈도) 계산값으로 다시 만들까요? 화면의 수정 내용은 사라집니다.')) return;
-  _cwWords[_cwLv]=_cwDefaultSorted().slice((_cwLv-1)*1000,_cwLv*1000); _cwDirty[_cwLv]=true; _cwRender();
-}
-async function _cwSave(){
+async function _cwDeleteOverride(L){
+  if(!confirm('레벨 '+L+' 정본을 삭제하고 기본 계산(CEFR+빈도)으로 되돌릴까요?')) return;
   try{
-    _cwApplyText(true);
-    var L=_cwLv, words=(_cwWords[L]||[]).map(function(x){return String(x).trim().toLowerCase();}).filter(Boolean);
-    var seen={}, dedup=[]; words.forEach(function(w){ if(!seen[w]){ seen[w]=1; dedup.push(w); } });
-    if(dedup.length!==1000 && !confirm('단어가 '+dedup.length+'개입니다(권장 1000). 그래도 저장할까요?')) return;
-    await db.collection('settings').doc('curriculum_level_'+L).set({ words:dedup, updatedAt:new Date().toISOString(), source:'admin', count:dedup.length });
-    _cwSaved[L]={words:dedup, updatedAt:new Date().toISOString()}; _cwWords[L]=dedup; _cwDirty[L]=false;
-    toast('✅ 레벨 '+L+' 정본 저장 완료 ('+dedup.length+'단어) — 앱이 이 목록을 사용합니다','ok');
-    _cwRender();
-  }catch(e){ toast('저장 실패: '+e.message,'err'); }
-}
-async function _cwDelete(){
-  if(!confirm('레벨 '+_cwLv+' 정본을 삭제하고 기본 계산(CEFR+빈도)으로 되돌릴까요?')) return;
-  try{
-    await db.collection('settings').doc('curriculum_level_'+_cwLv).delete();
-    delete _cwSaved[_cwLv]; delete _cwWords[_cwLv]; _cwDirty[_cwLv]=false;
-    toast('삭제 완료 — 기본 계산 사용','ok'); _cwRender();
+    await db.collection('settings').doc('curriculum_level_'+L).delete();
+    _cwInit(); delete _cwSaved[L]; delete _cwWords[L];
+    toast('삭제 완료 — 기본 계산 사용','ok');
+    _cwRenderTable();
   }catch(e){ toast('삭제 실패: '+e.message,'err'); }
 }
 function T(tab){
@@ -4448,7 +4424,7 @@ async function pwFillSave() {
 
   try {
     toast('저장 중...', 'ok');
-    await db.collection('packs').doc(selPack).update({ words: merged, count: merged.length, updatedAt: Date.now() });
+    { const _pp=(window._adminPacks||[]).find(x=>x.id===selPack); if(_pp&&_pp._cwLevel){ _pp.words=merged; await _packWordsPersist(_pp); } else { await db.collection('packs').doc(selPack).update({ words: merged, count: merged.length, updatedAt: Date.now() }); } }
     p.words = merged; p.count = merged.length;
     window._pwFill = null;
     toast(`✅ ${merged.length}단어 저장 완료`, 'ok');
@@ -4840,6 +4816,34 @@ function _wlvAnalyze(words){
     return { lv:pct(0.5), lo:pct(0.25), hi:pct(0.75), n:lvs.length, cover:Math.round(lvs.length/(lvs.length+miss)*100), dist:dist, at:new Date().toISOString() };
   }catch(e){ return null; }
 }
+/* [분석 결과 표시 20260804] 팩 수정 모달·목록에 단어 레벨 분석을 상세히 보여준다 */
+function _wlvCardHTML(w){
+  if(!w) return '<div style="font-size:11.5px;color:#9CA3AF">아직 분석 전 — [재분석]을 누르거나 마켓 팩 관리의 [📶 단어 레벨 일괄 분석]을 실행하세요.</div>';
+  var mx=1; for(var L=1;L<=10;L++){ mx=Math.max(mx,(w.dist&&w.dist[L])||0); } mx=Math.max(mx,(w.dist&&w.dist['10+'])||0);
+  function bar(v,color,lb){ var h=Math.max(2,Math.round(v/mx*40)); return '<div style="flex:1;text-align:center"><div style="height:'+h+'px;background:'+color+';border-radius:2px 2px 0 0;margin-top:'+(40-h)+'px"></div><div style="font-size:8.5px;color:#94A3B8;font-weight:700">'+lb+'</div><div style="font-size:8px;color:#CBD5E1">'+(v||'')+'</div></div>'; }
+  var bars='';
+  for(var L=1;L<=10;L++){ bars+=bar((w.dist&&w.dist[L])||0, L<=w.lv?'#1E5FA5':'#CBD5E1', L); }
+  bars+=bar((w.dist&&w.dist['10+'])||0,'#8B5CF6','10+');
+  return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+    +'<span style="background:#1E5FA5;color:#fff;font-size:12px;font-weight:900;border-radius:10px;padding:3px 11px">단어 Lv.'+w.lv+'</span>'
+    +'<span style="font-size:11px;color:#374151;font-weight:700">주 분포 Lv.'+w.lo+'~'+w.hi+'</span>'
+    +'<span style="font-size:10.5px;color:#9CA3AF">대조 '+w.n+'단어 · 대조율 '+w.cover+'%'+(w.at?(' · '+String(w.at).slice(0,10)):'')+'</span>'
+  +'</div>'
+  +'<div style="display:flex;align-items:flex-end;gap:2px">'+bars+'</div>'
+  +'<div style="font-size:10px;color:#9CA3AF;margin-top:6px;line-height:1.6">근거: 수록 단어를 앱 레벨체계(CEFR+빈도 상위 1만 · 레벨당 1,000단어)에 대조한 분포. 팩 레벨 = 단어의 절반이 그 이하인 중앙값 · 10+ = 상위 1만 밖 고급 단어. 앱 마켓의 "단어 Lv" 표시·"단어 레벨순" 정렬이 이 값을 사용합니다.</div>';
+}
+async function _wlvOne(packId){
+  try{
+    toast('분석 중…');
+    await _cwLoadDicts();
+    var p=(window._adminPacks||[]).find(function(x){return x.id===packId;}); if(!p){ toast('팩을 찾을 수 없어요','err'); return; }
+    var r=_wlvAnalyze(p.words||[]);
+    if(!r){ toast('단어가 부족해 분석 불가(대조 20개 미만)','err'); return; }
+    await db.collection('packs').doc(packId).update({wlv:r}); p.wlv=r;
+    var el=document.getElementById('ep-wlv'); if(el) el.innerHTML=_wlvCardHTML(r);
+    toast('✅ 분석 저장: 단어 Lv.'+r.lv+' (Lv.'+r.lo+'~'+r.hi+')','ok');
+  }catch(e){ toast('분석 실패: '+e.message,'err'); }
+}
 /* 기존 팩 전체 일괄 분석 → packs.{id}.wlv 저장 */
 async function _wlvBackfill(){
   try{
@@ -4907,7 +4911,7 @@ async function rPK(){
         : '<span style="background:#F0FDF4;color:#16A34A;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">활성</span>');
     return '<tr>'
       +'<td style="padding:10px 12px;width:52px"><div style="width:36px;height:36px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;margin:0 auto">'+imgHtml+'</div></td>'
-      +'<td style="padding:10px 12px"><div style="font-size:13px;font-weight:700;color:#111">'+esc(p.name)+'</div>'
+      +'<td style="padding:10px 12px"><div style="font-size:13px;font-weight:700;color:#111">'+esc(p.name)+(p.wlv?' <span style="background:#EEF3FA;color:#1E5FA5;font-size:10px;font-weight:900;border-radius:8px;padding:2px 7px;vertical-align:1px">Lv.'+p.wlv.lv+'</span>':' <span style="background:#FFF7ED;color:#C2410C;font-size:9.5px;font-weight:800;border-radius:8px;padding:2px 7px;vertical-align:1px">레벨 미분석</span>')+'</div>'
         +'<div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">'+esc(p.id)
         +(st.phrases?' · <span style="color:#B45309;font-weight:700">구 '+st.phrases+'</span>':'')
         +(st.incomplete?' · <span style="color:#DC2626;font-weight:700">불완전 '+st.incomplete+'</span>':'')
@@ -5310,6 +5314,14 @@ function showEditPack(packId) {
           `}
         </div>
 
+        <!-- 단어 레벨 분석 (자동 산정 · 근거 표시) -->
+        <div style="margin:16px 0;padding:12px 14px;background:#F8FAFC;border:1.5px solid #E5E7EB;border-radius:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+            <div style="font-size:12.5px;font-weight:900;color:#0F172A">📶 단어 레벨 분석</div>
+            <button class="btn" style="font-size:11px;padding:5px 10px" onclick="_wlvOne('${p.id}')">🔄 재분석</button>
+          </div>
+          <div id="ep-wlv">${_wlvCardHTML(p.wlv)}</div>
+        </div>
         <!-- 마켓 노출 -->
         <div>
           <div style="font-size:10px;font-weight:800;color:#94A3B8;letter-spacing:.5px;margin-bottom:2px">마켓 노출</div>
@@ -5524,7 +5536,7 @@ function awSave() {
   if (!w) { toast('사전에 없는 단어입니다', 'err'); return; }
   if (!p.words) p.words = [];
   p.words.push(w);
-  db.collection('packs').doc(p.id).update({ words: p.words, updatedAt: Date.now() })
+  (p._cwLevel ? _packWordsPersist(p) : db.collection('packs').doc(p.id).update({ words: p.words, updatedAt: Date.now() }))
     .then(() => {
       document.getElementById('ma2').innerHTML = '';
       toast('✅ ' + en + ' 추가', 'ok');
@@ -5917,7 +5929,7 @@ async function fixPackWordFields(packId) {
   });
 
   try {
-    await db.collection('packs').doc(packId).set({...p, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+    await _packWordsPersist(p);
     toast(`✅ ${fixed}개 수정, ${removed}개 제거 완료! Firebase 저장 완료`, 'ok');
   } catch(e) {
     toast('저장 오류: '+e.message, 'err');
@@ -6029,7 +6041,7 @@ async function addPackWord() {
   if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ "${en}" 추가! (총 ${p.words.length}개)</div>`;
   document.getElementById('pw-en')?.focus();
   // Firebase 자동 저장
-  try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e) {}
+  try { await _packWordsPersist(p); } catch(e) {}
 }
 
 async function aiPackWordFill() {
@@ -6069,7 +6081,7 @@ async function saveBulkWords() {
   if(added>0){
     document.getElementById('bulk-input').value='';
     // Firebase 자동 저장
-    try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+    try { await _packWordsPersist(p); } catch(e){}
   }
 }
 
@@ -6151,7 +6163,7 @@ async function uploadPackCSV() {
 
   if(msg)msg.innerHTML=`<div style="color:#16A34A;font-size:12px">✅ ${added}개 추가! (중복 ${dup}개, 건너뜀 ${skip}개 제외)</div>`;
   if(added>0) {
-    try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+    try { await _packWordsPersist(p); } catch(e){}
   }
 }
 
@@ -6214,7 +6226,7 @@ async function saveAIPackWords(wsJson) {
     });
     toast(`✅ ${added}개 저장 완료!`,'ok');
     // Firebase 저장
-    try { await db.collection('packs').doc(selPack).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+    try { await _packWordsPersist(p); } catch(e){}
     showPackWordTab('list');
   }catch(e){
     let msg = e.message || '알 수 없는 오류';
@@ -6259,7 +6271,7 @@ async function deletePackWord(packId, idx) {
   const p=packs.find(x=>x.id===packId);
   if(!p||!p.words)return;
   p.words.splice(idx,1);
-  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+  try { await _packWordsPersist(p); } catch(e){}
   showPackWordTab('list');
 }
 
@@ -6333,7 +6345,7 @@ async function saveEditPackWord(packId, idx) {
     tip:document.getElementById('epw-tip').value.trim(),
     meanings:kr.split(';').map(s=>s.trim()).filter(Boolean).slice(0,6)
   };
-  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); toast('✅ 저장됨 · Firebase 반영','ok'); } catch(e){ toast('저장 실패: '+e.message,'err'); }
+  try { await _packWordsPersist(p); if(!p._cwLevel) toast('✅ 저장됨 · Firebase 반영','ok'); } catch(e){ toast('저장 실패: '+e.message,'err'); }
   showPackWords(packId); showPackWordTab('list');
 }
 
@@ -6350,7 +6362,7 @@ async function removeInternalDups(packId) {
     seen.add(key);return true;
   });
   toast(`✅ ${before-p.words.length}개 중복 제거!`,'ok');
-  try { await db.collection('packs').doc(packId).set({...p,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(e){}
+  try { await _packWordsPersist(p); } catch(e){}
   showPackWordTab('dup');
 }
 

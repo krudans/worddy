@@ -5143,6 +5143,17 @@ function sv() {
             let _restored = 0;
             (S.books||[]).forEach(function(lb){
               const sb=_srvMap[_bkey(lb)]; if(!sb) return;
+              /* [되돌림 우선 20260807] 사용자가 '처음부터 다시 학습'으로 진도를 지웠으면(resetAt),
+                 합집합/OR 병합이 그것을 되살리면 안 된다. 더 최근에 되돌린 쪽을 그대로 채택한다. */
+              const _rc=(typeof _resetCmp==='function')?_resetCmp(lb, sb):0;
+              if(_rc>0){ return; }                                   // 이 기기의 되돌림이 최신 → 서버 진도 병합 안 함
+              if(_rc<0){                                             // 다른 기기의 되돌림이 최신 → 그쪽 상태를 채택
+                lb.chPass=(Array.isArray(sb.chPass)?sb.chPass:[]).slice();
+                lb.markMap=Object.assign({}, sb.markMap||{});
+                lb.learned=Array.isArray(sb.learned)?sb.learned.slice():[];
+                lb.resetAt=sb.resetAt; if(sb.ftUnlocked) lb.ftUnlocked=true;
+                _restored++; return;
+              }
               // 챕터 통과: 한쪽이라도 통과면 통과
               const sc=Array.isArray(sb.chPass)?sb.chPass:[], lc=Array.isArray(lb.chPass)?lb.chPass:[];
               if(sc.length||lc.length){
@@ -12338,11 +12349,13 @@ function _showCourseChapters(bookName){
       +'<div style="font-size:11px;color:#9CA3AF;margin-bottom:6px">'+_cn+'챕터 · 단어를 모두 외우면 완료 + 나비 🦋 <b style="color:var(--theme,#1E5FA5)">'+done+'/'+_cn+'</b></div>'
       +_finishBanner
       +rows
-      /* [최종 테스트 20260723] 전 챕터 완료 시 최종 테스트 진입 버튼 */
-      +((typeof _finalTestReady==='function' && _finalTestReady(b))
+      /* [최종 테스트 20260723] 전 챕터 완료 시 최종 테스트 진입 버튼
+         [상시 개방 20260807] 한 번 열린 뒤 '처음부터 다시 학습'으로 되돌린 경우에도 계속 노출(_ftAvailable) */
+      +((typeof _ftAvailable==='function' && _ftAvailable(b))
         ? (b.finalPassed
             ? '<div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border-radius:12px;padding:12px;margin-top:10px;text-align:center"><div style="font-size:13px;font-weight:900;color:#92400E">'+((typeof _finalBadgeTier==='function')?_finalBadgeTier(b).icon:'🏅')+' 완독 배지 획득</div><button onclick="cm();startFinalTest(\''+String(b.name).replace(/'/g,"\\'")+'\')" style="margin-top:8px;background:#fff;border:1.5px solid #F59E0B;color:#B45309;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer">🔄 다시 테스트</button></div>'
-            : '<button onclick="cm();startFinalTest(\''+String(b.name).replace(/'/g,"\\'")+'\')" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 최종 테스트 보기 (30문제)</button>')
+            : '<button onclick="cm();startFinalTest(\''+String(b.name).replace(/'/g,"\\'")+'\')" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 최종 테스트 보기 (30문제)</button>'
+              +((typeof _finalTestReady==='function' && !_finalTestReady(b))?'<div style="font-size:11px;color:#9CA3AF;text-align:center;margin-top:6px">복습 중에도 최종 테스트는 언제든 볼 수 있어요</div>':''))
         : '')
       +'<button onclick="cm()" style="width:100%;margin-top:14px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">닫기</button>'
       +'</div></div>';
@@ -13415,11 +13428,18 @@ function _finalTestReady(book){
     return (book.chPass||[]).slice(0,total).filter(Boolean).length >= total;
   }catch(e){ return false; }
 }
+/* [최종 테스트 상시 개방 20260807] 한 번이라도 전 챕터를 통과해 최종 테스트가 열렸으면(ftUnlocked),
+   그 뒤 처음부터 다시 학습하더라도 최종 테스트는 언제든 볼 수 있다.
+   '지금 볼 수 있는가'의 단일 판정 — 시험 진입·안내·버튼 노출은 모두 이 함수를 쓴다. */
+function _ftAvailable(book){
+  try{ return !!(book && (book.ftUnlocked || _finalTestReady(book))); }catch(e){ return false; }
+}
 function startFinalTest(bookName){
   try{
     var book=(S.books||[]).find(function(b){return b.name===bookName;});
     if(!book){ toast('단어장을 찾을 수 없어요','err'); return; }
-    if(!_finalTestReady(book)){ toast('모든 챕터를 먼저 완료해주세요','err'); return; }
+    if(!_ftAvailable(book)){ toast('모든 챕터를 먼저 완료해주세요','err'); return; }
+    if(!book.ftUnlocked){ book.ftUnlocked=true; try{ if(typeof sv==='function') sv(); }catch(e){} }   /* [상시 개방 20260807] 한 번 열리면 계속 볼 수 있게 기록 */
     var ws=(typeof getBookWords==='function')?getBookWords(book):[];
     ws=ws.filter(function(w){ return w && (typeof w==='string'? w : (w.en && w.kr)); });
     if(ws.length<8){ toast('단어가 부족해요','err'); return; }
@@ -13439,7 +13459,7 @@ function _ftReminderCheck(){
   try{
     if(window.__ftRemindShown) return;
     var list=(S.books||[]).filter(function(b){
-      return b && (b.isCurriculum||b.packId) && !b.finalPassed && _finalTestReady(b);
+      return b && (b.isCurriculum||b.packId) && !b.finalPassed && _ftAvailable(b);
     });
     if(!list.length){ window.__ftRemindShown=true; return; }
     var mr=document.getElementById('mr');
@@ -13447,17 +13467,22 @@ function _ftReminderCheck(){
     if(mr.innerHTML && mr.innerHTML.indexOf('mbg')>=0){ setTimeout(_ftReminderCheck, 1500); return; }
     if(S._inFinalTest || S._inInitLevelTest || window._autoActive){ setTimeout(_ftReminderCheck, 4000); return; }
     window.__ftRemindShown=true;
+    /* 되돌려 복습 중인 책(챕터 통과 기록은 지웠지만 시험은 계속 열려 있음)은 문구를 달리한다 */
+    var _relearn=list.every(function(b){ return !_finalTestReady(b); });
     var rows=list.map(function(b){
       var esc=String(b.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-      return '<button onclick="cm();startFinalTest(\''+esc+'\')" style="width:100%;margin-bottom:8px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 '+String(b.name).replace(/</g,'&lt;')+' 최종 테스트 시작</button>';
+      return '<button onclick="cm();startFinalTest(\''+esc+'\')" style="width:100%;margin-bottom:8px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 '+String(b.name).replace(/</g,'&lt;')+' 최종 테스트 '+(_relearn?'보기':'시작')+'</button>';
     }).join('');
     mr.innerHTML='<div class="mbg" onclick="cm()">'
       +'<div class="modal" style="text-align:center;padding:26px 20px" onclick="event.stopPropagation()">'
       +'<div style="font-size:42px;margin-bottom:8px">🏁</div>'
-      +'<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:8px">최종 테스트가 기다리고 있어요!</div>'
-      +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:14px;margin-bottom:14px;font-size:13px;color:#92400E;line-height:1.7">모든 챕터를 통과했어요. 👏<br>최종 테스트 <b>30문제에서 80점</b>을 넘으면<br>다음 단계가 열려요.</div>'
+      +(_relearn
+        ? '<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:8px">최종 테스트는 언제든 볼 수 있어요</div>'
+          +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:14px;margin-bottom:14px;font-size:13px;color:#92400E;line-height:1.7">지금은 복습 중이에요. 📖<br>준비됐다 싶으면 <b>챕터를 다 안 마쳐도</b><br>바로 최종 테스트에 도전할 수 있어요.</div>'
+        : '<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:8px">최종 테스트가 기다리고 있어요!</div>'
+          +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:14px;margin-bottom:14px;font-size:13px;color:#92400E;line-height:1.7">모든 챕터를 통과했어요. 👏<br>최종 테스트 <b>30문제에서 80점</b>을 넘으면<br>다음 단계가 열려요.</div>')
       +rows
-      +'<button onclick="cm()" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에 할게요</button>'
+      +'<button onclick="cm()" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">'+(_relearn?'계속 복습할게요':'나중에 할게요')+'</button>'
       +'</div></div>';
   }catch(e){console.warn('[wd-io:_ftReminderCheck]',e);}
 }
@@ -13524,11 +13549,59 @@ function _finishFinalTest(){
           +'<div style="font-size:19px;font-weight:900;color:#DC2626;margin-bottom:4px">조금 아쉬워요</div>'
           +'<div style="font-size:30px;font-weight:900;color:#DC2626">'+pct+'점</div>'
           +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">'+ft.correct+'/'+ft.total+' 정답 (기준 '+FT_PASS+'점)</div>'
-          +'<div style="font-size:12.5px;color:#6B7280;margin-bottom:14px">진도는 그대로예요. 복습 후 다시 도전해요!</div>'
-          +'<button onclick="cm();startFinalTest(\''+bnEsc+'\')" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🔄 다시 도전</button>'
+          +'<div style="font-size:12.5px;color:#6B7280;margin-bottom:14px">진도는 그대로예요. 어떻게 할까요?</div>'
+          +'<button onclick="_ftGoReview(\''+bnEsc+'\')" style="width:100%;background:linear-gradient(135deg,#16A34A,#15803D);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">📖 다시 단계별 학습 (1~5챕터)</button>'
+          +'<button onclick="cm();startFinalTest(\''+bnEsc+'\')" style="width:100%;margin-top:8px;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🔄 테스트 다시 보기</button>'
           +'<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에</button>')
       +'</div></div>';
   }catch(e){ S._inFinalTest=false; S._ft=null; }
+}
+/* ══ [최종 테스트 불합격 → 단계별 재학습 20260807] ═══════════════════════════
+   불합격 후 선택지는 둘: ① 처음부터 다시 학습(1챕터부터·외웠음 전부 해제) ② 테스트 다시 보기.
+   ①은 진도를 지우는 되돌림이라 반드시 확인 화면을 거친다. 되돌려도 최종 테스트는 계속 볼 수 있다
+   (ftUnlocked) — 다시 5챕터를 통과해야만 시험을 볼 수 있게 가두지 않는다. ══ */
+function _ftGoReview(bookName){
+  try{
+    var book=(S.books||[]).find(function(b){return b.name===bookName;});
+    if(!book){ if(typeof toast==='function') toast('단어장을 찾을 수 없어요','err'); return; }
+    var n=(typeof _chapterCount==='function')?_chapterCount(book):((book.chPass||[]).length||5);
+    var esc=String(bookName).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var mr=document.getElementById('mr');
+    if(!mr){ mr=document.createElement('div'); mr.id='mr'; (document.getElementById('app')||document.body).appendChild(mr); }
+    mr.style.pointerEvents='auto';
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
+      +'<div style="font-size:44px;margin-bottom:8px">📖</div>'
+      +'<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:8px">처음부터 다시 학습할까요?</div>'
+      +'<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:14px;padding:14px;margin-bottom:10px;font-size:13px;color:#166534;line-height:1.8;text-align:left">'
+      +'· <b>1챕터부터</b> 다시 시작해요<br>· 이 단계의 <b>외웠음 표시가 모두 지워져요</b><br>· 1~'+n+'챕터 통과 기록도 초기화돼요</div>'
+      +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:12px;margin-bottom:14px;font-size:12.5px;color:#92400E;line-height:1.7">🏁 걱정 마세요 — <b>최종 테스트는 언제든 다시 볼 수 있어요.</b><br>단어장 화면의 챕터 목록에서 바로 볼 수 있어요.</div>'
+      +'<button onclick="_ftRestartStage(\''+esc+'\')" style="width:100%;background:linear-gradient(135deg,#16A34A,#15803D);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">📖 네, 처음부터 다시 할게요</button>'
+      +'<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">취소</button>'
+      +'</div></div>';
+  }catch(e){console.warn('[wd-io:_ftGoReview]',e);}
+}
+/* 실제 되돌림 — 이 단계의 외웠음·챕터 통과를 지우고 1챕터부터 다시.
+   resetAt(되돌린 시각)을 남긴다: 진도 병합(합집합·OR)이 지운 진도를 되살리지 못하게 하는 단일 근거. */
+function _ftRestartStage(bookName){
+  try{
+    var book=(S.books||[]).find(function(b){return b.name===bookName;});
+    if(!book){ if(typeof toast==='function') toast('단어장을 찾을 수 없어요','err'); return; }
+    var n=(typeof _chapterCount==='function')?_chapterCount(book):((book.chPass||[]).length||5);
+    book.ftUnlocked=true;                       // 되돌려도 최종 테스트는 계속 열려 있다
+    book.resetAt=Date.now();                    // 되돌림 시각(병합 우선순위 근거)
+    book.chPass=new Array(n).fill(false);
+    book.markMap={};
+    book.learned=[];
+    if(S.currentBook===bookName){ S.markMap={}; try{ S.learned=new Set(); }catch(e){} }   // 현재 학습 중인 책이면 라이브 진도도 함께 비운다
+    S._studyChapterIdx=0; S._chReview=0;
+    S._flashSig=null; S._flipWords=null; S._flashShuffled=null; S._lastFilter=null; S.idx=0; S.flip=false;
+    if(typeof sv==='function') sv();
+    cm();
+    if(S.currentBook!==bookName && typeof switchBook==='function') switchBook(bookName);
+    S._studyChapterIdx=0;
+    if(typeof go==='function') go('learn');
+    if(typeof toast==='function') toast('📖 1챕터부터 다시 시작해요 · 🏁 최종 테스트는 언제든 볼 수 있어요');
+  }catch(e){console.warn('[wd-io:_ftRestartStage]',e);}
 }
 /* ══ [챕터 자동완료 20260723] 시험 없이 "챕터 단어를 모두 외우면 완료".
    통과 시 나비 쿠폰 1장 + 다음 챕터 열림. 마지막 챕터까지 완료하면 최종 테스트가 열린다. ══ */
@@ -13579,6 +13652,7 @@ function _checkChapterDone(book, chIdx, force){
     var total=(typeof _chapterCount==='function')?_chapterCount(book):5;
     var isLast=(chIdx+1>=total);
     var allDone=(book.chPass||[]).slice(0,total).every(Boolean);
+    if(allDone && !book.ftUnlocked){ book.ftUnlocked=true; if(typeof sv==='function') sv(); }   /* [상시 개방 20260807] 최종 테스트가 열린 사실을 기록 — 되돌려 복습해도 시험은 계속 볼 수 있다 */
     var mr=document.getElementById('mr');
     if(!mr){ mr=document.createElement('div'); mr.id='mr'; (document.getElementById('app')||document.body).appendChild(mr); }
     var bnEsc=String(book.name).replace(/'/g,"\\'");
@@ -13613,6 +13687,7 @@ function rLearn() {
         +'<div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">책 전체에서 30문제 · 80점이면 합격!<br>합격하면 다음 단계가 열리고 🦋 쿠폰 2장을 받아요.</div>'
         +'<button onclick="startFinalTest(\''+_bnE+'\')" style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:14px 28px;font-size:15px;font-weight:900;cursor:pointer">🏁 최종 테스트 시작</button>'
         +'<div style="margin-top:14px"><button onclick="S.flashRange=-1;S._chReview=1;go()" style="background:none;border:none;color:#9CA3AF;font-size:12.5px;cursor:pointer;text-decoration:underline">그 전에 복습하기</button></div>'
+        +'<div style="margin-top:8px"><button onclick="_ftGoReview(\''+_bnE+'\')" style="background:none;border:none;color:#9CA3AF;font-size:12.5px;cursor:pointer;text-decoration:underline">처음부터 다시 학습하기 (외웠음 초기화)</button></div>'   /* [재학습 20260807] */
         +'</div>';
     }
   }catch(e){}
@@ -17663,8 +17738,27 @@ function _mergeWordsUnion(localArr, srvArr, tomb){
 }
 // 같은 책이 양쪽에 있으면 words뿐 아니라 학습진도(markMap 합집합 / chPass OR / 최대값 필드)도 병합한다.
 // [버그수정] 기존엔 로컬 책을 통째로 채택하고 서버의 markMap·chPass를 버려서, 다른 기기 학습분이 유실됐다.
+/* [되돌림 우선 20260807] '처음부터 다시 학습'(resetAt)은 진도 병합보다 우선한다.
+   1 = a의 되돌림이 최신(a 채택), -1 = b가 최신(b 채택), 0 = 되돌림 없음/동일 → 평소대로 병합. */
+function _resetCmp(a, b){
+  try{
+    var ra=(a&&a.resetAt)||0, rb=(b&&b.resetAt)||0;
+    if(ra===rb) return 0;
+    return ra>rb ? 1 : -1;
+  }catch(e){ return 0; }
+}
 function _mergeBookProgress(dst, src){
   if(!dst || !src) return;
+  /* [되돌림 우선 20260807] 지운 진도를 합집합/OR이 되살리지 않도록, 되돌림이 최신인 쪽을 그대로 채택 */
+  var _rc=_resetCmp(dst, src);
+  if(_rc!==0){
+    if(_rc<0){ dst.chPass=(Array.isArray(src.chPass)?src.chPass:[]).slice(); dst.markMap=Object.assign({}, src.markMap||{}); dst.resetAt=src.resetAt; }
+    if(src.ftUnlocked) dst.ftUnlocked=true;
+    if(src.finalPassed) { dst.finalPassed=true; dst.finalBadge=dst.finalBadge||src.finalBadge||null; }
+    ['isCurriculum','tier','level','packId','cefr'].forEach(function(f){ if(dst[f]===undefined && src[f]!==undefined) dst[f]=src[f]; });
+    return;
+  }
+  if(src.ftUnlocked) dst.ftUnlocked=true;
   // markMap: 합집합(외운 표시는 어느 기기 것이든 보존)
   var dm=dst.markMap||{}, sm=src.markMap||{};
   var outM={}; Object.keys(dm).forEach(function(k){ if(dm[k]) outM[k]=dm[k]; });
@@ -18089,6 +18183,11 @@ auth.onAuthStateChanged(async user => {
                     var lb=(S.books||[]).find(function(x){return x&&x.name===sb.name;});
                     if(!lb) return sb;
                     sb=Object.assign({},sb);
+                    if(lb.ftUnlocked) sb.ftUnlocked=true;
+                    /* [되돌림 우선 20260807] '처음부터 다시 학습'이 최신인 쪽을 그대로 채택 — 지운 진도를 병합이 되살리지 않게 */
+                    var _rc2=(typeof _resetCmp==='function')?_resetCmp(lb, sb):0;
+                    if(_rc2>0){ sb.chPass=(Array.isArray(lb.chPass)?lb.chPass:[]).slice(); sb.markMap=Object.assign({}, lb.markMap||{}); sb.resetAt=lb.resetAt; if(lb.finalPassed) sb.finalPassed=true; return sb; }
+                    if(_rc2<0){ return sb; }
                     if(lb.markMap&&Object.keys(lb.markMap).length) sb.markMap=Object.assign({}, sb.markMap||{}, lb.markMap);
                     var sc=Array.isArray(sb.chPass)?sb.chPass:[], lc=Array.isArray(lb.chPass)?lb.chPass:[];
                     if(sc.length||lc.length){ var n=Math.max(sc.length,lc.length), m=[]; for(var i=0;i<n;i++) m.push(!!sc[i]||!!lc[i]); sb.chPass=m; }

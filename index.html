@@ -637,12 +637,11 @@ function _curriculumStageLocked(book){
     if(!book || !book.isCurriculum || !(book.tier>1)) return false;
     var prev=(S.books||[]).filter(function(x){return x.isCurriculum && x.tier===book.tier-1;})[0];
     if(!prev) return false;
-    /* ══ [진급 규칙 수정 20260804] 이전 단계의 챕터를 전부 통과(각 90점 시험 합격)했으면 다음 단계 개방. ══
-       기존 결함: '외웠음 표시 80%'만 인정 → 5개 챕터를 시험으로 전부 통과한 사용자가
-       (외웠음 표시를 덜 눌렀다는 이유로) 2단계에 못 들어가는 모순(2026-08-04 실측: 챕터 5/5 통과·외움 27% → 잠김).
-       챕터 통과가 곧 검증된 진급 근거이므로 1순위로 인정하고, 80% 외움은 보조 경로로 유지. */
-    var totalCh=(typeof _chapterCount==='function')?_chapterCount(prev):5;
-    if(((prev.chPass||[]).slice(0,totalCh).filter(Boolean).length)>=totalCh) return false;
+    /* ══ [진급 규칙 확정 20260806] 다음 단계 개방 = 이전 단계 '최종 테스트' 통과. ══
+       흐름: 챕터 1~5 통과 → 🏁 최종 테스트(책 전체 30문제·80점) → 합격 시 다음 단계.
+       (2026-08-04의 '전 챕터 통과 시 개방'은 최종 테스트를 건너뛰게 만들어 철회 — 사용자 지적)
+       80% 외움 경로는 보조로 유지. */
+    if(prev.finalPassed) return false;
     var ws=(typeof getBookWords==='function')?getBookWords(prev):[]; if(!ws.length) return false;
     var mm=prev.markMap||{}, mem=ws.filter(function(w){return mm[w.en]===1;}).length;
     return (mem/ws.length*100) < 80;
@@ -4960,6 +4959,17 @@ function _healCurriculumWords(){
         var _before = (Array.isArray(b.words) ? b.words.length : 'na');
         b.words = cw.map(function(w){ return {en:w.en}; });
         try{ console.warn('[커리큘럼 자가복구] '+b.name+' words '+_before+' → '+cw.length); }catch(e){}
+      }
+      /* [기준 변경 반영 20260806] 진도 없는 커리큘럼 책은 현행 정본(CEFR+빈도)으로 단어 갱신.
+         정렬 기준을 바꿔도 예전에 고정 저장된 알파벳 목록이 남아 '2단계 1챕터가 a~c 단어'로 나오던 문제.
+         진도(통과 챕터 있음 또는 외운 단어 5개 이상)가 있으면 절대 건드리지 않는다. */
+      if(cw.length && Array.isArray(b.words) && b.words.length===cw.length && b.words[0] && cw[0] && b.words[0].en!==cw[0].en){
+        var _noProg = !((b.chPass||[]).some(Boolean));
+        if(_noProg){ var _mm5=b.markMap||{}, _mk5=0; for(var _k5 in _mm5){ if(_mm5[_k5]===1){ _mk5++; if(_mk5>=5) break; } } _noProg=_mk5<5; }
+        if(_noProg){
+          b.words = cw.map(function(w){ return {en:w.en}; });
+          try{ console.warn('[커리큘럼 기준 갱신] '+b.name+' → 현행 정렬(빈도)로 교체'); }catch(e){}
+        }
       }
       /* [1MiB 저장실패 근본수정 20260720] 개수가 정본과 같아도 words에 en 외 필드(kr·ex5·ja·de 등)가
          커밋돼 비대해지는 오염이 있음(예: 레벨업 1단계 890KB → user_words 1.35MB → 1MiB 초과로 저장 전면 실패).
@@ -10808,7 +10818,7 @@ function _studyGoalInner(){
     try{
       if(_rb && (_rb.packId||_rb.isCurriculum)){
         var _ct=(typeof _chapterCount==='function')?_chapterCount(_rb):0;
-        if(_ct) _pg=' · '+((_rb.chPass||[]).filter(Boolean).length)+'/'+_ct;
+        if(_ct){ var _pd=((_rb.chPass||[]).filter(Boolean).length); _pg=' · '+(_pd>=_ct?(_rb.finalPassed?'완료':_ct+'/'+_ct):((_pd+1)+'/'+_ct))+'챕터'; }   /* [진행 챕터 표기 20260806] 0/5(통과 수)가 아니라 지금 공부 중인 챕터(1/5)를 보여준다 */
       } else { _pg=' · '+_bookCntL(b)+'개'; }
     }catch(e){}
     return '<option value="'+_esc(b.name)+'"'+(b.name===cur?' selected':'')+'>'+_esc(_bookShortName(_rb||b))+_pg+'</option>';
@@ -10987,7 +10997,13 @@ function _recoPacksForMe(limit){
     const _lvToIdx=[0,0,0,1,1,2,2,3,3,4,5];
     const myIdx=_lvToIdx[Math.min(10,Math.max(1,_myLv))];
     const _c2r=[1,2,3,4,4,5]; const myReadIdx=_c2r[myIdx];
+    /* [추천 근거 강화 20260806] 1순위 근거 = 팩의 '단어 레벨(wlv v2)' vs 내 레벨 차이(±2레벨 허용).
+       wlv 없는 팩만 기존 읽기수준/CEFR 평균 폴백. 어떤 근거로 추천됐는지 카드에 Lv를 함께 표시한다. */
     const scored=cand.map(p=>{
+      try{
+        const wl=(typeof _pkAppLevel==='function')?_pkAppLevel(p):null;
+        if(wl && wl.lv){ p.__recoLv=wl.lv; return {p, d:Math.abs(wl.lv-_myLv)/2}; }
+      }catch(e){}
       if(p.read && p.read.idx!==undefined && p.read.idx!==null) return {p, d:Math.abs(p.read.idx-myReadIdx)};
       let ai=-1;
       try{
@@ -11002,7 +11018,10 @@ function _recoPacksForMe(limit){
       }catch(e){}
       return {p, d:ai<0?99:Math.abs(ai-myIdx)};
     }).filter(x=>x.d<=1.2).sort((a,b)=>a.d-b.d).slice(0, limit||4);
-    return scored.map(x=>x.p);
+    const out=scored.map(x=>x.p);
+    /* [즉시 표시 캐시 20260806] 다음 부팅 때 마켓 로드를 기다리지 않고 바로 그리도록 경량 캐시 저장 */
+    try{ localStorage.setItem('wd-reco-lite', JSON.stringify(out.map(p=>({id:p.id,name:p.name,imageUrl:p.imageUrl||'',emoji:p.emoji||'',lv:p.__recoLv||null})))); }catch(e){}
+    return out;
   }catch(e){ return []; }
 }
 function rHome() {
@@ -11235,16 +11254,25 @@ function rHome() {
   // ── XP 순위(리더보드) 제거됨 — 개인 XP/레벨은 유지 ──
 
 
-  /* [홈 추천 20260723] 내 레벨에 맞는 원서 추천 한 줄 — 표지 가로 스크롤, 탭하면 마켓 상세로 */
+  /* [홈 추천 20260723 · 근거 강화 20260806] 내 레벨(단어 레벨 wlv 기준) 맞춤 원서.
+     마켓이 아직 안 실렸으면 지난번 경량 캐시로 즉시 표시(늦게 뜨던 문제 해소). */
   try{
-    const _reco=(typeof _recoPacksForMe==='function')?_recoPacksForMe(6):[];
+    let _reco=(typeof _recoPacksForMe==='function')?_recoPacksForMe(6):[];
+    let _fromCache=false;
+    if(!_reco.length && !(S._marketPacks||[]).length){
+      try{ const _lite=JSON.parse(localStorage.getItem('wd-reco-lite')||'[]'); if(_lite.length){ _reco=_lite; _fromCache=true; } }catch(e){}
+    }
     if(_reco.length){
-      const _chips=_reco.map(p=>`<div onclick="showPackDetail && showPackDetail('${p.id}')" class="pk-card" style="flex-shrink:0;width:74px;cursor:pointer;text-align:center">
+      const _myLvR=S._myLevel||parseInt(localStorage.getItem('wd-mylevel')||'0',10)||0;
+      const _chips=_reco.map(p=>{
+        const _lvb=(p.__recoLv||p.lv)?`<div style="font-size:8.5px;font-weight:900;color:var(--theme,#1E5FA5);margin-top:2px">단어 Lv.${p.__recoLv||p.lv}</div>`:'';
+        return `<div onclick="showPackDetail && showPackDetail('${p.id}')" class="pk-card" style="flex-shrink:0;width:74px;cursor:pointer;text-align:center">
         ${p.imageUrl?`<img src="${p.imageUrl}" style="width:64px;height:86px;object-fit:cover;border-radius:8px;box-shadow:0 3px 9px rgba(0,0,0,.18);border:1px solid var(--border,#E5E7EB)">`:`<div style="width:64px;height:86px;margin:0 auto;border-radius:8px;background:var(--bg-sub,#F1F5F9);display:flex;align-items:center;justify-content:center;font-size:28px">${p.emoji||'📚'}</div>`}
-        <div style="font-size:9.5px;font-weight:700;color:var(--text2,#374151);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(p.name||'').split('·')[0].trim()}</div></div>`).join('');
+        <div style="font-size:9.5px;font-weight:700;color:var(--text2,#374151);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(p.name||'').split('·')[0].trim()}</div>${_lvb}</div>`;
+      }).join('');
       parts.push(`<div style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:16px;padding:13px 14px">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px">
-          <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">📖 원서별 맞춤 단어장</div>
+          <div style="font-size:12.5px;font-weight:900;color:var(--text1,#111)">📖 내 레벨 맞춤 원서${_myLvR?` <span style="font-weight:700;color:var(--text3,#9CA3AF);font-size:10px">— 내 Lv.${_myLvR} ±2레벨 단어장</span>`:''}</div>
           <div onclick="S.stab='market';go('mybooks','market')" style="font-size:10.5px;color:var(--theme,#3B82F6);font-weight:700;cursor:pointer">더 보기 ›</div>
         </div>
         <div class="hsb" style="display:flex;gap:9px;overflow-x:auto;padding-bottom:3px;-webkit-overflow-scrolling:touch">${_chips}</div>
@@ -11392,7 +11420,7 @@ function _selectBook(name) {
     if(_cb && _cb.isCurriculum && typeof _activeChapterIdx==='function'){ var _ci2=_activeChapterIdx(_cb); if(_ci2!=null) S._studyChapterIdx=_ci2; }
   }catch(e){}
   var _tb=(S.books||[]).find(function(b){return b.name===name;});
-  if(_tb && typeof _curriculumStageLocked==='function' && _curriculumStageLocked(_tb)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
+  if(_tb && typeof _curriculumStageLocked==='function' && _curriculumStageLocked(_tb)){ if(typeof toast==='function') toast('🔒 이전 단계의 🏁 최종 테스트를 통과하면 열려요'); return; }
   saveCurrentBook(); // 현재 책 먼저 저장 (안전망 포함)
   if(name === '내 단어장') {
     // 내 단어장으로 전환: wd-w(내 단어장 백업)에서 활성 단어 복원
@@ -11456,7 +11484,7 @@ function switchBook(name) {
   }
   const book = S.books.find(b=>b.name===name);
   if(!book) return;
-  if(typeof _curriculumStageLocked==='function' && _curriculumStageLocked(book)){ if(typeof toast==='function') toast('🔒 이전 단계를 80% 이상 외우면 열려요'); return; }
+  if(typeof _curriculumStageLocked==='function' && _curriculumStageLocked(book)){ if(typeof toast==='function') toast('🔒 이전 단계의 🏁 최종 테스트를 통과하면 열려요'); return; }
   // 현재 단어장 저장
   saveCurrentBook();
   // 새 단어장으로 전환
@@ -13542,8 +13570,22 @@ function _checkChapterDone(book, chIdx, force){
 function rLearn() {
   var _lb=(S.books||[]).filter(function(x){return x.name===S.currentBook;})[0];
   if(_lb && _curriculumStageLocked(_lb)){
-    return '<div style="padding:44px 24px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:16px;font-weight:800;color:var(--text1,#111);margin-bottom:8px">아직 잠긴 단계예요</div><div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">이전 단계를 80% 이상 외우면<br>이 단계가 열려요.</div><button onclick="go(\'mybooks\',\'books\')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px 24px;font-size:14px;font-weight:800;cursor:pointer">레벨업 코스로 가기</button></div>';
+    return '<div style="padding:44px 24px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:16px;font-weight:800;color:var(--text1,#111);margin-bottom:8px">아직 잠긴 단계예요</div><div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">이전 단계의 챕터를 모두 통과하고<br>🏁 최종 테스트에 합격하면 열려요.</div><button onclick="go(\'mybooks\',\'books\')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px 24px;font-size:14px;font-weight:800;cursor:pointer">레벨업 코스로 가기</button></div>';
   }
+  /* [최종 테스트 관문 20260806] 챕터를 전부 통과했고 최종 테스트만 남았으면, 학습 카드 대신 관문 화면.
+     (기존엔 마지막 챕터 완료 모달의 버튼을 놓치면 최종 테스트로 갈 길이 없어 그냥 학습만 반복됐음) */
+  try{
+    if(_lb && (_lb.isCurriculum || _lb.packId) && !S._chReview && typeof _finalTestReady==='function' && _finalTestReady(_lb) && !_lb.finalPassed){
+      var _bnE=String(_lb.name).replace(/'/g,"\\'");
+      return '<div style="padding:44px 24px;text-align:center">'
+        +'<div style="font-size:52px;margin-bottom:12px">🏁</div>'
+        +'<div style="font-size:17px;font-weight:800;color:var(--text1,#111);margin-bottom:8px">모든 챕터 통과! 최종 테스트만 남았어요</div>'
+        +'<div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">책 전체에서 30문제 · 80점이면 합격!<br>합격하면 다음 단계가 열리고 🦋 쿠폰 2장을 받아요.</div>'
+        +'<button onclick="startFinalTest(\''+_bnE+'\')" style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:14px 28px;font-size:15px;font-weight:900;cursor:pointer">🏁 최종 테스트 시작</button>'
+        +'<div style="margin-top:14px"><button onclick="S.flashRange=-1;S._chReview=1;go()" style="background:none;border:none;color:#9CA3AF;font-size:12.5px;cursor:pointer;text-decoration:underline">그 전에 복습하기</button></div>'
+        +'</div>';
+    }
+  }catch(e){}
   // [챕터 통과 안내] 커리큘럼/팩 책에서 현재 챕터를 다 외웠는데 아직 통과 시험을 안 봤으면,
   //   학습 카드 대신 통과 시험 안내를 보여준다. (다 외운 챕터를 계속 반복하지 않도록)
   try{

@@ -6789,6 +6789,7 @@ function startApp() {
   updHD(); scheduleAlarms();
   // [제거] 빈 단어장에 시스템 기본단어를 멋대로 채워넣던 자동주입 호출 삭제
   setTimeout(()=>checkAttend(), 1000);
+  setTimeout(()=>{ try{ if(typeof _ftReminderCheck==='function') _ftReminderCheck(); }catch(e){} }, 2600);   /* [최종 테스트 리마인더 20260806] 출석 팝업 뒤에 표시 */
   setTimeout(()=>syncProfileToFirebase(), 2000);
   setTimeout(()=>{ try{ if(typeof _checkBookRequestDone==='function') _checkBookRequestDone(); }catch(e){} }, 6000);   /* [원서 요청 서비스 20260720] 완료 알림 */
   setTimeout(async ()=>{
@@ -13430,6 +13431,35 @@ function startFinalTest(bookName){
     if(typeof go==='function') go();
     _renderFinalTest();
   }catch(e){ S._inFinalTest=false; S._ft=null; }
+}
+/* [최종 테스트 리마인더 20260806] 전 챕터를 다 통과했는데 최종 테스트를 아직 안 본 책이 있으면
+   앱을 켤 때마다 팝업으로 안내한다(켤 때마다 1회 — window 변수라 새로 켜면 다시 안내).
+   출석 팝업 등 다른 팝업이 떠 있으면 닫힐 때까지 1.5초 간격으로 기다렸다 표시(겹침 방지). */
+function _ftReminderCheck(){
+  try{
+    if(window.__ftRemindShown) return;
+    var list=(S.books||[]).filter(function(b){
+      return b && (b.isCurriculum||b.packId) && !b.finalPassed && _finalTestReady(b);
+    });
+    if(!list.length){ window.__ftRemindShown=true; return; }
+    var mr=document.getElementById('mr');
+    if(!mr){ mr=document.createElement('div'); mr.id='mr'; (document.getElementById('app')||document.body).appendChild(mr); }
+    if(mr.innerHTML && mr.innerHTML.indexOf('mbg')>=0){ setTimeout(_ftReminderCheck, 1500); return; }
+    if(S._inFinalTest || S._inInitLevelTest || window._autoActive){ setTimeout(_ftReminderCheck, 4000); return; }
+    window.__ftRemindShown=true;
+    var rows=list.map(function(b){
+      var esc=String(b.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      return '<button onclick="cm();startFinalTest(\''+esc+'\')" style="width:100%;margin-bottom:8px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 '+String(b.name).replace(/</g,'&lt;')+' 최종 테스트 시작</button>';
+    }).join('');
+    mr.innerHTML='<div class="mbg" onclick="cm()">'
+      +'<div class="modal" style="text-align:center;padding:26px 20px" onclick="event.stopPropagation()">'
+      +'<div style="font-size:42px;margin-bottom:8px">🏁</div>'
+      +'<div style="font-size:17px;font-weight:900;color:#111;margin-bottom:8px">최종 테스트가 기다리고 있어요!</div>'
+      +'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:14px;margin-bottom:14px;font-size:13px;color:#92400E;line-height:1.7">모든 챕터를 통과했어요. 👏<br>최종 테스트 <b>30문제에서 80점</b>을 넘으면<br>다음 단계가 열려요.</div>'
+      +rows
+      +'<button onclick="cm()" style="width:100%;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에 할게요</button>'
+      +'</div></div>';
+  }catch(e){console.warn('[wd-io:_ftReminderCheck]',e);}
 }
 function _renderFinalTest(){
   try{

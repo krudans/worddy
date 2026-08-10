@@ -1118,6 +1118,41 @@ function _thSetTomb(arr){
 // ── 레벨테스트 성장 이력 병합: 합집합(기기별 이력 보존) − 묘비(삭제 전파) ──
 // [중요] 로그인 병합이 load()보다 먼저 돌 수 있다. 그때 S.tHistory는 아직 비어 있어
 //        서버값만 남고 로컬 기록이 사라진다 → local이 비면 localStorage를 직접 읽어 보강한다.
+/* ══ [진단 레벨 정본 단일화 20260811] ══
+   S._myLevel(홈 추천·마켓 비교의 기준)이 localStorage(wd-mylevel) 전용이라 서버 미동기화 →
+   다른 기기에서 레벨테스트를 봐도 이 기기는 스테일(예: 그래프 카드=Lv.4인데 추천 헤더="내 Lv.1").
+   정본 = tHistory(레벨테스트 이력, 서버 union+묘비 동기화 완비)의 최신 level 기록. */
+function _myLevelFromHistory(){
+  try{
+    var h=S.tHistory||[], best=null;
+    for(var i=0;i<h.length;i++){ var e=h[i]; if(e && e.level!=null){ if(!best || (e.ts||0)>=(best.ts||0)) best=e; } }
+    return best ? (parseInt(best.level,10)||0) : 0;
+  }catch(e){ return 0; }
+}
+function _myLevelRecalc(tag){
+  try{
+    var _hl=_myLevelFromHistory();
+    if(_hl && _hl!==S._myLevel){
+      console.log('[레벨 정본]', tag||'', 'S._myLevel', S._myLevel, '→', _hl, '(tHistory 최신)');
+      S._myLevel=_hl;
+      try{ localStorage.setItem('wd-mylevel', String(_hl)); }catch(e){}
+    }
+  }catch(e){}
+}
+/* [외움 표시 근본수정 20260811] user_words 병합/실시간 수신으로 책 정본(markMap)이 갱신된 뒤,
+   팩 활성 중이면 라이브 S.markMap을 '책 정본 ∪ 라이브(우선)'로 재구성 — 목록/링의 외움 수가 정본과 즉시 일치. */
+function _liveMapResync(){
+  try{
+    if(!S.currentBook || S.currentBook==='내 단어장') return;
+    var _cb=(S.books||[]).find(function(b){return b&&b.name===S.currentBook;});
+    if(!_cb || !_cb.markMap) return;
+    var _bw=(typeof getBookWords==='function')?(getBookWords(_cb)||[]):(_cb.words||[]);
+    var _own=new Set(_bw.map(function(w){return w&&w.en;}));
+    var _src=Object.assign({}, _cb.markMap, S.markMap||{});
+    var _nm={}; _own.forEach(function(en){ if(_src[en]!==undefined) _nm[en]=_src[en]; });
+    S.markMap=_nm;
+  }catch(e){}
+}
 function _mergeTHistory(local, srv, tomb){
   try{
     if(!Array.isArray(local) || !local.length){
@@ -2067,7 +2102,7 @@ function importSharedBook(btn) {
 }
 
 function getTodayWord() {
-  const t = new Date().toISOString().slice(0,10);
+  const t = (typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10);   /* [KST 통일 20260811] 오늘의 단어가 아침 9시에 바뀌던 결함 */
   const key = 'wd-today-word-' + t;
   let cached = localStorage.getItem(key);
   if(cached) return JSON.parse(cached);
@@ -4630,23 +4665,29 @@ function ensureMarkDates(){
   }
   return S.markDates;
 }
-function setMark(en, val) {
-  // 현재 단어장 markMap에 저장
-  if(S.currentBook && S.currentBook !== '내 단어장') {
-    const bk = (S.books||[]).find(b=>b.name===S.currentBook);
+function setMark(en, val, bookName) {
+  /* [마킹 일원화 20260811] bookName 지정 시 그 책에 기록(단어목록 브라우즈 등).
+     라이브 뷰(S.markMap/S.learned)는 현재 책과 일치할 때만 건드림 — 타 책 마킹이 라이브를 오염시키지 않게. */
+  const _bn = bookName || S.currentBook || '내 단어장';
+  const _isLive = (_bn === (S.currentBook || '내 단어장'));
+  if(_bn !== '내 단어장') {
+    const bk = (S.books||[]).find(b=>b.name===_bn);
     if(bk) {
       if(!bk.markMap) bk.markMap = {};
-      bk.markMap[_mk(en)] = val; S.markMap[_mk(en)] = val;
-    } else {
+      bk.markMap[_mk(en)] = val; if(_isLive) S.markMap[_mk(en)] = val;
+    } else if(_isLive) {
       S.markMap[_mk(en)] = val;
     }
   } else {
-    S.markMap[_mk(en)] = val;
+    if(_isLive){ S.markMap[_mk(en)] = val; if(S.myMarkMap && S.myMarkMap!==S.markMap) S.myMarkMap[_mk(en)] = val; }
+    else { if(!S.myMarkMap){ try{ S.myMarkMap=JSON.parse(localStorage.getItem('wd-mk')||'{}')||{}; }catch(e){ S.myMarkMap={}; } } S.myMarkMap[_mk(en)] = val; try{ localStorage.setItem('wd-mk', JSON.stringify(S.myMarkMap)); }catch(e){} }
   }
-  // 외운 단어 → learned에도 추가
+  // 외운 단어 → learned에도 추가 (라이브 일치 시에만 — 타 책 마킹이 라이브 learned를 오염시키지 않게)
   if(typeof _seenW==='function') _seenW(en); // 마크한 단어는 오늘 화면에 나온 단어
-  if(val===1) S.learned.add(en);
-  else if(val===2) S.learned.delete(en);
+  if(_isLive){
+    if(val===1) S.learned.add(en);
+    else if(val===2) S.learned.delete(en);
+  }
   // 외운 날짜 기록 (오늘/이번주/이번달 외운 단어 집계용, 단어장 무관 전역).
   // 외움(1)으로 새로 표시될 때만 날짜 기록, 그 외(미암기/헷갈림)는 날짜 삭제.
   ensureMarkDates();
@@ -4661,7 +4702,7 @@ function setMark(en, val) {
       S.studyLog[_t].marked=S.studyLog[_t].markedEns.length;
       // [책귀속] 어느 단어장에서 외웠는지 기록 → 책별 '오늘 외운' 정확화(겹치는 단어가 안 연 책에 잡히던 버그 수정)
       if(!S.studyLog[_t].markBook || typeof S.studyLog[_t].markBook!=='object') S.studyLog[_t].markBook={};
-      S.studyLog[_t].markBook[en]=(S.currentBook||'내 단어장');
+      S.studyLog[_t].markBook[en]=_bn;   /* [마킹 일원화 20260811] 실제 기록 책 귀속 */
     }catch(e){}
   } else {
     delete S.markDates[en];
@@ -4670,8 +4711,8 @@ function setMark(en, val) {
   /* [챕터 자동완료 20260723] 외움 표시 직후, 지금 보고 있는 챕터가 90% 넘었는지 확인 → 자동 완료 */
   if(val===1){
     try{
-      var _cb=(S.books||[]).find(function(b){return b.name===S.currentBook;});
-      var _ci=(S._studyChapterIdx!=null)?S._studyChapterIdx:(S._pc&&S._pc.chIdx);
+      var _cb=(S.books||[]).find(function(b){return b.name===_bn;});
+      var _ci=_isLive?((S._studyChapterIdx!=null)?S._studyChapterIdx:(S._pc&&S._pc.chIdx)):null;
       if(_cb && _ci!=null && _ci>=0 && !(_cb.chPass&&_cb.chPass[_ci]) && typeof _checkChapterDone==='function'){
         _checkChapterDone(_cb, _ci);
       }
@@ -4712,7 +4753,7 @@ function countMemorized(period){
   const _t = (typeof today==='function') ? today() : new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   let from;
   if(period==='today') from=_t;
-  else if(period==='week') from=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
+  else if(period==='week') from=new Date(Date.now()+9*3600000-6*86400000).toISOString().slice(0,10);   /* [KST 통일 20260811] */
   else if(period==='month') { const _d=new Date(Date.now()+9*3600000); _d.setMonth(_d.getMonth()-1); from=_d.toISOString().slice(0,10); }
   else from='1900-01-01';
   if(period==='today'){ return (typeof _todayMemoCount==='function')?_todayMemoCount(_t):0; }
@@ -4827,9 +4868,11 @@ function load() {
   }, 150);
   S.books = JSON.parse(localStorage.getItem('wd-bks')||'[]');
   try{ if(typeof _migrateCurriculumNames==='function') _migrateCurriculumNames(S.books); }catch(e){}
-  // S._myLevel 복원: 저장값 우선, 없으면 커리큘럼 tier-1 코스 레벨에서 파생(자가치유)
+  // S._myLevel 복원: [정본 단일화 20260811] tHistory 최신 > wd-mylevel > 커리큘럼 tier-1 파생
   S._myLevel = parseInt(localStorage.getItem('wd-mylevel'))||0;
+  try{ var _hl0=(typeof _myLevelFromHistory==='function')?_myLevelFromHistory():0; if(_hl0) S._myLevel=_hl0; }catch(e){}
   if(!S._myLevel){ var _c1=(S.books||[]).find(function(b){return b.isCurriculum && b.tier===1 && b.level;}); if(_c1) S._myLevel=_c1.level; }
+  if(S._myLevel){ try{ localStorage.setItem('wd-mylevel', String(S._myLevel)); }catch(e){} }
   S.books.forEach(b => { if(b.packId && b.words !== undefined) delete b.words; }); // 마켓팩 구 단어 즉시 제거
   S.currentBook = localStorage.getItem('wd-cbk')||'내 단어장';
   // 커리큘럼 이름 변경 대응: 현재 단어장이 옛 이름이면 새 이름으로 교정(books는 위에서 이미 마이그레이션됨)
@@ -5120,7 +5163,7 @@ function sv() {
       attendCount:S.attendCount||0,
       attendDates:S.attendDates||[],
       lastDate:S.lastDate||'', lastStudyDate:S.lastDate||'',
-      lastActive: new Date().toISOString().slice(0,10),
+      lastActive: (typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10),   /* [KST 통일 20260811] */
       gameDailyCount:S.gameDailyCount||{},
       gamePlayCount:S.gamePlayCount||{},
       bestScores:S.bestScores||{},
@@ -5249,6 +5292,10 @@ function sv() {
       // 메인 user 문서 저장 (단어 제외 - 용량 절약 + user_words 덮어쓰기 방지)
       const saveDataLite = {...saveData};
       delete saveDataLite.words; delete saveDataLite.books;
+      /* [내단어장 부활 차단 20260811] users 문서에 남은 레거시 words/books 잔재를 서버에서 제거.
+         merge:true라 필드가 영구 잔존하며 병합 때마다 부활 소스가 되고, 폰 구캐시(옛 코드)가 다시 채울 수도 있어
+         매 flush마다 delete로 정리한다. 정본은 user_words. */
+      try{ saveDataLite.words = firebase.firestore.FieldValue.delete(); saveDataLite.books = firebase.firestore.FieldValue.delete(); }catch(e){}
       // books/words는 별도 컬렉션에 저장 (Firestore 1MB 제한 방지)
       // [내단어장 누수 수정] S.words는 '내 단어장'과 '현재 학습 중인 책(팩)'을 겸용한다.
       //  현재 책이 내 단어장이 아니면 S.words=팩 단어 → 그대로 저장하면 팩 단어가 내 단어장에 새어들어감(오염·1MiB 부풀림).
@@ -7293,7 +7340,7 @@ function rLearnTab() {
   const todayLog = (S.studyLog||{})[t]||{words:0,min:0};
   const fmtMin = m => m>=1 ? Math.round(m)+'분' : m>0 ? Math.round(m*60)+'초' : '0';
   const _sl = S.studyLog||{};
-  const _weekAgo = new Date(Date.now()-6*86400000).toISOString().slice(0,10);
+  const _weekAgo = new Date(Date.now()+9*3600000-6*86400000).toISOString().slice(0,10);   /* [KST 통일 20260811] */
   const _last7 = Object.entries(_sl).filter(([k])=>k>=_weekAgo).map(([,v])=>v);
   const _week_words = _last7.reduce((s,v)=>s+(v.words||0),0);
   const _week_min = Math.round(_last7.reduce((s,v)=>s+(v.min||0),0));
@@ -12322,16 +12369,11 @@ function _renderBookWordList(mr, bookName, searchQ) {
 }
 
 function _bwlSetMark(en, val) {
+  /* [마킹 일원화 20260811] 별도 구현이 markDates(외운 날짜)·오늘 집계(markedEns/markBook)를 누락해
+     단어목록에서 누른 ✓가 통계에서 빠지던 원인 → 정본 setMark(en,val,bookName) 경유로 전면 위임. */
   var bookName = window._bwlCurrentBook || '내 단어장';
-  if(bookName !== '내 단어장') {
-    var bk = (S.books||[]).find(function(b){return b.name===bookName;});
-    if(bk){if(!bk.markMap)bk.markMap={};bk.markMap[en]=val;}
-    else { if(!S.markMap) S.markMap={}; S.markMap[en]=val; }
-  } else {
-    if(!S.markMap) S.markMap = {};
-    S.markMap[en] = val;
-  }
-  sv();
+  if(typeof setMark==='function'){ setMark(en, val, bookName); }
+  else { if(!S.markMap) S.markMap={}; S.markMap[en]=val; sv(); }
   var mr = document.getElementById('mr');
   if(mr) _renderBookWordList(mr, bookName, window._bwlCurrentQ||'');
 }
@@ -13081,7 +13123,7 @@ function showBookMenu(name, type) {
   const items = isDefault ? [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['🔄', '외웠음 표시 초기화', `cm();if(confirm('내 단어장의 외웠음 표시를 모두 초기화할까요? (헷갈림 표시는 유지)')){_resetBookMarks('${safeN}');}`],
-    ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){if(typeof _selectBook==='function')_selectBook('내 단어장');S.words=[];S.myWords=[];S.markMap={};S.myMarkMap={};S.learned=new Set();S.myLearned=S.learned;try{localStorage.setItem('wd-w','[]');localStorage.setItem('wd-mk','{}');localStorage.setItem('wd-lrn','[]');}catch(e){}sv();go();toast('🗑️ 전체 삭제 완료');}`],
+    ['🗑️', '단어 전체 삭제', `cm();if(confirm('내 단어장의 단어를 전부 삭제할까요?')){if(typeof _selectBook==='function')_selectBook('내 단어장');((S.myWords||S.words)||[]).forEach(function(w){if(w&&w.en&&typeof _tombWord==='function')_tombWord(w.en);});S.words=[];S.myWords=[];S.markMap={};S.myMarkMap={};S.learned=new Set();S.myLearned=S.learned;try{localStorage.setItem('wd-w','[]');localStorage.setItem('wd-mk','{}');localStorage.setItem('wd-lrn','[]');}catch(e){}sv();go();toast('🗑️ 전체 삭제 완료');}`],
   ] : [
     ['📤', '공유/내보내기', `exportCSV();cm()`],
     ['✏️', '이름 수정', `cm();const n=prompt('새 이름');if(n&&n.trim()){const b=S.books?.find(x=>x.name==='${safeN}');if(b){b.name=n.trim();sv();go();toast('이름 변경 완료!');}}`],
@@ -14688,7 +14730,7 @@ function addW(){
     if(bk) { if(!bk.words) bk.words=[]; bk.words.push(newWord); }
     else saveWordToCurrentBook(newWord);
   } else {
-    S.words.push(newWord);
+    saveWordToCurrentBook(newWord);   /* [정본 직결 20260811] 뷰 직접 push 폐기 — 정본(S.myWords)+wd-w 영속 경유 */
   }
 
   S.nEn=''; S.nKr=''; S.nPh=''; S.nEx1=''; S.nEx2=''; S.nEx3=''; S.nAiData=null; S.nImg='📝';
@@ -14982,12 +15024,22 @@ function saveWordEdit(oldEn) {
   const newEn = (document.getElementById('we-en')?.value||'').trim();
   const newKr = (document.getElementById('we-kr')?.value||'').trim();
   if(!newEn||!newKr) { toast('영단어와 뜻은 필수예요'); return; }
-  const wi = S.words.find(x=>x.en===oldEn);
+  /* [단어수정 3중버그 수정 20260811]
+     ① 뷰(S.words)에서만 찾아 정본 분리 상태(팩 활성)에선 내 단어장 단어 수정이 침묵 무시되던 것 → 정본(S.myWords)까지 탐색
+     ② learned 이관: delete 후 has 체크 = 항상 false → 철자 수정 시 학습완료가 무조건 소실되던 확정 버그
+     ③ 라이브 맵만 이관 → 책별 markMap·myMarkMap·markDates에 옛 키 잔존 + 서버 union이 옛 단어를 부활 → 묘비/해제 포함 전면 이관 */
+  let wi = (S.words||[]).find(x=>x&&x.en===oldEn);
+  if(!wi && Array.isArray(S.myWords)) wi = S.myWords.find(x=>x&&x.en===oldEn);
   if(!wi) return;
-  // 영단어 바뀌면 markMap 키도 업데이트
   if(newEn !== oldEn) {
-    if(S.markMap[oldEn]!==undefined) { S.markMap[newEn]=S.markMap[oldEn]; delete S.markMap[oldEn]; }
-    S.learned.delete(oldEn); if(S.learned.has(oldEn)) S.learned.add(newEn);
+    var _mig=function(mm){ if(mm && mm[oldEn]!==undefined){ mm[newEn]=mm[oldEn]; delete mm[oldEn]; } };
+    _mig(S.markMap); if(S.myMarkMap && S.myMarkMap!==S.markMap) _mig(S.myMarkMap);
+    (S.books||[]).forEach(function(b){ if(b&&b.markMap) _mig(b.markMap); });
+    var _wasL = S.learned.has(oldEn) || (S.myLearned&&S.myLearned!==S.learned&&S.myLearned.has(oldEn));
+    S.learned.delete(oldEn); if(S.myLearned&&S.myLearned!==S.learned) S.myLearned.delete(oldEn);
+    if(_wasL){ S.learned.add(newEn); if(S.myLearned&&S.myLearned!==S.learned) S.myLearned.add(newEn); }
+    if(S.markDates && S.markDates[oldEn]!==undefined){ S.markDates[newEn]=S.markDates[oldEn]; delete S.markDates[oldEn]; }
+    try{ if(typeof _tombWord==='function') _tombWord(oldEn); if(typeof _untombWord==='function') _untombWord(newEn); }catch(e){}
   }
   wi.en  = newEn;
   wi.kr  = newKr;
@@ -17142,7 +17194,8 @@ function importCSVApp(input) {
       }
     });
     if(!newWords.length){toast('추가할 새 단어가 없어요');return;}
-    S.words.push(...newWords);
+    /* [정본 직결 20260811] 내 단어장 정본(S.myWords)에 저장 — 팩 뷰 활성 상태에서도 오염/증발 없음 */
+    newWords.forEach(function(w){ if(typeof saveWordToCurrentBook==='function') saveWordToCurrentBook(w); else S.words.push(w); });
     sv(); cm();
     toast(`✅ ${newWords.length}개 불러오기 완료!`,'ok');
     go();
@@ -17534,7 +17587,7 @@ async function syncProfileToFirebase() {
   if(!S.user?.uid) return;
   if(window._sessionLost) return;   /* [세션락 게이트 확장 20260811] 밀려난 기기의 프로필 되덮음 차단 */
   try {
-    const todayStudy = (S.studyLog[new Date().toISOString().slice(0,10)]||{}).words||0;
+    const todayStudy = (S.studyLog[(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10)]||{}).words||0;   /* [KST 통일 20260811] UTC 키라 매일 00~09시 전날 값으로 오집계되던 결함 */
     /* [프로필 되돌림 방지 20260720] 기존엔 로컬 값을 무조건 set → 스테일 기기가 서버 xp/streak 등을
        낮은 값으로 되돌릴 수 있었음(랭킹/친구 표시 필드). 서버 선독 1회 후 숫자 필드는 max로 기록. */
     let _srv={}; try{ const _ss=await db.collection('users').doc(S.user.uid).get(); _srv=_ss.data()||{}; }catch(e){console.warn('[wd-io:syncProfileToFirebase]',e);}
@@ -17616,9 +17669,9 @@ async function restoreFromBackup() {
       }
     }
     // 일별 백업에서 복구 (최근 7일)
-    const today_ = new Date().toISOString().slice(0,10);
+    const today_ = (typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10);   /* [KST 통일 20260811] */
     for(let i=1; i<=7; i++) {
-      const d = new Date(Date.now() - i*86400000).toISOString().slice(0,10);
+      const d = new Date(Date.now()+9*3600000 - i*86400000).toISOString().slice(0,10);   /* [KST 통일 20260811] 백업 키는 KST로 저장됨 */
       const bak = await db.collection('user_backups').doc(S.user.uid+'_'+d).get();
       if(bak.exists) {
         const b = bak.data();
@@ -17700,8 +17753,9 @@ function importCSV(input) {
       const parts = line.split(',').map(p=>p.trim().replace(/^"|"$/g,'').replace(/""/g,'"'));
       if(parts.length>=2) {
         const en=parts[0], kr=parts[1], ph=parts[2]||'', ex=parts[3]||'', tip=parts[4]||'';
-        if(en&&kr&&!S.words.find(w=>w.en.toLowerCase()===en.toLowerCase())) {
-          S.words.push({en,kr,ph,ex:ex||en+'.',tip:tip||en+' = '+kr,meanings:[kr],img:'📝'});
+        var _tgtA=(Array.isArray(S.myWords)?S.myWords:S.words);
+        if(en&&kr&&!_tgtA.find(w=>w.en.toLowerCase()===en.toLowerCase())) {
+          saveWordToCurrentBook({en,kr,ph,ex:ex||en+'.',tip:tip||en+' = '+kr,meanings:[kr],img:'📝'});   /* [정본 직결 20260811] */
           cnt++;
         }
       }
@@ -17721,8 +17775,9 @@ function importJSON(input) {
       if(!confirm(`백업 파일에서 ${data.words.length}개 단어를 복원할까요?\n현재 데이터와 합쳐집니다.`)) return;
       let cnt = 0;
       (data.words||[]).forEach(w => {
-        if(!S.words.find(x=>x.en.toLowerCase()===w.en.toLowerCase())) {
-          S.words.push(w); cnt++;
+        var _tgtB=(Array.isArray(S.myWords)?S.myWords:S.words);
+        if(w&&w.en&&!_tgtB.find(x=>x.en.toLowerCase()===w.en.toLowerCase())) {
+          saveWordToCurrentBook(w); cnt++;   /* [정본 직결 20260811] */
         }
       });
       // 마크 병합
@@ -18080,7 +18135,8 @@ auth.onAuthStateChanged(async user => {
               //  ※ 이 시점 S._totalXp는 아직 로컬값 (xp가 _totalXp보다 먼저 순회됨) → 로컬 누적과 비교
               if(k === 'xp'){ if((_data._totalXp||0) >= (S._totalXp||0) && _data.xp!==undefined) S.xp=_data.xp; return; }
               // streak/alStreak(연속 학습일): 최댓값
-              if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=_data[k]; return; }   /* [스트릭 수정 20260722] Math.max 고착 제거 */
+              if(k === 'streak'){ return; }   /* [스트릭 정본 통일 20260811] 병합의 '서버 무조건 채택'이 syncProfile의 '로컬 재계산 정본'과 정면 상충 → 서버값 무시, 아래 studyLog 병합 완료 후 _streakFromLog로 재계산(합쳐진 기록 기준 참값) */
+              if(k === 'alStreak'){ if(typeof _data[k]==='number') S[k]=_data[k]; return; }   /* [스트릭 수정 20260722] Math.max 고착 제거 */
               // [전수점검 보강] '옛 서버가 새 로컬을 덮는' 필드 보존 병합
               if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object'){ S.myMarkMap=Object.assign({}, _data.markMap, S.myMarkMap||{}); if(!S.currentBook||S.currentBook==='내 단어장') S.markMap=S.myMarkMap; } return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
               if(k === '_ownedPacks'){ if(Array.isArray(_data._ownedPacks)) S._ownedPacks=Array.from(new Set([].concat(S._ownedPacks||[], _data._ownedPacks))); return; } // 구매이력: 합집합
@@ -18088,6 +18144,12 @@ auth.onAuthStateChanged(async user => {
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
               if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
               if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
+              /* [MERGE_POLICY 20260811] 필드별 병합 규칙 선언 — 신규 필드는 반드시 여기에 규칙을 추가할 것.
+                 max: _totalXp·attendCount·xp(조건부) / union(±묘비): attendDates·_ownedPacks·_achievements·hiddenPackWords·_acc·words·나비·도감·tHistory
+                 LWW(ts): lid·bfCoupons / 재계산 정본: streak(studyLog) / 별도블록: markMap·studyLog·게임통계
+                 last-write 허용(의도): fontFamily·_equipped·alStudy·alGoal·_dailyGoalMin·_dailyDate·lastDate·alStreak */
+              if(k === 'hiddenPackWords'){ if(_data.hiddenPackWords&&typeof _data.hiddenPackWords==='object'){ var _hp=Object.assign({}, _data.hiddenPackWords); Object.keys(S.hiddenPackWords||{}).forEach(function(pid){ _hp[pid]=Array.from(new Set([].concat(_hp[pid]||[], S.hiddenPackWords[pid]||[]))); }); S.hiddenPackWords=_hp; } return; }   /* [보호 20260811] 숨김 합집합 — 스테일 서버가 최근 숨김을 지우지 않게 */
+              if(k === '_acc'){ if(Array.isArray(_data._acc)) S._acc=Array.from(new Set([].concat(S._acc||[], _data._acc))); return; }   /* [보호 20260811] 장식품 구매 합집합 */
               if(k === 'lid'){ /* ══ [성장단계 보호 20260811] 알 회귀 근본수정 ══
                  기존엔 lid만 특수처리 없이 fallthrough(S[k]=서버값)로 무조건 채택 →
                  스테일 기기/서버가 애벌레를 알로 되돌리던 원인. lidTs LWW + 레거시는 성장 단방향(높은 단계 유지). */
@@ -18120,7 +18182,10 @@ auth.onAuthStateChanged(async user => {
                   var _cbM=(S.books||[]).find(function(b){return b.name===S.currentBook;});
                   if(_cbM){
                     var _ownM=new Set((getBookWords(_cbM)||[]).map(function(w){return w&&w.en;}));
-                    var _locM=S.markMap||{};
+                    /* [외움 표시 근본수정 20260811] 기존엔 로컬 라이브만 스코프 → 타 기기/서버가 채운 이 책의 진도가
+                       화면에서 통째로 사라져 '다 외웠는데 외움 266' 오표시. 책 정본(bk.markMap: user_words 병합 완료분) ∪ 라이브(우선)로 스코프
+                       — 타 책 누수 차단은 유지하면서 이 책의 진짜 진도는 전부 표시. */
+                    var _locM=Object.assign({}, (_cbM.markMap&&typeof _cbM.markMap==='object')?_cbM.markMap:{}, S.markMap||{});
                     var _scM={};
                     _ownM.forEach(function(en){ if(_locM[en]!==undefined) _scM[en]=_locM[en]; });
                     S.markMap=_scM;
@@ -18129,12 +18194,17 @@ auth.onAuthStateChanged(async user => {
               }catch(e){ S.markMap=_mm; }
             }
             if(Array.isArray(_data.words) && _data.words.length){
-              if(!Array.isArray(S.words)) S.words=[];
-              /* [users 병합 묘비게이트 20260722] users 문서의 낡은 words 잔재가 삭제 묘비를 무시하고
-                 union push로 되살리던 근본 버그(내 단어장 멋대로 채워짐) — 묘비 단어는 제외. */
+              /* [내단어장 부활 차단 20260811] users.words는 레거시 잔재(정본은 user_words).
+                 기존엔 뷰(S.words)에 union push → 팩 활성 중 병합이면 팩 목록에 이물질 주입,
+                 뷰-정본 참조가 어긋난 상태면 내 단어장에 임의로 쌓이던 원인.
+                 → 정본(S.myWords)에만, 묘비+깡통(뜻 없음) 필터를 걸어 병합. 내 단어장 활성일 때만 뷰 반영. */
+              if(!Array.isArray(S.myWords)) S.myWords = (!S.currentBook||S.currentBook==='내 단어장') ? (Array.isArray(S.words)?S.words.slice():[]) : (function(){try{return JSON.parse(localStorage.getItem('wd-w')||'[]')||[];}catch(e){return [];}})();
               var _tw=new Set((S._tombWords||[]).map(function(x){return String(x).toLowerCase();}));
-              var _have = new Set(S.words.map(function(w){return (w&&w.en?String(w.en).toLowerCase():'');}));
-              _data.words.forEach(function(w){ if(w&&w.en){ var _k=String(w.en).toLowerCase(); if(!_have.has(_k) && !_tw.has(_k)){ S.words.push(w); _have.add(_k); } } });
+              var _have = new Set(S.myWords.map(function(w){return (w&&w.en?String(w.en).toLowerCase():'');}));
+              var _added=0;
+              _data.words.forEach(function(w){ if(w&&w.en&&(w.kr||(w.meanings&&w.meanings.length))){ var _k=String(w.en).toLowerCase(); if(!_have.has(_k) && !_tw.has(_k)){ S.myWords.push(w); _have.add(_k); _added++; } } });
+              if(_added){ try{ localStorage.setItem('wd-w', JSON.stringify(S.myWords)); }catch(e){} }
+              if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords;
             }
           }
           if(_data.studyLog) {
@@ -18165,6 +18235,7 @@ auth.onAuthStateChanged(async user => {
               if(_lmc||_fmc) merged[date]._mc=1;
             });
             S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
+            try{ if(typeof _streakFromLog==='function'){ var _ns=_streakFromLog(); if(typeof _ns==='number' && _ns!==S.streak){ console.log('[스트릭 정본] 병합 studyLog 재계산:', S.streak, '→', _ns); S.streak=_ns; localStorage.setItem('wd-st', _ns); } } }catch(_e){}   /* [스트릭 정본 통일 20260811] */
           }
           try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(_data); }catch(_e){}
           // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
@@ -18216,6 +18287,7 @@ auth.onAuthStateChanged(async user => {
             var _tt=Array.from(new Set([].concat(_thGetTomb(), _data.deletedTHistory||[])));
             _thSetTomb(_tt);                                              // 묘비 합집합(삭제 전파)
             S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory, _tt);   // 합집합 − 묘비
+            try{ if(typeof _myLevelRecalc==='function') _myLevelRecalc('병합'); }catch(e){}   /* [정본 단일화 20260811] */
             try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:anon]',e);}
           }
           if(Array.isArray(_data.collection) || Array.isArray(_data.deletedCollection)) {
@@ -18271,6 +18343,7 @@ auth.onAuthStateChanged(async user => {
                   console.log('[앱] LWW: 서버가 최신 → 서버 정본 채택(로컬 부활 방지)');
                 } else {
                   S.books = _mergeBooksUnion(S.books, _uw.books, S._tombBooks);
+                  try{ if(typeof _liveMapResync==='function') _liveMapResync(); }catch(e){}   /* [외움 표시 근본수정 20260811] */
                   S.myWords = _cleanInWords(_mergeWordsUnion(S.myWords||S.words, _uw.words, S._tombWords)); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords;   /* [정본 분리 20260724] */
                 }
                 console.log('[앱] user_words 병합: 책 '+_bBefore+'→'+(S.books||[]).length+', 단어 '+_wBefore+'→'+(S.words||[]).length+' (서버책 '+((_uw.books||[]).length)+')');
@@ -18320,6 +18393,7 @@ auth.onAuthStateChanged(async user => {
                   try{ S.myWords=_cleanInWords(d.words); localStorage.setItem('wd-w', JSON.stringify(S.myWords)); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords; }catch(e){console.warn('[wd-io:anon]',e);}   /* [정본 분리 20260724] */
                   if(_rtMy){ S.words=(d.words||[]).slice(); }
                   try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(function(b){ if(b&&b.packId){ var r=Object.assign({},b); delete r.words; return r; } return b; }))); }catch(e){console.warn('[wd-io:anon]',e);}
+                  try{ if(typeof _liveMapResync==='function') _liveMapResync(); }catch(e){}   /* [외움 표시 근본수정 20260811] */
                   console.log('[실시간 동기화] 다른 기기 변경 수신 → 반영: 책 '+_bB+'→'+S.books.length+', 단어 '+_wB+'→'+S.words.length);
                   var _mrEl=document.getElementById('mr');
                   if(typeof go==='function' && !S._gameRunning && !S._inChExam && !S._inLevelTest && !S._inInitLevelTest && !S._inLearnSession && !(_mrEl&&_mrEl.innerHTML&&_mrEl.innerHTML.trim())){ go(); }
@@ -18448,7 +18522,8 @@ auth.onAuthStateChanged(async user => {
               //  ※ 이 시점 S._totalXp는 아직 로컬값 (xp가 _totalXp보다 먼저 순회됨) → 로컬 누적과 비교
               if(k === 'xp'){ if((_data._totalXp||0) >= (S._totalXp||0) && _data.xp!==undefined) S.xp=_data.xp; return; }
               // streak/alStreak(연속 학습일): 최댓값
-              if((k === 'streak' || k === 'alStreak')){ if(typeof _data[k]==='number') S[k]=_data[k]; return; }   /* [스트릭 수정 20260722] Math.max 고착 제거 */
+              if(k === 'streak'){ return; }   /* [스트릭 정본 통일 20260811] 병합의 '서버 무조건 채택'이 syncProfile의 '로컬 재계산 정본'과 정면 상충 → 서버값 무시, 아래 studyLog 병합 완료 후 _streakFromLog로 재계산(합쳐진 기록 기준 참값) */
+              if(k === 'alStreak'){ if(typeof _data[k]==='number') S[k]=_data[k]; return; }   /* [스트릭 수정 20260722] Math.max 고착 제거 */
               // [전수점검 보강] '옛 서버가 새 로컬을 덮는' 필드 보존 병합
               if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object') S.markMap=Object.assign({}, _data.markMap, S.markMap||{}); return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
               if(k === '_ownedPacks'){ if(Array.isArray(_data._ownedPacks)) S._ownedPacks=Array.from(new Set([].concat(S._ownedPacks||[], _data._ownedPacks))); return; } // 구매이력: 합집합
@@ -18456,6 +18531,12 @@ auth.onAuthStateChanged(async user => {
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
               if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
               if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
+              /* [MERGE_POLICY 20260811] 필드별 병합 규칙 선언 — 신규 필드는 반드시 여기에 규칙을 추가할 것.
+                 max: _totalXp·attendCount·xp(조건부) / union(±묘비): attendDates·_ownedPacks·_achievements·hiddenPackWords·_acc·words·나비·도감·tHistory
+                 LWW(ts): lid·bfCoupons / 재계산 정본: streak(studyLog) / 별도블록: markMap·studyLog·게임통계
+                 last-write 허용(의도): fontFamily·_equipped·alStudy·alGoal·_dailyGoalMin·_dailyDate·lastDate·alStreak */
+              if(k === 'hiddenPackWords'){ if(_data.hiddenPackWords&&typeof _data.hiddenPackWords==='object'){ var _hp=Object.assign({}, _data.hiddenPackWords); Object.keys(S.hiddenPackWords||{}).forEach(function(pid){ _hp[pid]=Array.from(new Set([].concat(_hp[pid]||[], S.hiddenPackWords[pid]||[]))); }); S.hiddenPackWords=_hp; } return; }   /* [보호 20260811] 숨김 합집합 — 스테일 서버가 최근 숨김을 지우지 않게 */
+              if(k === '_acc'){ if(Array.isArray(_data._acc)) S._acc=Array.from(new Set([].concat(S._acc||[], _data._acc))); return; }   /* [보호 20260811] 장식품 구매 합집합 */
               if(k === 'lid'){ /* ══ [성장단계 보호 20260811] 알 회귀 근본수정 ══
                  기존엔 lid만 특수처리 없이 fallthrough(S[k]=서버값)로 무조건 채택 →
                  스테일 기기/서버가 애벌레를 알로 되돌리던 원인. lidTs LWW + 레거시는 성장 단방향(높은 단계 유지). */
@@ -18503,6 +18584,7 @@ auth.onAuthStateChanged(async user => {
               if(_lmc||_fmc) merged[date]._mc=1;
             });
             S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
+            try{ if(typeof _streakFromLog==='function'){ var _ns=_streakFromLog(); if(typeof _ns==='number' && _ns!==S.streak){ console.log('[스트릭 정본] 병합 studyLog 재계산:', S.streak, '→', _ns); S.streak=_ns; localStorage.setItem('wd-st', _ns); } } }catch(_e){}   /* [스트릭 정본 통일 20260811] */
           }
           try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(_data); }catch(_e){}
           // 게임 통계 복원 (Firebase와 로컬 중 더 큰 값 유지)
@@ -18550,6 +18632,7 @@ auth.onAuthStateChanged(async user => {
           var _tt2=Array.from(new Set([].concat(_thGetTomb(), _data.deletedTHistory||[])));
           _thSetTomb(_tt2);
           S.tHistory=_mergeTHistory(S.tHistory, _data.tHistory, _tt2);
+          try{ if(typeof _myLevelRecalc==='function') _myLevelRecalc('병합2'); }catch(e){}   /* [정본 단일화 20260811] */
           try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:anon]',e);}
         }
         if(Array.isArray(_data.myButterflies) || Array.isArray(_data.deletedButterflies)) {

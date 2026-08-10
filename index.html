@@ -2354,7 +2354,7 @@ function showGameIntro(force=false) {
 function doLevelUpBtn(cost, isFinal) {
   if(isFinal) {
     if(confirm('알로 다시 시작할까요? XP는 유지됩니다.')) {
-      S.lid = LEVELS[0].id; sv(); go('butterfly'); toast('🥚 알로 돌아왔어요!','ok');
+      S.lid = LEVELS[0].id; S.lidTs=Date.now(); sv(); go('butterfly'); toast('🥚 알로 돌아왔어요!','ok');
     }
   } else {
     useXP(cost, '레벨업');
@@ -2554,7 +2554,7 @@ function rPetCare() {
   if(curLvData&&curLvData.isFinal) {
   html += '<div style="background:rgba(255,215,0,.15);border-radius:14px;padding:12px;margin-bottom:8px">';
   html += '<div style="font-size:13px;font-weight:900;color:#FFD600;text-align:center;margin-bottom:8px">👑 최고 레벨 달성!</div>';
-  html += '<button onclick="if(confirm(\'알로 다시 시작할까요? XP는 유지됩니다.\')){{S.lid=LEVELS[0].id;sv();go(\'butterfly\');toast(\'🥚 알로 돌아왔어요!\',\'ok\');}}" style="width:100%;padding:12px;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.2);color:#fff">🥚 알로 다시 시작하기 (XP 유지)</button>';
+  html += '<button onclick="if(confirm(\'알로 다시 시작할까요? XP는 유지됩니다.\')){{S.lid=LEVELS[0].id;S.lidTs=Date.now();sv();go(\'butterfly\');toast(\'🥚 알로 돌아왔어요!\',\'ok\');}}" style="width:100%;padding:12px;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.2);color:#fff">🥚 알로 다시 시작하기 (XP 유지)</button>';
   html += '</div>';
   } else if(canLevelUp) {
     html += '<button onclick="useXP('+xpTarget+',\'레벨업\')" style="width:100%;padding:14px;border:none;border-radius:16px;background:#FFD600;color:#1A1A1A;font-size:16px;font-weight:900;cursor:pointer">';
@@ -4739,6 +4739,7 @@ const today = () => {
 
 function load() {
   S.lid = localStorage.getItem('wd-l')||'egg';
+  S.lidTs = +(localStorage.getItem('wd-lid-ts')||0);   /* [성장단계 보호 20260811] lid LWW 타임스탬프 */
   S.xp = +(localStorage.getItem('wd-xp')||0);
   S.bfCoupons = +(localStorage.getItem('wd-coupons')||0);
   S.bfCouponsTs = +(localStorage.getItem('wd-coupons-ts')||0);   // [쿠폰 유실 근본수정] LWW 타임스탬프
@@ -4995,11 +4996,28 @@ function _toMyBook(){
   if(S.myMarkMap){ S.markMap=S.myMarkMap; } else { try{ S.myMarkMap=S.markMap=JSON.parse(localStorage.getItem('wd-mk')||'{}')||{}; }catch(e){} }
   if(S.myLearned){ S.learned=S.myLearned; } else { try{ S.myLearned=S.learned=new Set(JSON.parse(localStorage.getItem('wd-lrn')||'[]')); }catch(e){} }
 }
+/* ══ [쿠폰 원장화 20260811] 값-교체 LWW 폐기 → Firestore increment 델타.
+   원인: sv가 3초마다 로컬 '값'을 push → 지급/획득을 못 본 기기의 값이 서버를 되덮어 증분 소실(1000+ 유실).
+   수정: 획득/소비 시점에 즉시 increment(±n) write. 오프라인이어도 SDK 큐가 재접속 시 델타로 재생 → 절대 안 사라짐.
+   admin 지급도 이미 increment라 전 경로 일관. sv payload의 값 push는 제거(서버=원장). */
+function _couponDelta(n){
+  S.bfCoupons = Math.max(0, (S.bfCoupons||0) + n);
+  S.bfCouponsTs = Date.now();
+  try{ localStorage.setItem('wd-coupons', S.bfCoupons); localStorage.setItem('wd-coupons-ts', S.bfCouponsTs); }catch(e){console.warn('[wd-io:_couponDelta]',e);}
+  try{
+    if(typeof db!=='undefined' && S.user && S.user.uid){
+      db.collection('users').doc(S.user.uid).set(
+        {bfCoupons: firebase.firestore.FieldValue.increment(n), bfCouponsTs: S.bfCouponsTs},
+        {merge:true}
+      ).catch(function(e){console.warn('[wd-io:_couponDelta]',e);});
+    }
+  }catch(e){console.warn('[wd-io:_couponDelta]',e);}
+}
 function sv() {
   _healCurriculumWords();   // [손상 방지] 저장 전 커리큘럼 words 정규화 (레벨업N단계 손상 재발 근본차단)
   // 잡 키(순수 숫자/빈 문자열) 마크 제거 — 단어가 아닌 마크가 저장·Firebase 동기화되지 않도록
   try{ if(S.markMap) Object.keys(S.markMap).forEach(function(k){ if(!k||/^[0-9]+$/.test(k)) delete S.markMap[k]; }); }catch(e){}
-  localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-xp',S.xp);
+  localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-lid-ts',S.lidTs||0); localStorage.setItem('wd-xp',S.xp);
   localStorage.setItem('wd-coupons', S.bfCoupons||0);
   localStorage.setItem('wd-coupons-ts', S.bfCouponsTs||0);   // [쿠폰 유실 근본수정] LWW 타임스탬프
   localStorage.setItem('wd-st',S.streak); localStorage.setItem('wd-dt',S.lastDate);
@@ -5085,7 +5103,7 @@ function sv() {
     }
 
     const saveData = {
-      lid:S.lid, xp:S.xp, streak:S.streak, nick:S.nick,
+      lid:S.lid, lidTs:S.lidTs||0, xp:S.xp, streak:S.streak, nick:S.nick,   /* [성장단계 보호 20260811] lidTs 동반 push */
       words:S.words||[], books:(S.books||[]).map(b=>b.packId?(({words,...r})=>r)(b):b), currentBook:S.currentBook||'내 단어장',
       markMap:S.markMap||{}, learned:[...S.learned],
       _achievements:S._achievements||[], _acc:S._acc||[], _equipped:S._equipped||'',
@@ -5113,8 +5131,8 @@ function sv() {
          나비/도감/컬렉션은 이미 _bfMerge·_colMerge·_bfSetTomb·_colTombSet가 모든 변경 시 서버에 즉시 write하므로
          sv payload에서 제거한다(단일 소스=merge). myButterflies·deletedButterflies·collection·deletedCollection 4개. */
       // myButterflies / deletedButterflies : _bfMerge·_bfSetTomb가 관리 → sv 제외
-      bfCoupons: S.bfCoupons||0,
-      bfCouponsTs: S.bfCouponsTs||0,   // [쿠폰 유실 근본수정] LWW 타임스탬프 동반 push
+      /* [쿠폰 원장화 20260811] bfCoupons·bfCouponsTs 값 push 제거 — _couponDelta(increment)가 유일한 쓰기 경로.
+         값 push가 남아 있으면 지급을 못 본 기기의 스냅샷이 서버 원장을 되덮는다(1000+ 유실의 원인). */
       tHistory: (S.tHistory||[]).slice(-(typeof _TH_MAX!=='undefined'?_TH_MAX:50)),   // 레벨테스트 성장 이력(최근 N회)
       deletedTHistory: Object.keys(S._thSessTomb||{}),   /* [묘비 정본화 20260724] 이 세션 삭제만 — 낡은 로컬 묘비가 서버 못 덮음 */   // 삭제된 이력(묘비)
       email:(S.user&&S.user.email)||'',
@@ -5124,8 +5142,25 @@ function sv() {
     try{ localStorage.setItem('wd-dirty-at', new Date().toISOString()); }catch(e){console.warn('[wd-io:sv]',e);}   /* [LWW 20260722] 이 기기의 마지막 로컬 변경 시각 */
     // throttle: 3초에 1번만
     clearTimeout(window._svTimer);
-    window._svTimer = setTimeout(async ()=>{
+    const _svFlush = async ()=>{
+      /* [부팅 레이스 차단 20260811] 로그인 초기 병합이 끝나기 전 flush가 나가면
+         병합 전 스테일이 merge:false로 서버를 먼저 교체할 수 있다 → 병합 완료까지 보류(최대 20초 안전해제). */
+      if(window._svHold){ clearTimeout(window._svTimer); window._svTimer=setTimeout(_svFlush,1500); return; }
       if(window._sessionLost){ console.warn('[세션락] 다른 기기 접속 중 → 서버 저장 건너뜀(로컬만 저장)'); return; } // [세션락] clobber 방지
+      /* ══ [wake-race 차단 20260811] _sessionLost는 onSnapshot이 '도착해야' true가 된다.
+         절전/백그라운드였던 기기는 스냅샷 수신 전에 보류된 flush가 먼저 실행될 수 있음 →
+         쓰기 직전 sessions 문서를 직접 재확인해 소유권이 넘어갔으면 저장을 중단한다. (read 1회/flush) ══ */
+      try{
+        if(typeof _deviceId==='function'){
+          const _sess = await db.collection('sessions').doc(uid).get().then(s=>s.data()||null).catch(()=>null);
+          if(_sess && _sess.deviceId && _sess.deviceId!==_deviceId()){
+            window._sessionLost=true;
+            try{ if(typeof _showLockOverlay==='function') _showLockOverlay(uid,'lost',_sess.name||''); }catch(e){}
+            console.warn('[세션락] flush 직전 재확인: 소유권이 다른 기기로 넘어감 → 저장 중단');
+            return;
+          }
+        }
+      }catch(e){console.warn('[wd-io:sv]',e);}
       /* [크로스기기 삭제 존중 20260721] 이 기기가 켜져 있는 동안 다른 기기(폰 등)에서 책을 삭제하면,
          이 기기의 통째 저장(books set)이 삭제를 되살리던 문제. 저장 직전 서버 tombBooks를 선독해
          로컬 묘비와 합치고, 묘비 대상 책을 로컬 books에서도 제거한 뒤 저장한다. (read 1회/flush) */
@@ -5280,7 +5315,8 @@ function sv() {
           db.collection('user_backups').doc(uid+'_progress_'+_bd).set(_mkBackup()).catch(()=>{});
         }
       }catch(e){console.warn('[wd-io:sv]',e);}
-    }, 3000);
+    };
+    window._svTimer = setTimeout(_svFlush, 3000);
   }
 }
 
@@ -6693,7 +6729,7 @@ function finishAdaptiveTest() {
   finalLvIdx = Math.min(finalLvIdx, LEVELS.length-1);
   const finalLv = LEVELS[finalLvIdx];
 
-  S.lid = finalLv.id;
+  S.lid = finalLv.id; S.lidTs=Date.now();   /* [성장단계 보호 20260811] */
   // 레벨테스트 결과 → 레벨(1~10) → 레벨업 코스 3단계 자동 생성
   var _newLevel = (typeof LV_TO_LEVEL!=='undefined' && LV_TO_LEVEL[finalLv.id]) || 5;
   // [진도 보존] 기존 커리큘럼에 진도가 있으면 자동 덮어쓰지 않고 결과 화면에서 물어본다.
@@ -7680,7 +7716,7 @@ function finishChapterExam(){
     var gotNabi=false;
     if(passed && b){
       if(!Array.isArray(b.chPass)) b.chPass=new Array(CH_N).fill(false);
-      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; if(typeof _advanceChapterScope==='function') _advanceChapterScope(b, ex.chIdx); S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now(); gotNabi=true; }
+      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; if(typeof _advanceChapterScope==='function') _advanceChapterScope(b, ex.chIdx); _couponDelta(1); gotNabi=true;   /* [쿠폰 원장화 20260811] increment 델타 */ }
       if(typeof sv==='function') sv();
     }
     S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
@@ -8150,7 +8186,7 @@ function _ltFinish(){
       S._myLevel=placement; try{localStorage.setItem('wd-lt-date',String(Date.now()));}catch(e){console.warn('[wd-io:_ltFinish]',e);} /* [레벨↔원서 추천 20260721] 진단일 기록 */
       try{ _generateCurriculum(placement); }catch(e){}
     }
-    try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
+    try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best){ S.lid=best.id; S.lidTs=Date.now(); } }catch(e){}
     try{ localStorage.setItem('wd-tested','1'); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
     try{ if(!invalidRun){ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf}); }   /* [영역 프로필 20260803][무효 응시는 기록 제외 20260804] */
       if(S.tHistory.length>_TH_MAX) S.tHistory=S.tHistory.slice(-_TH_MAX);   // 서버·병합과 동일한 상한 유지
@@ -8221,7 +8257,7 @@ function _ltApplyNewCurriculum(){
     if(lv==null){ if(typeof startApp==='function') startApp(); return; }
     S._myLevel=lv; try{localStorage.setItem('wd-lt-date',String(Date.now()));}catch(e){console.warn('[wd-io:_ltApplyNewCurriculum]',e);} /* [레벨↔원서 추천 20260721] 진단일 기록 */
     try{ _generateCurriculum(lv); }catch(e){}
-    try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=lv){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best) S.lid=best.id; }catch(e){}
+    try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=lv){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best){ S.lid=best.id; S.lidTs=Date.now(); } }catch(e){}
     window.__ltNeedsConfirm=false; window.__ltPendingLevel=null;
     if(typeof sv==='function') sv();
     if(typeof toast==='function') toast('새 레벨 '+lv+' 코스로 다시 만들었어요');
@@ -8280,7 +8316,7 @@ function _doLevelUp() {
   // 레벨업 진행 (한 단계만) - XP 체크는 useXP에서 처리
   const curLv = LEVELS[curLvIdx];
   const prevId = S.lid;
-  S.lid = nextLv.id;
+  S.lid = nextLv.id; S.lidTs=Date.now();   /* [성장단계 보호 20260811] */
   const needXp2 = curLv.xp || 100;
   S.xp = Math.max(0, (S.xp||0) - needXp2); // 초과 XP 보존
   S._lvNotified = false;
@@ -8338,7 +8374,7 @@ function _doLevelUp() {
 }
 
 function resetToEgg() {
-  S.lid = 'egg';
+  S.lid = 'egg'; S.lidTs=Date.now();   /* [성장단계 보호 20260811] 명시적 강등 — LWW로 전파 */
   // XP는 유지 (S.xp = 0 제거 - 누적 XP 보존)
   S._lvNotified = false;
   S._sysWords = null;
@@ -10179,7 +10215,7 @@ function rollButterfly(preferUnowned) {
 window._useBfCoupon = function(){
   try{
     if((S.bfCoupons||0) <= 0){ if(typeof toast==='function') toast('나비 쿠폰이 없어요'); return; }
-    S.bfCoupons = (S.bfCoupons||0) - 1; S.bfCouponsTs=Date.now();
+    _couponDelta(-1);   /* [쿠폰 원장화 20260811] increment 델타 */
     if(typeof sv==='function') sv();
     var bf = (typeof rollButterfly==='function') ? rollButterfly(true) : null;
     if(bf){
@@ -13647,7 +13683,7 @@ function _checkChapterDone(book, chIdx, force){
     if(!force && !_full) return;   /* [수동 완료 20260724] 수동 버튼(force)은 판정 어긋나도 통과 — 침묵 차단 */   // 챕터 단어를 전부 외워야 완료 (판정 이중화 — 키 불일치로 침묵하던 결함 방지)
     book.chPass[chIdx]=true;
     _advanceChapterScope(book, chIdx);
-    S.bfCoupons=(S.bfCoupons||0)+1; S.bfCouponsTs=Date.now();
+    _couponDelta(1);   /* [쿠폰 원장화 20260811] increment 델타 */
     if(typeof sv==='function') sv();
     var total=(typeof _chapterCount==='function')?_chapterCount(book):5;
     var isLast=(chIdx+1>=total);
@@ -17254,7 +17290,7 @@ function doRestore() {
 
       if(data.streak) S.streak = data.streak;
       if(data.nick) S.nick = data.nick;
-      if(data.lid) S.lid = data.lid;
+      if(data.lid){ S.lid = data.lid; S.lidTs = Date.now(); }   /* [성장단계 보호 20260811] 백업 복원 = 명시적 변경 */
       sv(); cm();
       toast('✅ 복원 완료!','ok');
       go('home');
@@ -17332,7 +17368,11 @@ function doResetStudy() {
   // 로컬 정본도 비움 (sv가 stale 값으로 되살리지 않도록)
   try{ localStorage.setItem('wd-w','[]'); localStorage.setItem('wd-lrn','[]'); localStorage.setItem('wd-mk','{}'); localStorage.setItem('wd-mkd','{}'); localStorage.setItem('wd-sl','{}'); localStorage.setItem('wd-ac','0'); localStorage.setItem('wd-ad','[]'); localStorage.setItem('wd-cbk','내 단어장'); localStorage.setItem('wd-bks','[]'); }catch(e){console.warn('[wd-io:doResetStudy]',e);}
   if(typeof db!=='undefined' && S.user?.uid) {
-    db.collection('user_packs').doc(S.user.uid).delete().catch(()=>{});
+    /* ══ [AI 키 보존 20260811] 기존 delete()는 user_packs 문서를 통째 삭제 →
+       08-03 수정으로 이 문서에 옮겨진 Gemini 키 정본(geminiKey·geminiKeyTs)까지 파괴해
+       '학습 데이터 초기화'할 때마다 키가 미설정으로 돌아가던 잔존 원인.
+       → 구매이력(owned)만 비우고 문서는 유지한다. */
+    db.collection('user_packs').doc(S.user.uid).set({owned:[]},{merge:true}).catch(()=>{});
   }
   sv(); // 빈 단어장·빈 내단어장을 서버 user_words·users에 저장
   cm();
@@ -17492,6 +17532,7 @@ async function markPokeRead(id) {
 // Firebase에 내 프로필 동기화
 async function syncProfileToFirebase() {
   if(!S.user?.uid) return;
+  if(window._sessionLost) return;   /* [세션락 게이트 확장 20260811] 밀려난 기기의 프로필 되덮음 차단 */
   try {
     const todayStudy = (S.studyLog[new Date().toISOString().slice(0,10)]||{}).words||0;
     /* [프로필 되돌림 방지 20260720] 기존엔 로컬 값을 무조건 set → 스테일 기기가 서버 xp/streak 등을
@@ -17499,7 +17540,8 @@ async function syncProfileToFirebase() {
     let _srv={}; try{ const _ss=await db.collection('users').doc(S.user.uid).get(); _srv=_ss.data()||{}; }catch(e){console.warn('[wd-io:syncProfileToFirebase]',e);}
     await db.collection('users').doc(S.user.uid).set({
       nick: (S.nick && S.nick.length ? S.nick : (_srv.nick||'')),
-      lid: S.lid || _srv.lid || 'egg',
+      lid: ((+(_srv.lidTs||0)) > (+(S.lidTs||0)) ? (_srv.lid||S.lid||'egg') : (S.lid||_srv.lid||'egg')),   /* [성장단계 보호 20260811] lidTs LWW — 스테일 로컬이 서버 성장을 되돌리지 않음 */
+      lidTs: Math.max(+(S.lidTs||0), +(_srv.lidTs||0)),
       streak: (S.streak||0),   /* [스트릭 수정 20260722] 연속일은 감소가 정상 — Math.max 고착 제거, studyLog 재계산(로컬)이 정본 */
       xp: Math.max(S.xp||0, _srv.xp||0),
       todayWords: todayStudy,
@@ -17880,6 +17922,24 @@ async function _initSessionLock(uid){
     window._sessionLost=false; _startHeartbeat(uid); _watchLock(uid);
   }catch(e){ window._sessionLost=false; /* 락 실패 시 잠그지 않음 */ console.warn('[세션락] 초기화 실패(락 없이 진행)', e); }
 }
+/* ══ [wake-race 차단 20260811] 절전/백그라운드에서 복귀한 즉시 소유권을 재확인한다.
+   onSnapshot 재수신을 기다리는 사이에 스테일 write가 나가는 창을 최소화. ══ */
+try{
+  document.addEventListener('visibilitychange', function(){
+    try{
+      if(document.visibilityState!=='visible') return;
+      var _u=(S.user&&S.user.uid); if(!_u || typeof db==='undefined' || window._sessionLost) return;
+      db.collection('sessions').doc(_u).get().then(function(s){
+        var d=s.data();
+        if(d && d.deviceId && d.deviceId!==_deviceId() && !window._sessionLost){
+          window._sessionLost=true;
+          _showLockOverlay(_u, 'lost', (d.name||''));
+          console.warn('[세션락] 복귀 재확인: 다른 기기가 소유 중 → 이 기기 쓰기 중단');
+        }
+      }).catch(function(){});
+    }catch(e){}
+  });
+}catch(e){}
 
 // [문서분리 1단계] schemaV<2면 user_words blob → 개별 문서(users/{uid}/books/*, words/*)로 fan-out.
 //  가산적(blob·읽기·쓰기 경로 미변경, blob이 폴백 백업). schemaV:2로 1회만. 실패해도 앱 정상(다음 호출 재시도).
@@ -17918,6 +17978,9 @@ auth.onAuthStateChanged(async user => {
   window._authPending = false;   // [로그인 완료/변경] 진행 플래그 해제 → 다음 로그인 정상 동작
   console.log('[앱] onAuthStateChanged', user ? '로그인:'+user.email : '비로그인');
   S.user = user;
+  /* [부팅 레이스 차단 20260811] 로그인 시 초기 서버 병합이 끝날 때까지 sv flush 보류. 20초 안전해제. */
+  if(user){ window._svHold=true; clearTimeout(window._svHoldT); window._svHoldT=setTimeout(function(){ window._svHold=false; }, 20000); }
+  else { window._svHold=false; }
   if(user && typeof db!=='undefined'){ try{ _initSessionLock(user.uid); }catch(e){} try{ _migrateToV2(user.uid).then(function(r){ if(r&&(r.ok||r.skipped==='already-v3')) window._splitReady=true; }); }catch(e){} } // [세션락]+[문서분리 마이그레이션] 비차단, 완료 후 이중쓰기 게이트 open
   setSplash(10, '로그인 확인 중...', user ? '로그인됨: ' + (user.email||'').split('@')[0] : '로그인 필요');
 
@@ -17943,6 +18006,7 @@ auth.onAuthStateChanged(async user => {
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+      if(ls.getItem('wd-lid-ts')) S.lidTs = +(ls.getItem('wd-lid-ts')||0);   /* [성장단계 보호 20260811] */
       if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
       if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
       if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');
@@ -18024,6 +18088,15 @@ auth.onAuthStateChanged(async user => {
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
               if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
               if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
+              if(k === 'lid'){ /* ══ [성장단계 보호 20260811] 알 회귀 근본수정 ══
+                 기존엔 lid만 특수처리 없이 fallthrough(S[k]=서버값)로 무조건 채택 →
+                 스테일 기기/서버가 애벌레를 알로 되돌리던 원인. lidTs LWW + 레거시는 성장 단방향(높은 단계 유지). */
+                var _slT=+(_data.lidTs||0), _llT=+(S.lidTs||0);
+                var _lix=function(id){ var i=(typeof LEVELS!=='undefined')?LEVELS.findIndex(function(l){return l.id===id;}):-1; return i<0?0:i; };
+                if(_slT===0 && _llT===0){ if(_data.lid && _lix(_data.lid)>_lix(S.lid)) S.lid=_data.lid; return; }
+                if(_slT>_llT){ if(_data.lid) S.lid=_data.lid; S.lidTs=_slT; return; }
+                return;
+              }
               if(k === 'bfCoupons'){ // [쿠폰 유실 근본수정] _ts 최신우선 LWW — 무조건 덮어쓰기 폐기(지급/소비 최신 기기 값 보존, 스테일 서버가 되덮지 못하게)
                 var _sTs=+(_data.bfCouponsTs||0), _lTs=+(S.bfCouponsTs||0);
                 if(_sTs===0 && _lTs===0){ if(_data.bfCoupons!==undefined) S.bfCoupons=_data.bfCoupons; return; } // 레거시(양쪽 ts 없음): 기존 동작(서버 채택)
@@ -18219,6 +18292,7 @@ auth.onAuthStateChanged(async user => {
                 console.log('[앱] 크로스기기 병합 반영 → 화면 갱신');
               }
             }catch(e){}
+            window._svHold=false;   /* [부팅 레이스 차단 20260811] 초기 병합 완료 → flush 허용 */
             console.log('[앱] Firebase 백그라운드 동기화 완료(user_words 병합)');
             /* ══ [실시간 동기화 20260722] 원칙: 한 기기가 저장하면 다른 기기·서버는 자동 업데이트. ══
                user_words 실시간 리스너 — 다른 기기의 저장을 켜져 있는 이 기기가 즉시 수신해
@@ -18277,6 +18351,14 @@ auth.onAuthStateChanged(async user => {
                   }
                   // 숫자 프로필: xp만 (maxCombo·totalLearned는 users에 저장 안 됨). streak은 로컬 재계산 정본이라 제외.
                   if(typeof d.xp==='number' && d.xp > (S.xp||0)){ S.xp=d.xp; changed=true; }
+                  /* [성장단계 보호 20260811] lid 실시간 반영 — lidTs LWW(서버가 최신일 때만), 레거시는 높은 단계 유지 */
+                  if(d.lid){
+                    var _slT2=+(d.lidTs||0), _llT2=+(S.lidTs||0);
+                    var _lix2=function(id){ var i=(typeof LEVELS!=='undefined')?LEVELS.findIndex(function(l){return l.id===id;}):-1; return i<0?0:i; };
+                    if(_slT2>_llT2 && d.lid!==S.lid){ S.lid=d.lid; S.lidTs=_slT2; try{ localStorage.setItem('wd-l',S.lid); localStorage.setItem('wd-lid-ts',S.lidTs); }catch(e){}
+                      changed=true; }
+                    else if(_slT2===0 && _llT2===0 && _lix2(d.lid)>_lix2(S.lid)){ S.lid=d.lid; try{ localStorage.setItem('wd-l',S.lid); }catch(e){} changed=true; }
+                  }
                   // 쿠폰: LWW 타임스탬프 존중 — 서버 ts가 더 최신일 때만 채택
                   if(typeof d.bfCoupons==='number'){
                     var _srvTs=+(d.bfCouponsTs||0), _locTs=+(S.bfCouponsTs||0);
@@ -18293,7 +18375,7 @@ auth.onAuthStateChanged(async user => {
               console.log('[실시간 동기화] users 리스너 시작');
             }catch(e){console.warn('[wd-io:anon]',e);}
           })();
-        }).catch(e => console.warn('[앱] Firebase 동기화 실패', e));
+        }).catch(e => { window._svHold=false; console.warn('[앱] Firebase 동기화 실패', e); });   /* [부팅 레이스 차단 20260811] 실패 시에도 해제 */
       }
       return; // 아래 로직 실행 안 함
     }
@@ -18374,6 +18456,15 @@ auth.onAuthStateChanged(async user => {
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
               if(k === '_achievements'){ var _ac=_data._achievements; if(Array.isArray(_ac)) S._achievements=Array.from(new Set([].concat(S._achievements||[], _ac))); else if(_ac&&typeof _ac==='object') S._achievements=Object.assign({}, _ac, S._achievements||{}); return; } // 업적: 합집합
               if(k === '_dailyStudiedMin' || k === '_dailyXpGiven'){ if(_data._dailyDate && S._dailyDate && _data._dailyDate===S._dailyDate){ S[k]=Math.max(S[k]||0, _data[k]||0); return; } } // 같은 날이면 최댓값(오늘 분 역행 방지)
+              if(k === 'lid'){ /* ══ [성장단계 보호 20260811] 알 회귀 근본수정 ══
+                 기존엔 lid만 특수처리 없이 fallthrough(S[k]=서버값)로 무조건 채택 →
+                 스테일 기기/서버가 애벌레를 알로 되돌리던 원인. lidTs LWW + 레거시는 성장 단방향(높은 단계 유지). */
+                var _slT=+(_data.lidTs||0), _llT=+(S.lidTs||0);
+                var _lix=function(id){ var i=(typeof LEVELS!=='undefined')?LEVELS.findIndex(function(l){return l.id===id;}):-1; return i<0?0:i; };
+                if(_slT===0 && _llT===0){ if(_data.lid && _lix(_data.lid)>_lix(S.lid)) S.lid=_data.lid; return; }
+                if(_slT>_llT){ if(_data.lid) S.lid=_data.lid; S.lidTs=_slT; return; }
+                return;
+              }
               if(k === 'bfCoupons'){ // [쿠폰 유실 근본수정] _ts 최신우선 LWW — 무조건 덮어쓰기 폐기(지급/소비 최신 기기 값 보존, 스테일 서버가 되덮지 못하게)
                 var _sTs=+(_data.bfCouponsTs||0), _lTs=+(S.bfCouponsTs||0);
                 if(_sTs===0 && _lTs===0){ if(_data.bfCoupons!==undefined) S.bfCoupons=_data.bfCoupons; return; } // 레거시(양쪽 ts 없음): 기존 동작(서버 채택)
@@ -18503,7 +18594,7 @@ auth.onAuthStateChanged(async user => {
         if(!doc.exists){ try{ if(typeof _ensureDefaultBooks==='function') _ensureDefaultBooks(); }catch(e){} }
         if(doc.exists) {
           const data = doc.data();
-          ['xp','lid','streak','nick',
+          ['xp','lid','lidTs','streak','nick',
            'markMap','_achievements','_acc','_equipped','_ownedPacks',
            'alStudy','alGoal','alStreak','_dailyGoalMin','_dailyStudiedMin',
            '_dailyDate','_dailyXpGiven','studyLog','fontFamily','lastDate'
@@ -18547,6 +18638,7 @@ auth.onAuthStateChanged(async user => {
     try {
       const ls = localStorage;
       if(ls.getItem('wd-l'))  S.lid = ls.getItem('wd-l');
+      if(ls.getItem('wd-lid-ts')) S.lidTs = +(ls.getItem('wd-lid-ts')||0);   /* [성장단계 보호 20260811] */
       if(ls.getItem('wd-xp')) S.xp = Number(ls.getItem('wd-xp'))||0;
       if(ls.getItem('wd-st')) S.streak = Number(ls.getItem('wd-st'))||0;
       if(ls.getItem('wd-nk')) S.nick = ls.getItem('wd-nk');

@@ -5345,6 +5345,21 @@ function sv() {
           myButterflies:(S.myButterflies||[]).slice(),
           collection:(S._collection||[]).slice(),
           bfCoupons:S.bfCoupons||0,
+          /* ══ [백업 확장 20260811] 전수감사에서 백업 미포함으로 확인된 필드 추가 —
+             유실 시 복구 근거가 아예 없던 항목들(쿠폰 1000+ 유실 때 복구 불가였던 구조적 원인). ══ */
+          bfCouponsTs:S.bfCouponsTs||0, lidTs:S.lidTs||0,
+          _totalXp:S._totalXp||0,
+          markDates:(S.markDates&&typeof S.markDates==='object')?S.markDates:{},
+          tHistory:(S.tHistory||[]).slice(),
+          attendDates:(S.attendDates||[]).slice(), attendCount:S.attendCount||0,
+          alStudy:S.alStudy||null, alGoal:S.alGoal||null, alStreak:S.alStreak||0,
+          plan:S.plan||null, planScope:S.planScope||null, quizGoal:S.quizGoal||null,
+          modeSettings:(S.modeSettings&&typeof S.modeSettings==='object')?S.modeSettings:{},
+          _acc:(S._acc||[]).slice(), _equipped:S._equipped||null,
+          _achievements:(S._achievements||[]).slice(), _ownedPacks:(S._ownedPacks||[]).slice(),
+          hiddenPackWords:(S.hiddenPackWords&&typeof S.hiddenPackWords==='object')?S.hiddenPackWords:{},
+          /* studyLog는 용량 절약을 위해 최근 90일 요약(words/quiz/min/xp)만 — markedEns 등 대용량 제외 */
+          studyLogLite:(function(){ try{ var out={}, ks=Object.keys(S.studyLog||{}).sort().slice(-90); ks.forEach(function(k){ var e=S.studyLog[k]||{}; out[k]={words:e.words||0,quiz:e.quiz||0,min:e.min||0,xp:e.xp||0}; }); return out; }catch(e){ return {}; } })(),
           backupDate: _bd, backupAt: new Date().toISOString()
         });
       };
@@ -14685,9 +14700,11 @@ function saveWordToCurrentBook(word) {
 
 function removeWordFromCurrentBook(en){
   const bookName = S.currentBook || '내 단어장';
-  if(bookName === '내 단어장'){ _tombWord(en); S.myWords=(S.myWords||S.words||[]).filter(w=>w.en!==en); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords; return true; }
+  /* [유령마크 정리 20260811] 단어 삭제 시 markMap·myMarkMap·markDates에 남던 유령 키 동반 정리 (집계엔 무해했으나 데이터 위생) */
+  const _purgeMark=function(){ try{ if(S.markMap) delete S.markMap[en]; if(S.myMarkMap&&S.myMarkMap!==S.markMap) delete S.myMarkMap[en]; if(S.markDates) delete S.markDates[en]; }catch(e){} };
+  if(bookName === '내 단어장'){ _tombWord(en); _purgeMark(); S.myWords=(S.myWords||S.words||[]).filter(w=>w.en!==en); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords; return true; }
   const bk = (S.books||[]).find(b=>b.name===bookName);
-  if(!bk){ _tombWord(en); S.myWords=(S.myWords||S.words||[]).filter(w=>w.en!==en); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords; return true; }
+  if(!bk){ _tombWord(en); _purgeMark(); S.myWords=(S.myWords||S.words||[]).filter(w=>w.en!==en); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords; return true; }
   if(bk.packId){
     // 마켓팩: 개별 단어는 삭제 대신 사용자별 '숨김' 처리(다시 등록 시 복구)
     if(!S.hiddenPackWords) S.hiddenPackWords={};

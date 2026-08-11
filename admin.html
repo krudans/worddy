@@ -2595,7 +2595,11 @@ function _cwDefaultSorted(){
     }
   });
   arr.sort(function(a,b){ return (a.r-b.r)||(a.f-b.f)||(a.i-b.i); });
-  window._cwSortedCache=arr.slice(0,10000).map(function(x){return x.en;});
+  /* [레벨 상한 재편 20260811] 앱(index.html)과 동일 재편 — top10000 컷은 B1에서 끝나 '레벨 10=수능' 라벨과 달리
+     실물이 B1이었음. CEFR 경계 앵커로 전환: 1~2 A1 · 3~4 A2 · 5~6 B1 · 7~8 B2 · 9 C1 · 10 C2. */
+  window._cwBandStart={};
+  for(var bI=0;bI<arr.length;bI++){ var bC=['A1','A2','B1','B2','C1','C2'][arr[bI].r]; if(bC && window._cwBandStart[bC]==null) window._cwBandStart[bC]=bI; }
+  window._cwSortedCache=arr.map(function(x){return x.en;});
   return window._cwSortedCache;
 }
 /* [저장 라우터 20260804] 팩 단어 저장의 단일 관문.
@@ -2638,9 +2642,15 @@ function _cwEffective(L){
   _cwInit();
   if(_cwWords[L]) return _cwWords[L];
   if(_cwSaved[L]){ _cwWords[L]=_cwSaved[L].words.slice(0,1000); return _cwWords[L]; }
-  _cwWords[L]=_cwDefaultSorted().slice((L-1)*1000,L*1000); return _cwWords[L];
+  /* [레벨 상한 재편 20260811] 앱과 동일한 CEFR 앵커 슬라이스 — admin에서 저장하는 정본이 앱 재편과 일치해야 함 */
+  var _sorted=_cwDefaultSorted();
+  var _RB={1:['A1',0],2:['A1',1000],3:['A2',0],4:['A2',1000],5:['B1',0],6:['B1',1000],7:['B2',0],8:['B2',1000],9:['C1',0],10:['C2',0]};
+  var _bs=window._cwBandStart||{}, _m=_RB[L], _sl=null;
+  if(_m && _bs[_m[0]]!=null){ var _st=_bs[_m[0]]+_m[1]; _sl=_sorted.slice(_st,_st+1000); }
+  if(!_sl || _sl.length<100){ _sl=_sorted.slice((L-1)*1000,L*1000); }
+  _cwWords[L]=_sl; return _cwWords[L];
 }
-function _cwBandName(L){ return L<=2?'왕초보 · 초등':(L<=5?'기초 · 중학':(L<=8?'중급 · 고등':'중상급 · 수능+')); }
+function _cwBandName(L){ return L<=2?'초등 · A1':(L<=4?'중등 · A2':(L<=6?'고등 · B1':(L<=8?'수능·대학 · B2':(L<=9?'고급 · C1':'원어민급 · C2')))); }   /* [레벨 상한 재편 20260811] 앱 6밴드와 일치 */
 function _cwRenderTable(){
   _cwInit();
   var rows='';

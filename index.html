@@ -5334,7 +5334,23 @@ function sv() {
       if(window._splitReady){ try{
         const _ts2=firebase.firestore.FieldValue.serverTimestamp();
         const _bcol2=db.collection('users').doc(uid).collection('books');
-        (S.books||[]).forEach((b,i)=>{ try{ const _id=b.packId||('bk'+i); _bcol2.doc(_id).set({ name:b.name||'', packId:b.packId||null, order:i, fromMarket:!!b.fromMarket, markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{}, learned:(b.learned!=null?b.learned:0), deleted:false, updatedAt:_ts2 },{merge:true}).catch(()=>{}); }catch(_e){console.warn('[wd-io:sv]',_e);} });
+        /* ══ [STEP2 정합 완성 20260811] 섀도읽기 실측에서 확인된 3결함 수정 —
+           ① payload에 chPass·finalPassed·resetAt이 없어 분할문서가 진도 절반만 담던 것(불일치 6권) → 전체 수록
+           ② {merge:true}가 markMap을 딥병합해 blob에서 지운 마크가 분할에 영구 잔존 → mergeFields로 맵 '통째 교체'
+           ③ 'bk'+인덱스 ID가 책 순서 변동에 불안정(고아 bk4·bk8 발생) → 일반 책에 고유 sid 부여, 문서ID=packId||sid ══ */
+        (S.books||[]).forEach((b,i)=>{ try{
+          if(b && !b.packId && !b.sid){ b.sid='b'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+i; }
+          const _id=b.packId||b.sid||('bk'+i);
+          _bcol2.doc(_id).set({
+            name:b.name||'', packId:b.packId||null, sid:b.sid||null, order:i, fromMarket:!!b.fromMarket,
+            markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{},
+            chPass:Array.isArray(b.chPass)?b.chPass.map(function(x){return !!x;}):[],
+            finalPassed:!!b.finalPassed, finalBadge:b.finalBadge||null,
+            resetAt:b.resetAt||0,
+            isCurriculum:!!b.isCurriculum, tier:b.tier||null, level:b.level||null,
+            learned:(b.learned!=null?b.learned:0), deleted:false, updatedAt:_ts2
+          },{mergeFields:['name','packId','sid','order','fromMarket','markMap','chPass','finalPassed','finalBadge','resetAt','isCurriculum','tier','level','learned','deleted','updatedAt']}).catch(()=>{});
+        }catch(_e){console.warn('[wd-io:sv]',_e);} });
         /* [삭제 전파 롤백 20260723] 크로스기기 위험(다른 기기가 진행 중인 책을 이 기기가 모르면 삭제 표시)으로 제거됨 */
       }catch(e){ console.warn('[분리이중쓰기] skip', e); } }
       /* ══ [백업 강화 20260723] 하루 1번 일별 백업 + 진도가 늘면 즉시 스냅샷.
@@ -5346,7 +5362,7 @@ function sv() {
           xp: S.xp, nick: S.nick, lid: S.lid, streak: S.streak,
           // 진도 정본: 책별 챕터 통과·외움 표시
           progress: (S.books||[]).map(function(b,i){
-            return { key:(b.packId||('bk'+i)), name:b.name||'', packId:b.packId||null,
+            return { key:(b.packId||b.sid||('bk'+i)), name:b.name||'', packId:b.packId||null, sid:b.sid||null,
                      chPass:(b.chPass||[]).slice(), finalPassed:!!b.finalPassed, finalBadge:b.finalBadge||null,
                      markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{} };
           }),
@@ -5404,17 +5420,21 @@ function _shadowReadCompare(){
     // blob(정본) 기준 기대치: 문서ID 규칙은 STEP1 이중쓰기와 동일(packId || 'bk'+i)
     var expect={};
     (S.books||[]).forEach(function(b,i){
-      var id=b.packId||('bk'+i);
-      expect[id]={ mm:(b.markMap&&typeof b.markMap==='object')?Object.keys(b.markMap).length:0, name:b.name||'' };
+      var id=b.packId||b.sid||('bk'+i);   /* [STEP2 정합 완성 20260811] 이중쓰기와 동일한 안정 ID 규칙 */
+      expect[id]={ mm:(b.markMap&&typeof b.markMap==='object')?Object.keys(b.markMap).length:0, name:b.name||'',
+                   cp:JSON.stringify(Array.isArray(b.chPass)?b.chPass.map(function(x){return !!x;}):[]), fin:!!b.finalPassed };
     });
     db.collection('users').doc(uid).collection('books').get().then(function(snap){
       var split={};
       snap.forEach(function(d){ var v=d.data()||{}; if(v.deleted) return;
-        split[d.id]={ mm:(v.markMap&&typeof v.markMap==='object')?Object.keys(v.markMap).length:0, name:v.name||'' }; });
+        split[d.id]={ mm:(v.markMap&&typeof v.markMap==='object')?Object.keys(v.markMap).length:0, name:v.name||'',
+                      cp:JSON.stringify(Array.isArray(v.chPass)?v.chPass.map(function(x){return !!x;}):[]), fin:!!v.finalPassed }; });
       var mism=[];
       Object.keys(expect).forEach(function(id){
         if(!(id in split)) mism.push({id:id, type:'missing-in-split', blobMM:expect[id].mm});
-        else if(split[id].mm!==expect[id].mm) mism.push({id:id, type:'markMap-count', blobMM:expect[id].mm, splitMM:split[id].mm});
+        else { if(split[id].mm!==expect[id].mm) mism.push({id:id, type:'markMap-count', blobMM:expect[id].mm, splitMM:split[id].mm});
+               if(split[id].cp!==expect[id].cp) mism.push({id:id, type:'chPass'});
+               if(split[id].fin!==expect[id].fin) mism.push({id:id, type:'finalPassed'}); }
       });
       Object.keys(split).forEach(function(id){ if(!(id in expect)) mism.push({id:id, type:'extra-in-split', splitMM:split[id].mm}); });
       console.log('[섀도읽기] blob books='+Object.keys(expect).length+' | split docs='+Object.keys(split).length+' | 불일치='+mism.length, mism.length?mism:'(일치)');
@@ -17723,7 +17743,7 @@ async function restoreFromBackup() {
           /* [백업 강화 20260723] 진도(챕터 통과·외움 표시·나비·쿠폰)도 함께 복원 */
           try{
             (b.progress||[]).forEach(function(p){
-              var bk=(S.books||[]).find(function(x,i){ return (x.packId||('bk'+i))===p.key || (p.packId&&x.packId===p.packId) || x.name===p.name; });
+              var bk=(S.books||[]).find(function(x,i){ return (x.packId||x.sid||('bk'+i))===p.key || (p.packId&&x.packId===p.packId) || (p.sid&&x.sid===p.sid) || x.name===p.name; });
               if(!bk) return;
               if(Array.isArray(p.chPass)) bk.chPass=p.chPass.slice();
               if(p.finalPassed) { bk.finalPassed=true; bk.finalBadge=p.finalBadge||null; }

@@ -5322,6 +5322,10 @@ function sv() {
           if(!S.currentBook || S.currentBook==='내 단어장'){ S.words=_myWords.slice(); }
         }
       }catch(e){console.warn('[wd-io:sv]',e);}
+      /* [sid 영속 수정 20260811] sid 부여가 blob 저장 '뒤'(이중쓰기 시점)에 있어 blob에 안 실렸고,
+         다음 flush의 선독 병합이 서버 books(sid 없음)로 S.books를 교체하며 sid가 매번 소실 →
+         flush마다 새 sid 문서가 증식하던 버그. 부여를 booksData 생성 '앞'으로 이동해 blob에 영속시킨다. */
+      try{ (S.books||[]).forEach(function(b,i){ if(b && !b.packId && !b.sid){ b.sid='b'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+i; } }); }catch(e){}
       const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : (b&&b.isCurriculum ? {...b, words:(Array.isArray(b.words)?b.words:[]).map(w=>({en:(w&&w.en)||''}))} : b)), words: _myWords, tombBooks:(S._tombBooks||[]), tombWords:(S._tombWords||[]), updatedAt: new Date().toISOString()};   /* [1MiB 저장실패 근본수정 20260720] 커리큘럼 words는 payload에서도 en-only 보장(설계 정본) — 오염돼도 서버엔 절대 비대본이 안 감 */
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
@@ -5339,8 +5343,7 @@ function sv() {
            ② {merge:true}가 markMap을 딥병합해 blob에서 지운 마크가 분할에 영구 잔존 → mergeFields로 맵 '통째 교체'
            ③ 'bk'+인덱스 ID가 책 순서 변동에 불안정(고아 bk4·bk8 발생) → 일반 책에 고유 sid 부여, 문서ID=packId||sid ══ */
         (S.books||[]).forEach((b,i)=>{ try{
-          if(b && !b.packId && !b.sid){ b.sid='b'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+i; }
-          const _id=b.packId||b.sid||('bk'+i);
+          const _id=b.packId||b.sid||('bk'+i);   /* [sid 영속 수정 20260811] 부여는 booksData 생성 전 1곳으로 일원화 */
           _bcol2.doc(_id).set({
             name:b.name||'', packId:b.packId||null, sid:b.sid||null, order:i, fromMarket:!!b.fromMarket,
             markMap:(b.markMap&&typeof b.markMap==='object')?b.markMap:{},

@@ -13028,9 +13028,13 @@ function rStudyBooks() {
         +'<div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden;margin-top:6px"><div style="width:'+pct+'%;height:100%;background:var(--theme,#3B82F6);border-radius:20px"></div></div>'
       +'</div>'
       +'<div style="text-align:right;flex-shrink:0"><div style="font-size:12px;font-weight:800;color:var(--text2,#374151)">'+(o.right||(o.mem+'/'+o.count))+'</div></div>'
+      /* [시험 진입 직노출 20260811] 완료 코스의 최종 테스트가 챕터 모달(3뎁스) 안에만 있어 '지금 안하기' 후
+         재발견이 안 되던 문제 → 목록 행에 원탭 버튼 상시 노출 */
+      +(o.testBtn?'<button onclick="event.stopPropagation();cm();startFinalTest(\''+String(o.testBtn).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')" style="flex-shrink:0;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:9px;padding:7px 10px;font-size:11.5px;font-weight:800;cursor:pointer">🏁 시험</button>':'')
       +'<span onclick="event.stopPropagation();'+o.menuFn+'" style="font-size:15px;color:#C7CDD4;padding:4px 0 4px 4px;cursor:pointer;flex-shrink:0">⋯</span>'
     +'</div>';
   }
+  function _rowTestBtn(o,bk){ try{ if(typeof _ftAvailable==='function' && _ftAvailable(bk)){ if(!bk.finalPassed) o.testBtn=bk.name; else o.right=(o.right||'')+' 🏅'; } }catch(e){} }   /* [시험 진입 직노출 20260811] */
   function _sectionCard(id, emoji, title, count, rowsHtml, extraHtml){
     var open = (S['_sec_'+id] !== false);
     return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:2px 14px 6px">'
@@ -13046,9 +13050,9 @@ function rStudyBooks() {
   // ── 📕 학습 코스: 챕터로 단계를 올라가는 것 (기본 제공 그룹 + 담은 코스 + 레벨업 커리큘럼)
   var courseRows = '';
   var courseCnt = 0;
-  grpBooks.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); courseRows+=_simpleRow(o); courseCnt++; });
-  (S.books||[]).filter(function(b){ return b.isCurriculum; }).forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); courseRows+=_simpleRow(o); courseCnt++; });
-  _oc.forEach(function(c){ (c.books||[]).forEach(function(x){ var bk=x.book; if(!bk) return; var o=_bookOpts(bk); var ch=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=ch?(d+'/'+ch+'챕터'):(o.mem+'/'+o.count); courseRows+=_simpleRow(o); courseCnt++; }); });
+  grpBooks.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; });
+  (S.books||[]).filter(function(b){ return b.isCurriculum; }).forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; });
+  _oc.forEach(function(c){ (c.books||[]).forEach(function(x){ var bk=x.book; if(!bk) return; var o=_bookOpts(bk); var ch=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=ch?(d+'/'+ch+'챕터'):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; }); });
   if(!courseRows) courseRows='<div style="font-size:11.5px;color:#9CA3AF;text-align:center;padding:14px 2px">아직 학습 코스가 없어요</div>';
   var secCourse=_sectionCard('course','📕','학습 코스', courseCnt+'권', courseRows,
     '<div onclick="S.stab=\'market\';go(\'mybooks\',\'market\')" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 2px;border-top:1px solid var(--border,#F1F3F5);cursor:pointer;color:var(--theme,#3B82F6);font-size:12px;font-weight:700">＋ 마켓으로 가기</div>');
@@ -13535,7 +13539,7 @@ window._doMark = function(v) {
 };
 /* ══ [최종 테스트 20260723] 전 챕터 완료 후 열리는 관문. 책 전체에서 30문제 · 80점 통과.
    통과 시 나비 쿠폰 +2장 + 완독 배지(읽기 수준별 등급) + 보너스 XP. 떨어져도 진도는 유지, 재도전 가능. ══ */
-var FT_N = 30, FT_PASS = 80;
+var FT_N = 40, FT_PASS = 80;   /* [출제 표준화 20260811] 30→40 확대 — VLT 계열은 수준당 24~30문항으로 신뢰도 확보, 책 전체(5수준) 판정이므로 40 */
 function _finalBadgeTier(book){
   try{
     var pk=(S._marketPacks||[]).find(function(p){return p.id===book.packId;});
@@ -13567,9 +13571,28 @@ function startFinalTest(bookName){
     var ws=(typeof getBookWords==='function')?getBookWords(book):[];
     ws=ws.filter(function(w){ return w && (typeof w==='string'? w : (w.en && w.kr)); });
     if(ws.length<8){ toast('단어가 부족해요','err'); return; }
-    var pool=ws.slice();
-    for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
-    var qs=pool.slice(0, Math.min(FT_N, pool.length));
+    /* ══ [출제 표준화 20260811] 기존 '전체 풀 완전 셔플'은 챕터(=CEFR 난이도 그라데이션) 순서를 무시해
+       난이도가 뒤죽박죽으로 체감되던 원인. VLT 계열의 수준별 층화 표집 원칙에 맞춰:
+       ① 각 챕터에서 균등 표집 ② 진행은 챕터 순(쉬움→어려움) ③ 무작위성은 챕터 '내부' 표집에만. ══ */
+    var _shufA=function(a){ for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; };
+    var qs=[];
+    var chN=(typeof _chapterCount==='function')?_chapterCount(book):0;
+    if(chN>1 && typeof _chapterSlice==='function'){
+      var per=Math.ceil(FT_N/chN);
+      for(var ci=0; ci<chN; ci++){
+        var sl=((_chapterSlice(book,ci)||[])).filter(function(w){ return w && w.en && w.kr; });
+        _shufA(sl);
+        qs=qs.concat(sl.slice(0,per));
+      }
+      qs=qs.slice(0,FT_N);
+      if(qs.length<Math.min(FT_N,ws.length)){
+        var _have=new Set(qs.map(function(w){return w.en;}));
+        var _rest=_shufA(ws.filter(function(w){return !_have.has(w.en);}));
+        qs=qs.concat(_rest.slice(0, Math.min(FT_N,ws.length)-qs.length));
+      }
+    } else {
+      qs=_shufA(ws.slice()).slice(0, Math.min(FT_N, ws.length));
+    }
     S._ft={ bookName:bookName, qs:qs, i:0, correct:0, total:qs.length, all:ws };
     S._inFinalTest=true;
     if(typeof go==='function') go();

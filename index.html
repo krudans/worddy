@@ -12785,7 +12785,16 @@ function _gcRender(){
   }
   var lines='';
   if(area==='all'){
-    Object.keys(AMETA).forEach(function(a, ai){ lines+=lineOf(function(h){return h.areas?h.areas[a]:null;}, AMETA[a][1], 1.8, false, false, (ai-1.5)*1.4); });   /* [영역 그래프 가독성 20260811] */
+    /* [영역 식별 라벨 20260811] 실측: 듣기·읽기·종합이 같은 값(Lv.4)이면 점이 완전히 겹쳐 일부 영역이 '없는 것처럼' 보였다
+       → 끝점 오른쪽 여백에 영역 이모지 미니 라벨을 세로 충돌 회피(최소 10px 간격)로 배치해 겹친 점도 식별되게. */
+    var _endLbl=[];
+    Object.keys(AMETA).forEach(function(a, ai){
+      lines+=lineOf(function(h){return h.areas?h.areas[a]:null;}, AMETA[a][1], 1.8, false, false, (ai-1.5)*1.4);
+      for(var _gi=g.length-1;_gi>=0;_gi--){ var _v=g[_gi].areas?g[_gi].areas[a]:null; if(_v!=null){ _endLbl.push({y:Math.max(6,Math.min(106,_lvBandY(_v)+(ai-1.5)*1.4)), e:AMETA[a][0], c:AMETA[a][1]}); break; } }
+    });
+    _endLbl.sort(function(p,q){return p.y-q.y;});
+    for(var _li=1;_li<_endLbl.length;_li++){ if(_endLbl[_li].y-_endLbl[_li-1].y<10) _endLbl[_li].y=_endLbl[_li-1].y+10; }
+    _endLbl.forEach(function(L){ lines+='<text x="288" y="'+(L.y+3)+'" font-size="8">'+L.e+'</text>'; });
     lines+=lineOf(function(h){return h.level;}, '#1E5FA5', 2.8, true, true);
   } else {
     lines+=lineOf(function(h){return h.level;}, '#CBD5E1', 1.5, false, false);   // 종합은 흐리게 참고선
@@ -12793,6 +12802,10 @@ function _gcRender(){
   }
   if(area!=='all' && lines.indexOf('circle')<0){
     lines+='<text x="150" y="60" font-size="10" fill="#9CA3AF" text-anchor="middle" font-weight="700">이 영역 기록이 아직 없어요 — 표준 진단을 보면 채워져요</text>';
+  }
+  if(area!=='all'){
+    var _acnt=0; g.forEach(function(h){ if(h.areas && h.areas[area]!=null) _acnt++; });
+    if(_acnt===1) lines+='<text x="150" y="14" font-size="8.5" fill="#9CA3AF" text-anchor="middle" font-weight="700">이 영역은 이번 진단부터 기록됐어요 — 다음 진단부터 선으로 이어져요</text>';   /* [영역 첫 기록 안내 20260811] 선 없이 점 하나인 이유를 화면이 설명 */
   }
   // 축 라벨(날짜)
   var lbl='';

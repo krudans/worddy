@@ -804,7 +804,9 @@ function _generateCurriculum(startLevel){
       //   용량 절약을 위해 en만 저장하고, 표시 시 getBookWords에서 사전 오버레이로 뜻·예문을 채운다.
       var _fixedWords=[];
       try{ if(typeof _levelWords==='function'){ _fixedWords = _levelWords(L).map(function(w){ return {en:w.en}; }); } }catch(e){}
-      S.books.push({ name:_cnm, isCurriculum:true, level:L, tier:(idx+1), words:_fixedWords, markMap:{}, learned:[], chPass:[false,false,false,false,false] });
+      /* [재생성 세대 구분 20260811] 같은 이름 재사용 시 서버 구본 진도가 union으로 되살아나던 결함(라이브 실측:
+         새 코스에 옛 chPass·마크 873개 유령 부활) → resetAt으로 '이 시각 이후가 정본' 선언, 병합이 구본을 버리게 한다. */
+      S.books.push({ name:_cnm, isCurriculum:true, level:L, tier:(idx+1), words:_fixedWords, markMap:{}, learned:[], chPass:[false,false,false,false,false], resetAt:Date.now(), ftUnlocked:false, finalPassed:false, finalBadge:null });
     });
     if(typeof sv==='function') sv();
   }catch(e){console.warn('[wd-io:_generateCurriculum]',e);}
@@ -12763,11 +12765,15 @@ function _gcRender(){
   var stepX = g.length>1 ? 260/(g.length-1) : 0;
   function X(i){ return g.length>1 ? Math.round(20+i*stepX) : 150; }
   var AMETA={v:['🔤 단어','#3B82F6'], l:['🎧 듣기','#8B5CF6'], r:['📖 읽기','#16A34A'], w:['✍️ 쓰기','#F97316']};
-  function lineOf(getter, color, width, withDots, labelLast){
-    var pts=[]; g.forEach(function(h,i){ var v=getter(h); if(v!=null) pts.push([X(i), _lvBandY(v), v, i]); });
+  function lineOf(getter, color, width, withDots, labelLast, dy){
+    /* [영역 그래프 가독성 20260811] dy(영역 모드): ① 시리즈별 ±1~2px 수직 오프셋으로 겹침 분리(밴드 11px/레벨의 1/6 이하 — 판독 왜곡 없음)
+       ② 데이터가 1개뿐인 영역(읽기·쓰기 등 최근 진단부터 기록)은 선이 길이 0이라 안 보이던 것 → 끝점 색점을 상시 표시 */
+    var _dy=dy||0;
+    var pts=[]; g.forEach(function(h,i){ var v=getter(h); if(v!=null) pts.push([X(i), Math.max(6,Math.min(106,_lvBandY(v)+_dy)), v, i]); });
     if(!pts.length) return '';
     var d=pts.map(function(p,i){return (i?'L':'M')+p[0]+','+p[1];}).join(' ');
     var svg='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="'+width+'" stroke-linecap="round" stroke-linejoin="round"/>';
+    if(dy!==undefined && !withDots){ var ep=pts[pts.length-1]; svg+='<circle cx="'+ep[0]+'" cy="'+ep[1]+'" r="3" fill="'+color+'" stroke="#fff" stroke-width="1.2"/>'; }
     if(withDots) pts.forEach(function(p,i){
       var lastP=(i===pts.length-1);
       svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(lastP?5:3.5)+'" fill="'+(lastP?color:'#fff')+'" stroke="'+(lastP?'#fff':color)+'" stroke-width="2"/>';
@@ -12777,7 +12783,7 @@ function _gcRender(){
   }
   var lines='';
   if(area==='all'){
-    Object.keys(AMETA).forEach(function(a){ lines+=lineOf(function(h){return h.areas?h.areas[a]:null;}, AMETA[a][1], 1.8, false, false); });
+    Object.keys(AMETA).forEach(function(a, ai){ lines+=lineOf(function(h){return h.areas?h.areas[a]:null;}, AMETA[a][1], 1.8, false, false, (ai-1.5)*1.4); });   /* [영역 그래프 가독성 20260811] */
     lines+=lineOf(function(h){return h.level;}, '#1E5FA5', 2.8, true, true);
   } else {
     lines+=lineOf(function(h){return h.level;}, '#CBD5E1', 1.5, false, false);   // 종합은 흐리게 참고선
@@ -18092,9 +18098,9 @@ function _mergeBookProgress(dst, src){
   /* [되돌림 우선 20260807] 지운 진도를 합집합/OR이 되살리지 않도록, 되돌림이 최신인 쪽을 그대로 채택 */
   var _rc=_resetCmp(dst, src);
   if(_rc!==0){
-    if(_rc<0){ dst.chPass=(Array.isArray(src.chPass)?src.chPass:[]).slice(); dst.markMap=Object.assign({}, src.markMap||{}); dst.resetAt=src.resetAt; }
-    if(src.ftUnlocked) dst.ftUnlocked=true;
-    if(src.finalPassed) { dst.finalPassed=true; dst.finalBadge=dst.finalBadge||src.finalBadge||null; }
+    /* [재생성 세대 구분 20260811] 되돌림 승부가 났으면 시험 상태(ftUnlocked·finalPassed)도 승자 것만 —
+       기존엔 부호 무관 OR라 재생성/되돌림 후에도 구본 통과 배지가 부활했다. */
+    if(_rc<0){ dst.chPass=(Array.isArray(src.chPass)?src.chPass:[]).slice(); dst.markMap=Object.assign({}, src.markMap||{}); dst.resetAt=src.resetAt; dst.ftUnlocked=!!src.ftUnlocked; dst.finalPassed=!!src.finalPassed; dst.finalBadge=src.finalPassed?(src.finalBadge||null):null; }
     ['isCurriculum','tier','level','packId','cefr'].forEach(function(f){ if(dst[f]===undefined && src[f]!==undefined) dst[f]=src[f]; });
     return;
   }

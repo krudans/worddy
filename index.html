@@ -1511,6 +1511,43 @@ function _topMean(kr, n){ try{ if(kr==null) return ''; n=parseInt(n); if(!(n>0))
 function _meanNDef(){ try{ return (typeof S!=='undefined'&&S._meanN!=null)?parseInt(S._meanN):2; }catch(e){ return 2; } } // 뜻 보기 개수 (기본 2)
 // ── 다국어 표시(언어별 스피커) ──
 // 정확한 TTS 언어코드로 발음 (영어 en-US / 한국어 ko-KR / 일본어 ja-JP / 독일어 de-DE)
+/* ══ [TTS 프리즈 완화 20260811] speechSynthesis 저수준 안전 래퍼 ══
+   재현: 레벨테스트 듣기 문항에서 렌더러 75초+ 완전 정지(챕터시험 막판 프리즈와 동일 계열).
+   원인 패턴: 앱 전역 20여 곳이 cancel() 직후 speak()를 동기 연타 — Windows Chrome TTS 엔진이
+   cancel/speak 경합에서 메인스레드를 잡는 알려진 데드락. 산재 호출을 다 고치는 대신
+   cancel/speak 자체를 교체해 전 경로를 한 번에 보호한다:
+   · speak: 즉시 실행하지 않고 120~280ms 디바운스 예약(최신 발화만 재생 — 연타 흡수)
+   · cancel: 예약 발화 폐기 + 250ms 내 재-cancel 흡수(엔진 경합 방아쇠 제거)
+   기존 성우 자동지정 래퍼(파일 후반)는 나중에 이 speak를 감싸므로 체인 유지: 앱→성우지정→안전층→네이티브.
+   ※ 브라우저 엔진 내부 결함에 대한 '완화'이며 근본 보장은 아님 — 재발 시 재현 로그 수집. */
+(function(){
+  try{
+    if(!('speechSynthesis' in window) || window.__ttsSafe) return;
+    window.__ttsSafe=true;
+    var ss=window.speechSynthesis;
+    var _oSpeak=ss.speak.bind(ss), _oCancel=ss.cancel.bind(ss);
+    var _pend=null, _timer=null, _lastCancel=0;
+    ss.cancel=function(){
+      _pend=null;
+      var now=Date.now();
+      if(now-_lastCancel<250) return;
+      _lastCancel=now;
+      try{ _oCancel(); }catch(e){}
+    };
+    ss.speak=function(u){
+      _pend=u;
+      if(_timer) return;
+      var busy=false; try{ busy=!!(ss.speaking||ss.pending); }catch(e){}
+      if(busy){ try{ ss.cancel(); }catch(e){} }
+      _timer=setTimeout(function(){
+        _timer=null;
+        var v=_pend; _pend=null;
+        if(!v) return;
+        try{ _oSpeak(v); }catch(e){}
+      }, busy?280:120);
+    };
+  }catch(e){}
+})();
 window._sayLang = function(text, code){ try{ if(!text||!('speechSynthesis'in window)) return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(text)); u.lang=code||'en-US'; u.rate=(code&&code.toLowerCase().indexOf('ko')===0?0.92:0.85); var v=(window._bestVoiceFor?window._bestVoiceFor(code):null); if(v)u.voice=v; window.speechSynthesis.speak(u); }catch(e){} };
 // 현재 표시할 언어 목록 (S._showLangs, 미설정이면 가용 전체)
 function _showLangList(){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs==null)?av:S._showLangs; return av.filter(function(l){return sel.indexOf(l)>=0;}); }catch(e){ return ['en','ko']; } }

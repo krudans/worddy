@@ -7812,6 +7812,73 @@ function _pkChapters(cnt){ return (typeof _chCount==='function') ? _chCount(cnt|
    · 200개 미만 → 1챕터 (전부 외우면 완료)
    · 200개 이상 → 200개씩 분할
    · 마지막 나머지가 50개 미만이면 앞 챕터에 합침 (자투리 챕터 방지) ══ */
+/* ══ [출제 필터 20260811] 모든 시험 공통 — ① 고유명사 제외 ② 음=뜻 외래어(카메라·바나나류) 제외.
+   외래어 판별: IPA 발음(BWD_PRON)의 자음열 ↔ 한글 대표 뜻의 자음열(초성+종성, 평음·대표음화) 대조.
+   사전 실데이터 오프라인 검증: 오탐 0(사과·태평양 등 유지) · 외래어 포착 다수(택시·호텔·피자 등) ·
+   무작위 3,000단어 중 11.8% 제외(대부분 인명·지명·음차)로 출제 풀 충분. relax=true면 외래어 검사만 생략. */
+var _TW_IPA1={'b':'ㅂ','v':'ㅂ','p':'ㅂ','f':'ㅂ','m':'ㅁ','n':'ㄴ','ŋ':'ㅇ','t':'ㄷ','d':'ㄷ','θ':'ㅅ','ð':'ㄷ','k':'ㄱ','g':'ㄱ','ɡ':'ㄱ','s':'ㅅ','z':'ㅅ','ʃ':'ㅅ','ʒ':'ㅈ','ʧ':'ㅈ','ʤ':'ㅈ','l':'ㄹ','r':'ㄹ','ɹ':'ㄹ','h':'ㅎ'};
+var _TW_CHO='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+var _TW_JONG=['','ㄱ','ㄲ','ㄱ','ㄴ','ㄴ','ㄴ','ㄷ','ㄹ','ㄱ','ㅁ','ㅂ','ㄹ','ㄹ','ㄹ','ㅂ','ㅁ','ㅂ','ㅂ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+var _TW_PLAIN={'ㅋ':'ㄱ','ㄲ':'ㄱ','ㅌ':'ㄷ','ㄸ':'ㄷ','ㅍ':'ㅂ','ㅃ':'ㅂ','ㅊ':'ㅈ','ㅉ':'ㅈ','ㅆ':'ㅅ'};
+var _TW_JREP={'ㅅ':'ㄷ','ㅆ':'ㄷ','ㅈ':'ㄷ','ㅊ':'ㄷ','ㅌ':'ㄷ','ㅎ':'ㄷ','ㅋ':'ㄱ','ㄲ':'ㄱ','ㅍ':'ㅂ'};
+function _twIpaCons(p){
+  p=String(p||'').replace(/[\[\]ˈˌːʰʲ ]/g,''); var out='', i=0;
+  while(i<p.length){
+    var two=p.substr(i,2);
+    if(two==='tʃ'||two==='dʒ'||two==='ts'||two==='dz'){ out+='ㅈ'; i+=2; continue; }
+    var c=p.charAt(i);
+    if(_TW_IPA1[c]) out+=_TW_IPA1[c];
+    i++;
+  }
+  return out;
+}
+function _twKrCons(s){
+  var out='';
+  for(var i=0;i<s.length;i++){
+    var c=s.charCodeAt(i)-0xAC00;
+    if(c<0||c>=11172) continue;
+    var cho=_TW_CHO.charAt(Math.floor(c/588));
+    if(cho!=='ㅇ') out+=(_TW_PLAIN[cho]||cho);
+    var j=c%28;
+    if(j){ var jc=_TW_JONG[j]; jc=_TW_JREP[jc]||jc; out+=jc; }
+  }
+  return out;
+}
+function _testWordOK(w, relax){
+  try{
+    var en=(typeof w==='string')?w:(w&&w.en); if(!en) return false;
+    var lo=String(en).toLowerCase();
+    var d=(typeof BWD_DICT!=='undefined')?BWD_DICT[lo]:null;
+    if(d && /고유/.test(d.pos||'')) return false;                              // ① 고유명사
+    var kr=(typeof w==='object'&&w&&w.kr)||(d&&d.kr)||'';
+    if(!kr && d && Array.isArray(d.meanings)) kr=d.meanings[0]||'';
+    var m=String(kr).split(/[,;·/(\s]/)[0].replace(/[^가-힣]/g,'');
+    if(m && /\(?(인명|지명|성씨|이름|상표|브랜드)/.test(String(kr))) return false; // 고유 성격 뜻풀이 방어
+    if(relax) return true;
+    var p=(typeof BWD_PRON!=='undefined')?(BWD_PRON[lo]||''):'';
+    if(m.length>=2 && p){
+      var a=_twIpaCons(p), b=_twKrCons(m);
+      if(a.length>=2 && b.length>=2 && (a===b || a===b+'ㄹ' || a+'ㄹ'===b)) return false;  // ② 음=뜻 외래어
+    }
+    return true;
+  }catch(e){ return true; }
+}
+/* [시험 똑딱 20260811] 마지막 5초 초침음 — WebAudio 단음(TTS 무관·프리즈 위험 없음). SFX 음소거 존중. */
+function _tickBeep(){
+  try{
+    if(window.SFX && (SFX.muted||SFX.off)) return;
+    if(S && S.soundOff) return;
+    var AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    if(!window._twAC) window._twAC=new AC();
+    var ac=window._twAC; if(ac.state==='suspended'){ try{ac.resume();}catch(e){} }
+    var o=ac.createOscillator(), g=ac.createGain();
+    o.type='square'; o.frequency.value=880;
+    g.gain.setValueAtTime(0.06, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+0.05);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime+0.06);
+  }catch(e){}
+}
 var CH_TAIL_MIN = 50;
 function _chCount(n){
   n = n || 0;
@@ -7933,7 +8000,7 @@ function finishChapterExam(){
     var gotNabi=false;
     if(passed && b){
       if(!Array.isArray(b.chPass)) b.chPass=new Array(CH_N).fill(false);
-      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; if(typeof _advanceChapterScope==='function') _advanceChapterScope(b, ex.chIdx); _couponDelta(1); gotNabi=true;   /* [쿠폰 원장화 20260811] increment 델타 */ }
+      if(!b.chPass[ex.chIdx]){ b.chPass[ex.chIdx]=true; if(typeof _advanceChapterScope==='function') _advanceChapterScope(b, ex.chIdx); _couponDelta(1); gotNabi=true; var _tot=(typeof _chapterCount==='function')?_chapterCount(b):5; if((b.chPass||[]).slice(0,_tot).every(Boolean) && !b.ftUnlocked){ b.ftUnlocked=true; }   /* [챕터 시험 부활 20260811] 전챕터 통과 시 최종 테스트 개방(자동완료에서 이관) */;   /* [쿠폰 원장화 20260811] increment 델타 */ }
       if(typeof sv==='function') sv();
     }
     S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
@@ -7952,7 +8019,8 @@ function finishChapterExam(){
           +'<div style="font-size:30px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+'">'+pct+'점</div>'
           +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+ex.correct+'/'+ex.total+' 정답 (기준 90점)</div>'
           +(gotNabi?'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🎫 나비 쿠폰 1장 획득!</div>':'')
-          +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px">틀린 단어 복습 후 다시 도전해요</div>')
+          +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px">틀린 단어 복습 후 다시 도전해요</div>'
+                     +'<button onclick="cm();startChapterExam(\''+String(ex.bookName).replace(/'/g,"\\'")+'\','+ex.chIdx+')" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:8px">🔄 다시 도전</button>')
           +_cta
           +'</div></div>';
       });
@@ -7979,6 +8047,7 @@ function _ltArmTimer(){
     var fill=document.getElementById('lt-gauge-fill'), num=document.getElementById('lt-gauge-num');
     if(fill) fill.style.width=Math.max(0,left/total*100)+'%';
     if(num) num.textContent=Math.max(0,left)+'초';
+    if(left>0&&left<=5&&typeof _tickBeep==='function') _tickBeep();   /* [시험 똑딱 20260811] */
     if(left<=0){ _ltClearTimer(); if(S._lt && !S._lt.ans) _ltAnswer(-1); }
   }, 1000);
 }
@@ -8006,6 +8075,7 @@ function _ltPickWord(level, need){
   var cands=band.filter(function(w){
     if(!w||!w.en||!w.kr||usedSet[w.en]) return false;
     if(need==='plain' && !/^[a-z]{2,12}$/i.test(w.en)) return false;
+    if(!_testWordOK(w)) return false;   /* [출제 필터 20260811] 고유명사·음차 외래어 제외 */
     return true;
   });
   if(!cands.length) return null;
@@ -8196,7 +8266,7 @@ function _ltChoicesHtml(q,lt,mono){
 function _ltRender(){
   var lt=S._lt; if(!lt||!lt.cur) return;
   var q=lt.cur, isC=(lt.stage==='confirm');
-  var wrongDots=''; for(var i=0;i<3;i++){ wrongDots+='<span style="display:inline-block;width:16px;height:16px;border-radius:50%;margin-left:3px;vertical-align:middle;background:'+(i<lt.wrong?'#DC2626':'#E5E7EB')+';border:2px solid '+(i<lt.wrong?'#FECDD3':'#D1D5DB')+'"></span>'; }
+  var wrongDots=''; for(var i=0;i<5;i++){   /* [판정 v2 정합 20260811] 조기 탈락 기준=오답 5 */ wrongDots+='<span style="display:inline-block;width:16px;height:16px;border-radius:50%;margin-left:3px;vertical-align:middle;background:'+(i<lt.wrong?'#DC2626':'#E5E7EB')+';border:2px solid '+(i<lt.wrong?'#FECDD3':'#D1D5DB')+'"></span>'; }
   var areaChip='<span style="font-size:10px;font-weight:800;background:#EEF3FA;color:var(--theme,#1E5FA5);border-radius:8px;padding:2px 8px">'+(_LT_AREA_NAME[q.a]||'')+((q.t==='wt'||q.t==='ws')?' \u00b7 \ucc0d\uae30 \ubd88\uac00':'')+'</span>';
   var body='';
   if(q.t==='v'){
@@ -12594,8 +12664,8 @@ function _showCourseChapters(bookName){
       var status, action;
       if(!unlocked){ status='<span style="color:#9CA3AF">🔒 잠김</span>'; action='<span style="font-size:10px;color:#9CA3AF">이전 챕터 통과 필요</span>'; }
       else if(passed){ status='<span style="color:#16A34A">✅ 완료 🦋</span>'; action='<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:#fff;border:1px solid #E5E7EB;color:#6B7280;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">🔄 재학습</button>'; }
-      else if(allMem){ status='<span style="color:#16A34A">다 외웠어요!</span>'; action='<button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b&&typeof _checkChapterDone===\'function\')_checkChapterDone(_b,'+c+',true)" style="background:#16A34A;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">✅ 완료 처리</button>'; }
-      else { status='<span style="color:#6B7280">'+((unlocked && !_nextMarked && (_nextMarked=1))?'<span style="color:var(--theme,#1E5FA5);font-weight:800">▶ 지금 여기</span> · ':'')+'외우기 '+mem+'/'+slice.length+'</span>'; action=((unlocked&&mem>=slice.length*0.9)?'<button onclick="cm();var _b=(S.books||[]).filter(function(x){return x.name===\''+bookName+'\';})[0];if(_b&&typeof _checkChapterDone===\'function\')_checkChapterDone(_b,'+c+',true)" style="background:#16A34A;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:800;cursor:pointer;margin-right:5px">✅ 완료</button>':'')+'<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">학습</button>'; }
+      else if(allMem){ status='<span style="color:#16A34A">다 외웠어요!</span>'; action='<button onclick="cm();startChapterExam(\''+bookName+'\','+c+')" style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">🏁 시험 보기</button>'   /* [챕터 시험 부활 20260811] 무시험 완료 처리 → 시험 */; }
+      else { status='<span style="color:#6B7280">'+((unlocked && !_nextMarked && (_nextMarked=1))?'<span style="color:var(--theme,#1E5FA5);font-weight:800">▶ 지금 여기</span> · ':'')+'외우기 '+mem+'/'+slice.length+'</span>'; action=((unlocked&&mem>=slice.length*0.9)?'<button onclick="cm();startChapterExam(\''+bookName+'\','+c+')" style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:800;cursor:pointer;margin-right:5px">🏁 시험</button>':'')+'<button onclick="cm();_studyChapter(\''+bookName+'\','+c+')" style="background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">학습</button>'; }
       rows += '<div style="padding:11px 2px;border-top:'+(c>0?'1px solid #EEE':'none')+';opacity:'+(unlocked?'1':'.5')+'">'
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:'+(unlocked&&!passed?'6px':'0')+'"><span style="flex:1;font-size:13px;font-weight:700;color:#111">챕터 '+(c+1)+' <span style="font-size:10px;color:#9CA3AF;font-weight:400">'+(_chStart+1)+'~'+(_chStart+slice.length)+'</span></span><span style="font-size:11px;font-weight:700">'+status+'</span>'+action+'</div>'
         +(unlocked&&!passed?'<div style="height:5px;background:#F1F3F5;border-radius:20px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:var(--theme,#1E5FA5)"></div></div>':'')
@@ -13743,7 +13813,8 @@ function startFinalTest(bookName){
     if(chN>1 && typeof _chapterSlice==='function'){
       var per=Math.ceil(FT_N/chN);
       for(var ci=0; ci<chN; ci++){
-        var sl=((_chapterSlice(book,ci)||[])).filter(function(w){ return w && w.en && w.kr; });
+        var sl=((_chapterSlice(book,ci)||[])).filter(function(w){ return w && w.en && w.kr && _testWordOK(w); });   /* [출제 필터 20260811] 고유명사·음차 외래어 제외 */
+        if(sl.length<per) sl=((_chapterSlice(book,ci)||[])).filter(function(w){ return w && w.en && w.kr && _testWordOK(w,true); });
         _shufA(sl);
         qs=qs.concat(sl.slice(0,per));
       }
@@ -13756,11 +13827,16 @@ function startFinalTest(bookName){
     } else {
       qs=_shufA(ws.slice()).slice(0, Math.min(FT_N, ws.length));
     }
-    S._ft={ bookName:bookName, qs:qs, i:0, correct:0, total:qs.length, all:ws };
-    S._inFinalTest=true;
-    if(typeof go==='function') go();
-    _renderFinalTest();
-  }catch(e){ S._inFinalTest=false; S._ft=null; }
+    /* ══ [시험 엔진 통일 20260811] 간이 4지선다(타이머·정오 피드백·정오 카운트 없음) 폐기 →
+       챕터시험과 같은 게임 엔진 체이닝(뜻맞추기+듣기)으로. HUD(배너·타이머 10초·똑딱·정오 표시)가 자동 확보된다. ══ */
+    var half=Math.ceil(qs.length/2);
+    var groups=(qs.length>=12)?[qs.slice(0,half), qs.slice(half)]:[qs];
+    var games=(groups.length>1)?['quiz','listenq']:['quiz'];
+    S._prevTab=S.tab;
+    S._chExam={ bookName:book.name, chIdx:-1, final:true, games:games, groups:groups, gi:0, correct:0, total:0 };
+    S._inChExam=true; S.gDone=false; S._exTimerKey=null;
+    startGameW(games[0], groups[0]);
+  }catch(e){ S._inChExam=false; S._chExam=null; }
 }
 /* [최종 테스트 리마인더 20260806] 전 챕터를 다 통과했는데 최종 테스트를 아직 안 본 책이 있으면
    앱을 켤 때마다 팝업으로 안내한다(켤 때마다 1회 — window 변수라 새로 켜면 다시 안내).
@@ -13834,7 +13910,7 @@ function _finishFinalTest(){
     if(passed && book){
       if(!book.finalPassed){
         book.finalPassed=true; book.finalBadge=badge.tier; book.finalAt=new Date().toISOString();
-        S.bfCoupons=(S.bfCoupons||0)+2; S.bfCouponsTs=Date.now();
+        _couponDelta(2);   /* [원장 정합 20260811] 직접 대입은 서버 미반영→병합에 되돌아가 유실되던 활성 버그 — increment 델타로 교정 */
         bonusXp = badge.tier==='gold'?300:(badge.tier==='silver'?200:100);
         S.xp=(S.xp||0)+bonusXp;
       }
@@ -13864,6 +13940,7 @@ function _finishFinalTest(){
           +'<button onclick="cm();startFinalTest(\''+bnEsc+'\')" style="width:100%;margin-top:8px;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🔄 테스트 다시 보기</button>'
           +'<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에</button>')
       +'</div></div>';
+    S._inFinalTest=false;   /* [상태 정리 20260811] 결과 표시 후 시험 상태 해제(재응시 버튼이 startFinalTest 재호출) */
   }catch(e){ S._inFinalTest=false; S._ft=null; }
 }
 /* ══ [최종 테스트 불합격 → 단계별 재학습 20260807] ═══════════════════════════
@@ -13964,37 +14041,50 @@ function _advanceChapterScope(book, chIdx){
   }catch(e){console.warn('[wd-io:_advanceChapterScope]',e);}
 }
 function _checkChapterDone(book, chIdx, force){
+  /* ══ [챕터 시험 부활 20260811] 자동통과 폐지 ═══════════════════════════
+     실사: 완전한 챕터 시험 엔진(50문 체이닝·타이머·정오 피드백·정오 카운트·90점 판정)이 살아있는데
+     시작 스위치(_inChExam=true)가 어느 리팩터에서 유실돼 통째 고아가 됐고, 그 자리를
+     '전부 외우면 무시험 자동 통과'가 대신하고 있었다 — 테스트의 가치와 정확도를 훼손하는 구조.
+     복원: 암기 완료는 '응시 자격'일 뿐, 통과는 오직 시험 90%로만(finishChapterExam 단일 경로). ══ */
   try{
     if(!book) return;
     if(!Array.isArray(book.chPass)) book.chPass=new Array((typeof _chapterCount==='function')?_chapterCount(book):5).fill(false);
-    if(book.chPass[chIdx]) return;                       // 이미 완료
+    if(book.chPass[chIdx]) return;
     var _full = (_chapterMemRatio(book, chIdx) >= 1) || ((typeof _chapterMemorized==='function') && _chapterMemorized(book, chIdx));
-    if(!force && !_full) return;   /* [수동 완료 20260724] 수동 버튼(force)은 판정 어긋나도 통과 — 침묵 차단 */   // 챕터 단어를 전부 외워야 완료 (판정 이중화 — 키 불일치로 침묵하던 결함 방지)
-    book.chPass[chIdx]=true;
-    _advanceChapterScope(book, chIdx);
-    _couponDelta(1);   /* [쿠폰 원장화 20260811] increment 델타 */
-    if(typeof sv==='function') sv();
-    var total=(typeof _chapterCount==='function')?_chapterCount(book):5;
-    var isLast=(chIdx+1>=total);
-    var allDone=(book.chPass||[]).slice(0,total).every(Boolean);
-    if(allDone && !book.ftUnlocked){ book.ftUnlocked=true; if(typeof sv==='function') sv(); }   /* [상시 개방 20260807] 최종 테스트가 열린 사실을 기록 — 되돌려 복습해도 시험은 계속 볼 수 있다 */
+    if(!force && !_full) return;
     var mr=document.getElementById('mr');
     if(!mr){ mr=document.createElement('div'); mr.id='mr'; (document.getElementById('app')||document.body).appendChild(mr); }
-    var bnEsc=String(book.name).replace(/'/g,"\\'");
-    var cta = (allDone)
-      ? '<div style="font-size:13px;color:#374151;margin-bottom:2px">모든 챕터를 마쳤어요! 이제 최종 테스트에 도전하세요.</div>'
-        + '<button onclick="cm();startFinalTest(\''+bnEsc+'\')" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 최종 테스트 보기</button>'
-        + '<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에</button>'
-      : '<div style="font-size:13px;color:#374151;margin-bottom:2px">다음 '+(chIdx+2)+'챕터가 열렸어요!</div>'
-        + '<button onclick="cm();_studyChapter(\''+bnEsc+'\','+(chIdx+1)+')" style="width:100%;margin-top:8px;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">▶️ '+(chIdx+2)+'챕터 학습하기</button>'
-        + '<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에</button>';
+    var bnEsc=String(book.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">'
       +'<div style="font-size:52px;margin-bottom:10px">🎉</div>'
-      +'<div style="font-size:19px;font-weight:900;color:#16A34A;margin-bottom:4px">'+(chIdx+1)+'챕터 완료!</div>'
-      +'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:11px;margin:12px 0;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🦋 나비 쿠폰 1장 획득!</div>'
-      +cta
+      +'<div style="font-size:19px;font-weight:900;color:#16A34A;margin-bottom:4px">'+(chIdx+1)+'챕터 암기 완료!</div>'
+      +'<div style="font-size:13px;color:#374151;margin:10px 0 4px">이제 <b>통과 시험</b>에 도전하세요</div>'
+      +'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:11px;margin:10px 0 14px;font-size:12px;color:#374151;line-height:1.7">뜻맞추기 + 듣기 · 문항 타이머 10초<br><b>90점 이상</b> 통과 → 다음 챕터 해제 + 🦋 쿠폰</div>'
+      +'<button onclick="cm();startChapterExam(\''+bnEsc+'\','+chIdx+')" style="width:100%;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 시험 시작</button>'
+      +'<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에 볼게요</button>'
       +'</div></div>';
   }catch(e){console.warn('[wd-io:_checkChapterDone]',e);}
+}
+/* [챕터 시험 부활 20260811] 시작 스위치 재작성 — 기존 소비부(게임 체이닝·배너·타이머·판정)에 정확히 맞춤 */
+function startChapterExam(bookName, chIdx){
+  try{
+    var book=(S.books||[]).find(function(b){return b.name===bookName;});
+    if(!book){ toast('단어장을 찾을 수 없어요','err'); return; }
+    var slice=((typeof _chapterSlice==='function')?_chapterSlice(book,chIdx):[])||[];
+    slice=slice.filter(function(w){ return w && w.en && w.kr; });
+    var pool=slice.filter(function(w){ return _testWordOK(w); });
+    if(pool.length<20) pool=slice.filter(function(w){ return _testWordOK(w,true); });   /* 풀 부족 시 외래어 검사만 완화 */
+    if(pool.length<10){ toast('시험을 만들 단어가 부족해요','err'); return; }
+    for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+    var qs=pool.slice(0, Math.min(50, pool.length));
+    var half=Math.ceil(qs.length/2);
+    var groups=(qs.length>=12)?[qs.slice(0,half), qs.slice(half)]:[qs];
+    var games=(groups.length>1)?['quiz','listenq']:['quiz'];
+    S._prevTab=S.tab;
+    S._chExam={ bookName:book.name, chIdx:chIdx, games:games, groups:groups, gi:0, correct:0, total:0 };
+    S._inChExam=true; S.gDone=false; S._exTimerKey=null;
+    startGameW(games[0], groups[0]);
+  }catch(e){ S._inChExam=false; S._chExam=null; console.warn('[wd-io:startChapterExam]',e); }
 }
 function rLearn() {
   var _lb=(S.books||[]).filter(function(x){return x.name===S.currentBook;})[0];
@@ -15502,6 +15592,14 @@ function rGameDone(){
       requestAnimationFrame(function(){ if(typeof startGameW==='function') startGameW(_cex.games[_cex.gi], _cex.groups[_cex.gi]); });
       return;
     }
+    if(_cex.final){   /* [시험 엔진 통일 20260811] 최종 테스트도 같은 엔진 — 결과·배지·재학습 흐름은 기존 그대로 */
+      S._inChExam=false; S._chExam=null; S.gDone=false; S.tab='learn';
+      if(typeof _examTimerClear==='function'){ _examTimerClear(); } S._exTimerKey=null;
+      S._ft={ bookName:_cex.bookName, qs:{length:_cex.total}, i:_cex.total, correct:_cex.correct, total:_cex.total, all:[] };
+      S._inFinalTest=true;
+      requestAnimationFrame(function(){ try{ if(typeof go==='function') go(S._prevTab||'learn'); }catch(e){} requestAnimationFrame(function(){ _finishFinalTest(); }); });
+      return;
+    }
     finishChapterExam();
     return;
   }
@@ -15718,6 +15816,7 @@ function _examTimerArm(){
     var num=document.getElementById('exgauge-num');
     if(fill){fill.style.width=pct+'%';fill.style.background=col;}
     if(num){num.textContent=left+'\ucd08';num.style.color=col;}
+    if(left!==S._exLastLeft){ S._exLastLeft=left; if(left>0&&left<=5&&typeof _tickBeep==='function') _tickBeep(); }   /* [시험 똑딱 20260811] */
   },80);
   window._exTO=setTimeout(function(){
     _examTimerClear();

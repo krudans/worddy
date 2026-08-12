@@ -2733,6 +2733,7 @@ function showCollectionDetail(colId) {
         <div style="font-size:14px;font-weight:700;color:${petColData.main}">${petColData.name}</div>
       </div>
     </div>
+    <button onclick="setAvatar('char','${item.lid||item.lvId||'egg'}')" style="width:100%;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:8px">👤 내 프로필 캐릭터로 지정</button>
     <div style="display:flex;gap:8px">
       <button onclick="shareCollectionCard('${colId}')" style="flex:1;background:var(--theme);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">📤 공유</button>
       <button onclick="removeFromCollection('${colId}')" style="flex:1;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECDD3;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">🗑️ 빼기</button>
@@ -4985,9 +4986,11 @@ function getBookWords(book) {
     //   markMap은 en 기준이라 복구 후에도 학습·진도가 유지된다. 표시 시 사전 오버레이로 뜻·발음·예문 채움.
     var _cw = _levelWords(book.level);   // 메타 로드 시 1000, 미로드 시 [](→복구 스킵, 데이터 보존)
     var _have = (Array.isArray(book.words) ? book.words.length : 0);
-    if(_cw.length && _have !== _cw.length){
-      try{ book.words = _cw.map(function(w){ return {en:w.en}; }); }catch(e){}
-      return _cw;   // 이미 오버레이된 정본
+    /* [스냅샷 원칙 수호 20260812] 기존 '개수 다르면 현 계산으로 통째 교체'는 레벨 재편·필터 갱신·관리자 정본
+       저장으로 _levelWords 구성이 바뀔 때마다 학습 중인 책 단어를 몰래 갈아치우는 폭탄이었다(진도 markMap과
+       어긋남). 교체하지 않고 보존 + 경고만 남긴다. 완전 결측(0개)만 아래 폴백이 채운다. */
+    if(_cw.length && _have && _have !== _cw.length){
+      try{ console.warn('[커리큘럼] words 개수('+_have+') ≠ 현 계산('+_cw.length+') — 생성 시점 스냅샷 보존'); }catch(e){}
     }
     if(_have){
       return (typeof _enrichFromDict==='function') ? book.words.map(function(w){ return _enrichFromDict({en:w.en}); }) : book.words;
@@ -7850,10 +7853,16 @@ function _testWordOK(w, relax){
     var lo=String(en).toLowerCase();
     var d=(typeof BWD_DICT!=='undefined')?BWD_DICT[lo]:null;
     if(d && /고유/.test(d.pos||'')) return false;                              // ① 고유명사
+    if(d && /감탄/.test(d.pos||'')) return false;                              // ①-2 감탄사 [사전 전수검증 20260812: 120건]
+    if(typeof _lvBadRe==='function' && _lvBadRe(lo)) return false;             // ①-3 욕설 어근 (원서 팩 단어까지 커버)
     var kr=(typeof w==='object'&&w&&w.kr)||(d&&d.kr)||'';
     if(!kr && d && Array.isArray(d.meanings)) kr=d.meanings[0]||'';
     var m=String(kr).split(/[,;·/(\s]/)[0].replace(/[^가-힣]/g,'');
     if(m && /\(?(인명|지명|성씨|이름|상표|브랜드)/.test(String(kr))) return false; // 고유 성격 뜻풀이 방어
+    /* ①-4 굴절형 제외 [사전 전수검증 20260812: 8,914건] — raced(과거형)·poorer(비교급) 류가 시험 문항으로 나와
+       변별력을 훼손하던 원인. 학습 리스트에는 유지(초급 굴절 학습은 유의미), 시험 표집에서만 제외.
+       ※ 레벨풀 자체에 걸면 A1 잔여가 1,343개로 레벨 1~2(2,000 필요)가 깨짐을 실측 — 그래서 시험 전용. */
+    if(String(kr).length && /\([a-zA-Z'\- ]+의 (과거형|과거분사|복수형|비교급|최상급|현재분사|3인칭|부사형)/.test(String(kr))) return false;
     if(relax) return true;
     var p=(typeof BWD_PRON!=='undefined')?(BWD_PRON[lo]||''):'';
     if(m.length>=2 && p){
@@ -10773,9 +10782,12 @@ function showButterflyDetail(id){
       +block('🌿 이야기', b.story, {color:'#16A34A'})
       +block('💬 메시지', b.msg, {color:'#D97706', bg:'#FFFBEB', italic:true});
   }
+  var _avNow=(S.avatar&&S.avatar.t==='bf'&&S.avatar.id===id);
+  var _avBtn=owned?('<div style="padding:0 18px 14px"><button onclick="setAvatar('+(_avNow?'null,null':('\'bf\',\''+id+'\'') )+')" style="width:100%;background:'+(_avNow?'#F3F4F6':'linear-gradient(135deg,#7C3AED,#A855F7)')+';color:'+(_avNow?'#6B7280':'#fff')+';border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer">'+(_avNow?'기본 캐릭터로 되돌리기':'👤 내 프로필 캐릭터로 지정')+'</button></div>'):'';
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:88vh;display:flex;flex-direction:column;width:92%;max-width:440px">'
     +'<div style="display:flex;justify-content:flex-end;padding:10px 12px 0"><button onclick="cm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9CA3AF;line-height:1">×</button></div>'
     +'<div style="overflow-y:auto;padding:0 18px 18px">'+body+'</div>'
+    +_avBtn
   +'</div></div>';
 }
 
@@ -11283,6 +11295,20 @@ function renderStudyGoalCard(tab){
   return '<div id="pl-learnblock" style="background:var(--bg-card,#fff);border:1.5px solid var(--border,#ECEEF1);border-radius:18px;padding:15px;margin-bottom:2px">'+_studyGoalInner()+'</div>';
 }
 
+/* ══ [프로필 아바타 20260812] 상단 배너 캐릭터를 도감의 나비/수집 캐릭터로 지정 ══
+   S.avatar={t:'bf'|'char', id} · localStorage 'wd-avatar' · users 문서 merge(무해 필드).
+   ※ 크로스기기 자동 복원은 로그인 로드(위험지대) 수정이 필요해 이번엔 제외 — 같은 기기 유지만. */
+window.setAvatar=function(t,id){
+  try{
+    if(!t||!id){ S.avatar=null; localStorage.removeItem('wd-avatar'); }
+    else { S.avatar={t:t,id:id}; localStorage.setItem('wd-avatar', JSON.stringify(S.avatar)); }
+    if(S.user&&S.user.uid&&typeof db!=='undefined'){ db.collection('users').doc(S.user.uid).set({avatar:S.avatar||null},{merge:true}).catch(function(){}); }
+    if(typeof toast==='function') toast(id?'프로필 캐릭터를 바꿨어요!':'기본 캐릭터로 되돌렸어요');
+    if(typeof cm==='function') cm();
+    if(typeof go==='function') go();
+  }catch(e){}
+};
+try{ if(!S.avatar){ var _sav=localStorage.getItem('wd-avatar'); if(_sav) S.avatar=JSON.parse(_sav); } }catch(e){}
 function renderCharBanner(opts){
   opts=opts||{};
   var lid=(typeof S!=='undefined'&&S.lid)||'egg';
@@ -11324,7 +11350,7 @@ function renderCharBanner(opts){
   var lvCol=canLvUp?'#3a2c00':(_dk?'rgba(255,255,255,.7)':'var(--text2,#6B665C)');
   var lvBtn='<div onclick="event.stopPropagation();doLevelUpBtn('+xpTarget+','+(isFinal?1:0)+')" style="flex:none;background:'+lvBg+';color:'+lvCol+';border-radius:11px;padding:8px 13px;font-size:13px;font-weight:900;white-space:nowrap;cursor:pointer">'+lvLabel+'</div>';
   // 큰 현재 캐릭터(좌)
-  var bigChar='<div onclick="addToCollectionConfirm()" style="flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer"><div style="width:78px;height:78px;border-radius:50%;background:rgba(255,193,7,.13);border:2px solid '+YEL+';display:flex;align-items:center;justify-content:center;position:relative;animation:float-happy 1.8s ease-in-out infinite">'+icA(lid,56)+(acc?'<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-size:20px">'+acc+'</div>':'')+'</div>'+badge+'</div>';
+  var bigChar='<div onclick="addToCollectionConfirm()" style="flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer"><div style="width:78px;height:78px;border-radius:50%;background:rgba(255,193,7,.13);border:2px solid '+YEL+';display:flex;align-items:center;justify-content:center;position:relative;animation:float-happy 1.8s ease-in-out infinite">'+(function(){ var _av=(S.avatar&&S.avatar.id)?S.avatar:null; if(_av){ try{ if(_av.t==='bf'&&typeof getButterflyCharSVG==='function'&&(typeof getMyButterflies!=='function'||getMyButterflies().includes(_av.id))) return getButterflyCharSVG(_av.id,54,true); if(_av.t==='char') return icA(_av.id,56); }catch(e){} } return icA(lid,56); })()+(acc?'<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-size:20px">'+acc+'</div>':'')+'</div>'+badge+'</div>';
   return '<div style="background:'+_cBg+';border:1.5px solid '+_cBd+';border-radius:16px;padding:15px 16px;display:flex;gap:15px;align-items:center">'
     +bigChar
     +'<div style="flex:1;min-width:0">'
@@ -15180,6 +15206,9 @@ function rList(){
   else if(sortBy==='alpha_kr') filtered.sort((a,b)=>(a.kr||'').localeCompare(b.kr||''));
   else if(sortBy==='random') { for(let i=filtered.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[filtered[i],filtered[j]]=[filtered[j],filtered[i]];} }
   const _GRN='#16A34A';
+  /* [챕터별 목록 20260812] 챕터 학습 원칙을 목록에도 — 200개 플랫 나열 대신 챕터 섹션으로.
+     '추가순(학습 순서)' + 검색 없음 + 필터 전체일 때만(다른 조합은 기존 플랫 유지). */
+  var _chMode = (typeof _isPackBook==='function' && _isPackBook(curBook) && sortBy==='default' && !searchQ && filterMark===-1 && typeof _chCount==='function' && _chCount(curWords.length)>1);
   const rows=filtered.map((w,i)=>{
     const done=getMark_(w.en)===1;
     const safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -15198,6 +15227,43 @@ function rList(){
       +'<button onclick="event.stopPropagation();if(confirm(\'삭제?\')){removeWordFromCurrentBook(\''+safeEn+'\');sv();go();}" style="width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:#FCA5A5;font-size:14px;cursor:pointer;flex:none">🗑️</button>'
       +'</div>';
   }).join('');
+  /* [챕터별 목록 20260812] 챕터 모드면 rows를 챕터 섹션(헤더+행)으로 재조립 */
+  var _rowsHtml=rows;
+  if(_chMode){
+    var _chTot=_chCount(curWords.length);
+    var _sect='';
+    /* rows는 이미 join된 문자열이라 재사용 불가 — 챕터 모드에서는 행을 다시 그린다(같은 로직) */
+    var _mkRowHtml=function(w,i,last){
+      var done=getMark_(w.en)===1;
+      var safeEn=w.en.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      var chk=done
+        ? '<div onclick="event.stopPropagation();setMark(\''+safeEn+'\',0);go()" style="width:26px;height:26px;border-radius:8px;background:'+_GRN+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none"><span style="color:#fff;font-size:14px;font-weight:900">✓</span></div>'
+        : '<div onclick="event.stopPropagation();setMark(\''+safeEn+'\',1);go()" style="width:26px;height:26px;border-radius:8px;background:#fff;border:2px solid #CBD5E1;cursor:pointer;flex:none"></div>';
+      return '<div style="display:flex;align-items:center;gap:11px;padding:9px 10px;'+(last?'':'border-bottom:1px solid #F1F5F9;')+'">'
+        +'<span style="font-size:20px;width:24px;text-align:center;flex:none">'+(w.img||'📝')+'</span>'
+        +'<div style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap" onclick="showWordDetail(\''+safeEn+'\')">'
+          +'<span style="font-size:15px;font-weight:800;color:'+(done?'#94A3B8':'#111')+'">'+w.en+'</span>'
+          +((w.ph && w.ph.length<=14 && !/\s/.test(w.ph))?'<span style="font-size:11px;color:#94A3B8">/'+w.ph+'/</span>':'')
+          +'<span style="font-size:13px;color:#64748B">'+(w.kr||'')+'</span>'
+        +'</div>'
+        +'<button onclick="event.stopPropagation();window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(\''+safeEn+'\');u.lang=\'en-US\';u.rate=0.85;window.speechSynthesis.speak(u);" style="width:28px;height:28px;border:none;background:#F1F5F9;border-radius:8px;cursor:pointer;font-size:13px;flex:none">🔊</button>'
+        +chk
+        +'<button onclick="event.stopPropagation();if(confirm(\'삭제?\')){removeWordFromCurrentBook(\''+safeEn+'\');sv();go();}" style="width:28px;height:28px;border:none;background:#fff;border-radius:8px;cursor:pointer;font-size:13px;color:#CBD5E1;flex:none">🗑</button>'
+        +'</div>';
+    };
+    for(var ci=0; ci<_chTot; ci++){
+      var _sl=(typeof _chapterSlice==='function')?(_chapterSlice(curBook,ci)||[]):[];
+      if(!_sl.length) continue;
+      var _memN=_sl.filter(function(w){return getMark_(w.en)===1;}).length;
+      var _pass=Array.isArray(curBook.chPass)&&curBook.chPass[ci];
+      var _badge=_pass?'<span style="color:#16A34A;font-weight:800">✓ 통과</span>':(_memN>=_sl.length?'<span style="color:#D97706;font-weight:800">암기 완료 · 시험 대기</span>':'<span style="color:#64748B">외움 '+_memN+'/'+_sl.length+'</span>');
+      _sect+='<div style="display:flex;align-items:center;justify-content:space-between;background:var(--theme-tint,#EEF3FA);border-radius:10px;padding:7px 12px;margin:'+(ci?'10px':'2px')+' 0 6px">'
+        +'<span style="font-size:12.5px;font-weight:900;color:var(--theme,#1E5FA5)">'+(ci+1)+'챕터</span>'
+        +'<span style="font-size:11px">'+_badge+'</span></div>';
+      _sect+=_sl.map(function(w,ii){ return _mkRowHtml(w,ii,ii===_sl.length-1); }).join('');
+    }
+    _rowsHtml=_sect;
+  }
   const _pill=(v,lb,cnt)=>'<button onclick="S.listMarkFilter='+v+';go()" style="padding:6px 13px;border-radius:999px;border:none;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;background:'+(filterMark===v?'var(--theme)':'#F1F5F9')+';color:'+(filterMark===v?'#fff':'#64748B')+'">'+lb+' '+cnt+'</button>';
   return '<div class="pad">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
@@ -15216,7 +15282,7 @@ function rList(){
     +'<div class="hsb" style="display:flex;gap:7px;margin-bottom:8px;overflow-x:auto;padding-bottom:2px">'
       +_pill(-1,'전체',curWords.length)+_pill(-3,'안외운',notCnt)+_pill(1,'외움',memoCnt)+_pill(-2,'⭐',favArr.length)
     +'</div>'
-    +'<div style="background:#fff;border-radius:16px;padding:4px 6px;border:1px solid #EEF2F7">'+(rows||'<div style="text-align:center;color:#94A3B8;font-size:12px;padding:20px">해당하는 단어가 없어요</div>')+'</div>'
+    +'<div style="background:#fff;border-radius:16px;padding:4px 6px;border:1px solid #EEF2F7">'+(_rowsHtml||'<div style="text-align:center;color:#94A3B8;font-size:12px;padding:20px">해당하는 단어가 없어요</div>')+'</div>'
     +'</div>';
 }
 

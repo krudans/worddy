@@ -4984,13 +4984,20 @@ function getBookWords(book) {
     //   커리큘럼 words에 잘못 커밋해 개수가 어긋나는 손상이 발생할 수 있다(예: 21개).
     //   저장 words 개수가 정본과 다르면 손상으로 보고 정본(en 고정목록)으로 즉시 복구한다.
     //   markMap은 en 기준이라 복구 후에도 학습·진도가 유지된다. 표시 시 사전 오버레이로 뜻·발음·예문 채움.
-    var _cw = _levelWords(book.level);   // 메타 로드 시 1000, 미로드 시 [](→복구 스킵, 데이터 보존)
+    var _cw = _levelWords(book.level);   // 메타 로드 시 1000, 미로드 시 [](→갱신 스킵)
     var _have = (Array.isArray(book.words) ? book.words.length : 0);
-    /* [스냅샷 원칙 수호 20260812] 기존 '개수 다르면 현 계산으로 통째 교체'는 레벨 재편·필터 갱신·관리자 정본
-       저장으로 _levelWords 구성이 바뀔 때마다 학습 중인 책 단어를 몰래 갈아치우는 폭탄이었다(진도 markMap과
-       어긋남). 교체하지 않고 보존 + 경고만 남긴다. 완전 결측(0개)만 아래 폴백이 채운다. */
-    if(_cw.length && _have && _have !== _cw.length){
-      try{ console.warn('[커리큘럼] words 개수('+_have+') ≠ 현 계산('+_cw.length+') — 생성 시점 스냅샷 보존'); }catch(e){}
+    /* ══ [정본 라이브 갱신 20260812 · 사용자 지시] 커리큘럼 단어는 스냅샷이 아니라 '항상 현재 정본'을 따른다 —
+       관리자 정본 저장·레벨 재편·필터 개선이 있으면 학습 중인 코스에도 즉시 반영되고 기존 단어를 남기지 않는다.
+       진도(markMap)는 en 기준이라 정본과 겹치는 단어만 유효(의도된 동작).
+       ※ 단, 갱신은 사전이 '완전히 로드된 뒤'에만: 어제 실사고 — 메타가 로딩 중인 찰나에 부분 계산으로 교체·박제
+         (pavement 세대 오염)된 재발을 막기 위해 밴드 인덱스 완비 + 정확히 1000개일 때만 미러를 갱신한다. ══ */
+    var _metaReady = !!(window._lwBandStart && window._lwBandStart.A1!=null && _cw.length===1000);
+    if(_metaReady){
+      var _same = (_have===_cw.length) && book.words.every(function(w,i){ return (w&&(w.en||w))===_cw[i].en; });
+      if(!_same){
+        try{ book.words = _cw.map(function(w){ return {en:w.en}; }); if(typeof sv==='function') sv(); console.log('[커리큘럼] 정본 갱신: Lv.'+book.level+' 단어를 현재 정본으로 동기화'); }catch(e){}
+      }
+      return _cw;
     }
     if(_have){
       return (typeof _enrichFromDict==='function') ? book.words.map(function(w){ return _enrichFromDict({en:w.en}); }) : book.words;

@@ -637,9 +637,21 @@ async function _loadLevelOverrides(){
 }
 function _bookMastered(book){
   /* [완독 기준 변경 20260723] 완독 = 최종 테스트 통과(finalPassed). 챕터만 다 해선 완독이 아니다.
-     (기존 데이터 호환: finalPassed가 없고 모든 챕터를 통과한 옛 기록은 완독으로 인정) */
+     [모순 자가치유 20260813] 라이브 실측: 재생성 전 구 세대의 finalPassed(silver)가 병합으로 신 코스에
+     부활해 '1/5 통과인데 완독' 오표시 발생(부활 경로는 8/12에 봉쇄했으나 그 전에 오염된 값이 잔존).
+     → finalPassed인데 전 챕터 통과가 아니면 모순 = 오염 잔재로 판정하고 필드를 정리한다(자가치유). */
   try{
     if(!book) return false;
+    if(book.finalPassed && book.isCurriculum){
+      var _cn=(typeof _chapterCount==='function')?_chapterCount(book):5;
+      var _ok=(book.chPass||[]).slice(0,_cn).filter(Boolean).length>=_cn && _cn>0;
+      if(!_ok){
+        book.finalPassed=false; book.finalBadge=null;
+        if(book.ftUnlocked) book.ftUnlocked=false;
+        try{ if(typeof sv==='function') sv(); console.warn('[완독 자가치유] '+book.name+': 구 세대 finalPassed 오염 잔재 정리'); }catch(e){}
+        return false;
+      }
+    }
     return !!book.finalPassed;
   }catch(e){ return false; }
 }

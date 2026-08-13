@@ -1576,6 +1576,42 @@ function _meanNDef(){ try{ return (typeof S!=='undefined'&&S._meanN!=null)?parse
     };
   }catch(e){}
 })();
+/* ══ [예문 백필 20260813] 사전 정합 검사 실측: 예문 결손 8,894건(전체의 21%)이 전부 loved·leaving류 파생형이고
+   그중 98.5%는 원형(love·leave)에 예문이 있다 — 출제 풀 1만 기준 결손 16.5%가 학습 카드 빈칸·문장 문항 제외로 이어지던 갭.
+   사전 파일은 그대로 두고, 로드 완료 시 메모리에서 원형 예문을 1회 대여 백필한다(잔여 ~131건은 admin AI 보충 대상). */
+(function(){
+  function _stems(w){
+    var c=[];
+    if(/ies$/.test(w)) c.push(w.slice(0,-3)+'y');
+    if(/ied$/.test(w)) c.push(w.slice(0,-3)+'y');
+    if(/ier$/.test(w)) c.push(w.slice(0,-3)+'y');
+    if(/iest$/.test(w)) c.push(w.slice(0,-4)+'y');
+    if(/ing$/.test(w)){ c.push(w.slice(0,-3), w.slice(0,-3)+'e'); if(w.length>4 && w[w.length-4]===w[w.length-5]) c.push(w.slice(0,-4)); }
+    if(/ed$/.test(w)){ c.push(w.slice(0,-2), w.slice(0,-1)); if(w.length>3 && w[w.length-3]===w[w.length-4]) c.push(w.slice(0,-3)); }
+    if(/es$/.test(w)) c.push(w.slice(0,-2));
+    if(/s$/.test(w)) c.push(w.slice(0,-1));
+    if(/er$/.test(w)) c.push(w.slice(0,-2), w.slice(0,-1));
+    if(/est$/.test(w)) c.push(w.slice(0,-3), w.slice(0,-2));
+    if(/ly$/.test(w)) c.push(w.slice(0,-2));
+    return c;
+  }
+  function _run(){
+    try{
+      if(window._exBackfilled || typeof BWD_DICT==='undefined' || !BWD_DICT) return false;
+      window._exBackfilled=true;
+      var n=0, ks=Object.keys(BWD_DICT);
+      for(var i=0;i<ks.length;i++){
+        var w=ks[i], v=BWD_DICT[w];
+        if(!v || (v.ex&&v.ex.length)) continue;
+        var cs=_stems(w);
+        for(var j=0;j<cs.length;j++){ var s=BWD_DICT[cs[j]]; if(s && s.ex){ v.ex=s.ex; n++; break; } }
+      }
+      if(n) console.log('[예문 백필] 파생형 '+n+'건에 원형 예문 대여');
+      return true;
+    }catch(e){ return true; }
+  }
+  var _t=0, iv=setInterval(function(){ if(_run() || ++_t>30) clearInterval(iv); }, 1000);
+})();
 window._sayLang = function(text, code){ try{ if(!text||!('speechSynthesis'in window)) return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(text)); u.lang=code||'en-US'; u.rate=(code&&code.toLowerCase().indexOf('ko')===0?0.92:0.85); var v=(window._bestVoiceFor?window._bestVoiceFor(code):null); if(v)u.voice=v; window.speechSynthesis.speak(u); }catch(e){} };
 // 현재 표시할 언어 목록 (S._showLangs, 미설정이면 가용 전체)
 function _showLangList(){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs==null)?av:S._showLangs; return av.filter(function(l){return sel.indexOf(l)>=0;}); }catch(e){ return ['en','ko']; } }

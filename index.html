@@ -794,6 +794,7 @@ function _generateCurriculum(startLevel){
     if(typeof S==='undefined') return; if(!Array.isArray(S.books)) S.books=[];
     var levels=[]; for(var t=0;t<3;t++){ var L=Math.min(startLevel+t, CW_MAXLEVEL); if(levels.indexOf(L)<0) levels.push(L); }
     var _newNames={}; levels.forEach(function(L, idx){ _newNames['레벨업 '+(idx+1)+'단계']=1; });
+    try{ (S.books||[]).filter(function(b){return b&&b.isCurriculum;}).forEach(function(b){ if(typeof _subTombBook==='function') _subTombBook(b); }); }catch(e){}   /* [서브컬렉션 삭제 전파 20260813] */
     // [버그수정] 다른 기기가 만든 커리큘럼도 제거되도록, 가능한 모든 커리큘럼 이름(1~3단계 × Lv.1~10) 중
     //   새 세트에 없는 것은 전부 묘비 처리한다. (기존엔 이 기기 로컬 books에 있는 것만 묘비 → 서버 세트가 합집합으로 살아남아 중복)
     for(var _t=1;_t<=3;_t++){
@@ -13558,7 +13559,7 @@ function _confirmDeleteBook(name, fromModal) {
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px">단어장을 삭제할까요?<br>단어 데이터도 함께 삭제됩니다.</div>
     <div style="display:flex;gap:8px">
       <button onclick="${back}" style="flex:1;padding:13px;background:#F3F4F6;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#374151">취소</button>
-      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:firebase.firestore.FieldValue.arrayRemove(_db.packId)},{merge:true}).catch(()=>{});}_tombBookKey(_db&&_db.packId?('p:'+_db.packId):('n:'+'${esc}'));S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')_toMyBook();sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
+      <button onclick="const _db=S.books?.find(x=>x.name==='${esc}');if(_db?.packId){S._ownedPacks=(S._ownedPacks||[]).filter(id=>id!==_db.packId);if(typeof db!=='undefined'&&S.user?.uid)db.collection('user_packs').doc(S.user.uid).set({owned:firebase.firestore.FieldValue.arrayRemove(_db.packId)},{merge:true}).catch(()=>{});}_tombBookKey(_db&&_db.packId?('p:'+_db.packId):('n:'+'${esc}'));if(typeof _subTombBook==='function')_subTombBook(_db);S.books=S.books?.filter(x=>x.name!=='${esc}');if(S.currentBook==='${esc}')_toMyBook();sv();${after};toast('🗑️ 삭제 완료')" style="flex:1;padding:13px;background:#DC2626;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:#fff">삭제</button>
     </div>
   </div></div>`;
 }
@@ -18342,6 +18343,18 @@ const _authTimeout = setTimeout(() => {
 // STEP2 빠른 경로가 서버 user_words(정본)를 안 읽고 로컬(스테일)로 덮던 버그를 막기 위한 union 병합.
 // 서버 ∪ 로컬 → 어느 쪽에만 있는 책/단어도 보존(파괴 금지). 단어 키=en(소문자), 책 키=packId 또는 name.
 // [삭제 되살아남 방지 — tombstone] 지운 항목 키를 기록해 병합 시 제외. 재생성/재추가 시 해제. 서버에도 저장돼 기기 간 전파.
+/* ══ [서브컬렉션 삭제 전파 20260813] 책 삭제·재생성이 users/{uid}/books 스냅샷에 전파되지 않아
+   구세대 유령 문서가 누적되던 결함(실측: 유효 7권 vs 서브 63건). 이중쓰기와 같은 ID 규칙(packId||sid)로
+   deleted 마킹한다. 레거시 bkN(인덱스 기반)은 특정 불가 — 일회성 정리로 처리, 이후 신규 발생 없음. ══ */
+function _subTombBook(b){
+  try{
+    if(!b || typeof db==='undefined' || !S.user || !S.user.uid) return;
+    var id=b.packId||b.sid; if(!id) return;
+    db.collection('users').doc(S.user.uid).collection('books').doc(id)
+      .set({deleted:true, deletedAt:new Date().toISOString(), updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})
+      .catch(function(){});
+  }catch(e){}
+}
 function _tombBookKey(k){ if(!S._tombBooks)S._tombBooks=[]; if(k && S._tombBooks.indexOf(k)<0) S._tombBooks.push(k); }
 function _untombBookByName(name){ try{ if(S._tombBooks) S._tombBooks=S._tombBooks.filter(function(k){return k!=='n:'+name;}); if(!S._untombedKeys)S._untombedKeys={}; S._untombedKeys['n:'+name]=1; }catch(e){console.warn('[wd-io:_untombBookByName]',e);} }   /* [재생성 보호 20260724] 이 세션에서 되살린 책은 서버 묘비가 못 죽이게 기록 */
 function _tombWord(en){ try{ if(!en)return; var k=String(en).toLowerCase(); if(!S._tombWords)S._tombWords=[]; if(S._tombWords.indexOf(k)<0)S._tombWords.push(k); }catch(e){console.warn('[wd-io:_tombWord]',e);} }

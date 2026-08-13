@@ -12878,7 +12878,7 @@ function _gcRender(){
   var area=S._gcArea||'all';
   var W=300, H=112;
   var stepX = g.length>1 ? 260/(g.length-1) : 0;
-  function X(i){ return g.length>1 ? Math.round(20+i*stepX) : 150; }
+  function X(i){ return g.length>1 ? Math.round(20+i*stepX) : 280; }   /* [첫 기록 상승선 20260813] 단일 기록은 오른쪽 끝 — 왼쪽 '시작 0'에서 상승선으로 잇는다 */
   var AMETA={v:['🔤 단어','#3B82F6'], l:['🎧 듣기','#8B5CF6'], r:['📖 읽기','#16A34A'], w:['✍️ 쓰기','#F97316']};
   function lineOf(getter, color, width, withDots, labelLast, dy){
     /* [영역 그래프 가독성 20260811] dy(영역 모드): ① 시리즈별 ±1~2px 수직 오프셋으로 겹침 분리(밴드 11px/레벨의 1/6 이하 — 판독 왜곡 없음)
@@ -12919,14 +12919,23 @@ function _gcRender(){
     lines+='<text x="150" y="60" font-size="10" fill="#9CA3AF" text-anchor="middle" font-weight="700">이 영역 기록이 아직 없어요 — 표준 진단을 보면 채워져요</text>';
   }
   var _oneNote='';
+  var _riseFrom=function(color, y1){   /* [첫 기록 상승선 20260813] '진단 전 0' 기준점(좌) → 오늘(우) — 성장의 시작으로 보이게 */
+    return '<path d="M20,106 L280,'+y1+'" fill="none" stroke="'+color+'" stroke-width="2.8" stroke-linecap="round"/>'
+      +'<circle cx="20" cy="106" r="3" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>'
+      +'<text x="20" y="100" font-size="7" fill="#94A3B8" text-anchor="middle" font-weight="700">시작</text>';
+  };
   if(area==='all' && g.length===1){
+    try{ lines=_riseFrom('#1E5FA5', _lvBandY(g[0].level))+lines; }catch(e){}
     /* [첫 기록 다듬기 20260813] 점 하나가 빈 차트에 떠 보이던 첫 진단 화면 — 날짜·강조·안내로 '의도된 시작'답게 */
     var _dl=''; try{ var _d1=new Date(g[0].t||g[0].date||Date.now()); _dl=(_d1.getMonth()+1)+'/'+_d1.getDate()+' '; }catch(e){}
     _oneNote='<div style="font-size:9.5px;color:#9CA3AF;text-align:center;margin-top:4px;font-weight:700">'+_dl+'첫 기록이에요 — 진단이 쌓일수록 성장 곡선이 그려져요</div>';   /* [겹침 수정 20260813] 날짜를 SVG 밖 캐션으로 */
   }
   if(area!=='all'){
-    var _acnt=0; g.forEach(function(h){ if(h.areas && h.areas[area]!=null) _acnt++; });
-    if(_acnt===1) _oneNote='<div style="font-size:9.5px;color:#9CA3AF;text-align:center;margin-top:4px;font-weight:700">이 영역은 이번 진단부터 기록됐어요 — 다음 진단부터 선으로 이어져요</div>';   /* [캡션 위치 수정 20260811] SVG 안 상단은 밴드 라벨과 충돌(깨짐) → 차트 아래 HTML로 이동 */
+    var _acnt=0, _aval=null; g.forEach(function(h){ if(h.areas && h.areas[area]!=null){ _acnt++; _aval=h.areas[area]; } });
+    if(_acnt===1){
+      try{ lines=_riseFrom((AMETA[area]&&AMETA[area][1])||'#1E5FA5', _lvBandY(_aval))+lines; }catch(e){}   /* [첫 기록 상승선 20260813] */
+      _oneNote='<div style="font-size:9.5px;color:#9CA3AF;text-align:center;margin-top:4px;font-weight:700">이 영역은 이번 진단부터 기록됐어요 — 다음 진단부터 선으로 이어져요</div>';
+    }   /* [캡션 위치 수정 20260811] SVG 안 상단은 밴드 라벨과 충돌(깨짐) → 차트 아래 HTML로 이동 */
   }
   // 축 라벨(날짜)
   var lbl='';

@@ -8210,6 +8210,10 @@ function _ltAsk(q){
 }
 function _ltNext(){
   var lt=S._lt; if(!lt) return;
+  /* ══ [레벨테스트 길이 상한 20260814] 실사용 관찰: 64번째 문항까지 진행 — 레벨마다 10~15문 + 하강 탐색 +
+     확인 라운드가 겹치면 70문 이상까지 늘어나 피로 오차가 커진다(길수록 정확한 것이 아니라 오히려 부정확).
+     총 45문에 도달하면 그때까지 통과한 최고 레벨로 판정 종료. 확인 라운드 중이면 그 라운드는 마치게 둔다. ══ */
+  if(lt.stage!=='confirm' && (lt.qTotal||0)>=45){ _ltFinish(); return; }
   if(lt.stage==='confirm'){
     if(lt.cqi>=_LT_CONFIRM.length){ _ltFinish(); return; }
     var cq=_ltMakeQ(lt.confirmLevel,_LT_CONFIRM[lt.cqi]);
@@ -11168,6 +11172,16 @@ function _goalDonut(p,size,sw,id,color,center){
     '</svg>'+
     '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">'+center+'</div></div>';
 }
+/* ══ [챕터 표기 통일 20260814] 실사용 혼동: 홈은 '1/5챕터'(진행 중), 단어장 목록은 '0/5챕터'(통과 수)로
+   같은 책을 다르게 표기 → 사용자가 진도를 오해. 홈과 같은 '진행 중 챕터' 의미로 전 목록을 통일한다. ══ */
+function _chProgTxt(bk){
+  try{
+    var c=(typeof _chapterCount==='function')?_chapterCount(bk):0;
+    if(!c) return '';
+    var d=((bk.chPass||[]).filter(Boolean).length);
+    return (d>=c ? (bk.finalPassed?'완료':(c+'/'+c)) : ((d+1)+'/'+c))+'챕터';
+  }catch(e){ return ''; }
+}
 function _bookColor(name){
   if(!name || name==='__all__') return 'var(--theme)';
   var h=0; for(var i=0;i<name.length;i++){ h=(h*31+name.charCodeAt(i))%360; }
@@ -13396,9 +13410,9 @@ function rStudyBooks() {
   // ── 📕 학습 코스: 챕터로 단계를 올라가는 것 (기본 제공 그룹 + 담은 코스 + 레벨업 커리큘럼)
   var courseRows = '';
   var courseCnt = 0;
-  grpBooks.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; });
-  (S.books||[]).filter(function(b){ return b.isCurriculum; }).forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; });
-  _oc.forEach(function(c){ (c.books||[]).forEach(function(x){ var bk=x.book; if(!bk) return; var o=_bookOpts(bk); var ch=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=ch?(d+'/'+ch+'챕터'):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; }); });
+  grpBooks.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; o.right=c?_chProgTxt(bk):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; });
+  (S.books||[]).filter(function(b){ return b.isCurriculum; }).forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; o.right=c?_chProgTxt(bk):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; });
+  _oc.forEach(function(c){ (c.books||[]).forEach(function(x){ var bk=x.book; if(!bk) return; var o=_bookOpts(bk); var ch=(typeof _chapterCount==='function')?_chapterCount(bk):0; o.right=ch?_chProgTxt(bk):(o.mem+'/'+o.count); _rowTestBtn(o,bk); courseRows+=_simpleRow(o); courseCnt++; }); });
   if(!courseRows) courseRows='<div style="font-size:11.5px;color:#9CA3AF;text-align:center;padding:14px 2px">아직 학습 코스가 없어요</div>';
   var secCourse=_sectionCard('course','📕','학습 코스', courseCnt+'권', courseRows,
     '<div onclick="S.stab=\'market\';go(\'mybooks\',\'market\')" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 2px;border-top:1px solid var(--border,#F1F3F5);cursor:pointer;color:var(--theme,#3B82F6);font-size:12px;font-weight:700">＋ 마켓으로 가기</div>');
@@ -13406,7 +13420,7 @@ function rStudyBooks() {
   // ── 📗 내 책장: 원서 단어장 + 내가 만든 것 + 내 단어장
   var shelfRows = _simpleRow(myOpts);
   var shelfCnt = 1;
-  looseMarket.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; var d=((bk.chPass||[]).filter(Boolean).length); o.right=c?(d+'/'+c+'챕터'):(o.mem+'/'+o.count); shelfRows+=_simpleRow(o); shelfCnt++; });
+  looseMarket.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; o.right=c?_chProgTxt(bk):(o.mem+'/'+o.count); shelfRows+=_simpleRow(o); shelfCnt++; });
   myMadeBooks.forEach(function(bk){ shelfRows+=_simpleRow(_bookOpts(bk)); shelfCnt++; });
   var secShelf=_sectionCard('shelf','📗','내 책장', shelfCnt+'권', shelfRows,
     '<div onclick="showBooksModal&&showBooksModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 2px;border-top:1px solid var(--border,#F1F3F5);cursor:pointer;color:var(--theme,#3B82F6);font-size:12px;font-weight:700">＋ 새 단어장 만들기</div>');

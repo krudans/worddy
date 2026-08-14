@@ -19107,6 +19107,68 @@ auth.onAuthStateChanged(async user => {
                       changed=true; }
                     else if(_slT2===0 && _llT2===0 && _lix2(d.lid)>_lix2(S.lid)){ S.lid=d.lid; try{ localStorage.setItem('wd-l',S.lid); }catch(e){} changed=true; }
                   }
+                  /* ══ [users 리스너 확장 20260814] 서버(users)에는 저장되지만 실시간 반영이 없던 필드 보강.
+                     원칙: 값 교체가 아니라 '증가·합집합·최대값'만 — 스테일 스냅샷이 최신 기록을 되덮는 사고(과거 나비·쿠폰 유실)와
+                     같은 구조를 만들지 않기 위해서다. 삭제는 각 필드의 묘비 규칙(deletedTHistory)만 인정한다. ══ */
+                  // 레벨테스트 성장 이력: ts 기준 합집합(폰에서 재진단 → PC 그래프 즉시 반영), 서버 묘비 존중
+                  if(Array.isArray(d.tHistory)){
+                    try{
+                      var _tomb=Object.create(null);
+                      (d.deletedTHistory||[]).forEach(function(k){ _tomb[String(k)]=1; });
+                      (Object.keys(S._thSessTomb||{})).forEach(function(k){ _tomb[String(k)]=1; });
+                      var _mapT=Object.create(null);
+                      (S.tHistory||[]).concat(d.tHistory||[]).forEach(function(r){
+                        if(!r) return; var key=String(r.ts||r.date||'');
+                        if(!key || _tomb[key]) return;
+                        var ex=_mapT[key];
+                        if(!ex || ((r.qTotal||0)>(ex.qTotal||0))) _mapT[key]=r;   // 같은 응시는 더 완전한 기록 채택
+                      });
+                      var _arrT=Object.keys(_mapT).map(function(k){ return _mapT[k]; })
+                        .sort(function(a,b){ return (+(a.ts||0))-(+(b.ts||0)); });
+                      if(typeof _TH_MAX!=='undefined' && _arrT.length>_TH_MAX) _arrT=_arrT.slice(-_TH_MAX);
+                      if(_arrT.length!==(S.tHistory||[]).length){
+                        S.tHistory=_arrT;
+                        try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){}
+                        changed=true;
+                      }
+                    }catch(e){}
+                  }
+                  // 업적: 추가만(합집합) — 획득한 업적이 사라질 이유가 없다
+                  if(Array.isArray(d._achievements)){
+                    var _aBefore=(S._achievements||[]).length;
+                    var _aSet=Object.create(null); (S._achievements||[]).forEach(function(x){ _aSet[x]=1; });
+                    (d._achievements||[]).forEach(function(x){ if(x&&!_aSet[x]){ _aSet[x]=1; } });
+                    var _aArr=Object.keys(_aSet);
+                    if(_aArr.length!==_aBefore){ S._achievements=_aArr; changed=true; }
+                  }
+                  // 출석: 날짜 합집합 + 카운트는 최대값
+                  if(Array.isArray(d.attendDates)){
+                    var _dBefore=(S.attendDates||[]).length;
+                    var _dSet=Object.create(null); (S.attendDates||[]).concat(d.attendDates||[]).forEach(function(x){ if(x) _dSet[x]=1; });
+                    var _dArr=Object.keys(_dSet).sort();
+                    if(_dArr.length!==_dBefore){ S.attendDates=_dArr; changed=true; }
+                  }
+                  if(typeof d.attendCount==='number' && d.attendCount>(S.attendCount||0)){ S.attendCount=d.attendCount; changed=true; }
+                  // 게임 최고점: 종목별 최대값
+                  if(d.bestScores && typeof d.bestScores==='object'){
+                    S.bestScores=S.bestScores||{};
+                    Object.keys(d.bestScores).forEach(function(g){
+                      var v=+d.bestScores[g]||0;
+                      if(v>(+S.bestScores[g]||0)){ S.bestScores[g]=v; changed=true; }
+                    });
+                  }
+                  // 학습 로그: 날짜별 항목을 각각 최대값으로(다른 기기에서 더 공부한 기록만 올라감)
+                  if(d.studyLog && typeof d.studyLog==='object'){
+                    S.studyLog=S.studyLog||{};
+                    Object.keys(d.studyLog).forEach(function(dt){
+                      var sv2=d.studyLog[dt], lv2=S.studyLog[dt];
+                      if(!sv2||typeof sv2!=='object') return;
+                      if(!lv2){ S.studyLog[dt]=Object.assign({},sv2); changed=true; return; }
+                      Object.keys(sv2).forEach(function(f){
+                        if(typeof sv2[f]==='number' && sv2[f]>(+lv2[f]||0)){ lv2[f]=sv2[f]; changed=true; }
+                      });
+                    });
+                  }
                   // 쿠폰: LWW 타임스탬프 존중 — 서버 ts가 더 최신일 때만 채택
                   if(typeof d.bfCoupons==='number'){
                     var _srvTs=+(d.bfCouponsTs||0), _locTs=+(S.bfCouponsTs||0);

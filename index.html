@@ -8545,6 +8545,42 @@ function _ltReviewWrong(){
     if(typeof go==='function'){ S.tab='mybooks'; go('mybooks','books'); }
   }catch(e){console.warn('[wd-io:_ltReviewWrong]',e);}
 }
+/* ══ [누적 프로파일 판정 20260814] 실사용 지적: "레벨이 오를 때 오답 카운터가 리셋되니 아래 레벨에서
+   모르는 게 있어도 계속 살아남아 억지로 레벨이 올라간다."
+   진단: 리셋 자체는 계단식(마스터리 사다리) 진행 규칙상 필요하다(누적하면 아래에서 잘 푼 사람이 오히려
+   조기탈락에 걸리는 역전이 생김). 문제는 '통과한 밴드의 정보가 최종 판정에서 버려지는' 것 —
+   각 밴드를 8/10(80%)으로 겨우 통과해도 세 밴드 연속이면 20%씩 모르는 채로 3단계가 올라간다(상향 편류).
+   표준 어휘 검사(VST·VLT·IRT형 CAT)는 모든 응답이 최종 추정에 남는다는 공통점이 있다.
+   → 진행은 그대로 두고 '최종 레벨만' 누적 프로파일로 재계산한다:
+     ① 판정 레벨의 정답률 ≥80%  ② 그 이하 모든 밴드 정답률 ≥75%  ③ 경계 통과(80%대)가 3밴드 연속이면 한 단계 하향.
+   하위 밴드 1~2개 오답은 정상 노이즈이므로 '하나라도 틀리면 캡'이 아니라 75% 기준선을 쓴다. ══ */
+function _ltProfileLevel(lt, placement){
+  try{
+    var st=lt.levelStats||{}, note='';
+    var acc=function(L){ var s=st[L]; return (s&&s.t>=5)?(s.c/s.t):null; };   // 표본 5문항 미만은 판단 보류
+    /* 하한 73% = 경계 연장 통과선(15문 11정답)과 동일. 이보다 높게 잡으면 정당하게 연장 통과한
+       응시자가 자동 강등되는 규칙 충돌이 생긴다(시뮬레이션에서 발견). */
+    var FLOOR=0.73;
+    var L=placement;
+    // ① 이하 모든 밴드가 하한 이상인 지점까지 내림
+    while(L>1){
+      var bad=false;
+      for(var k=1;k<=L;k++){ var a=acc(k); if(a!=null && a<FLOOR){ bad=true; break; } }
+      if(!bad) break;
+      L--; note='하위 밴드 정답률 미달로 하향';
+    }
+    // ② 판정 밴드 자체가 하한 미만이면 한 단계 더 내림
+    var aL=acc(L);
+    if(L>1 && aL!=null && aL<FLOOR){ L--; note='판정 밴드 정답률 미달로 하향'; }
+    // ③ 경계 통과(80~89%)가 3밴드 연속이면 상향 편류로 보고 한 단계 하향
+    if(L>1 && !note){
+      var run=0;
+      for(var m=L;m>=Math.max(1,L-2);m--){ var am=acc(m); if(am!=null && am>=0.80 && am<0.90) run++; else break; }
+      if(run>=3){ L--; note='경계 통과 연속 — 보수적 판정'; }
+    }
+    return {level:Math.max(1,Math.min(CW_MAXLEVEL,L)), note:note};
+  }catch(e){ return {level:placement, note:''}; }
+}
 function _ltFinish(){
   try{
     _ltClearTimer();
@@ -8557,6 +8593,10 @@ function _ltFinish(){
       else if(placement>1){ placement=placement-1; confNote='확인 라운드 결과 한 레벨 낮춰 판정'; }
       else { confNote='확인 라운드 결과 반영'; }
     }
+    /* [누적 프로파일 판정 20260814] 확인 라운드 보정 뒤, 밴드별 실제 정답률로 최종 재계산 */
+    try{ var _pf=_ltProfileLevel(lt, placement);
+      if(_pf && _pf.level<placement){ placement=_pf.level; confNote=(confNote?confNote+' · ':'')+(_pf.note||'누적 프로파일 반영'); }
+    }catch(e){}
     var correctTotal=lt.correctTotal||0, qTotal=lt.qTotal||0;
     /* ══ [무효 응시 필터 20260804] 시간초과+모름이 40% 이상이거나 10문항 미만이면
        '집중이 어려웠던 응시'로 보고, 이전 기록이 있는 사용자는 성장 기록에 남기지 않는다.
@@ -8590,7 +8630,7 @@ function _ltFinish(){
       try{ var best=null; LEVELS.forEach(function(l){ var v=(LV_TO_LEVEL||{})[l.id]; if(v!=null && v<=placement){ if(!best||v>best.v) best={id:l.id,v:v}; } }); if(best){ S.lid=best.id; S.lidTs=Date.now(); } }catch(e){}
     }
     /* [죽은 키 정리 20260811] wd-tested 제거 */
-    try{ if(!invalidRun){ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf}); }   /* [영역 프로필 20260803][무효 응시는 기록 제외 20260804] */
+    try{ if(!invalidRun){ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf, bands:(function(){ var o={},s=lt.levelStats||{}; Object.keys(s).forEach(function(k){ if(s[k]&&s[k].t) o[k]=s[k].c+'/'+s[k].t; }); return o; })()});   /* [누적 프로파일 판정 20260814] 밴드별 정답률 보존 — 재진단 비교·사후 검증용 */ }   /* [영역 프로필 20260803][무효 응시는 기록 제외 20260804] */
       if(S.tHistory.length>_TH_MAX) S.tHistory=S.tHistory.slice(-_TH_MAX);   // 서버·병합과 동일한 상한 유지
       localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
     if(typeof addXP==='function') addXP(correctTotal*2);

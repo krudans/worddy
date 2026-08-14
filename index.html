@@ -6306,7 +6306,7 @@ window._autoToggle = async () => {
     }
     window._autoPlaying = true;
     try{clearInterval(window._ttsKeepAlive);}catch(e){}
-    window._ttsKeepAlive=setInterval(function(){try{if(window._autoPlaying)speechSynthesis.resume();}catch(e){}},6000);
+    window._ttsKeepAlive=setInterval(function(){try{if(window._autoPlaying)speechSynthesis.resume();}catch(e){}},6000);   /* [TTS 프리즈 근본수정 20260814] 자동재생 전용 유지 — 시험·듣기는 _ttsKeepAliveStart(전역)가 담당 */
     window._requestWakeLock(); // 화면 꺼짐 방지
     window._autoRender();
     while(window._autoPlaying) {
@@ -16417,13 +16417,13 @@ function _playPronSeq(en, times, exText, rate0, lang){
     var seq=[]; var _r0=rate0||0.85; for(var i=0;i<times;i++) seq.push({t:en,rate:_r0});
     if(exText) seq.push({t:exText,rate:0.82});
     var idx=0;
+    /* [TTS 프리즈 근본수정 20260814] onend가 안 오면 체인이 영영 멈추므로 안전 발화(_ttsSpeakSafe)로 진행 보장 */
     (function speakNext(){
       if(idx>=seq.length) return;
       var it=seq[idx];
       var u=new SpeechSynthesisUtterance(it.t); u.lang=code; u.rate=it.rate;
       try{ var v=(window._bestVoiceFor?window._bestVoiceFor(code):((typeof _bestVoice==='function')?_bestVoice(false):null)); if(v)u.voice=v; }catch(e){}
-      u.onend=function(){ idx++; setTimeout(speakNext, 280); };
-      window.speechSynthesis.speak(u);
+      _ttsSpeakSafe(u, function(){ idx++; setTimeout(speakNext, 280); });
     })();
   }catch(e){}
 }
@@ -17205,6 +17205,72 @@ function _isKoQuestion(t){t=String(t==null?'':t).trim();if(!t)return false;if(/[
    ② 정지 상태 고착 — speaking인데 진행이 없으면 cancel 후 재시도
    ③ 장문 중단 — 15초 넘게 물려 있으면 강제 cancel (Chrome 알려진 버그) ══ */
 window._ttsGuard = window._ttsGuard || { last:'', lastAt:0, timer:null };
+/* ══ [TTS 프리즈 근본수정 20260814] 실사용 증상: 시험 후반 TTS가 수 초간 멈춘 듯 반응 없음(버튼 연타 유발).
+   코드 실측으로 확인한 원인 4가지와 대응:
+   ① cancel() 직후 같은 tick에서 speak() 호출 — Chrome의 알려진 레이스로 엔진이 'speaking' 상태에 고착.
+      → cancel 후 다음 매크로태스크(80ms)에 발화(_ttsSpeakSafe).
+   ② 발화가 조용히 유실되면 onend가 영영 안 와서 연속 재생 체인이 멈춤 → 워치독으로 재시도·진행.
+   ③ Chrome은 15초 넘는 발화를 자동 pause — 킵얼라이브 resume이 '자동재생 학습' 중에만 돌고 있어
+      시험·듣기 문제에서는 무방비였다 → 말하는 동안 항상 도는 전역 킵얼라이브로 교체.
+   ④ 첫 발화 때 음성 목록·네트워크 성우 로딩이 겹치면 초기 지연 → 첫 사용자 조작 시 무음 워밍업. ══ */
+window._ttsKA=window._ttsKA||null;
+function _ttsKeepAliveStart(){
+  try{
+    if(window._ttsKA) return;
+    window._ttsKA=setInterval(function(){
+      try{
+        var ss=window.speechSynthesis;
+        if(!ss.speaking && !ss.pending){ _ttsKeepAliveStop(); return; }
+        if(ss.paused) ss.resume();
+      }catch(e){}
+    }, 5000);
+  }catch(e){}
+}
+function _ttsKeepAliveStop(){ try{ if(window._ttsKA){ clearInterval(window._ttsKA); window._ttsKA=null; } }catch(e){} }
+function _ttsSpeakSafe(u, onDone){
+  try{
+    var ss=window.speechSynthesis;
+    var started=false, done=false, retried=false;
+    var finish=function(){ if(done) return; done=true; _ttsKeepAliveStop(); if(typeof onDone==='function') onDone(); };
+    var arm=function(){
+      // 발화가 시작조차 안 되면(유실) 1.6초 뒤 1회 재시도, 그래도 안 되면 진행시켜 체인이 멈추지 않게 한다
+      setTimeout(function(){
+        try{
+          if(done||started) return;
+          if(!retried){ retried=true; _ttsHardReset(); setTimeout(go,80); return; }
+          finish();
+        }catch(e){ finish(); }
+      }, 1600);
+    };
+    var go=function(){
+      try{
+        u.onstart=function(){ started=true; _ttsKeepAliveStart(); };
+        u.onend=function(){ finish(); };
+        u.onerror=function(){ finish(); };
+        ss.speak(u);
+        arm();
+      }catch(e){ finish(); }
+    };
+    ss.cancel();
+    setTimeout(go, 80);   // ① cancel/speak 레이스 회피
+  }catch(e){ if(typeof onDone==='function') onDone(); }
+}
+/* ④ 첫 사용자 조작에서 엔진 워밍업 — 시험 중 첫 발화가 지연되지 않게 */
+(function(){
+  try{
+    if(!('speechSynthesis' in window)) return;
+    var warm=function(){
+      try{
+        window.speechSynthesis.getVoices();
+        var u=new SpeechSynthesisUtterance(' '); u.volume=0; u.rate=1;
+        window.speechSynthesis.speak(u);
+      }catch(e){}
+      try{ document.removeEventListener('pointerdown', warm, true); document.removeEventListener('keydown', warm, true); }catch(e){}
+    };
+    document.addEventListener('pointerdown', warm, true);
+    document.addEventListener('keydown', warm, true);
+  }catch(e){}
+})();
 function _ttsHardReset(){
   try{
     if(window._ttsGuard.timer){ clearTimeout(window._ttsGuard.timer); window._ttsGuard.timer=null; }
@@ -17217,12 +17283,10 @@ function speak(text, lang, rate){try{if(!('speechSynthesis'in window))return;tex
   if(_g.last===text && (_now-_g.lastAt)<200) return;          // ① 연타 무시
   _g.last=text; _g.lastAt=_now;
   _ttsHardReset();                                              // ② 이전 발화 확실히 종료
-var code=(window._normLang?window._normLang(lang,text):((lang==='ko'||/[\uAC00-\uD7A3]/.test(text))?'ko-KR':'en-US'));var isKo=code.toLowerCase().indexOf('ko')===0;var isEn=code.toLowerCase().indexOf('en')===0;var t=text.trim();var spoken;if(isKo){if(_isKoQuestion(t)){spoken=/[?？]$/.test(t)?t:t.replace(/[.\u2026]+$/,'')+'?';}else{spoken=/[.!?\u2026]$/.test(t)?t:t+'.';}}else{spoken=text;}var u=new SpeechSynthesisUtterance(spoken);u.lang=code;u.rate=(rate||(isKo?0.92:(isEn?0.85:0.9)));u.pitch=1.0;var v=(window._bestVoiceFor?window._bestVoiceFor(code):(window._bestVoice?window._bestVoice(isKo):null));if(v)u.voice=v;window.speechSynthesis.speak(u);
+var code=(window._normLang?window._normLang(lang,text):((lang==='ko'||/[\uAC00-\uD7A3]/.test(text))?'ko-KR':'en-US'));var isKo=code.toLowerCase().indexOf('ko')===0;var isEn=code.toLowerCase().indexOf('en')===0;var t=text.trim();var spoken;if(isKo){if(_isKoQuestion(t)){spoken=/[?？]$/.test(t)?t:t.replace(/[.\u2026]+$/,'')+'?';}else{spoken=/[.!?\u2026]$/.test(t)?t:t+'.';}}else{spoken=text;}var u=new SpeechSynthesisUtterance(spoken);u.lang=code;u.rate=(rate||(isKo?0.92:(isEn?0.85:0.9)));u.pitch=1.0;var v=(window._bestVoiceFor?window._bestVoiceFor(code):(window._bestVoice?window._bestVoice(isKo):null));if(v)u.voice=v;_ttsSpeakSafe(u);   /* [TTS 프리즈 근본수정 20260814] cancel→speak 레이스·유실 대비 */
   /* ③ 15초 넘게 안 끝나면 강제 종료 — 화면이 멈춘 것처럼 보이는 것 방지 */
   if(_g.timer) clearTimeout(_g.timer);
-  _g.timer=setTimeout(function(){ try{ if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); }catch(e){} }, 15000);
-  u.onend=function(){ try{ if(_g.timer){ clearTimeout(_g.timer); _g.timer=null; } }catch(e){} };
-  u.onerror=function(){ try{ _ttsHardReset(); }catch(e){} };
+  _g.timer=setTimeout(function(){ try{ if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); }catch(e){} _ttsKeepAliveStop(); }, 20000);
 }catch(e){ try{ _ttsHardReset(); }catch(_){} }}
 /* ===== 음성 엔진: 언어별 최적 성우 선택 (다국어 대응) ===== */
 (function(){

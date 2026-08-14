@@ -4923,6 +4923,7 @@ function ensureMarkDates(){
   return S.markDates;
 }
 function setMark(en, val, bookName) {
+  S._markVer=(S._markVer||0)+1;   /* [마크 버전 20260814] 학습 목록 캐시 무효화 신호 */
   /* [마킹 일원화 20260811] bookName 지정 시 그 책에 기록(단어목록 브라우즈 등).
      라이브 뷰(S.markMap/S.learned)는 현재 책과 일치할 때만 건드림 — 타 책 마킹이 라이브를 오염시키지 않게. */
   const _bn = bookName || S.currentBook || '내 단어장';
@@ -5846,6 +5847,7 @@ function _autoRefilter() {
   if(unit!=='all'){const n=parseInt(unit);if(!isNaN(n)&&n>0)words=words.slice(0,n);}
   window._autoWords = words;
   window._autoIdx = 0;
+  window._autoRange = range;   /* [마크 버전 20260814] 렌더 시 범위 재적용용 */
 }
 function _arSetRead(v){var ws=window._autoWords||[];var sg=function(x){var e=((x&&x.en)||'').trim();return e.length>0&&!/\s/.test(e);};var sb=ws.length>=5&&(ws.filter(sg).length/ws.length)<0.5;if(v==='spell'&&sb){if(typeof toast==='function')toast('문장 단어장은 스펠링 모드를 쓸 수 없어요');v='en+kr';}if(window._auto)window._auto.read=v;if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
 function _arSetSpeed(sr){if(window._auto){window._auto.shadowRate=sr;window._auto.speed=700;}if(typeof sv==='function')sv();window._autoRender&&window._autoRender();}
@@ -6123,6 +6125,15 @@ function showAutoMode() {
   
 window._autoRender = function() {
     var mr = document.getElementById('mr'); if(!mr) return;
+    /* [마크 버전 20260814] 다른 기기 동기화·본인 마킹으로 외워진 단어가 '미암기' 목록에 남는 문제 —
+       마크가 바뀌었으면 미암기(0) 범위 목록에서 외운 단어를 걷어낸다(헤더 '외운 수'도 tot-rem으로 자동 상승). */
+    try{ if(window._autoRange===0 && window.__autoMarkVer!==(S._markVer||0)){
+      window.__autoMarkVer=(S._markVer||0);
+      var _cur=window._autoWords[window._autoIdx];
+      window._autoWords=(window._autoWords||[]).filter(function(x){ return (getMark(x.en)||0)===0; });
+      var _ni=_cur?window._autoWords.findIndex(function(x){return x.en===_cur.en;}):-1;
+      window._autoIdx=(_ni>=0)?_ni:Math.min(window._autoIdx, Math.max(0,window._autoWords.length-1));
+    } }catch(e){}
     var w = window._autoWords[window._autoIdx];
     if(w && typeof _seenW==='function') _seenW(w.en);
     if(!w){
@@ -8019,7 +8030,7 @@ function finishChapterExam(){
           +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+ex.correct+'/'+ex.total+' 정답 (기준 90점)</div>'
           +(gotNabi?'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🎫 나비 쿠폰 1장 획득!</div>':'')
           +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px">틀린 단어 복습 후 다시 도전해요</div>'
-                     +'<button onclick="cm();startChapterExam(\''+String(ex.bookName).replace(/'/g,"\\'")+'\','+ex.chIdx+')" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:8px">🔄 다시 도전</button>')
+                     +'<button onclick="cm();_chExamGo(\''+String(ex.bookName).replace(/'/g,"\\'")+'\','+ex.chIdx+')" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:8px">🔄 다시 도전</button>')
           +_cta
           +'</div></div>';
       });
@@ -14114,7 +14125,38 @@ function _checkChapterDone(book, chIdx, force){
   }catch(e){console.warn('[wd-io:_checkChapterDone]',e);}
 }
 /* [챕터 시험 부활 20260811] 시작 스위치 재작성 — 기존 소비부(게임 체이닝·배너·타이머·판정)에 정확히 맞춤 */
+/* ══ [챕터시험 안내 페이지 20260814] 실사용 지적: 버튼을 누르면 예고 없이 1번 문제가 바로 시작돼 당황.
+   레벨테스트처럼 시작 전 안내(문항 구성·합격 기준·보상·재도전 규칙)를 보여주고 [시험 시작]으로만 출제.
+   재도전 버튼은 이미 규칙을 본 상태이므로 _chExamGo로 바로 재시작. ══ */
 function startChapterExam(bookName, chIdx){
+  try{
+    var book=(S.books||[]).find(function(b){return b.name===bookName;});
+    if(!book){ toast('단어장을 찾을 수 없어요','err'); return; }
+    var slice0=((typeof _chapterSlice==='function')?_chapterSlice(book,chIdx):[])||[];
+    var pool0=slice0.filter(function(w){ return w&&w.en&&w.kr&&_testWordOK(w); });
+    if(pool0.length<20) pool0=slice0.filter(function(w){ return w&&w.en&&w.kr&&_testWordOK(w,true); });
+    var qn=Math.min(50, pool0.length);
+    var bnEsc2=String(bookName).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var mr=document.getElementById('mr');
+    if(!mr){ mr=document.createElement('div'); mr.id='mr'; (document.getElementById('app')||document.body).appendChild(mr); }
+    mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center;max-width:340px">'
+      +'<div style="font-size:44px;margin-bottom:6px">🏁</div>'
+      +'<div style="font-size:18px;font-weight:900;color:var(--text1,#111);margin-bottom:2px">'+(chIdx+1)+'챕터 통과 시험</div>'
+      +'<div style="font-size:12px;color:var(--text3,#9CA3AF);margin-bottom:12px">'+String(bookName).replace(/</g,'&lt;')+'</div>'
+      +'<div style="background:var(--bg-sub,#F8FAFC);border:1px solid var(--border,#E5E7EB);border-radius:12px;padding:13px 14px;text-align:left;font-size:12.5px;color:var(--text2,#374151);line-height:2">'
+      +'<div>📝 <b>'+qn+'문항</b> — 이 챕터에서 외운 단어로 출제</div>'
+      +'<div>🎧 1부 <b>뜻 고르기</b> · 2부 <b>듣기 문제</b></div>'
+      +'<div>⏱️ 문제마다 제한시간이 있어요</div>'
+      +'<div>🎯 <b style="color:#D97706">90% 이상</b> 맞히면 합격</div>'
+      +'<div>🦋 합격: <b>나비 보상</b> + 다음 챕터 열림</div>'
+      +'<div>🔄 불합격해도 <b>몇 번이든 재도전</b> 가능</div>'
+      +'</div>'
+      +'<button onclick="cm();_chExamGo(\''+bnEsc2+'\','+chIdx+')" style="width:100%;margin-top:14px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:900;cursor:pointer">시험 시작하기</button>'
+      +'<button onclick="cm()" style="width:100%;margin-top:8px;background:var(--bg-sub,#F3F4F6);color:var(--text3,#6B7280);border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">다음에 할게요</button>'
+      +'</div></div>';
+  }catch(e){ console.warn('[wd-io:startChapterExam]',e); }
+}
+function _chExamGo(bookName, chIdx){
   try{
     var book=(S.books||[]).find(function(b){return b.name===bookName;});
     if(!book){ toast('단어장을 찾을 수 없어요','err'); return; }
@@ -14132,7 +14174,7 @@ function startChapterExam(bookName, chIdx){
     S._chExam={ bookName:book.name, chIdx:chIdx, games:games, groups:groups, gi:0, correct:0, total:0 };
     S._inChExam=true; S.gDone=false; S._exTimerKey=null;
     startGameW(games[0], groups[0]);
-  }catch(e){ S._inChExam=false; S._chExam=null; console.warn('[wd-io:startChapterExam]',e); }
+  }catch(e){ S._inChExam=false; S._chExam=null; console.warn('[wd-io:_chExamGo]',e); }
 }
 function rLearn() {
   var _lb=(S.books||[]).filter(function(x){return x.name===S.currentBook;})[0];
@@ -14182,7 +14224,7 @@ function rLearn() {
      바꾸면 이전 셔플 목록을 그대로 재사용 → 같은 단어가 다시 나오던(중복 체감) 원인.
      시그니처(책·챕터·정렬·필터·개수·언어·목록끝단어)가 바뀌면 캐시를 폐기·재생성한다.
      렌더 최상단 한 곳만 고쳐 챕터/책 드롭다운 등 모든 진입 경로가 자동 교정된다. */
-  var _fcSig=[S.currentBook||'',(S._studyChapterIdx==null?'x':S._studyChapterIdx),sort,filter,(S.flashCount||9999),(S.learnLang||'en'),(S.nativeLang||'ko'),baseWords.length,(baseWords[0]&&baseWords[0].en)||'',(baseWords[baseWords.length-1]&&baseWords[baseWords.length-1].en)||'',(baseWords[baseWords.length>>1]&&baseWords[baseWords.length>>1].en)||''].join('|');
+  var _fcSig=[(S._markVer||0),S.currentBook||'',(S._studyChapterIdx==null?'x':S._studyChapterIdx),sort,filter,(S.flashCount||9999),(S.learnLang||'en'),(S.nativeLang||'ko'),baseWords.length,(baseWords[0]&&baseWords[0].en)||'',(baseWords[baseWords.length-1]&&baseWords[baseWords.length-1].en)||'',(baseWords[baseWords.length>>1]&&baseWords[baseWords.length>>1].en)||''].join('|');
   if(S._flashSig!==_fcSig){ S._flashShuffled=null; S._flipWords=null; S.idx=0; S.flip=false; S._flashSig=_fcSig; }
   if(sort==='alpha') baseWords.sort((a,b)=>a.en.localeCompare(b.en));
   else if(sort==='alpha_kr') baseWords.sort((a,b)=>a.kr.localeCompare(b.kr));
@@ -18833,6 +18875,7 @@ auth.onAuthStateChanged(async user => {
                 } else {
                   S.books = _mergeBooksUnion(S.books, _uw.books, S._tombBooks);
                   try{ if(typeof _liveMapResync==='function') _liveMapResync(); }catch(e){}   /* [외움 표시 근본수정 20260811] */
+                  S._markVer=(S._markVer||0)+1;   /* [마크 버전 20260814] 실시간 병합도 목록 캐시 무효화 */
                   S.myWords = _cleanInWords(_mergeWordsUnion(S.myWords||S.words, _uw.words, S._tombWords)); if(!S.currentBook||S.currentBook==='내 단어장') S.words=S.myWords;   /* [정본 분리 20260724] */
                 }
                 console.log('[앱] user_words 병합: 책 '+_bBefore+'→'+(S.books||[]).length+', 단어 '+_wBefore+'→'+(S.words||[]).length+' (서버책 '+((_uw.books||[]).length)+')');
@@ -18883,6 +18926,7 @@ auth.onAuthStateChanged(async user => {
                   if(_rtMy){ S.words=(d.words||[]).slice(); }
                   try{ localStorage.setItem('wd-bks', JSON.stringify((S.books||[]).map(function(b){ if(b&&b.packId){ var r=Object.assign({},b); delete r.words; return r; } return b; }))); }catch(e){console.warn('[wd-io:anon]',e);}
                   try{ if(typeof _liveMapResync==='function') _liveMapResync(); }catch(e){}   /* [외움 표시 근본수정 20260811] */
+                  S._markVer=(S._markVer||0)+1;   /* [마크 버전 20260814] 실시간 병합도 목록 캐시 무효화 */
                   console.log('[실시간 동기화] 다른 기기 변경 수신 → 반영: 책 '+_bB+'→'+S.books.length+', 단어 '+_wB+'→'+S.words.length);
                   var _mrEl=document.getElementById('mr');
                   if(typeof go==='function' && !S._gameRunning && !S._inChExam && !S._inLevelTest && !S._inInitLevelTest && !S._inLearnSession && !(_mrEl&&_mrEl.innerHTML&&_mrEl.innerHTML.trim())){ go(); }

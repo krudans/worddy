@@ -8106,6 +8106,19 @@ var _LT_AREA={v:'v',l:'l',r:'r',wt:'w',ws:'w'};
 var _LT_AREA_NAME={v:'\ud83d\udd24 \ub2e8\uc5b4',l:'\ud83c\udfa7 \ub4e3\uae30',r:'\ud83d\udcd6 \uc77d\uae30',w:'\u270d\ufe0f \uc4f0\uae30'};
 function _ltTTSok(){ try{ return 'speechSynthesis' in window; }catch(e){ return false; } }
 function _ltSpeak(txt){ try{ if(!_ltTTSok()||!txt) return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(txt)); u.lang='en-US'; u.rate=0.82; if(window._bestVoiceFor){ var v=window._bestVoiceFor('en-US'); if(v) u.voice=v; } window.speechSynthesis.speak(u); }catch(e){} }
+/* ══ [시험 신뢰도 20260814] 유추 차단 3종 ══
+   ① 빈칸 문항의 한글 번역 노출 금지(판정 시험 한정) ② 배열 문항 상위 레벨 TTS 미제공
+   ③ 오답 선택지를 '같은 품사' 우선으로 — 무작위 오답은 품사만 봐도 소거되어 어휘력 없이 정답 가능.
+   ④ 상위 레벨일수록 긴 문장·복문 우선(_ltPickWord 'sent'). */
+function _ltPosKey(w){
+  var p=String((w&&w.pos)||'').trim(); if(!p) return '';
+  p=p.split(/[·,\/]/)[0].trim();
+  if(/동사/.test(p)) return 'v';
+  if(/형용사/.test(p)) return 'a';
+  if(/부사/.test(p)) return 'd';
+  if(/명사/.test(p)) return 'n';
+  return p;
+}
 function _ltFirstMean(w){ return (w.meanings&&w.meanings[0]) || String(w.kr||'').split(/[;\u2219\u00b7\u3001,]+/)[0].trim(); }
 function _ltEscRe(x){ return String(x).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
 function _ltPickWord(level, need){
@@ -8122,7 +8135,11 @@ function _ltPickWord(level, need){
     /* ══ [문장 난이도 레벨 비례 20260813] 실사용 지적: 레벨 6에 "The skull is old."(4단어) 출제 —
        문장을 레벨 무관 무작위로 뽑던 구조가 원인. 레벨별 최소 단어 수를 두고, EX5 5문장 중
        조건을 충족하는 '가장 긴' 문장을 고른다. 후보 부족 시 최소치를 한 단계 낮춰 재시도(출제 불가 방지). ══ */
-    var minW = level<=2?3 : level<=4?5 : level<=6?6 : 7;
+    /* [시험 신뢰도 20260814 ④] 상위 레벨일수록 문장이 길고 구조가 복잡해야 어휘 지식 없이 유추하기 어렵다.
+       최소 단어 수를 레벨별로 상향하고, Lv7+에서는 절이 2개 이상인 복문(쉼표·접속사·관계사)을 우선 선택. */
+    var minW = level<=2?3 : level<=4?5 : level<=6?8 : level<=8?10 : 12;
+    var _wantComplex = (level>=7);
+    var _isComplex=function(s){ return /,|\b(because|although|though|while|which|who|that|when|if|unless|since|whereas|after|before|so that|even though)\b/i.test(String(s||'')); };
     var _pickSent=function(en, mw){
       var re=new RegExp('\\b'+_ltEscRe(en)+'\\b','i');
       var e5=(typeof BWD_EX5!=='undefined'&&BWD_EX5&&BWD_EX5[en]&&BWD_EX5[en].ex5)||[];
@@ -8131,7 +8148,8 @@ function _ltPickWord(level, need){
         if(!s||!s.en||!re.test(s.en)) continue;
         var wc=String(s.en).trim().split(/\s+/).length;
         if(wc<mw) continue;
-        if(wc>bw){ bw=wc; best=s; } }
+        var sc=wc+((_wantComplex&&_isComplex(s.en))?100:0);   /* 복문 가산점 */
+        if(sc>bw){ bw=sc; best=s; } }
       if(!best){ var sx=(typeof _ex5One==='function')?_ex5One(en):null;
         if(sx&&sx.en&&re.test(sx.en)&&String(sx.en).trim().split(/\s+/).length>=mw) best=sx; }
       return best;
@@ -8154,7 +8172,12 @@ function _ltShuf(arr){ for(var i=arr.length-1;i>0;i--){ var j=Math.floor(Math.ra
 function _ltKrChoices(level, word){
   var band=_levelWords(level)||[];
   var correctKr=_ltFirstMean(word);
-  var others=_ltShuf(band.filter(function(w){ return w.en!==word.en && w.kr && _ltFirstMean(w)!==correctKr; }).slice());
+  var _pk=_ltPosKey(word);
+  var pool=band.filter(function(w){ return w.en!==word.en && w.kr && _ltFirstMean(w)!==correctKr; });
+  /* [시험 신뢰도 20260814 ③] 같은 품사 오답을 우선 배치 — 부족하면 나머지로 채운다(출제 불가 방지) */
+  var same=_ltShuf(pool.filter(function(w){ return _pk && _ltPosKey(w)===_pk; }).slice());
+  var rest=_ltShuf(pool.filter(function(w){ return !(_pk && _ltPosKey(w)===_pk); }).slice());
+  var others=same.concat(rest);
   var wrongs=[], seen=Object.create(null); seen[correctKr]=1;
   for(var k=0;k<others.length&&wrongs.length<3;k++){ var m=_ltFirstMean(others[k]); if(m&&!seen[m]){ seen[m]=1; wrongs.push(m); } }
   while(wrongs.length<3) wrongs.push('(\ub2e4\ub978 \ub73b)');
@@ -8163,7 +8186,12 @@ function _ltKrChoices(level, word){
 }
 function _ltEnChoices(level, word){
   var band=_levelWords(level)||[];
-  var others=_ltShuf(band.filter(function(w){ return w.en!==word.en && /^[a-z]+$/i.test(w.en||''); }).slice());
+  var _pk=_ltPosKey(word);
+  var pool=band.filter(function(w){ return w.en!==word.en && /^[a-z]+$/i.test(w.en||''); });
+  /* [시험 신뢰도 20260814 ③] 빈칸 문항은 품사 불일치가 곧 정답 노출 — 같은 품사 오답을 우선 */
+  var same=_ltShuf(pool.filter(function(w){ return _pk && _ltPosKey(w)===_pk; }).slice());
+  var rest=_ltShuf(pool.filter(function(w){ return !(_pk && _ltPosKey(w)===_pk); }).slice());
+  var others=same.concat(rest);
   var wrongs=others.slice(0,3).map(function(w){return w.en;});
   while(wrongs.length<3) wrongs.push('(\ub2e4\ub978 \ub2e8\uc5b4)');
   var choices=_ltShuf([word.en].concat(wrongs));
@@ -8206,7 +8234,9 @@ function _ltAsk(q){
   lt.cur=q; lt.ans=false; lt.res=null;
   _ltRender(); _ltArmTimer();
   if(q.t==='l') setTimeout(function(){ if(S._lt&&S._lt.cur===q&&!S._lt.ans) _ltSpeak(q.en); },350);
-  if(q.t==='ws') setTimeout(function(){ if(S._lt&&S._lt.cur===q&&!S._lt.ans) _ltSpeak(q.sentWords.join(' ')); },350);
+  /* [시험 신뢰도 20260814 ②] 배열 문항에서 문장을 읽어주면 뜻을 몰라도 들은 순서대로 배열해 정답이 된다.
+     Lv5 이상(고등 이상)에서는 음성을 제공하지 않고 문어 재구성 능력으로 판정한다. 하위 레벨은 유지. */
+  if(q.t==='ws' && ((lt.stage==='confirm'?lt.confirmLevel:lt.level)|0)<5) setTimeout(function(){ if(S._lt&&S._lt.cur===q&&!S._lt.ans) _ltSpeak(q.sentWords.join(' ')); },350);
 }
 function _ltNext(){
   var lt=S._lt; if(!lt) return;
@@ -8350,7 +8380,10 @@ function _ltRender(){
     body='<div style="background:#F8F9FA;border-radius:20px;padding:20px;border:1.5px solid #E5E7EB;margin-bottom:12px">'
       +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;text-align:center">\ube48\uce78\uc5d0 \ub4e4\uc5b4\uac08 \ub2e8\uc5b4\ub294?</div>'
       +'<div style="font-size:16.5px;font-weight:700;color:#111;line-height:1.7;text-align:center">'+q.sent+'</div>'
-      +(q.sentKr?'<div style="font-size:12px;color:#9CA3AF;margin-top:7px;text-align:center">'+q.sentKr+'</div>':'')
+      /* [시험 신뢰도 20260814 ①] 빈칸 문항 아래 한글 번역을 그대로 보여주면 단어를 몰라도 번역만 읽고
+         정답을 고를 수 있다(어휘 측정이 한국어 독해 측정으로 변질). 판정 시험에서는 채점 전 숨기고,
+         답을 고른 뒤(lt.ans) 해설로만 제공해 학습 가치는 유지한다. */
+      +((q.sentKr&&lt.ans)?'<div style="font-size:12px;color:#9CA3AF;margin-top:7px;text-align:center">'+q.sentKr+'</div>':'')
       +'</div>'
       +_ltChoicesHtml(q,lt,true);
   } else if(q.t==='wt'){
@@ -16241,7 +16274,14 @@ function rQ4(){
   if(!w){S.gDone=true;return rGame();}
   const gs=S.gameSettings||{};
   var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():((typeof _mStudyFilter==='function')?_mStudyFilter(S.words):S.words); const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:((typeof _mStudyFilter==='function')?_mStudyFilter([]):([])));
-  const otherPool=src.filter(x=>x.en!==w.en);
+  /* [시험 신뢰도 20260814 ③] 오답 선택지를 같은 품사 우선으로 정렬 — 품사만 보고 소거되는 문제 차단.
+     같은 품사가 부족하면 나머지가 뒤따라오므로 출제 자체는 항상 가능. */
+  const _posK=(typeof _ltPosKey==='function')?_ltPosKey(w):'';
+  const otherPool=(function(){ var p=src.filter(x=>x.en!==w.en);
+    if(!_posK) return p;
+    var same=p.filter(function(x){return _ltPosKey(x)===_posK;});
+    var rest=p.filter(function(x){return _ltPosKey(x)!==_posK;});
+    return (same.length>=3)?same.concat(rest):p; })();
   const choiceCount=(gs.choiceCount===6?6:4);
   const needCount=Math.min(choiceCount-1,otherPool.length);
   const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(function(){S._gCs=shuf([w,...pick(otherPool,needCount)]);return S._gCs;})();
@@ -16361,7 +16401,14 @@ function rListenQ(){
   if(!w){S.gDone=true;return rGame();}
   const gs=S.gameSettings||{};
   var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():((typeof _mStudyFilter==='function')?_mStudyFilter(S.words):S.words); const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:((typeof _mStudyFilter==='function')?_mStudyFilter([]):([])));
-  const otherPool=src.filter(x=>x.en!==w.en);
+  /* [시험 신뢰도 20260814 ③] 오답 선택지를 같은 품사 우선으로 정렬 — 품사만 보고 소거되는 문제 차단.
+     같은 품사가 부족하면 나머지가 뒤따라오므로 출제 자체는 항상 가능. */
+  const _posK=(typeof _ltPosKey==='function')?_ltPosKey(w):'';
+  const otherPool=(function(){ var p=src.filter(x=>x.en!==w.en);
+    if(!_posK) return p;
+    var same=p.filter(function(x){return _ltPosKey(x)===_posK;});
+    var rest=p.filter(function(x){return _ltPosKey(x)!==_posK;});
+    return (same.length>=3)?same.concat(rest):p; })();
   const choiceCount=(gs.choiceCount===6?6:4);
   const needCount=Math.min(choiceCount-1,otherPool.length);
   const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(function(){S._gCs=shuf([w,...pick(otherPool,needCount)]);return S._gCs;})();
@@ -16475,7 +16522,14 @@ function rFill(){
     filled=useEx?ex.replace(new RegExp('\\b'+reEsc(w.en)+'(?:s|es|ed|ing|ies|d)?\\b','gi'),'<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>'):('<span style="color:'+acc+';font-weight:900;text-decoration:underline">'+w.en+'</span>');
   }
   var _cbwS=(typeof getCurrentBookWords==='function'&&getCurrentBookWords().length>=4)?getCurrentBookWords():((typeof _mStudyFilter==='function')?_mStudyFilter(S.words):S.words); const src=S.gWords.length>=4?S.gWords:(_cbwS.length>=4?_cbwS:((typeof _mStudyFilter==='function')?_mStudyFilter([]):([])));
-  const otherPool=src.filter(x=>x.en!==w.en);
+  /* [시험 신뢰도 20260814 ③] 오답 선택지를 같은 품사 우선으로 정렬 — 품사만 보고 소거되는 문제 차단.
+     같은 품사가 부족하면 나머지가 뒤따라오므로 출제 자체는 항상 가능. */
+  const _posK=(typeof _ltPosKey==='function')?_ltPosKey(w):'';
+  const otherPool=(function(){ var p=src.filter(x=>x.en!==w.en);
+    if(!_posK) return p;
+    var same=p.filter(function(x){return _ltPosKey(x)===_posK;});
+    var rest=p.filter(function(x){return _ltPosKey(x)!==_posK;});
+    return (same.length>=3)?same.concat(rest):p; })();
   const choiceCount=(gs.choiceCount===6?6:4);
   const needCount=Math.min(choiceCount-1,otherPool.length);
   const cs=(S.gAns&&S._gCs&&S._gCs.length)?S._gCs:(function(){S._gCs=shuf([w,...pick(otherPool,needCount)]);return S._gCs;})();
@@ -16493,7 +16547,9 @@ function rFill(){
   if(w.img && gs.showEmoji===true) H+='<div style="font-size:30px;margin-bottom:10px">'+w.img+'</div>';
   if(useEx){
     H+='<div style="font-size:20px;line-height:1.7;font-style:italic;max-width:340px">'+(answered?filled:blanked)+'</div>';
-    if(_aw && gs.showKr!==false) H+='<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:12px">뜻: '+_aw+'</div>';
+    /* [시험 신뢰도 20260814 ①] 빈칸 문제에서 정답 단어의 '뜻'을 함께 보여주면 어휘를 몰라도 정답이 드러난다.
+       챕터 통과 시험·최종 시험(판정)에서는 답변 전 숨기고, 답한 뒤에만 표시. 일반 학습 게임은 기존대로. */
+    if(_aw && gs.showKr!==false && (!S._inChExam || answered)) H+='<div style="font-size:14px;color:rgba(255,255,255,.6);margin-top:12px">뜻: '+_aw+'</div>';
   } else {
     H+='<div style="font-size:34px;font-weight:900;letter-spacing:4px;color:'+acc+'">'+(answered?_qw:'_ _ _ _')+'</div>';
     if(_aw) H+='<div style="font-size:18px;color:#fff;font-weight:700;margin-top:14px">'+_aw+'</div>';

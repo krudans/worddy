@@ -1852,6 +1852,116 @@ window._bfApplyUrl = function(url) {
   const st = document.getElementById('bf-upload-status'); if(st){ st.textContent='✅ URL 적용됨'; st.style.color='#16A34A'; }
 };
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   [나비 메타 자동 동기화 20260817]
+   앱은 부팅 시 settings/butterflyMeta 1건(글자정보 + 128px 썸네일, 약 295KB)만 읽는다.
+   예전에는 butterflies 컬렉션 전체(13.4MB)를 받았다.
+   → 나비를 저장/삭제/일괄등록할 때 이 문서를 자동으로 맞춰준다.
+     사람이 따로 스크립트를 돌릴 필요 없다.
+   ※ 나비 사진 원본은 butterflies/{id}.imageUrl 에 그대로 둔다. 여기엔 썸네일만 넣는다.
+   ══════════════════════════════════════════════════════════════════════ */
+var _BF_META_DROP = ['imageUrl','svgCode','seededFrom','updatedAt','thumb'];
+var _BF_THUMB_PX = 128, _BF_THUMB_TYPE = 'image/webp', _BF_THUMB_Q = 0.82;
+
+function _bfShrink(url){
+  return new Promise(function(res){
+    if(!url) return res('');
+    // http(s) 이미지는 이미 가벼운 주소이므로 그대로 쓴다 (캔버스 오염 회피)
+    if(/^https?:/i.test(url)) return res(url);
+    var im = new Image();
+    im.onload = function(){
+      try{
+        var c = document.createElement('canvas');
+        c.width = c.height = _BF_THUMB_PX;
+        var x = c.getContext('2d');
+        x.imageSmoothingQuality = 'high';
+        x.drawImage(im, 0, 0, _BF_THUMB_PX, _BF_THUMB_PX);
+        res(c.toDataURL(_BF_THUMB_TYPE, _BF_THUMB_Q));
+      }catch(e){ console.warn('[나비메타] 썸네일 생성 실패', e); res(''); }
+    };
+    im.onerror = function(){ res(''); };
+    im.src = url;
+  });
+}
+
+function _bfMetaEntry(id, data){
+  var o = { id: id };
+  Object.keys(data).sort().forEach(function(k){
+    if(_BF_META_DROP.indexOf(k) >= 0) return;
+    var v = data[k];
+    if(v === undefined || v === null || v === '') return;
+    o[k] = v;
+  });
+  return o;
+}
+
+async function _bfMetaWrite(list){
+  list.sort(function(a,b){ return String(a.id).localeCompare(String(b.id)); });
+  var payload = {
+    list: list, count: list.length,
+    thumbPx: _BF_THUMB_PX, thumbType: _BF_THUMB_TYPE,
+    builtAt: new Date().toISOString(),
+    note: '나비 글자정보 + 썸네일. 원본 사진은 butterflies/{id}.imageUrl 에 있음. 관리자 저장 시 자동 갱신됨.'
+  };
+  var bytes = new TextEncoder().encode(JSON.stringify(payload)).length;
+  if(bytes > 950000) throw new Error('메타 문서가 1MiB 한도에 근접합니다 (' + Math.round(bytes/1024) + 'KB). 썸네일 크기를 줄여야 합니다.');
+  await db.collection('settings').doc('butterflyMeta').set(payload);
+  return bytes;
+}
+
+async function _bfMetaUpsert(id, data){
+  try{
+    var ref = db.collection('settings').doc('butterflyMeta');
+    var cur = (await ref.get()).data() || {};
+    var list = Array.isArray(cur.list) ? cur.list.slice() : [];
+    var i = -1;
+    for(var k=0;k<list.length;k++){ if(list[k] && list[k].id === id){ i = k; break; } }
+    var prev = (i >= 0) ? list[i] : null;
+    var o = _bfMetaEntry(id, data);
+    o.thumb = data.imageUrl ? await _bfShrink(data.imageUrl) : ((prev && prev.thumb) ? prev.thumb : '');
+    if(i >= 0) list[i] = o; else list.push(o);
+    var bytes = await _bfMetaWrite(list);
+    console.log('[나비메타] ' + id + ' 갱신 · 총 ' + list.length + '종 / ' + Math.round(bytes/1024) + 'KB');
+  }catch(e){
+    console.error('[나비메타] 동기화 실패', e);
+    if(typeof toast === 'function') toast('⚠ 나비 메타 동기화 실패 — 앱에 반영 안 될 수 있습니다','err');
+  }
+}
+
+async function _bfMetaRemove(id){
+  try{
+    var ref = db.collection('settings').doc('butterflyMeta');
+    var cur = (await ref.get()).data() || {};
+    var list = (Array.isArray(cur.list) ? cur.list : []).filter(function(x){ return !(x && x.id === id); });
+    await _bfMetaWrite(list);
+    console.log('[나비메타] ' + id + ' 제거 · 총 ' + list.length + '종');
+  }catch(e){
+    console.error('[나비메타] 동기화 실패', e);
+    if(typeof toast === 'function') toast('⚠ 나비 메타 동기화 실패','err');
+  }
+}
+
+async function _bfMetaRebuild(){
+  try{
+    if(typeof toast === 'function') toast('나비 메타 재생성 중...','ok');
+    var snap = await db.collection('butterflies').get();
+    var list = [];
+    for(var i=0;i<snap.docs.length;i++){
+      var d = snap.docs[i], src = d.data();
+      var o = _bfMetaEntry(d.id, src);
+      o.thumb = await _bfShrink(src.imageUrl || '');
+      list.push(o);
+    }
+    var bytes = await _bfMetaWrite(list);
+    console.log('[나비메타] 전체 재생성 · ' + list.length + '종 / ' + Math.round(bytes/1024) + 'KB');
+    if(typeof toast === 'function') toast('✅ 나비 메타 재생성 완료 (' + list.length + '종)','ok');
+  }catch(e){
+    console.error('[나비메타] 재생성 실패', e);
+    if(typeof toast === 'function') toast('⚠ 나비 메타 재생성 실패: ' + (e.message||''),'err');
+  }
+}
+
 async function saveBF(id){
   const name = (document.getElementById('bf-name')?.value||'').trim();
   if(!name){toast('이름은 필수입니다','err');return;}
@@ -1885,6 +1995,7 @@ async function saveBF(id){
   };
   try{
     await db.collection('butterflies').doc(bid).set(data,{merge:true});
+    await _bfMetaUpsert(bid, data);   /* [나비 메타 자동 동기화 20260817] */
     toast('✅ '+(id?'수정':'등록')+' 완료','ok');
     cm(); rBF();
   }catch(e){
@@ -1905,7 +2016,7 @@ async function editBF(id){
   if(bf){ showAddBF({...bf}); return; }
   toast('나비 정보를 찾을 수 없어요','err');
 }
-async function deleteBF(id,name){if(!confirm(name+' 삭제?'))return;try{await db.collection('butterflies').doc(id).delete();toast('삭제');rBF();}catch(e){toast('오류','err');}}
+async function deleteBF(id,name){if(!confirm(name+' 삭제?'))return;try{await db.collection('butterflies').doc(id).delete();await _bfMetaRemove(id);/* [나비 메타 자동 동기화 20260817] */toast('삭제');rBF();}catch(e){toast('오류','err');}}
 async function downloadBFImages(){toast('준비 중...');if(typeof JSZip==='undefined'){const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';document.head.appendChild(s);await new Promise(res=>s.onload=res);}const snap=await db.collection('butterflies').get();const zip=new JSZip();const canvas=document.createElement('canvas');canvas.width=200;canvas.height=200;const ctx=canvas.getContext('2d');for(const doc of snap.docs){const bf=doc.data();if(!bf.svgCode)continue;const svgStr=bf.svgCode.replace(/width="[^"]*"/,'width="200"').replace(/height="[^"]*"/,'height="200"');const img=new Image();const blob=new Blob([svgStr],{type:'image/svg+xml'});const url=URL.createObjectURL(blob);await new Promise(res=>{img.onload=()=>{ctx.clearRect(0,0,200,200);ctx.drawImage(img,0,0);res();};img.src=url;});zip.file(`${bf.id}_${(bf.name||bf.id).replace(/\s/g,'_')}.png`,canvas.toDataURL('image/png').split(',')[1],{base64:true});URL.revokeObjectURL(url);}const content=await zip.generateAsync({type:'blob'});const a=document.createElement('a');a.href=URL.createObjectURL(content);a.download='butterfly_images.zip';a.click();toast('✅ 완료');}
 
 
@@ -2256,6 +2367,7 @@ async function seedPdfButterflies() {
       toast('등록 중... ' + (i+1) + '/' + keys.length, 'ok');
     }
   }
+  await _bfMetaRebuild();   /* [나비 메타 자동 동기화 20260817] 일괄등록 후 메타 전체 재생성 */
   toast('✅ 완료! 성공 ' + success + ' / 실패 ' + fail, 'ok');
   rBF();
 }

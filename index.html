@@ -1,4 +1,4 @@
-<!-- build: 20260710-chapter-200 -->
+<!-- build: 20260818-markleak-chdone-once -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -1315,9 +1315,9 @@ function _liveMapResync(){
     if(!_cb || !_cb.markMap) return;
     var _bw=(typeof getBookWords==='function')?(getBookWords(_cb)||[]):(_cb.words||[]);
     var _own=new Set(_bw.map(function(w){return w&&w.en;}));
-    var _src=Object.assign({}, _cb.markMap, S.markMap||{});
+    var _src=Object.assign({}, _cb.markMap, (S._mmBook===undefined||S._mmBook===S.currentBook)?(S.markMap||{}):{});   /* [마크 누수 차단 20260818] */
     var _nm={}; _own.forEach(function(en){ if(_src[en]!==undefined) _nm[en]=_src[en]; });
-    S.markMap=_nm;
+    S.markMap=_nm; S._mmBook=S.currentBook;
   }catch(e){}
 }
 function _mergeTHistory(local, srv, tomb){
@@ -4953,8 +4953,27 @@ function ensureMarkDates(){
   }
   return S.markDates;
 }
+/* [마크 누수 차단 20260818] 라이브 S.markMap이 현재 책 것인지 보장. 소유 태그(S._mmBook)가 현재 책과 다르면
+   내 단어장→S.myMarkMap, 책→{...bk.markMap}으로 재구성. (setMark는 bk.markMap에도 항상 기록하므로 라이브맵 폐기 무손실) */
+function _ensureLiveMap(force){
+  try{
+    var cur=S.currentBook||'내 단어장';
+    if(!force && S._mmBook===cur && S.markMap && typeof S.markMap==='object') return;
+    if(cur==='내 단어장'){
+      if(!S.myMarkMap){ try{ S.myMarkMap=JSON.parse(localStorage.getItem('wd-mk')||'{}')||{}; }catch(e){ S.myMarkMap={}; } }
+      S.markMap=S.myMarkMap;
+    } else {
+      var bk=(S.books||[]).find(function(b){return b&&b.name===cur;});
+      S.markMap = bk ? Object.assign({}, bk.markMap||{}) : {};
+      if(bk && Array.isArray(bk.learned)){ try{ S.learned=new Set(bk.learned); }catch(e){} }
+    }
+    S._mmBook=cur;
+  }catch(e){}
+}
+window._ensureLiveMap=_ensureLiveMap;
 function setMark(en, val, bookName) {
-  S._markVer=(S._markVer||0)+1;   /* [마크 버전 20260814] 학습 목록 캐시 무효화 신호 */
+  S._markVer=(S._markVer||0)+1;
+  try{ _ensureLiveMap(); }catch(e){}   /* [마크 누수 차단 20260818] 라이브맵이 다른 책 것이면 쓰기 전에 교정 */   /* [마크 버전 20260814] 학습 목록 캐시 무효화 신호 */
   /* [마킹 일원화 20260811] bookName 지정 시 그 책에 기록(단어목록 브라우즈 등).
      라이브 뷰(S.markMap/S.learned)는 현재 책과 일치할 때만 건드림 — 타 책 마킹이 라이브를 오염시키지 않게. */
   const _bn = bookName || S.currentBook || '내 단어장';
@@ -5087,6 +5106,7 @@ function load() {
   /* [정본 분리 20260724] 마크·외움도 words와 동일하게 정본/뷰 분리 — 영속층은 정본만 본다 */
   S.myLearned = S.learned; S.myMarkMap = S.markMap;
   S.markDates = JSON.parse(localStorage.getItem('wd-mkd')||'{}');
+  S._mmBook='내 단어장';   /* [마크 누수 차단 20260818] 라이브 S.markMap의 소유 책 태그 — 이 시점 wd-mk(내 단어장) */
   S.favorites = JSON.parse(localStorage.getItem('wd-fav')||'[]');
   S._dcClaimed = localStorage.getItem('wd-dcc')||'';
   S._totalStudyMins = parseInt(localStorage.getItem('wd-tsm')||'0');
@@ -5167,6 +5187,13 @@ function load() {
   try{ var _cbm=String(S.currentBook).match(/^([1-3])단계\s*·\s*\S+\s*\(레벨\s*(\d+)\)$/);
     if(_cbm){ S.currentBook='레벨업 '+parseInt(_cbm[1],10)+'단계 _ Lv.'+parseInt(_cbm[2],10); try{ localStorage.setItem('wd-cbk', S.currentBook); }catch(e){console.warn('[wd-io:load]',e);} }
   }catch(e){console.warn('[wd-io:load]',e);}
+  /* ══ [마크 누수 차단 20260818] 부팅 시 현재 책이 내 단어장이 아니면 라이브 S.markMap을 그 책의 markMap으로 재설정.
+     기존: S.currentBook은 wd-cbk에서 복원되는데 S.markMap은 wd-mk(내 단어장=S.myMarkMap 동일 객체)에 그대로 남아
+       ① _markVal이 현재 책 판독 시 S.markMap을 먼저 읽어 다른 책/내 단어장에서 외운 동일 철자 단어가 "외움"으로 오판독
+       ② setMark가 S.markMap(=S.myMarkMap)에 써서 커리큘럼 마킹이 내 단어장 정본(wd-mk·users.markMap)에 누적
+       ③ saveCurrentBook/_liveMapResync가 bk.markMap ∪ S.markMap으로 저장해 누수 마크가 책 정본에 박제
+       → 리셋한 4챕터에 외운 적 없는 114개가 "외움"으로 뜬 근본 원인. ══ */
+  try{ if(typeof _ensureLiveMap==='function') _ensureLiveMap(true); }catch(e){}
   // 앱 시작 시 현재 단어장이 커리큘럼이면 학습할 챕터로 스코프(미설정 시 책 전체 1000개가 대상이 되는 문제 방지)
   try{ var _icb=(S.books||[]).find(function(b){return b.name===S.currentBook;});
     if(_icb && _icb.isCurriculum && typeof _activeChapterIdx==='function'){ var _ici=_activeChapterIdx(_icb); if(_ici!=null) S._studyChapterIdx=_ici; }
@@ -12013,7 +12040,7 @@ function _selectBook(name) {
     } catch(e) { S.words = []; }
     if(S.myMarkMap){ S.markMap=S.myMarkMap; } else { const mk=localStorage.getItem('wd-mk'); S.myMarkMap=S.markMap=mk?JSON.parse(mk):{}; }
     if(S.myLearned){ S.learned=S.myLearned; } else { const lrn=localStorage.getItem('wd-lrn'); S.myLearned=S.learned=new Set(lrn?JSON.parse(lrn):[]); }
-    S.currentBook = name;
+    S.currentBook = name; S._mmBook='내 단어장';
     S.idx = 0; S.flip = false;
     if(typeof sv === 'function') sv();
     return;
@@ -12023,7 +12050,7 @@ function _selectBook(name) {
   S.words = [...(book.words||[])];
   S.markMap = {...(book.markMap||{})};
   S.learned = new Set(book.learned||[]);
-  S.currentBook = name;
+  S.currentBook = name; S._mmBook=name;
   S.idx = 0; S.flip = false;
   if(typeof sv === 'function') sv();
 }
@@ -12082,7 +12109,7 @@ function switchBook(name) {
   S.words=[..._bw];
   S.markMap={...book.markMap};
   S.learned=new Set(book.learned||[]);
-  S.currentBook=name;
+  S.currentBook=name; S._mmBook=name;
   S.idx=0; S.flip=false;
   sv(); cm(); go('mybooks');
   toast(`📚 "${name}"으로 전환!`);
@@ -12106,6 +12133,7 @@ function saveCurrentBook() {
     // [수정] 현재 책에 속한 단어의 마킹만 저장 (전역/타 단어장 마킹 누수로 학습률이 부풀려지는 버그 차단)
     var _bwSC=(typeof getBookWords==='function')?(getBookWords(S.books[idx])||[]):(S.books[idx].words||[]);
     var _ownSC=new Set(_bwSC.map(function(w){return w&&w.en;}));
+    if(S._mmBook!==undefined && S._mmBook!==S.currentBook){ try{ _ensureLiveMap(); }catch(e){} }   /* [마크 누수 차단 20260818] 타 책 라이브맵을 이 책 정본에 합치지 않음 */
     var _mmSC={}; Object.keys(S.markMap||{}).forEach(function(en){ if(_ownSC.has(en)) _mmSC[en]=S.markMap[en]; });
     // [안전망] 라이브 맵에 이 책 단어 마킹이 하나도 없는데 책엔 기존 진도가 있으면
     //  = 로드 직후 S.markMap이 이 책과 미동기화된 상황 → 덮어쓰지 않고 진도 보존 (진도 소실 버그 차단)
@@ -14006,8 +14034,7 @@ window._doMark = function(v) {
       if(_cb && (_cb.isCurriculum || _cb.packId) && typeof _activeChapterIdx==='function' && typeof _chapterMemorized==='function'){
         var _ci = (typeof S._studyChapterIdx==='number' && S._studyChapterIdx>=0) ? S._studyChapterIdx : _activeChapterIdx(_cb);
         if(_ci!=null && _ci>=0 && !(_cb.chPass&&_cb.chPass[_ci]) && typeof _checkChapterDone==='function'){
-          _checkChapterDone(_cb, _ci);
-          return;   // 모달 띄웠으니 재렌더 생략
+          if(_checkChapterDone(_cb, _ci)===true) return;   /* [완료 팝업 1회 20260818] 실제로 모달을 띄웠을 때만 재렌더 생략 (기존: 무조건 return → 카드 안 넘어감) */
         }
       }
     }
@@ -14200,7 +14227,7 @@ function _ftRestartStage(bookName){
     book.chPass=new Array(n).fill(false);
     book.markMap={};
     book.learned=[];
-    if(S.currentBook===bookName){ S.markMap={}; try{ S.learned=new Set(); }catch(e){} }   // 현재 학습 중인 책이면 라이브 진도도 함께 비운다
+    if(S.currentBook===bookName){ S.markMap={}; S._mmBook=bookName; try{ S.learned=new Set(); }catch(e){} }   // 현재 학습 중인 책이면 라이브 진도도 함께 비운다
     S._studyChapterIdx=0; S._chReview=0;
     S._flashSig=null; S._flipWords=null; S._flashShuffled=null; S._lastFilter=null; S.idx=0; S.flip=false;
     if(typeof sv==='function') sv();
@@ -14220,7 +14247,7 @@ function _markVal(book, en){
   try{
     if(!en) return undefined;
     var k=(typeof _mk==='function')?_mk(en):en;
-    if(book && S.currentBook===book.name && S.markMap){
+    if(book && S.currentBook===book.name && S.markMap && (S._mmBook===undefined || S._mmBook===book.name)){   /* [마크 누수 차단 20260818] 라이브맵이 이 책 것일 때만 */
       if(S.markMap[k]!==undefined) return S.markMap[k];
       if(S.markMap[en]!==undefined) return S.markMap[en];
     }
@@ -14268,11 +14295,15 @@ function _checkChapterDone(book, chIdx, force){
      '전부 외우면 무시험 자동 통과'가 대신하고 있었다 — 테스트의 가치와 정확도를 훼손하는 구조.
      복원: 암기 완료는 '응시 자격'일 뿐, 통과는 오직 시험 90%로만(finishChapterExam 단일 경로). ══ */
   try{
-    if(!book) return;
+    if(!book) return false;
     if(!Array.isArray(book.chPass)) book.chPass=new Array((typeof _chapterCount==='function')?_chapterCount(book):5).fill(false);
-    if(book.chPass[chIdx]) return;
+    if(book.chPass[chIdx]) return false;
     var _full = (_chapterMemRatio(book, chIdx) >= 1) || ((typeof _chapterMemorized==='function') && _chapterMemorized(book, chIdx));
-    if(!force && !_full) return;
+    if(!force && !_full) return false;
+    /* [완료 팝업 1회 20260818] setMark·_doMark·rLearn·자동학습 등 여러 지점에서 매번 호출되던 구조 → 책+챕터당 세션 1회만.
+       (기존: 100% 도달 후 단어 하나 마킹할 때마다 팝업 반복.) 강제(force)나 아직 표시 안 한 챕터만 표시. */
+    var _onceKey=String(book.name)+'#'+chIdx;
+    if(!force){ if(!S._chDoneShown) S._chDoneShown={}; if(S._chDoneShown[_onceKey]) return false; S._chDoneShown[_onceKey]=1; }
     var mr=document.getElementById('mr');
     if(!mr){ mr=document.createElement('div'); mr.id='mr'; (document.getElementById('app')||document.body).appendChild(mr); }
     var bnEsc=String(book.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -14284,7 +14315,9 @@ function _checkChapterDone(book, chIdx, force){
       +'<button onclick="cm();startChapterExam(\''+bnEsc+'\','+chIdx+')" style="width:100%;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;cursor:pointer">🏁 시험 시작</button>'
       +'<button onclick="cm()" style="width:100%;margin-top:8px;background:#F3F4F6;color:#6B7280;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer">나중에 볼게요</button>'
       +'</div></div>';
+    return true;
   }catch(e){console.warn('[wd-io:_checkChapterDone]',e);}
+  return false;
 }
 /* [챕터 시험 부활 20260811] 시작 스위치 재작성 — 기존 소비부(게임 체이닝·배너·타이머·판정)에 정확히 맞춤 */
 /* ══ [챕터시험 안내 페이지 20260814] 실사용 지적: 버튼을 누르면 예고 없이 1번 문제가 바로 시작돼 당황.
@@ -14365,13 +14398,15 @@ function rLearn() {
       var _ci = (typeof S._studyChapterIdx==='number' && S._studyChapterIdx>=0) ? S._studyChapterIdx : _activeChapterIdx(_lb);
       var _cp = _lb.chPass||[];
       if(_ci!=null && _ci>=0 && !_cp[_ci] && _chapterMemorized(_lb, _ci)){
-        /* [챕터 자동완료 20260723] 다 외웠으면 시험 없이 즉시 완료 처리 → 완료 모달이 뜬다 */
-        try{ if(typeof _checkChapterDone==='function') setTimeout(function(){ _checkChapterDone(_lb, _ci); }, 60); }catch(e){}
+        /* [완료 팝업 1회 20260818] 자동통과(20260723) 시절 문구("다음 챕터가 열렸어요")·렌더마다 모달 재호출 제거.
+           시험 부활(20260811) 이후 통과는 시험 90%뿐 → 여기선 '암기 완료 → 시험 응시' 안내만. */
         var _chNo=_ci+1, _chTotal=_chapterCount(_lb);
+        var _bnEscR=String(_lb.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
         return '<div style="padding:44px 24px;text-align:center">'
           +'<div style="font-size:52px;margin-bottom:12px">🎉</div>'
-          +'<div style="font-size:17px;font-weight:800;color:var(--text1,#111);margin-bottom:8px">'+_chNo+'챕터 완료!</div>'
-          +'<div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">'+(_chNo<_chTotal?('다음 '+(_chNo+1)+'챕터가 열렸어요.'):'모든 챕터를 마쳤어요. 최종 테스트에 도전하세요!')+'</div>'
+          +'<div style="font-size:17px;font-weight:800;color:var(--text1,#111);margin-bottom:8px">'+_chNo+'챕터 암기 완료!</div>'
+          +'<div style="font-size:13px;color:#6B7280;line-height:1.7;margin-bottom:20px">통과 시험(90점 이상)을 통과하면<br>'+(_chNo<_chTotal?('다음 '+(_chNo+1)+'챕터가 열리고'):'이 단계가 완료되고')+' 🦋 나비 쿠폰을 받아요.</div>'
+          +'<button onclick="startChapterExam(\''+_bnEscR+'\','+_ci+')" style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border:none;border-radius:12px;padding:13px 26px;font-size:15px;font-weight:800;cursor:pointer">🏁 챕터 통과 시험 보기</button>'
           +'<div style="margin-top:14px"><button onclick="S.flashRange=-1;S._chReview=1;go()" style="background:none;border:none;color:#9CA3AF;font-size:12.5px;cursor:pointer;text-decoration:underline">이 챕터 다시 복습하기</button></div>'
           +'</div>';
       }
@@ -18851,9 +18886,10 @@ auth.onAuthStateChanged(async user => {
       // 현재 책이 내 단어장이 아니면 해당 책 단어를 활성화 (활성 단어/책 일치)
       if(S.currentBook && S.currentBook!=='내 단어장' && Array.isArray(S.books)){
         const _cb=S.books.find(b=>b.name===S.currentBook);
-        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.learned)S.learned=new Set(_cb.learned); }
+        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.learned)S.learned=new Set(_cb.learned); S._mmBook=S.currentBook; }
       }
-      const mk=ls.getItem('wd-mk'); if(mk) S.markMap=JSON.parse(mk);
+      /* [마크 누수 차단 20260818] 기존: 현재 책 맵을 넣은 직후 wd-mk(내 단어장)로 무조건 덮어써 타 책 마크 누수 → 내 단어장일 때만 */
+      const mk=ls.getItem('wd-mk'); if(mk){ if(!S.currentBook||S.currentBook==='내 단어장'){ S.myMarkMap=S.markMap=JSON.parse(mk); S._mmBook='내 단어장'; } else { try{ S.myMarkMap=JSON.parse(mk); }catch(e){} } }
       const lrn=ls.getItem('wd-lrn'); if(lrn) S.learned=new Set(JSON.parse(lrn));
       const fav=ls.getItem('wd-fav'); if(fav) S.favorites=JSON.parse(fav);
       const ach=ls.getItem('wd-ach'); if(ach) S._achievements=JSON.parse(ach);
@@ -18968,9 +19004,9 @@ auth.onAuthStateChanged(async user => {
                     var _locM=Object.assign({}, (_cbM.markMap&&typeof _cbM.markMap==='object')?_cbM.markMap:{}, S.markMap||{});
                     var _scM={};
                     _ownM.forEach(function(en){ if(_locM[en]!==undefined) _scM[en]=_locM[en]; });
-                    S.markMap=_scM;
-                  } else { S.markMap=_mm; }
-                } else { S.markMap=_mm; }
+                    S.markMap=_scM; S._mmBook=S.currentBook;
+                  } else { S.markMap=_mm; S._mmBook=S.currentBook; }
+                } else { S.markMap=_mm; S._mmBook='내 단어장'; }
               }catch(e){ S.markMap=_mm; }
             }
             if(Array.isArray(_data.words) && _data.words.length){
@@ -19369,7 +19405,7 @@ auth.onAuthStateChanged(async user => {
               if(k === 'streak'){ return; }   /* [스트릭 정본 통일 20260811] 병합의 '서버 무조건 채택'이 syncProfile의 '로컬 재계산 정본'과 정면 상충 → 서버값 무시, 아래 studyLog 병합 완료 후 _streakFromLog로 재계산(합쳐진 기록 기준 참값) */
               if(k === 'alStreak'){ if(typeof _data[k]==='number') S[k]=_data[k]; return; }   /* [스트릭 수정 20260722] Math.max 고착 제거 */
               // [전수점검 보강] '옛 서버가 새 로컬을 덮는' 필드 보존 병합
-              if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object') S.markMap=Object.assign({}, _data.markMap, S.markMap||{}); return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
+              if(k === 'markMap'){ if(_data.markMap&&typeof _data.markMap==='object'){ /* [마크 누수 차단 20260818] 서버 users.markMap은 내 단어장 진도 → 정본(myMarkMap)에만, 라이브는 내 단어장일 때만 */ S.myMarkMap=Object.assign({}, _data.markMap, S.myMarkMap||{}); if(!S.currentBook||S.currentBook==='내 단어장'){ S.markMap=S.myMarkMap; S._mmBook='내 단어장'; } } return; } // 내 단어장 진도: 양쪽 보존(로컬 우선)
               if(k === '_ownedPacks'){ if(Array.isArray(_data._ownedPacks)) S._ownedPacks=Array.from(new Set([].concat(S._ownedPacks||[], _data._ownedPacks))); return; } // 구매이력: 합집합
               if(k === 'attendDates'){ if(Array.isArray(_data.attendDates)){ S.attendDates=Array.from(new Set([].concat(S.attendDates||[], _data.attendDates))); } return; } // 출석일: 합집합
               if(k === 'attendCount'){ S.attendCount=Math.max(S.attendCount||0, _data.attendCount||0, (S.attendDates||[]).length); return; } // 출석수: 최댓값
@@ -19575,7 +19611,7 @@ auth.onAuthStateChanged(async user => {
       // 현재 책이 내 단어장이 아니면 해당 책 단어를 활성화 (활성 단어/책 일치)
       if(S.currentBook && S.currentBook!=='내 단어장' && Array.isArray(S.books)){
         const _cb=S.books.find(b=>b.name===S.currentBook);
-        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.learned)S.learned=new Set(_cb.learned); }
+        if(_cb && Array.isArray(_cb.words)){ S.words=[..._cb.words]; if(_cb.markMap)S.markMap={..._cb.markMap}; if(_cb.learned)S.learned=new Set(_cb.learned); S._mmBook=S.currentBook; }
       }
       // 필드 순서 오류 자동 수정
       const _fixW2 = (arr) => (arr||[]).map(w => {

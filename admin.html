@@ -1910,6 +1910,20 @@ async function _bfMetaWrite(list){
   return bytes;
 }
 
+/* [팩 이름 통일 20260831] 원서팩 최종 이름은 항상 "영문명 / 한글명".
+   '·' '|' 등 다른 구분자로 입력돼도 앞이 영문·뒤가 한글일 때만 ' / '로 재조합.
+   (한글 코스명 "비즈니스 영어 · 실무" 같은 것은 앞부분에 한글이 있어 건드리지 않는다) */
+function _pkUnifyName(raw, koOverride){
+  try{
+    var t=String(raw||'').trim(); if(!t) return t;
+    var seg=t.split(/\s*[\u00b7|]\s*|\s+\/\s*/).map(function(x){return x.trim();}).filter(Boolean);
+    var en=seg[0]||t, ko=(koOverride!=null&&String(koOverride).trim())?String(koOverride).trim():(seg[1]||'');
+    if(/[\uac00-\ud7a3]/.test(en)) return t;   /* 앞부분이 한글(코스명 등)이면 손대지 않음 */
+    if(!/[A-Za-z]/.test(en)) return t;
+    if(!/[\uac00-\ud7a3]/.test(ko)) return en;
+    return en+' / '+ko;
+  }catch(e){ return raw; }
+}
 async function _bfMetaUpsert(id, data){
   try{
     var ref = db.collection('settings').doc('butterflyMeta');
@@ -4265,7 +4279,7 @@ async function _bpRegister() {
         if(_i2!==null) _readObj={ar:isNaN(_a2)?null:_a2, lexile:isNaN(_l2)?null:_l2, idx:_i2, auto:_auto, fk:(results[0]&&results[0].fkGrade)||null};
       }catch(e){}   /* [읽기수준 입력 20260721] */
       /* [제목 형식 20260725] 저장 이름은 "영문 원제 / 한글 제목". 한글이 없으면 영문만. */
-      var _fullName=(_bp.nameKo&&_bp.nameKo.trim()) ? (_bp.name+' / '+_bp.nameKo.trim()) : _bp.name;
+      var _fullName=_pkUnifyName(_bp.name, _bp.nameKo);   /* [팩 이름 통일 20260831] '영문 / 한글' 강제 — 자동입력·수기입력 모두 */
       var _wlv1=null; try{ await _cwLoadDicts(); _wlv1=_wlvAnalyze(toWords(results[0].selected)); }catch(e){}   /* [앱레벨 자동 분석 20260804] */
       /* [자동등록 종합 판단 20260805] 분석 결과를 구성 기준(basis)에 자동 합성 —
          마켓 카드·상세·공지가 '무슨 근거로 이 레벨인지'를 사람 손 없이 갖게 된다 */
@@ -5305,7 +5319,7 @@ async function saveNewPack() {
   console.log('[admin] 기존 팩 수:', packs.length);
   if(packs.find(p=>p.id===packId)){toast('이미 있는 ID예요','err');return;}
   const newPack = {
-    id: packId, name,
+    id: packId, name: _pkUnifyName(name),   /* [팩 이름 통일 20260831] */
     emoji: document.getElementById('pk-emoji')?.value||'📚',
     cat: document.getElementById('pk-cat')?.value||'기타',
     desc: document.getElementById('pk-desc')?.value||'',
@@ -5540,7 +5554,7 @@ async function saveEditPack(packId) {
   if (emoji) patch.emoji = emoji.trim();
   if (name && name.trim()) {
     if (p.courseId) patch.tierLabel = name.trim();     // 코스 안 단어장은 단계 이름
-    else patch.name = name.trim();
+    else patch.name = _pkUnifyName(name);   /* [팩 이름 통일 20260831] */
   }
 
   // 카테고리·문구는 낱개 단어장에서만

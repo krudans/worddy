@@ -1,4 +1,4 @@
-<!-- build: 20260831-xpspend-avatarbf -->
+<!-- build: 20260831b-thistory-ledger -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -1341,6 +1341,26 @@ function _mergeTHistory(local, srv, tomb){
     return out.slice(-_TH_MAX);
   }catch(e){ return Array.isArray(local)?local:[]; }
 }
+/* ══ [레벨테스트 유실 근본수정 20260831] tHistory 서버 반영을 sv 스냅샷에서 분리.
+   기존: sv()가 users.tHistory를 '이 기기 로컬 배열'로 통째 교체(merge:true도 배열 필드는 교체).
+   → 어제 다른 기기에서 응시한 기록을 부팅 직후(리스너 도착 전) 이 기기의 낡은 2건 스냅샷이 되덮어 유실.
+   나비(20260720)·쿠폰(20260811)과 동일 구조의 사고. 해법도 동일: 값 push를 sv에서 제거하고
+   변경 시 전용 함수가 서버 선독→union−묘비→write. union이라 어느 기기가 먼저 써도 잃지 않는다. ══ */
+async function _thServerMerge(tag){
+  try{
+    if(!S.user||!S.user.uid||!window.db) return;
+    if(window._sessionLost) return;
+    var ref=db.collection('users').doc(S.user.uid);
+    var srv={}; try{ srv=(await ref.get()).data()||{}; }catch(e){}
+    var tomb=Array.from(new Set([].concat(_thGetTomb()||[], Array.isArray(srv.deletedTHistory)?srv.deletedTHistory:[])));
+    var merged=_mergeTHistory(S.tHistory||[], Array.isArray(srv.tHistory)?srv.tHistory:[], tomb);
+    S.tHistory=merged;
+    try{ localStorage.setItem('wd-th', JSON.stringify(merged)); }catch(e){}
+    await ref.set({ tHistory: merged.slice(-(typeof _TH_MAX!=='undefined'?_TH_MAX:50)), deletedTHistory: tomb }, {merge:true});
+    console.log('[레벨테스트 원장]', tag||'', merged.length+'건 서버 병합 완료');
+  }catch(e){ console.warn('[wd-io:_thServerMerge]',e); }
+}
+window._thServerMerge=_thServerMerge;
 // 개별 삭제
 function _thDelete(key){
   try{
@@ -1348,6 +1368,7 @@ function _thDelete(key){
     S.tHistory=(S.tHistory||[]).filter(function(h){ return _thKey(h)!==key; });
     _thSetTomb([].concat(_thGetTomb(), [key]));
     try{ localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:_thDelete]',e);}
+    try{ if(typeof _thServerMerge==='function') _thServerMerge('개별삭제'); }catch(e){}   /* [레벨테스트 유실 근본수정 20260831] 묘비 포함 즉시 기록 */
     if(typeof sv==='function') sv();
     if(typeof showGrowthChart==='function') showGrowthChart();
   }catch(e){console.warn('[wd-io:_thDelete]',e);}
@@ -1360,6 +1381,7 @@ function _thClearAll(){
     S.tHistory=[];
     _thSetTomb([].concat(_thGetTomb(), keys));
     try{ localStorage.setItem('wd-th','[]'); }catch(e){console.warn('[wd-io:_thClearAll]',e);}
+    try{ if(typeof _thServerMerge==='function') _thServerMerge('전체삭제'); }catch(e){}   /* [레벨테스트 유실 근본수정 20260831] */
     if(typeof sv==='function') sv();
     if(typeof cm==='function') cm();
     if(typeof toast==='function') toast('성장 기록을 삭제했어요');
@@ -5504,7 +5526,8 @@ function sv() {
       // myButterflies / deletedButterflies : _bfMerge·_bfSetTomb가 관리 → sv 제외
       /* [쿠폰 원장화 20260811] bfCoupons·bfCouponsTs 값 push 제거 — _couponDelta(increment)가 유일한 쓰기 경로.
          값 push가 남아 있으면 지급을 못 본 기기의 스냅샷이 서버 원장을 되덮는다(1000+ 유실의 원인). */
-      tHistory: (S.tHistory||[]).slice(-(typeof _TH_MAX!=='undefined'?_TH_MAX:50)),   // 레벨테스트 성장 이력(최근 N회)
+      /* [레벨테스트 유실 근본수정 20260831] tHistory 값 push 제거 — _thServerMerge(union−묘비)가 유일한 쓰기 경로.
+         값 push가 남아 있으면 응시를 못 본 기기의 부팅 스냅샷이 서버 배열을 되덮는다(나비·쿠폰 유실과 동일 구조). */
       deletedTHistory: Object.keys(S._thSessTomb||{}),   /* [묘비 정본화 20260724] 이 세션 삭제만 — 낡은 로컬 묘비가 서버 못 덮음 */   // 삭제된 이력(묘비)
       email:(S.user&&S.user.email)||'',
       // collection / deletedCollection : _colMerge·_colTombSet가 관리 → sv 제외 (위 [나비 유실 근본수정] 주석 참조)
@@ -8669,6 +8692,7 @@ function _ltFinish(){
     try{ if(!invalidRun){ S.tHistory=S.tHistory||[]; S.tHistory.push({date:(typeof today==='function'?today():''), ts:Date.now(), level:placement, qTotal:qTotal, correct:correctTotal, areas:areas, conf:conf, bands:(function(){ var o={},s=lt.levelStats||{}; Object.keys(s).forEach(function(k){ if(s[k]&&s[k].t) o[k]=s[k].c+'/'+s[k].t; }); return o; })()});   /* [누적 프로파일 판정 20260814] 밴드별 정답률 보존 — 재진단 비교·사후 검증용 */ }   /* [영역 프로필 20260803][무효 응시는 기록 제외 20260804] */
       if(S.tHistory.length>_TH_MAX) S.tHistory=S.tHistory.slice(-_TH_MAX);   // 서버·병합과 동일한 상한 유지
       localStorage.setItem('wd-th', JSON.stringify(S.tHistory)); }catch(e){console.warn('[wd-io:_ltFinish]',e);}
+      try{ if(typeof _thServerMerge==='function') _thServerMerge('응시직후'); }catch(e){}   /* [레벨테스트 유실 근본수정 20260831] sv 스로틀·레이스에 안 맡기고 즉시 기록 */
     if(typeof addXP==='function') addXP(correctTotal*2);
     if(typeof sv==='function') sv();
     var _lvStats=lt.levelStats||{}, _wrong=(lt.wrongWords||[]);

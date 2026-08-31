@@ -1,4 +1,4 @@
-<!-- build: 20260831b-thistory-ledger -->
+<!-- build: 20260831c-bf100-ready -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2620,7 +2620,7 @@ function showGameIntro(force=false) {
       char: 'coco', mood: 'normal',
       title: '번데기에서 나비가 탄생해요 🫘',
       sub: '레벨업 순간 랜덤으로 나비 종류가 결정돼요',
-      desc: '지구상 실존하는 나비 30종 중\n어떤 나비가 나올지는 아무도 몰라요!\n희귀한 나비일수록 XP가 많이 필요해요.',
+      desc: '지구상 실존하는 나비 100종 중\n어떤 나비가 나올지는 아무도 몰라요!\n희귀한 나비일수록 XP가 많이 필요해요.',
       btn: '다음 →'
     },
     {
@@ -3930,7 +3930,7 @@ function changeNickname() {
     /* [나비 유실 근본수정 20260720] sv payload에서 나비 제거했으므로 서버 반영은 _bfMerge로 직접 수행 */
     if(S.user && typeof db!=='undefined'){ try{ _bfMerge([], []); }catch(e){console.warn('[wd-io:changeNickname]',e);} }
     S.nick = v; sv();
-    toast('👑 복사왕! 나비 30종 전체 획득!'); vib([100,50,200]);
+    toast('👑 복사왕! 나비 도감 전 종 획득!'); vib([100,50,200]);
     go(); return;
   }
 
@@ -4075,7 +4075,7 @@ const ACHIEVEMENTS = [
   {id:'combo_10',     emoji:'🌟',name:'10연속 정답',  desc:'10연속 정답 달성',        check:()=>(S._maxCombo||0)>=10},
   {id:'first_bf',     emoji:'🦋',name:'첫 나비',      desc:'나비 처음 수집',           check:()=>getMyButterflies().length>=1},
   {id:'bf_10',        emoji:'🌈',name:'나비 10종',    desc:'나비 10종 수집',          check:()=>getMyButterflies().length>=10},
-  {id:'bf_all',       emoji:'👑',name:'나비 도감 완성',desc:'나비 30종 전부 수집',    check:()=>getMyButterflies().length>=30},
+  {id:'bf_all',       emoji:'👑',name:'나비 도감 완성',desc:'나비 도감 전 종 수집',    check:()=>getMyButterflies().length>=((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:30)},
   {id:'levelup_god',  emoji:'🌟',name:'나비의 신',    desc:'최고 레벨 달성',          check:()=>S.lid==='god'},
   /* [완독 배지 20260723] 단어장(팩·커리큘럼)의 모든 챕터 미션을 통과하면 = 완독 */
   {id:'finish_1',     emoji:'📕',name:'첫 완독',      desc:'단어장 1권 모든 챕터 통과', check:()=>_finishedBookCount()>=1},
@@ -6665,7 +6665,7 @@ function updStreak() {
     if(S.streak===30) {
       setTimeout(()=>{
         if(confirm('🎉 30일 연속 달성! 나비 뽑기 보너스 1회! 지금 뽑을까요?')) {
-          const bf=rollButterfly();
+          const bf=rollButterfly(true);   /* [100종 확장 20260831] 미보유 우선 */
           if(bf) showButterflyRoll(bf);
           else toast('이미 모든 나비를 수집했어요! 👑');
         }
@@ -7185,7 +7185,7 @@ function showOnboarding() {
     {ic:'📚', title:'플래시카드 (카드 넘겨 외우기)', desc:'카드를 탭하면 뜻이 나와요. 좌우로 스와이프해서 넘길 수 있어요', color:'#16A34A'},
     {ic:'🏷️', title:'마크 시스템', desc:'○ 미암기 → ✅ 외웠음 → 🦋 헷갈리는 단어로 분류해요', color:'#1E5FA5'},
     {ic:'✨', title:'AI 자동완성', desc:'단어 추가 시 ✨AI 버튼을 누르면 뜻, 발음, 예문을 자동으로 채워줘요', color:'#7C3AED'},
-    {ic:'🦋', title:'나비 도감 30종', desc:'단어를 외울수록 캐릭터가 자라고 나비를 수집해요. 지구상 2만여 종 중 대표 30종을 모아보세요!', color:'#7C3AED'},
+    {ic:'🦋', title:'나비 도감 100종', desc:'단어를 외울수록 캐릭터가 자라고 나비를 수집해요. 지구상 2만여 종 중 대표 100종을 모아보세요!', color:'#7C3AED'},
     {ic:'🎯', title:'퀴즈 시작 전 설정', desc:'문제 수, 마크 필터, 자동 마킹 등을 설정하고 시작할 수 있어요', color:'#EC4899'},
     {ic:'📅', title:'출석 + 캘린더', desc:'매일 앱을 열면 출석 체크가 돼요. 캘린더에서 학습 기록을 확인해요', color:'#E65100'},
   ];
@@ -8834,7 +8834,7 @@ function _doLevelUp() {
   // 마지막 단계(나비의 신)일 때만 나비 뽑기
   if(nextLv.isFinal) {
     showLevelUpFlash(()=>{
-      const butterfly = rollButterfly();
+      const butterfly = rollButterfly(true);   /* [100종 확장 20260831] 미보유 우선 — 종 확대 후 중복 뽑기 방지(설계 4-B) */
       showButterflyRoll(butterfly, ()=>{
         // 나비 뽑기 후 리셋 → 알부터 다시 시작 (도감 반복 수집)
         setTimeout(()=>{
@@ -9076,10 +9076,10 @@ function rButterflyTab() {
   html += '<div style="margin-bottom:10px">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
   html += '<div style="font-size:11px;font-weight:700;color:#111">🦋 나비 도감</div>';
-  html += '<div style="font-size:11px;color:' + (butterflies.length===30?'#16A34A':'var(--theme)') + '">' + butterflies.length + '/30종</div>';
+  html += (function(){var _tot=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:30;return '<div style="font-size:11px;color:' + (butterflies.length>=_tot?'#16A34A':'var(--theme)') + '">' + butterflies.length + '/'+_tot+'종</div>';})();   /* [100종 확장 20260831] */
   html += '</div>';
   html += '<div style="background:#E5E7EB;border-radius:4px;height:6px;overflow:hidden">';
-  html += '<div style="height:100%;background:' + (butterflies.length===30?'#16A34A':'var(--theme)') + ';border-radius:4px;width:' + Math.round(butterflies.length/30*100) + '%"></div>';
+  html += (function(){var _tot=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:30;return '<div style="height:100%;background:' + (butterflies.length>=_tot?'#16A34A':'var(--theme)') + ';border-radius:4px;width:' + Math.round(butterflies.length/_tot*100) + '%"></div>';})();   /* [100종 확장 20260831] */
   html += '</div>';
   html += '</div>';
 
@@ -10810,7 +10810,7 @@ function showButterflyRoll(butterfly, onClose) {
     mr.innerHTML=`<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="text-align:center">
       <div style="font-size:56px;margin-bottom:12px;animation:float-happy 2.5s ease-in-out infinite;display:inline-block">🎊</div>
       <div style="font-size:18px;font-weight:800;margin-bottom:8px">모든 나비를 수집했어요!</div>
-      <div style="font-size:13px;color:#6B7280;margin-bottom:16px">30종 완전 수집 달성! 🏆</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:16px">도감 완전 수집 달성! 🏆</div>
       <button onclick="cm()" class="btn bb">닫기</button>
     </div></div>`;
     return;

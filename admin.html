@@ -2082,8 +2082,11 @@ async function _bfImgsAdd(input){
       var u=await new Promise(function(res,rej){var fr=new FileReader();fr.onload=function(e){res(e.target.result);};fr.onerror=rej;fr.readAsDataURL(blob);});
       // 문서 용량 가드: 대표사진+추가사진 합계 850KB 이내
       var main=(document.getElementById('bf-imageUrl')||{}).value||'';
-      var total=main.length + window._bfImgs.reduce(function(a,x){return a+x.length;},0) + u.length;
-      if(total>850*1024){ toast('문서 용량 한도(약 1MB)에 가까워 이 사진은 담지 못했어요. 앞의 사진을 빼거나 더 작은 사진을 쓰세요','err'); break; }
+      var used=main.length + window._bfImgs.reduce(function(a,x){return a+x.length;},0);
+      /* [자동 축소 20260831] 한도 임박 시 450px→350px 순으로 자동 재압축해 최대한 담는다 */
+      if(used+u.length>850*1024){ try{ u=await new Promise(function(res,rej){var fr=new FileReader();fr.onerror=rej;_bfCompressImage(f,450,0.62).then(function(r){fr.onload=function(e){res(e.target.result);};fr.readAsDataURL(r.blob);}).catch(rej);}); }catch(e){} }
+      if(used+u.length>850*1024){ try{ u=await new Promise(function(res,rej){var fr=new FileReader();fr.onerror=rej;_bfCompressImage(f,350,0.55).then(function(r){fr.onload=function(e){res(e.target.result);};fr.readAsDataURL(r.blob);}).catch(rej);}); }catch(e){} }
+      if(used+u.length>850*1024){ toast('최대로 줄여도 문서 한도(약 1MB)를 넘어 이 사진은 담지 못했어요. 앞의 사진을 빼주세요','err'); break; }
       window._bfImgs.push(u);
     }
     _bfImgsRender();

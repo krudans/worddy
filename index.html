@@ -1,4 +1,4 @@
-<!-- build: 20260831c-bf100-ready -->
+<!-- build: 20260831d-bf-photo-gate -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -10649,6 +10649,20 @@ async function loadButterfliesFromFirebase() {
     Object.values(cloudMap).forEach(bf => {
       if (bf && bf.id) BUTTERFLY_LIST.push(bf);
     });
+    /* ══ [사진 있는 나비만 공개 20260831] 실사진(thumb·imageUrl)이 등록된 나비만 도감·뽑기·카운터에 노출.
+       신규 100종 확장분(b31+)은 관리자에서 사진을 하나씩 올릴 때마다 자동으로 공개된다(메타 재생성 시 thumb 생김).
+       내장 30종(b01~b30)은 이미 전부 실사진 보유. 전체 원본은 BUTTERFLY_LIST_ALL에 보존 — 데이터 삭제 아님. ══ */
+    try {
+      window.BUTTERFLY_LIST_ALL = BUTTERFLY_LIST.slice();
+      const _visible = BUTTERFLY_LIST.filter(function(b){
+        if(!b) return false;
+        if(typeof svgs_BUILTIN !== 'undefined' && svgs_BUILTIN.has(b.id)) return true;   // 내장 30종은 항상 표시
+        return !!(b.thumb || b.imageUrl);   // 그 외에는 실사진이 있어야 표시
+      });
+      BUTTERFLY_LIST.length = 0;
+      _visible.forEach(function(b){ BUTTERFLY_LIST.push(b); });
+      console.log('[나비] 사진 미등록 ' + (window.BUTTERFLY_LIST_ALL.length - BUTTERFLY_LIST.length) + '종 숨김 (사진 등록 시 자동 공개)');
+    } catch(e) { console.warn('[wd-io:bfVisible]', e); }
     console.log('[나비] Firebase 머지 완료. 총', BUTTERFLY_LIST.length, '종');
     // 도감/나비밭 화면이 열려있으면 다시 그리기
     try { if (typeof S !== 'undefined' && document.getElementById('main-inner')) {

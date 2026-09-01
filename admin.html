@@ -2217,7 +2217,14 @@ async function editBF(id){
 }
 /* ══ [나비 목록 개편 20260901] 필터·정렬·보기 방식·상세 보기·폰 미리보기 ══ */
 window._bfView = window._bfView || {q:'',rare:'',photo:'',data:'',sort:'id',mode:'table'};
-window._bfSetView = function(k,v){ window._bfView[k]=v; _bfListRender(); };
+window._bfSetView = function(k,v){ window._bfView[k]=v; if(k==='sort'){ window._bfView.hcol=''; } _bfListRender(); };
+/* [헤더 정렬 20260901] 표 머리글 클릭 정렬 — 첫 클릭 내림차순, 다시 클릭 오름차순 */
+window._bfSortBy = function(col){
+  var v=window._bfView;
+  if(v.hcol===col){ v.hdir=(v.hdir==='desc'?'asc':'desc'); }
+  else { v.hcol=col; v.hdir='desc'; }
+  _bfListRender();
+};
 function _bfEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function _bfHl(t,c){ return _bfEsc(t).replace(/\*\*(.+?)\*\*/g,'<b style="color:'+(c||'inherit')+'">$1</b>'); }
 function _bfThumbHTML(bf,px){
@@ -2248,6 +2255,21 @@ function _bfFiltered(){
   if(v.data==='epN') L=L.filter(function(b){ return !(Array.isArray(b.episodes)&&b.episodes.length); });
   if(v.data==='moY') L=L.filter(function(b){ return b.moment&&b.moment.y; });
   if(v.data==='incomplete') L=L.filter(function(b){ return _bfMissing(b).length>0; });
+  /* [헤더 정렬 20260901] 머리글 클릭 정렬이 있으면 드롭다운보다 우선 */
+  if(v.hcol){
+    var dir=(v.hdir==='asc')?1:-1;
+    L.sort(function(a,b){
+      var c=v.hcol, r=0;
+      if(c==='name') r=String(a.name||'').localeCompare(String(b.name||''),'ko');
+      else if(c==='sci') r=String(a.sci||'').localeCompare(String(b.sci||''));
+      else if(c==='rare'){ r=(String(a.rare||'').length-String(b.rare||'').length)||((a.score||0)-(b.score||0)); }
+      else if(c==='score') r=(a.score||0)-(b.score||0);
+      else r=String(a.id||'').localeCompare(String(b.id||''),undefined,{numeric:true});
+      if(r===0) r=String(a.id||'').localeCompare(String(b.id||''),undefined,{numeric:true});
+      return r*dir;
+    });
+    return L;
+  }
   var s=v.sort||'id';
   L.sort(function(a,b){
     if(s==='name') return String(a.name||'').localeCompare(String(b.name||''),'ko');
@@ -2281,8 +2303,12 @@ function _bfListRender(){
       }).join('')+'</div>';
     return;
   }
+  function _hth(col,label,align,w){
+    var on=v.hcol===col, ar=on?(v.hdir==='asc'?' ▲':' ▼'):'';
+    return '<th onclick="_bfSortBy(\''+col+'\')" style="text-align:'+align+';'+(w?('width:'+w+'px;'):'')+'cursor:pointer;user-select:none;white-space:nowrap;'+(on?'color:#1E5FA5;':'')+'" title="클릭 정렬 (내림 ↔ 오름)">'+label+ar+'</th>';
+  }
   wrap.innerHTML='<div class="tw"><table style="width:100%;border-collapse:collapse;font-size:12px">'
-    +'<thead><tr><th style="text-align:center;width:70px">이미지</th><th style="text-align:left">이름</th><th style="text-align:left">학명</th><th style="text-align:center;width:56px">레어</th><th style="text-align:center;width:56px">점수</th><th style="text-align:left;width:150px">데이터</th><th style="text-align:center;width:120px">관리</th></tr></thead><tbody>'
+    +'<thead><tr><th style="text-align:center;width:70px">이미지</th>'+_hth('name','이름','left')+_hth('sci','학명','left')+_hth('rare','레어','center',56)+_hth('score','점수','center',56)+'<th style="text-align:left;width:150px">데이터</th><th style="text-align:center;width:120px">관리</th></tr></thead><tbody>'
     +L.map(function(bf){
       var miss=_bfMissing(bf);
       var dataTag=miss.length?('<span style="color:#D97706;font-size:10.5px">⚠️ '+miss.join('·')+'</span>'):'<span style="color:#059669;font-size:10.5px">✅ 완성</span>';

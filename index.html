@@ -1,4 +1,4 @@
-<!-- build: 20260901g-dogam-all-view -->
+<!-- build: 20260902a-genre-shelf-badges -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -3095,6 +3095,10 @@ function _pkLevel(pk) {
 const _PK_LV_TXT = {
   A1: '입문', A2: '초급', B1: '중급', B2: '중상급', C1: '고급', C2: '최상급'
 };
+
+/* [장르 책장 20260902] 서재 장르 그룹 아이콘·CEFR 배지 색 */
+function _genreIcon(g){ return ({'소설':'📖','판타지':'🐉','미스터리':'🕵️','로맨스':'💘','SF':'🚀','모험':'🗺️','논픽션':'📰','아동':'🧸','고전':'🏛️','자기계발':'🌱','일반':'📚'})[g]||'📚'; }
+function _cefrColor(lv){ return ({A1:'#22C55E',A2:'#84CC16',B1:'#3B82F6',B2:'#6366F1',C1:'#8B5CF6',C2:'#D97706'})[lv]||'#6B7280'; }
 
 // 하루 N개 기준 예상 완주 기간
 function _pkDays(n, perDay) { return Math.max(1, Math.ceil(n / (perDay || 20))); }
@@ -8117,7 +8121,7 @@ function finishChapterExam(){
           +'<div style="font-size:30px;font-weight:900;color:'+(passed?'#16A34A':'#DC2626')+'">'+pct+'점</div>'
           +'<div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">'+ex.correct+'/'+ex.total+' 정답 (기준 90점)</div>'
           +(gotNabi?'<div style="background:var(--theme-tint,#EEF3FA);border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:800;color:var(--theme,#1E5FA5)">🎫 나비 쿠폰 1장 획득!</div>':'')
-          +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px">틀린 단어 복습 후 다시 도전해요</div>'
+          +(passed?'':'<div style="font-size:12px;color:#6B7280;margin-bottom:12px;line-height:1.6">틀린 <b style="color:#DC2626">'+(ex.total-ex.correct)+'개</b>만 다시 외우면 90점을 넘을 수 있어요.<br>재도전은 몇 번이든 가능해요!</div>'
                      +'<button onclick="cm();_chExamGo(\''+String(ex.bookName).replace(/'/g,"\\'")+'\','+ex.chIdx+')" style="width:100%;background:var(--theme,#1E5FA5);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:8px">🔄 다시 도전</button>')
           +_cta
           +'</div></div>';
@@ -13728,7 +13732,7 @@ function rStudyBooks() {
       +'<span onclick="event.stopPropagation();'+o.menuFn+'" style="font-size:15px;color:#C7CDD4;padding:4px 0 4px 4px;cursor:pointer;flex-shrink:0">⋯</span>'
     +'</div>';
   }
-  function _rowTestBtn(o,bk){ try{ if(typeof _ftAvailable==='function' && _ftAvailable(bk)){ if(!bk.finalPassed) o.testBtn=bk.name; else o.right=(o.right||'')+' 🏅'; } }catch(e){} }   /* [시험 진입 직노출 20260811] */
+  function _rowTestBtn(o,bk){ try{ if(typeof _ftAvailable==='function' && _ftAvailable(bk)){ if(!bk.finalPassed) o.testBtn=bk.name; else { var _fb=(typeof _finalBadgeTier==='function')?_finalBadgeTier(bk):null; o.right=(o.right||'')+' '+((_fb&&_fb.icon)||'🏅'); } } }catch(e){} }   /* [시험 진입 직노출 20260811] [완주 배지 등급 20260902] 🏅 대신 획득 등급 아이콘 표시 */
   function _sectionCard(id, emoji, title, count, rowsHtml, extraHtml){
     var open = (S['_sec_'+id] !== false);
     return '<div style="background:var(--bg-card,#fff);border:1px solid #ECEEF1;border-radius:16px;padding:2px 14px 6px">'
@@ -13754,7 +13758,32 @@ function rStudyBooks() {
   // ── 📗 내 책장: 원서 단어장 + 내가 만든 것 + 내 단어장
   var shelfRows = _simpleRow(myOpts);
   var shelfCnt = 1;
-  looseMarket.forEach(function(bk){ var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; o.right=c?_chProgTxt(bk):(o.mem+'/'+o.count); shelfRows+=_simpleRow(o); shelfCnt++; });
+  /* [장르 책장 20260902] 원서·마켓 단어장을 팩 메타(genre)로 묶고, 이름 옆에 CEFR 대표 배지·저자를 함께 표시.
+     genre 없는 기존 팩은 '일반' — 그룹이 하나뿐이면 헤더를 생략해 기존 화면과 동일하게 보인다. */
+  (function(){
+    var _byG={}, _gOrd=[];
+    looseMarket.forEach(function(bk){
+      var pk=(S._marketPacks||[]).find(function(p){return p&&p.id===bk.packId;})||{};
+      var g=(pk.genre&&String(pk.genre).trim())||'일반';
+      if(!_byG[g]){ _byG[g]=[]; _gOrd.push(g); }
+      _byG[g].push({bk:bk,pk:pk});
+    });
+    var _showHead=_gOrd.length>1;
+    _gOrd.forEach(function(g){
+      if(_showHead){
+        shelfRows+='<div style="padding:10px 2px 2px;border-top:1px solid var(--border,#F1F3F5)"><span style="font-size:10.5px;font-weight:800;color:var(--text3,#9CA3AF)">'+_genreIcon(g)+' '+String(g).replace(/</g,'&lt;')+' <span style="font-weight:600">'+_byG[g].length+'권</span></span></div>';
+      }
+      _byG[g].forEach(function(x){
+        var bk=x.bk, pk=x.pk;
+        var o=_bookOpts(bk); var c=(typeof _chapterCount==='function')?_chapterCount(bk):0; o.right=c?_chProgTxt(bk):(o.mem+'/'+o.count);
+        var lv=(pk&&pk.id&&typeof _pkLevel==='function')?_pkLevel(pk):'';
+        if(lv) o.name+=' <span style="font-size:9px;font-weight:800;color:#fff;background:'+_cefrColor(lv)+';border-radius:6px;padding:1px 5px;vertical-align:1px">'+lv+'</span>';
+        if(pk&&pk.author) o.name+=' <span style="font-size:9.5px;font-weight:600;color:var(--text3,#9CA3AF)">'+String(pk.author).replace(/</g,'&lt;')+'</span>';
+        _rowTestBtn(o,bk);
+        shelfRows+=_simpleRow(o); shelfCnt++;
+      });
+    });
+  })();
   myMadeBooks.forEach(function(bk){ shelfRows+=_simpleRow(_bookOpts(bk)); shelfCnt++; });
   var secShelf=_sectionCard('shelf','📗','내 책장', shelfCnt+'권', shelfRows,
     '<div onclick="showBooksModal&&showBooksModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 2px;border-top:1px solid var(--border,#F1F3F5);cursor:pointer;color:var(--theme,#3B82F6);font-size:12px;font-weight:700">＋ 새 단어장 만들기</div>');

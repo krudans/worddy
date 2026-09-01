@@ -1,4 +1,4 @@
-<!-- build: 20260831h2-gallery-dictguard -->
+<!-- build: 20260901a-bf-detail-redesign -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -10610,6 +10610,11 @@ async function _bfLoadFullImage(bId) {
         if (Array.isArray(dd.images) && dd.images.length) bf.images = dd.images;
         if (Array.isArray(dd.episodes) && dd.episodes.length) bf.episodes = dd.episodes;
         if (dd.lead) bf.lead = dd.lead;
+        /* [나비 상세 개편 20260901] moment(결정적 순간)·origin(이름의 유래)·look(모습의 특징) */
+        if (dd.moment && dd.moment.y) bf.moment = dd.moment;
+        if (dd.origin) bf.origin = dd.origin;
+        if (dd.look) bf.look = dd.look;
+        bf.__full = 1;   /* 원본 1회 수신 완료 — 상세 재오픈 시 재요청 방지 */
         // 상세 모달이 이 나비를 보고 있으면 다시 그려 사진첩·이야기 반영
         try { var mr=document.getElementById('mr'); if(mr && mr.getAttribute('data-bfdetail')===bId && typeof showButterflyDetail==='function') showButterflyDetail(bId); } catch(e){}
       }
@@ -10977,48 +10982,46 @@ function _bfClearAll(){
   showButterflyDogam();
 }
 // ── 반려나비 상세 보기 (관리자 등록 전체 필드) ──
+/* [나비 상세 개편 20260901] 히어로 사진 → 결정적 순간 명판 → 한 줄 소개 → 이름의 유래 카드
+   → 모습의 특징 카드 → 정보 칩 → 희귀도 미터(뽑기 N번에 1번) → 사진첩 → 이야기 아코디언 */
+function _bfDrawOdds(id){
+  // rollButterfly()와 동일한 수식으로 이 나비 1종의 뽑기 확률을 계산 → "약 N번에 1번"
+  try{
+    var pool=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[];
+    if(!pool.length) return null;
+    var cfg=(typeof S!=='undefined'&&S._bfRarityCfg)||{};
+    var TOP=(cfg.topProb!=null&&isFinite(cfg.topProb))?cfg.topProb:0.0001;
+    var EXP=(cfg.exp!=null&&isFinite(cfg.exp))?cfg.exp:2;
+    var topN=0,wsum=0,w=0,me=null;
+    pool.forEach(function(b){ if(b&&(b.score||0)>=100) topN++; if(b&&b.id===id) me=b; });
+    if(!me) return null;
+    pool.forEach(function(b){
+      if(!b||(b.score||0)>=100) return;
+      var ww=Math.pow(Math.max(1,101-(b.score||50)),EXP);
+      wsum+=ww; if(b.id===id) w=ww;
+    });
+    var budget=Math.max(0,1-topN*TOP);
+    var p=((me.score||0)>=100)?TOP:(wsum? w/wsum*budget : 0);
+    if(!(p>0)) return null;
+    return {p:p, n:Math.max(1,Math.round(1/p))};
+  }catch(e){ return null; }
+}
 function showButterflyDetail(id){
   var mr=document.getElementById('mr');
   if(!mr) return;
   var list=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[];
   var b=list.find(function(x){return x.id===id;});
   if(!b){ return; }
-  mr.setAttribute('data-bfdetail', id);   /* [나비 상세 확장 20260831] 원본 도착 시 재렌더 표적 */
-  try{ if((!b.episodes||!b.images) && typeof _bfLoadFullImage==='function') _bfLoadFullImage(id); }catch(e){}
+  mr.setAttribute('data-bfdetail', id);   /* 원본 도착 시 재렌더 표적 */
+  try{ if(!b.__full && typeof _bfLoadFullImage==='function') _bfLoadFullImage(id); }catch(e){}
   var owned=(typeof getMyButterflies==='function')?getMyButterflies().includes(id):true;
   var svg=(typeof getButterflyCharSVG==='function')?getButterflyCharSVG(b.id,96,owned):'<span style="font-size:56px">🦋</span>';
   var esc=function(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  // **강조** 마크업 → <b> (이름의 유래 핵심 낱말·모습의 구별 포인트)
+  var hl=function(t,color){ return esc(t).replace(/\*\*(.+?)\*\*/g,'<b style="color:'+(color||'inherit')+'">$1</b>'); };
   var rareLabel=b.rare==='⭐⭐⭐⭐⭐'?'전설':b.rare==='⭐⭐⭐⭐'?'영웅':b.rare==='⭐⭐⭐'?'희귀':b.rare==='⭐⭐'?'일반':'';
-  // 라벨-값 행 (값 있을 때만)
-  var infoPairs=[
-    ['보호등급', b.protect],
-    ['보전상태', b.status],
-    ['서식지', b.habitat],
-    ['크기', b.size],
-    ['출현시기', b.season],
-    /* [희귀도 설명 20260831] 점수만 덜렁 있으면 의미를 알 수 없다는 피드백 → 뜻을 함께 표기.
-       점수가 높을수록 뽑기에서 나올 확률이 낮다(레어함). 100점은 뽑기 확률이 별도로 극히 낮게 잡히는 최고 희귀. */
-    ['희귀도점수', (b.score!=null?(b.score+'점 / 100점 — 높을수록 뽑기에서 만나기 어려워요'+(b.score>=100?' (최고 희귀!)':'')):'')],
-    ['특징', b.feature],
-    ['위협요인', b.threat]
-  ];
-  var infoRows=infoPairs.filter(function(p){return p[1]!=null && String(p[1]).trim()!=='';}).map(function(p){
-    return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border,#F1F2F4)">'
-      +'<div style="flex:none;width:68px;font-size:11px;font-weight:700;color:var(--text3,#9CA3AF)">'+p[0]+'</div>'
-      +'<div style="flex:1;font-size:12px;color:var(--text1,#374151);line-height:1.5">'+esc(p[1])+'</div>'
-      +'</div>';
-  }).join('');
-  // 긴 텍스트 블록 (설명/이야기/메시지)
-  function block(label,val,opt){
-    if(val==null||String(val).trim()==='') return '';
-    opt=opt||{};
-    return '<div style="margin-top:12px">'
-      +'<div style="font-size:11px;font-weight:800;color:'+(opt.color||'#16A34A')+';margin-bottom:4px">'+label+'</div>'
-      +'<div style="font-size:12px;color:'+(opt.bg?'#374151':'var(--text1,#374151)')+';line-height:1.65;white-space:pre-line;'+(opt.bg?'background:'+opt.bg+';border-radius:10px;padding:10px 12px;':'')+(opt.italic?'font-style:italic;':'')+'">'+esc(val)+'</div>'
-      +'</div>';
-  }
-  var sciLine=[b.sci, (b.en||b.enName)].filter(function(x){return x&&String(x).trim();});
-  // 중복 제거
+  var rareColor=b.rare==='⭐⭐⭐⭐⭐'?'#D97706':b.rare==='⭐⭐⭐⭐'?'#7C3AED':b.rare==='⭐⭐⭐'?'#2563EB':'#6B7280';
+  var sciLine=[b.sci,(b.en||b.enName)].filter(function(x){return x&&String(x).trim();});
   sciLine=sciLine.filter(function(v,i){return sciLine.indexOf(v)===i;});
   var body;
   if(!owned){
@@ -11029,32 +11032,110 @@ function showButterflyDetail(id){
       +'<div style="font-size:12px;color:#9CA3AF;margin-top:10px">아직 만나지 못한 나비예요<br>학습을 이어가 도감에 담아보세요!</div>'
       +'</div>';
   } else {
-    body='<div style="text-align:center;margin-bottom:6px">'
-      +'<div style="animation:float-bf 2.6s ease-in-out infinite;display:inline-block;margin-bottom:6px">'+svg+'</div>'
-      +'<div style="font-size:20px;font-weight:900;color:var(--text1,#111)">'+esc(b.name||b.id)+'</div>'
-      +(sciLine.length?'<div style="font-size:12px;color:var(--text3,#9CA3AF);font-style:italic;margin-top:2px">'+esc(sciLine.join(' · '))+'</div>':'')
-      +'<div style="display:inline-block;background:#F5F3FF;border:1.5px solid #E9E2FF;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800;color:#7C3AED;margin-top:8px">'+(b.rare||'')+(rareLabel?' '+rareLabel+'급':'')+'</div>'
-      +'</div>'
-      +(infoRows?'<div style="margin-top:8px">'+infoRows+'</div>':'')
-      +block('📖 설명', b.desc, {color:'#2563EB'})
-      +block('🌿 이야기', b.story, {color:'#16A34A'})
-      +block('💬 메시지', b.msg, {color:'#D97706', bg:'#FFFBEB', italic:true});
-    /* [나비 상세 확장 20260831] ① lead 한 줄 소개 ② 사진첩(images[] 몇 장이든) ③ 에피소드 아코디언(native details) */
-    if(b.lead){ body = body.replace('</div>'+(infoRows?'<div style="margin-top:8px">':''),
-      '<div style="font-size:12.5px;color:#6B7280;margin-top:6px;line-height:1.5">'+esc(b.lead)+'</div></div>'+(infoRows?'<div style="margin-top:8px">':'')); }
+    body='';
+    // ① 히어로 사진 (원본→썸네일 폴백, 없으면 SVG 헤더)
+    var heroSrc=b.imageUrl||(Array.isArray(b.images)&&b.images[0])||b.thumb||'';
+    if(heroSrc){
+      body+='<div style="position:relative;border-radius:16px;overflow:hidden;background:#0F172A">'
+        +'<img data-bfimg="'+id+'" src="'+heroSrc+'" style="width:100%;max-height:250px;object-fit:cover;display:block">'
+        +'<div style="position:absolute;left:0;right:0;bottom:0;padding:36px 14px 12px;background:linear-gradient(180deg,transparent,rgba(10,15,30,.82))">'
+        +'<div style="font-size:21px;font-weight:900;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.4)">'+esc(b.name||b.id)+'</div>'
+        +(sciLine.length?'<div style="font-size:11.5px;color:rgba(255,255,255,.85);font-style:italic;margin-top:1px">'+esc(sciLine.join(' · '))+'</div>':'')
+        +'</div>'
+        +'<div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.92);border-radius:20px;padding:3px 11px;font-size:11px;font-weight:800;color:'+rareColor+'">'+(b.rare||'')+(rareLabel?' '+rareLabel:'')+'</div>'
+        +'</div>';
+    } else {
+      body+='<div style="text-align:center;margin-bottom:2px">'
+        +'<div style="animation:float-bf 2.6s ease-in-out infinite;display:inline-block;margin-bottom:6px">'+svg+'</div>'
+        +'<div style="font-size:20px;font-weight:900;color:var(--text1,#111)">'+esc(b.name||b.id)+'</div>'
+        +(sciLine.length?'<div style="font-size:12px;color:var(--text3,#9CA3AF);font-style:italic;margin-top:2px">'+esc(sciLine.join(' · '))+'</div>':'')
+        +'<div style="display:inline-block;background:#F5F3FF;border:1.5px solid #E9E2FF;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800;color:#7C3AED;margin-top:8px">'+(b.rare||'')+(rareLabel?' '+rareLabel+'급':'')+'</div>'
+        +'</div>';
+    }
+    // ② 결정적 순간 명판 — moment:{y:'1912', t:'discover|last|redisc|record', d:'한 줄 설명'} (문헌 확인분만 등록)
+    var MT={
+      discover:{lb:'최초 발견',ic:'🔭',c:'#2563EB',bg:'#EFF6FF',bd:'#BFDBFE'},
+      last:{lb:'마지막 목격',ic:'🕯️',c:'#57606A',bg:'#F6F8FA',bd:'#D0D7DE'},
+      redisc:{lb:'극적 재발견',ic:'🌅',c:'#16A34A',bg:'#F0FDF4',bd:'#BBF7D0'},
+      record:{lb:'역사 기록',ic:'📜',c:'#B45309',bg:'#FFFBEB',bd:'#FDE68A'}
+    };
+    var mo=b.moment;
+    if(mo&&mo.y&&MT[mo.t]){
+      var M=MT[mo.t];
+      body+='<div style="display:flex;align-items:center;gap:12px;margin-top:10px;background:'+M.bg+';border:1.5px solid '+M.bd+';border-radius:14px;padding:11px 14px">'
+        +'<div style="flex:none;text-align:center;min-width:64px">'
+        +'<div style="font-size:24px;font-weight:900;color:'+M.c+';line-height:1;letter-spacing:-.5px">'+esc(mo.y)+'</div>'
+        +'<div style="font-size:9.5px;font-weight:800;color:'+M.c+';margin-top:3px;opacity:.85">'+M.ic+' '+M.lb+'</div>'
+        +'</div>'
+        +'<div style="width:1px;align-self:stretch;background:'+M.bd+'"></div>'
+        +'<div style="flex:1;font-size:11.5px;color:var(--text1,#374151);line-height:1.55">'+esc(mo.d||'')+'</div>'
+        +'</div>';
+    }
+    // ③ 한 줄 소개
+    if(b.lead){ body+='<div style="font-size:12.5px;color:var(--text2,#6B7280);margin-top:10px;line-height:1.55;text-align:center;padding:0 4px">'+esc(b.lead)+'</div>'; }
+    // ④ 이름의 유래 고정 카드 (핵심 낱말 **강조**)
+    if(b.origin){
+      body+='<div style="margin-top:12px;background:linear-gradient(135deg,#FAF5FF,#F5F3FF);border:1.5px solid #E9D5FF;border-radius:14px;padding:11px 14px">'
+        +'<div style="font-size:11px;font-weight:800;color:#7C3AED;margin-bottom:5px">📛 이름의 유래</div>'
+        +'<div style="font-size:12px;color:var(--text1,#374151);line-height:1.65;white-space:pre-line">'+hl(b.origin,'#7C3AED')+'</div>'
+        +'</div>';
+    }
+    // ⑤ 모습의 특징 고정 카드 (구별 포인트 굵게) — look 없으면 기존 feature 폴백
+    var lookTxt=b.look||b.feature;
+    if(lookTxt){
+      body+='<div style="margin-top:8px;background:linear-gradient(135deg,#F0F9FF,#EFF6FF);border:1.5px solid #BAE6FD;border-radius:14px;padding:11px 14px">'
+        +'<div style="font-size:11px;font-weight:800;color:#0284C7;margin-bottom:5px">🔍 모습의 특징</div>'
+        +'<div style="font-size:12px;color:var(--text1,#374151);line-height:1.65;white-space:pre-line">'+hl(lookTxt,'#0369A1')+'</div>'
+        +'</div>';
+    }
+    // ⑥ 정보 칩
+    var chips=[['🛡️',b.protect],['🌍',b.status],['🏞️',b.habitat],['📏',b.size],['🗓️',b.season]]
+      .filter(function(p){return p[1]!=null&&String(p[1]).trim()!=='';})
+      .map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-sub,#F3F4F6);border:1px solid var(--border,#E5E7EB);border-radius:20px;padding:5px 11px;font-size:11px;font-weight:700;color:var(--text1,#374151)">'+p[0]+' '+esc(p[1])+'</span>'; }).join('');
+    if(chips){ body+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+chips+'</div>'; }
+    if(b.threat){ body+='<div style="margin-top:8px;font-size:11px;color:#B45309;background:#FFFBEB;border-radius:10px;padding:7px 11px;line-height:1.5">⚠️ '+esc(b.threat)+'</div>'; }
+    // ⑦ 희귀도 미터 — 점수 바 + "뽑기 약 N번에 1번"
+    if(b.score!=null){
+      var odds=_bfDrawOdds(id);
+      var pct=Math.max(4,Math.min(100,b.score));
+      var oddsTxt=odds?('뽑기 약 <b style="color:'+rareColor+'">'+odds.n.toLocaleString()+'번에 1번</b>'):'';
+      body+='<div style="margin-top:12px;background:var(--card,#fff);border:1px solid var(--border,#F1F2F4);border-radius:14px;padding:11px 14px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+        +'<span style="font-size:11px;font-weight:800;color:var(--text3,#9CA3AF)">🎰 희귀도</span>'
+        +'<span style="font-size:12px;font-weight:900;color:'+rareColor+'">'+b.score+'점'+(b.score>=100?' · 최고 희귀':'')+'</span>'
+        +'</div>'
+        +'<div style="height:8px;background:var(--bg-sub,#F3F4F6);border-radius:99px;overflow:hidden">'
+        +'<div style="height:100%;width:'+pct+'%;border-radius:99px;background:linear-gradient(90deg,#93C5FD,'+rareColor+')"></div>'
+        +'</div>'
+        +(oddsTxt?'<div style="font-size:11px;color:var(--text2,#6B7280);margin-top:6px;text-align:right">'+oddsTxt+'</div>':'')
+        +'</div>';
+    }
+    // 설명·이야기·메시지 (기존 필드 유지)
+    function block(label,val,opt){
+      if(val==null||String(val).trim()==='') return '';
+      opt=opt||{};
+      return '<div style="margin-top:12px">'
+        +'<div style="font-size:11px;font-weight:800;color:'+(opt.color||'#16A34A')+';margin-bottom:4px">'+label+'</div>'
+        +'<div style="font-size:12px;color:var(--text1,#374151);line-height:1.65;white-space:pre-line;'+(opt.bg?'background:'+opt.bg+';border-radius:10px;padding:10px 12px;':'')+(opt.italic?'font-style:italic;':'')+'">'+esc(val)+'</div>'
+        +'</div>';
+    }
+    body+=block('📖 설명', b.desc, {color:'#2563EB'})
+      +block('🌿 이야기', b.story, {color:'#16A34A'});
+    // ⑧ 사진첩
     var _gal=Array.isArray(b.images)?b.images.filter(Boolean):[];
     if(_gal.length){
       var _gid='bfg_'+id;
-      body += '<div style="margin-top:12px">'
+      body+='<div style="margin-top:12px">'
         +'<div style="font-size:11px;font-weight:800;color:#7C5CC9;margin-bottom:6px">📷 사진첩 ('+_gal.length+'장)</div>'
         +'<img id="'+_gid+'" src="'+_gal[0]+'" style="width:100%;max-height:240px;object-fit:contain;border-radius:12px;background:#F8FAFC;border:1px solid var(--border,#F1F2F4)">'
         +'<div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;padding-bottom:2px">'
         + _gal.map(function(u,i){ return '<img src="'+u+'" onclick="document.getElementById(\''+_gid+'\').src=this.src" style="width:52px;height:52px;flex:none;object-fit:cover;border-radius:8px;border:1.5px solid '+(i===0?'#7C5CC9':'var(--border,#E5E7EB)')+';cursor:pointer">'; }).join('')
         +'</div></div>';
     }
+    // ⑨ 이야기 아코디언
     var _eps=Array.isArray(b.episodes)?b.episodes.filter(function(e){return e&&e.t&&e.b;}):[];
     if(_eps.length){
-      body += '<div style="margin-top:14px"><div style="font-size:11px;font-weight:800;color:#16A34A;margin-bottom:6px">📚 나비 이야기</div>'
+      body+='<div style="margin-top:14px"><div style="font-size:11px;font-weight:800;color:#16A34A;margin-bottom:6px">📚 나비 이야기</div>'
         + _eps.map(function(e,i){
             return '<details'+(i===0?' open':'')+' style="border:1px solid var(--border,#F1F2F4);border-radius:12px;padding:10px 12px;margin-bottom:6px;background:var(--card,#fff)">'
               +'<summary style="font-size:12.5px;font-weight:800;color:var(--text1,#374151);cursor:pointer;list-style:none">'+esc((e.ic||'📖')+' '+e.t)+'</summary>'
@@ -11063,6 +11144,7 @@ function showButterflyDetail(id){
           }).join('')
         +'</div>';
     }
+    body+=block('💬 메시지', b.msg, {color:'#D97706', bg:'#FFFBEB', italic:true});
   }
   var _avNow=(S.avatar&&S.avatar.t==='bf'&&S.avatar.id===id);
   var _avBtn=owned?('<div style="padding:0 18px 14px"><button onclick="setAvatar('+(_avNow?'null,null':('\'bf\',\''+id+'\'') )+')" style="width:100%;background:'+(_avNow?'#F3F4F6':'linear-gradient(135deg,#7C3AED,#A855F7)')+';color:'+(_avNow?'#6B7280':'#fff')+';border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer">'+(_avNow?'기본 캐릭터로 되돌리기':'👤 내 프로필 캐릭터로 지정')+'</button></div>'):'';

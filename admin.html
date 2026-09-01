@@ -1741,7 +1741,7 @@ function showAddBF(bf){
   html += '<div id="bf-preview" style="width:100px;height:100px;margin:0 auto 10px;border-radius:12px;border:2px solid #E5E7EB;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden">'+previewHtml+'</div>';
   /* [나비 추가사진 20260831] 대표사진(imageUrl) 외에 images[]로 몇 장이든 등록 — Firestore 문서 1MiB 안에서 자동 가드 */
   html += '<div style="margin:0 auto 10px;max-width:340px">'
-       +  '<div style="font-size:11px;font-weight:800;color:#6B7280;margin-bottom:4px">📷 추가 사진 (몇 장이든) <span id="bf-imgs-cnt"></span></div>'
+       +  '<div style="font-size:11px;font-weight:800;color:#6B7280;margin-bottom:4px">📷 사진 관리 (⭐ 대표 지정 · × 삭제) <span id="bf-imgs-cnt"></span></div>'
        +  '<div id="bf-imgs-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'
        +  '<input type="file" id="bf-imgs-file" accept="image/*" multiple style="font-size:11px" onchange="_bfImgsAdd(this)">'
        +  '<div style="font-size:10px;color:#9CA3AF;margin-top:3px">자동 WebP 압축 · 문서 용량이 가득 차면 안내가 떠요</div>'
@@ -1871,7 +1871,7 @@ window._bfApplyUrl = function(url) {
      사람이 따로 스크립트를 돌릴 필요 없다.
    ※ 나비 사진 원본은 butterflies/{id}.imageUrl 에 그대로 둔다. 여기엔 썸네일만 넣는다.
    ══════════════════════════════════════════════════════════════════════ */
-var _BF_META_DROP = ['imageUrl','seededFrom','updatedAt','thumb','images','episodes'];   /* [나비 추가사진 20260831] images·episodes는 상세에서만 로드 — 메타(1MiB 가드)에 절대 싣지 않음 */   /* [100종 확장 20260831] svgCode를 메타에 포함 —
+var _BF_META_DROP = ['imageUrl','seededFrom','updatedAt','thumb','images','episodes','lead','origin','look','moment']   /* [상세전용 20260901] 상세에서만 로드 — 부팅 메타에 미포함 */;   /* [나비 추가사진 20260831] images·episodes는 상세에서만 로드 — 메타(1MiB 가드)에 절대 싣지 않음 */   /* [100종 확장 20260831] svgCode를 메타에 포함 —
    앱은 settings/butterflyMeta만 읽으므로, 사진 없는 신규 나비(b31+)는 svgCode가 메타에 있어야 도감에 그려진다.
    (기존 30종 svgCode ≈ 60KB 추가 — 1MiB 가드(950KB) 내 충분) */
 var _BF_THUMB_PX = 128, _BF_THUMB_TYPE = 'image/webp', _BF_THUMB_Q = 0.82;
@@ -2064,14 +2064,44 @@ async function _bfMetaRebuild(){
 /* [나비 추가사진 20260831] images[] 무제한(문서 1MiB 가드) — _bfCompressImage 재사용 */
 window._bfImgs = window._bfImgs || [];
 function _bfImgsRender(){
+  /* [사진 관리 20260901] 대표사진(imageUrl)까지 한 스트립에 표시 — ⭐로 대표 교체, ×로 삭제 */
   var box=document.getElementById('bf-imgs-list'); if(!box) return;
-  box.innerHTML = window._bfImgs.map(function(u,i){
+  var main=(document.getElementById('bf-imageUrl')||{}).value||'';
+  var h='';
+  if(main){
+    h+='<div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:2px solid #1E5FA5;background:#fff">'
+      +'<img src="'+main+'" style="width:100%;height:100%;object-fit:cover">'
+      +'<div style="position:absolute;left:0;right:0;bottom:0;background:rgba(30,95,165,.92);color:#fff;font-size:9px;font-weight:800;text-align:center;padding:1px 0">대표</div>'
+      +'<button onclick="window._bfDelMain()" title="대표사진 삭제" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border:0;border-radius:9px;background:rgba(220,38,38,.9);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer">×</button>'
+      +'</div>';
+  }
+  h+=window._bfImgs.map(function(u,i){
     return '<div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;background:#fff">'
       +'<img src="'+u+'" style="width:100%;height:100%;object-fit:cover">'
-      +'<button onclick="window._bfImgs.splice('+i+',1);_bfImgsRender()" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border:0;border-radius:9px;background:rgba(220,38,38,.9);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer">×</button></div>';
+      +'<button onclick="window._bfImgs.splice('+i+',1);_bfImgsRender()" title="삭제" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border:0;border-radius:9px;background:rgba(220,38,38,.9);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer">×</button>'
+      +'<button onclick="window._bfSetMain('+i+')" title="대표사진으로 지정" style="position:absolute;bottom:2px;left:2px;width:18px;height:18px;border:0;border-radius:9px;background:rgba(255,255,255,.92);font-size:10px;line-height:18px;padding:0;cursor:pointer">⭐</button>'
+      +'</div>';
   }).join('');
-  var c=document.getElementById('bf-imgs-cnt'); if(c) c.textContent=window._bfImgs.length? window._bfImgs.length+'장' : '';
+  box.innerHTML=h;
+  var total=window._bfImgs.length+(main?1:0);
+  var c=document.getElementById('bf-imgs-cnt'); if(c) c.textContent=total? total+'장' : '';
 }
+window._bfSetMain=function(i){
+  /* 추가사진 → 대표로 승격, 기존 대표는 그 자리로 내려감(교환) */
+  var iu=document.getElementById('bf-imageUrl'); if(!iu) return;
+  var u=window._bfImgs[i]; if(!u) return;
+  var old=iu.value||'';
+  if(old) window._bfImgs[i]=old; else window._bfImgs.splice(i,1);
+  iu.value=u;
+  var pv=document.getElementById('bf-preview'); if(pv) pv.innerHTML='<img src="'+u+'" style="width:96px;height:96px;object-fit:contain;display:block">';
+  _bfImgsRender();
+};
+window._bfDelMain=function(){
+  var iu=document.getElementById('bf-imageUrl'); if(!iu) return;
+  iu.value='';
+  var pv=document.getElementById('bf-preview'); if(pv) pv.innerHTML='<div style="font-size:40px">🦋</div>';
+  _bfImgsRender();
+};
 async function _bfImgsAdd(input){
   try{
     var files=Array.from(input.files||[]); input.value='';

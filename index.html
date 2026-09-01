@@ -1,4 +1,4 @@
-<!-- build: 20260901e-bf-hero-contain -->
+<!-- build: 20260901g-dogam-all-view -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -10895,7 +10895,9 @@ function showButterflyDogam(){
   var mr=document.getElementById('mr');
   if(!mr) return;
   var bfs=(typeof getMyButterflies==='function')?getMyButterflies():[];
-  var list=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[];
+  /* [도감 전체공개 20260901] 사진 게이트와 무관하게 도감에서는 전 종을 보여준다.
+     미보유는 흑백 이미지 + 이름·희귀도·간단 정보만 — 획득 경로(뽑기·쿠폰)는 기존 그대로. */
+  var list=(typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[]);
   var selMode=!!window._bfSelMode;
   var sel=window._bfSel||(window._bfSel={});
   var sorted=list.slice().sort(function(a,b){
@@ -10905,17 +10907,22 @@ function showButterflyDogam(){
   var rows=sorted.map(function(b){
     var owned=bfs.includes(b.id);
     var svg=(typeof getButterflyCharSVG==='function')?getButterflyCharSVG(b.id,38,owned):'<span style="font-size:22px">🦋</span>';
-    var nm=owned?(b.name||b.id):'???';
-    var sub=owned?(b.status?(b.status+(b.habitat?' · '+b.habitat:'')):(b.habitat||'')):'아직 만나지 못한 나비';
+    /* [도감 전체공개 20260901] 미보유도 실제 이름·희귀도 공개, 썸네일은 흑백 처리 */
+    var tsrc=b.thumb||'';
+    var icon=tsrc
+      ? '<img src="'+tsrc+'" style="width:38px;height:38px;object-fit:cover;display:block'+(owned?'':';filter:grayscale(1);opacity:.7')+'" loading="lazy">'
+      : '<div style="'+(owned?'':'filter:grayscale(1);opacity:.55;')+'display:flex;align-items:center;justify-content:center">'+svg+'</div>';
+    var nm=b.name||b.id;
+    var sub=owned?(b.status?(b.status+(b.habitat?' · '+b.habitat:'')):(b.habitat||'')):[b.habitat,b.size].filter(Boolean).join(' · ');
     var picked=!!sel[b.id];
-    var click = selMode ? (owned?'_bfClearSelToggle(\''+b.id+'\')':'') : (owned?'showButterflyDetail(\''+b.id+'\')':'');
+    var click = selMode ? (owned?'_bfClearSelToggle(\''+b.id+'\')':'') : 'showButterflyDetail(\''+b.id+'\')';
     var rightEl = selMode
       ? (owned ? '<div style="flex:none;width:22px;height:22px;border-radius:50%;border:2px solid '+(picked?'#DC2626':'#D1D5DB')+';background:'+(picked?'#DC2626':'#fff')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px">'+(picked?'✓':'')+'</div>' : '<div style="flex:none;font-size:14px;color:#D1D5DB">🔒</div>')
-      : (owned ? '<div style="flex:none;font-size:11px;font-weight:700;color:var(--theme)">자세히 ›</div>' : '<div style="flex:none;font-size:14px;color:#D1D5DB">🔒</div>');
-    return '<div onclick="'+click+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:'+(picked?'#FEF2F2':(owned?'#fff':'#F9FAFB'))+';border:1.5px solid '+(picked?'#FCA5A5':(owned?'#EEF0F3':'#F1F2F4'))+';cursor:'+(owned?'pointer':'default')+'">'
-      +'<div style="width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:9px;background:'+(owned?(b.bg||'#F5F3FF'):'#F1F2F4')+'">'+svg+'</div>'
+      : (owned ? '<div style="flex:none;font-size:11px;font-weight:700;color:var(--theme)">자세히 ›</div>' : '<div style="flex:none;font-size:11px;color:#B7BCC5">🔒 미리보기 ›</div>');
+    return '<div onclick="'+click+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:'+(picked?'#FEF2F2':(owned?'#fff':'#F9FAFB'))+';border:1.5px solid '+(picked?'#FCA5A5':(owned?'#EEF0F3':'#F1F2F4'))+';cursor:pointer">'
+      +'<div style="width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:9px;background:'+(owned?(b.bg||'#F5F3FF'):'#F1F2F4')+'">'+icon+'</div>'
       +'<div style="flex:1;min-width:0">'
-        +'<div style="font-size:13px;font-weight:800;color:'+(owned?'#111':'#9CA3AF')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+' <span style="font-size:10px;color:'+(owned?'#F59E0B':'#D1D5DB')+'">'+(b.rare||'')+'</span></div>'
+        +'<div style="font-size:13px;font-weight:800;color:'+(owned?'#111':'#6B7280')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+' <span style="font-size:10px;color:'+(owned?'#F59E0B':'#C9A227')+'">'+(b.rare||'')+'</span></div>'
         +'<div style="font-size:10px;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+sub+'</div>'
       +'</div>'
       +rightEl
@@ -11013,8 +11020,9 @@ function showButterflyDetail(id){
   var b=list.find(function(x){return x.id===id;});
   if(!b){ return; }
   mr.setAttribute('data-bfdetail', id);   /* 원본 도착 시 재렌더 표적 */
-  try{ if(!b.__full && typeof _bfLoadFullImage==='function') _bfLoadFullImage(id); }catch(e){}
   var owned=(typeof getMyButterflies==='function')?getMyButterflies().includes(id):true;
+  /* [도감 전체공개 20260901] 미보유는 썸네일만으로 흑백 미리보기 — 원본(대용량) 로드는 보유 시에만 */
+  try{ if(owned && !b.__full && typeof _bfLoadFullImage==='function') _bfLoadFullImage(id); }catch(e){}
   var svg=(typeof getButterflyCharSVG==='function')?getButterflyCharSVG(b.id,96,owned):'<span style="font-size:56px">🦋</span>';
   var esc=function(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   // **강조** 마크업 → <b> (이름의 유래 핵심 낱말·모습의 구별 포인트)
@@ -11025,12 +11033,21 @@ function showButterflyDetail(id){
   sciLine=sciLine.filter(function(v,i){return sciLine.indexOf(v)===i;});
   var body;
   if(!owned){
-    body='<div style="text-align:center;padding:20px 0">'
-      +'<div style="display:inline-block;margin-bottom:8px;opacity:.5">'+svg+'</div>'
-      +'<div style="font-size:18px;font-weight:900;color:#9CA3AF">???</div>'
-      +'<div style="font-size:12px;color:#9CA3AF;margin-top:6px">'+(b.rare||'')+' '+rareLabel+'급</div>'
-      +'<div style="font-size:12px;color:#9CA3AF;margin-top:10px">아직 만나지 못한 나비예요<br>학습을 이어가 도감에 담아보세요!</div>'
+    /* [도감 전체공개 20260901] 미보유 미리보기 — 흑백 이미지 + 이름·희귀도·간단 정보만 */
+    var heroU=b.thumb||'';
+    body='<div style="text-align:center;padding:4px 0 0">'
+      +(heroU
+        ? '<div style="position:relative;border-radius:16px;overflow:hidden;background:var(--bg-sub,#EEF0F3)"><img src="'+heroU+'" style="width:100%;height:200px;object-fit:contain;display:block;filter:grayscale(1);opacity:.8;padding:6px 0;box-sizing:border-box"><div style="position:absolute;top:10px;right:10px;font-size:18px">🔒</div></div>'
+        : '<div style="display:inline-block;filter:grayscale(1);opacity:.55;margin:10px 0 2px">'+svg+'</div>')
+      +'<div style="font-size:19px;font-weight:900;color:var(--text1,#374151);margin-top:10px">'+esc(b.name||b.id)+'</div>'
+      +(sciLine.length?'<div style="font-size:11.5px;color:var(--text3,#9CA3AF);font-style:italic;margin-top:2px">'+esc(sciLine.join(' · '))+'</div>':'')
+      +'<div style="display:inline-block;background:var(--bg-sub,#F5F3FF);border:1.5px solid var(--border,#E9E2FF);border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800;color:'+rareColor+';margin-top:8px">'+(b.rare||'')+(rareLabel?' '+rareLabel+'급':'')+'</div>'
       +'</div>';
+    var chipsU=[['🏞️',b.habitat],['📏',b.size],['🗓️',b.season]]
+      .filter(function(p){return p[1]!=null&&String(p[1]).trim()!=='';})
+      .map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-sub,#F3F4F6);border:1px solid var(--border,#E5E7EB);border-radius:20px;padding:5px 11px;font-size:11px;font-weight:700;color:var(--text2,#6B7280)">'+p[0]+' '+esc(p[1])+'</span>'; }).join('');
+    if(chipsU) body+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;justify-content:center">'+chipsU+'</div>';
+    body+='<div style="margin-top:14px;background:var(--bg-sub,#F9FAFB);border:1.5px dashed var(--border,#E5E7EB);border-radius:14px;padding:14px;text-align:center;font-size:12px;color:var(--text3,#9CA3AF);line-height:1.8">🔒 아직 만나지 못한 나비예요<br>학습으로 뽑기를 돌리거나 <b>나비쿠폰</b>으로 만나면<br><b style="color:#7C3AED">사진·이름의 유래·이야기</b>가 모두 열려요!</div>';
   } else {
     body='';
     // ① 히어로 사진 (원본→썸네일 폴백, 없으면 SVG 헤더)

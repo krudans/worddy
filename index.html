@@ -1,4 +1,4 @@
-<!-- build: 20260902b-genre-icons -->
+<!-- build: 20260903a-rarity-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -10740,6 +10740,23 @@ function getMyButterflies() {
   return JSON.parse(localStorage.getItem('wd-butterflies')||'[]');
 }
 
+/* ══ [희귀도 역전 수정 20260903] 뽑기 확률 단일 규칙 ══
+   기존: 100점은 고정 확률(topProb), 나머지는 (101-score)^exp 곡선 → 두 규칙이 충돌해
+   100점(1%)이 94점(0.0004%)보다 250배 흔한 역전이 실제 뽑기에서 발생했다.
+   수정: 전 종을 같은 곡선 w=(101-score)^k 에 놓고, "100점 나비 1종 확률 = topProb"가 되도록
+   k를 자동 보정(이분탐색). 점수가 높을수록 w가 작아지므로 점수 순서 = 희귀 순서가 항상 보장된다. */
+function _bfProbTable(pool){
+  var cfg=(typeof S!=='undefined'&&S._bfRarityCfg)||{};
+  var TOP=(cfg.topProb!=null&&isFinite(cfg.topProb)&&cfg.topProb>0)?cfg.topProb:0.001;   // 100점 1종당 (기본 0.1%)
+  TOP=Math.min(TOP,0.002);   // 상한 0.2% — 옛 역전 규칙 시절 저장된 1% 같은 과대값이 곡선을 평평하게 만드는 것을 방지
+  var base=pool.map(function(b){ return Math.max(1, 101-(b&&b.score!=null?b.score:50)); });
+  function p100(k){ var s=0; for(var i=0;i<base.length;i++) s+=Math.pow(base[i],k); return 1/s; }   // 100점(w=1) 1종 확률
+  var lo=0.2, hi=10, k=2;
+  if(p100(lo)<=TOP) k=lo; else if(p100(hi)>=TOP) k=hi;
+  else { for(var it=0;it<40;it++){ k=(lo+hi)/2; if(p100(k)>TOP) lo=k; else hi=k; } }
+  var w=base.map(function(x){ return Math.pow(x,k); }), sum=0; for(var i=0;i<w.length;i++) sum+=w[i];
+  return { probs:w.map(function(x){ return x/sum; }), exp:k, top:TOP };
+}
 function rollButterfly(preferUnowned) {
   const owned = getMyButterflies();
   let pool = BUTTERFLY_LIST.slice();
@@ -10750,20 +10767,8 @@ function rollButterfly(preferUnowned) {
     if(_un.length) pool = _un;
   }
 
-  // ── score 기반 희소성 확률 (admin 나비 관리에서 조정 가능) ──
-  // topProb: 최고점(100) 나비 1종당 고정 확률 / exp: (101-score)^exp 기울기(클수록 고희귀가 급격히 희귀)
-  var _bfCfg=(typeof S!=='undefined'&&S._bfRarityCfg)||{};
-  const TOP_PROB = (_bfCfg.topProb!=null && isFinite(_bfCfg.topProb)) ? _bfCfg.topProb : 0.0001; // 100점 1종당 (기본 0.01%)
-  const _RARE_EXP = (_bfCfg.exp!=null && isFinite(_bfCfg.exp)) ? _bfCfg.exp : 2; // 기본 지수 2
-  const topIdx = [], restIdx = [];
-  pool.forEach((b,i) => { ((b.score||0) >= 100 ? topIdx : restIdx).push(i); });
-  const restBudget = Math.max(0, 1 - topIdx.length * TOP_PROB); // 나머지가 나눠가질 확률
-  const restWeights = restIdx.map(i => Math.pow(Math.max(1, 101 - (pool[i].score||50)), _RARE_EXP));
-  const restWsum = restWeights.reduce((a,c)=>a+c, 0) || 1;
-  // 각 나비의 최종 확률 배열 (pool 인덱스 순서)
-  const probs = new Array(pool.length).fill(0);
-  topIdx.forEach(i => { probs[i] = TOP_PROB; });
-  restIdx.forEach((poolI, k) => { probs[poolI] = restWeights[k] / restWsum * restBudget; });
+  // ── score 기반 희소성 확률 — [희귀도 역전 수정 20260903] 단일 곡선 자동 보정 ──
+  const probs = _bfProbTable(pool).probs;
 
   // 확률 룰렛 (probs 합 = 1)
   let r = Math.random();
@@ -10996,23 +11001,13 @@ function _bfClearAll(){
 /* [나비 상세 개편 20260901] 히어로 사진 → 결정적 순간 명판 → 한 줄 소개 → 이름의 유래 카드
    → 모습의 특징 카드 → 정보 칩 → 희귀도 미터(뽑기 N번에 1번) → 사진첩 → 이야기 아코디언 */
 function _bfDrawOdds(id){
-  // rollButterfly()와 동일한 수식으로 이 나비 1종의 뽑기 확률을 계산 → "약 N번에 1번"
+  // rollButterfly()와 동일한 확률표(_bfProbTable)로 이 나비 1종의 뽑기 확률 → "약 N번에 1번"
   try{
     var pool=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[];
     if(!pool.length) return null;
-    var cfg=(typeof S!=='undefined'&&S._bfRarityCfg)||{};
-    var TOP=(cfg.topProb!=null&&isFinite(cfg.topProb))?cfg.topProb:0.0001;
-    var EXP=(cfg.exp!=null&&isFinite(cfg.exp))?cfg.exp:2;
-    var topN=0,wsum=0,w=0,me=null;
-    pool.forEach(function(b){ if(b&&(b.score||0)>=100) topN++; if(b&&b.id===id) me=b; });
-    if(!me) return null;
-    pool.forEach(function(b){
-      if(!b||(b.score||0)>=100) return;
-      var ww=Math.pow(Math.max(1,101-(b.score||50)),EXP);
-      wsum+=ww; if(b.id===id) w=ww;
-    });
-    var budget=Math.max(0,1-topN*TOP);
-    var p=((me.score||0)>=100)?TOP:(wsum? w/wsum*budget : 0);
+    var idx=-1; for(var i=0;i<pool.length;i++){ if(pool[i]&&pool[i].id===id){ idx=i; break; } }
+    if(idx<0) return null;
+    var p=_bfProbTable(pool).probs[idx];
     if(!(p>0)) return null;
     return {p:p, n:Math.max(1,Math.round(1/p))};
   }catch(e){ return null; }

@@ -1634,7 +1634,7 @@ async function rBF() {
     <div style="font-size:12px;color:#9CA3AF;margin-bottom:14px">희귀도 점수(0~100)가 높을수록 잘 안 나오게 조정해요. 저장하면 앱 뽑기에 즉시 반영됩니다.</div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
       <div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">최고 확률 (100점 나비 1종당, %)</label><input id="bfr-top" type="number" step="0.001" min="0" value="0.01" oninput="_bfRarePreview()" style="width:170px;padding:9px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box"></div>
-      <div style="flex:1;min-width:240px"><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">기울기 지수 — <span id="bfr-exp-val">2.0</span> (클수록 고희귀가 급격히 희귀)</label><input id="bfr-exp" type="range" min="1" max="6" step="0.1" value="2" oninput="_bfRarePreview()" style="width:100%"></div>
+      <div style="flex:1;min-width:240px"><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px">기울기 지수 — <span id="bfr-exp-val">자동</span></label><div style="font-size:11.5px;color:#6B7280;padding:9px 0">100점 확률에 맞춰 자동 보정됩니다 (점수 순서 = 희귀 순서 보장)</div><input id="bfr-exp" type="hidden" value="2"></div>
       <button class="btn bb" onclick="saveBfRarity()" style="width:auto;padding:11px 22px">💾 저장</button>
     </div>
     <div id="bfr-preview" style="font-size:12px;color:#374151;background:#F9FAFB;border-radius:10px;padding:12px;line-height:1.9"></div>
@@ -1669,29 +1669,35 @@ async function rBF() {
 }
 
 // ── 나비 희귀도 발생 확률 설정 ──
-function _bfRareCompute(topProb, exp){
-  var scores=(window._adminAllBF||[]).map(function(b){return (b.score!=null?b.score:50);});
+/* [희귀도 역전 수정 20260903] 앱 _bfProbTable과 동일한 단일 곡선 — 기울기는 100점 확률에 맞춰 자동 보정 */
+function _bfRareCompute(topProb){
+  var scores=(window._adminAllBF||[]).filter(function(b){return b&&(b.imageUrl||b.thumb);}).map(function(b){return (b.score!=null?b.score:50);});   /* 앱 뽑기 풀 = 사진 등록 종 */
+  if(!scores.length) scores=(window._adminAllBF||[]).map(function(b){return (b.score!=null?b.score:50);});
   if(!scores.length) scores=[100,95,80,50,20,10];
-  var topN=scores.filter(function(s){return s>=100;}).length;
-  var restBudget=Math.max(0, 1 - topN*topProb);
-  var wsum=scores.filter(function(s){return s<100;}).map(function(s){return Math.pow(Math.max(1,101-s),exp);}).reduce(function(a,c){return a+c;},0)||1;
-  return function(score){ if(score>=100) return topProb; return Math.pow(Math.max(1,101-score),exp)/wsum*restBudget; };
+  var TOP=Math.min(Math.max(topProb,1e-6),0.002);
+  var base=scores.map(function(s){return Math.max(1,101-s);});
+  function p100(k){ var s=0; for(var i=0;i<base.length;i++) s+=Math.pow(base[i],k); return 1/s; }
+  var lo=0.2, hi=10, k=2;
+  if(p100(lo)<=TOP) k=lo; else if(p100(hi)>=TOP) k=hi; else { for(var it=0;it<40;it++){ k=(lo+hi)/2; if(p100(k)>TOP) lo=k; else hi=k; } }
+  var sum=0; for(var i=0;i<base.length;i++) sum+=Math.pow(base[i],k);
+  var f=function(score){ return Math.pow(Math.max(1,101-score),k)/sum; };
+  f.k=k; f.n=scores.length; f.top=TOP; return f;
 }
 function _bfRarePreview(){
-  var te=document.getElementById('bfr-top'), ee=document.getElementById('bfr-exp'); if(!te||!ee) return;
-  var top=(parseFloat(te.value)/100); if(!isFinite(top)) top=0.0001;
-  var exp=parseFloat(ee.value); if(!isFinite(exp)) exp=2;
-  var ev=document.getElementById('bfr-exp-val'); if(ev) ev.textContent=exp.toFixed(1);
-  var f=_bfRareCompute(top,exp);
-  function pc(s){ var p=f(s)*100; return (p<0.001?p.toFixed(5):p<1?p.toFixed(3):p.toFixed(2))+'%'; }
+  var te=document.getElementById('bfr-top'); if(!te) return;
+  var top=(parseFloat(te.value)/100); if(!isFinite(top)) top=0.001;
+  var f=_bfRareCompute(top);
+  var ev=document.getElementById('bfr-exp-val'); if(ev) ev.textContent=f.k.toFixed(2)+' (자동)';
+  function pc(s){ var p=f(s); return '약 <b>'+Math.round(1/p).toLocaleString()+'번</b>에 1번'; }
+  var warn=(top>0.002)?'<div style="color:#DC2626;font-weight:800;margin-bottom:6px">⚠️ 0.2%를 넘는 값은 앱에서 0.2%로 제한돼요 (최고 희귀가 너무 흔해지는 것 방지)</div>':'';
   var pv=document.getElementById('bfr-preview');
-  if(pv) pv.innerHTML='📊 1회 뽑기당 예상 발생 확률 — 100점: <b>'+pc(100)+'</b> · 95점: <b>'+pc(95)+'</b> · 80점: <b>'+pc(80)+'</b> · 50점: <b>'+pc(50)+'</b> · 20점: <b>'+pc(20)+'</b> · 10점: <b>'+pc(10)+'</b>';
+  if(pv) pv.innerHTML=warn+'📊 1회 뽑기 기준 (뽑기 풀 '+f.n+'종) — 100점: '+pc(100)+' · 95점: '+pc(95)+' · 90점: '+pc(90)+' · 80점: '+pc(80)+' · 60점: '+pc(60)+' · 40점: '+pc(40)+' · 20점: '+pc(20)+'<div style="font-size:11px;color:#9CA3AF;margin-top:4px">점수가 높을수록 항상 더 드물게 나오도록 곡선 기울기가 자동으로 맞춰집니다.</div>';
 }
 async function saveBfRarity(){
   var top=(parseFloat(document.getElementById('bfr-top').value)/100);
-  var exp=parseFloat(document.getElementById('bfr-exp').value);
-  if(!isFinite(top)||top<0){ toast('최고 확률 값이 올바르지 않아요'); return; }
-  if(!isFinite(exp)||exp<=0){ toast('기울기 값이 올바르지 않아요'); return; }
+  if(!isFinite(top)||top<=0){ toast('최고 확률 값이 올바르지 않아요'); return; }
+  if(top>0.002){ toast('최고 확률은 0.2% 이하로 설정해 주세요'); return; }
+  var exp=_bfRareCompute(top).k;   /* [희귀도 역전 수정 20260903] 자동 보정 지수 기록(참고용) */
   try{ await db.collection('settings').doc('butterflyRarity').set({topProb:top, exp:exp, updatedAt:new Date().toISOString()},{merge:true}); toast('✅ 저장됨 · 앱 뽑기에 반영돼요'); }
   catch(e){ toast('저장 실패: '+(e.message||e)); }
 }

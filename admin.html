@@ -1907,10 +1907,10 @@ window._bfApplyUrl = function(url) {
      사람이 따로 스크립트를 돌릴 필요 없다.
    ※ 나비 사진 원본은 butterflies/{id}.imageUrl 에 그대로 둔다. 여기엔 썸네일만 넣는다.
    ══════════════════════════════════════════════════════════════════════ */
-var _BF_META_DROP = ['imageUrl','seededFrom','updatedAt','thumb','images','episodes','lead','origin','look','moment']   /* [상세전용 20260901] 상세에서만 로드 — 부팅 메타에 미포함 */;   /* [나비 추가사진 20260831] images·episodes는 상세에서만 로드 — 메타(1MiB 가드)에 절대 싣지 않음 */   /* [100종 확장 20260831] svgCode를 메타에 포함 —
+var _BF_META_DROP = ['imageUrl','seededFrom','updatedAt','thumb','images','episodes','lead','origin','look','moment','story','desc','msg','feature','threat','createdAt']   /* [메타 다이어트 20260903] 상세에서만 쓰는 긴 글은 부팅 메타에서 제외 — 1MiB 한도 여유 확보 */   /* [상세전용 20260901] 상세에서만 로드 — 부팅 메타에 미포함 */;   /* [나비 추가사진 20260831] images·episodes는 상세에서만 로드 — 메타(1MiB 가드)에 절대 싣지 않음 */   /* [100종 확장 20260831] svgCode를 메타에 포함 —
    앱은 settings/butterflyMeta만 읽으므로, 사진 없는 신규 나비(b31+)는 svgCode가 메타에 있어야 도감에 그려진다.
    (기존 30종 svgCode ≈ 60KB 추가 — 1MiB 가드(950KB) 내 충분) */
-var _BF_THUMB_PX = 128, _BF_THUMB_TYPE = 'image/webp', _BF_THUMB_Q = 0.82;
+var _BF_THUMB_PX = 128, _BF_THUMB_TYPE = 'image/webp', _BF_THUMB_Q = 0.82;   /* [메타 샤딩 20260903] 문서 분할로 한도 걱정이 사라져 128px 원복 */   /* [메타 다이어트 20260903] 128/0.82 → 96/0.72 (200종 전부 사진일 때도 1MiB 안에 들도록) */
 
 function _bfShrink(url){
   return new Promise(function(res){
@@ -1943,6 +1943,7 @@ function _bfMetaEntry(id, data){
   var o = { id: id };
   Object.keys(data).sort().forEach(function(k){
     if(_BF_META_DROP.indexOf(k) >= 0) return;
+    if(k==='svgCode' && data.imageUrl) return;   /* [메타 다이어트 20260903] 사진이 있으면 실루엣 SVG는 불필요(썸네일이 대신) */
     var v = data[k];
     if(v === undefined || v === null || v === '') return;
     o[k] = v;
@@ -1950,18 +1951,45 @@ function _bfMetaEntry(id, data){
   return o;
 }
 
+/* [메타 샤딩 20260903] 목록을 바이트 예산(700KB)별로 settings/butterflyMeta_1..N 에 나눠 저장하고,
+   settings/butterflyMeta 는 매니페스트(shards·count)와 옛 앱용 압축 목록(썸네일·SVG 없음)만 담는다. */
+var _BF_SHARD_BYTES = 700*1024;
+function _bfBytes(o){ return new TextEncoder().encode(JSON.stringify(o)).length; }
+async function _bfMetaReadAll(){
+  var cur = (await db.collection('settings').doc('butterflyMeta').get()).data() || {};
+  if(cur.shards > 0){
+    var refs=[]; for(var s=1;s<=cur.shards;s++) refs.push(db.collection('settings').doc('butterflyMeta_'+s).get());
+    var docs = await Promise.all(refs), list=[];
+    docs.forEach(function(d){ var x=d.exists?(d.data()||{}):{}; if(Array.isArray(x.list)) list=list.concat(x.list); });
+    return { list:list, shards:cur.shards };
+  }
+  return { list: Array.isArray(cur.list)?cur.list.slice():[], shards:0 };
+}
 async function _bfMetaWrite(list){
   list.sort(function(a,b){ return String(a.id).localeCompare(String(b.id)); });
-  var payload = {
-    list: list, count: list.length,
-    thumbPx: _BF_THUMB_PX, thumbType: _BF_THUMB_TYPE,
-    builtAt: new Date().toISOString(),
-    note: '나비 글자정보 + 썸네일. 원본 사진은 butterflies/{id}.imageUrl 에 있음. 관리자 저장 시 자동 갱신됨.'
-  };
-  var bytes = new TextEncoder().encode(JSON.stringify(payload)).length;
-  if(bytes > 950000) throw new Error('메타 문서가 1MiB 한도에 근접합니다 (' + Math.round(bytes/1024) + 'KB). 썸네일 크기를 줄여야 합니다.');
-  await db.collection('settings').doc('butterflyMeta').set(payload);
-  return bytes;
+  var prevShards = 0; try{ prevShards=((await db.collection('settings').doc('butterflyMeta').get()).data()||{}).shards||0; }catch(e){}
+  var shards=[], cur=[], curBytes=0;
+  for(var i=0;i<list.length;i++){
+    var b=_bfBytes(list[i]);
+    if(cur.length && curBytes+b > _BF_SHARD_BYTES){ shards.push(cur); cur=[]; curBytes=0; }
+    cur.push(list[i]); curBytes+=b;
+  }
+  if(cur.length) shards.push(cur);
+  var builtAt=new Date().toISOString(), total=0;
+  for(var s=0;s<shards.length;s++){
+    var payload={ list:shards[s], part:s+1, of:shards.length, builtAt:builtAt };
+    total += _bfBytes(payload);
+    await db.collection('settings').doc('butterflyMeta_'+(s+1)).set(payload);
+  }
+  /* 옛 앱(샤드 모름) 호환: 전체 목록이 950KB 안에 들면 그대로, 아니면 썸네일·SVG 뺀 압축본, 그것도 넘으면 생략 */
+  var manifest={ shards:shards.length, count:list.length, thumbPx:_BF_THUMB_PX, thumbType:_BF_THUMB_TYPE, builtAt:builtAt,
+    note:'나비 목록은 butterflyMeta_1..N 샤드에 분할 저장. 이 문서의 list는 옛 앱 호환용.', list:list };
+  if(_bfBytes(manifest) > 950000){ manifest.list = list.map(function(o){ var c=Object.assign({},o); delete c.thumb; delete c.svgCode; return c; }); }
+  if(_bfBytes(manifest) > 950000){ delete manifest.list; }
+  await db.collection('settings').doc('butterflyMeta').set(manifest);
+  for(var d=shards.length+1; d<=prevShards; d++){ try{ await db.collection('settings').doc('butterflyMeta_'+d).delete(); }catch(e){} }   // 남는 옛 샤드 정리
+  console.log('[나비메타] '+list.length+'종 → 샤드 '+shards.length+'개 / 총 '+Math.round(total/1024)+'KB');
+  return total;
 }
 
 /* [팩 이름 통일 20260831] 원서팩 최종 이름은 항상 "영문명 / 한글명".
@@ -2053,9 +2081,7 @@ try{
 }catch(e){}
 async function _bfMetaUpsert(id, data){
   try{
-    var ref = db.collection('settings').doc('butterflyMeta');
-    var cur = (await ref.get()).data() || {};
-    var list = Array.isArray(cur.list) ? cur.list.slice() : [];
+    var list = (await _bfMetaReadAll()).list;
     var i = -1;
     for(var k=0;k<list.length;k++){ if(list[k] && list[k].id === id){ i = k; break; } }
     var prev = (i >= 0) ? list[i] : null;
@@ -2066,15 +2092,13 @@ async function _bfMetaUpsert(id, data){
     console.log('[나비메타] ' + id + ' 갱신 · 총 ' + list.length + '종 / ' + Math.round(bytes/1024) + 'KB');
   }catch(e){
     console.error('[나비메타] 동기화 실패', e);
-    if(typeof toast === 'function') toast('⚠ 나비 메타 동기화 실패 — 앱에 반영 안 될 수 있습니다','err');
+    if(typeof toast === 'function') toast('⚠ 나비 메타 동기화 실패 — '+(e&&e.message?e.message:'')+' (나비 관리 → 메타 재생성을 눌러 주세요)','err');
   }
 }
 
 async function _bfMetaRemove(id){
   try{
-    var ref = db.collection('settings').doc('butterflyMeta');
-    var cur = (await ref.get()).data() || {};
-    var list = (Array.isArray(cur.list) ? cur.list : []).filter(function(x){ return !(x && x.id === id); });
+    var list = (await _bfMetaReadAll()).list.filter(function(x){ return !(x && x.id === id); });
     await _bfMetaWrite(list);
     console.log('[나비메타] ' + id + ' 제거 · 총 ' + list.length + '종');
   }catch(e){
@@ -2238,13 +2262,14 @@ async function editBF(id){
   toast('나비 정보를 찾을 수 없어요','err');
 }
 /* ══ [나비 목록 개편 20260901] 필터·정렬·보기 방식·상세 보기·폰 미리보기 ══ */
-window._bfView = window._bfView || {q:'',rare:'',photo:'',data:'',sort:'id',mode:'table'};
-window._bfSetView = function(k,v){ window._bfView[k]=v; if(k==='sort'){ window._bfView.hcol=''; } _bfListRender(); };
+window._bfView = window._bfView || {q:'',rare:'',photo:'',data:'',sort:'id',mode:'table',page:0};   /* [페이지 60 20260903] */
+window._bfSetView = function(k,v){ window._bfView[k]=v; if(k==='sort'){ window._bfView.hcol=''; } if(k!=='page') window._bfView.page=0; _bfListRender(); };
 /* [헤더 정렬 20260901] 표 머리글 클릭 정렬 — 첫 클릭 내림차순, 다시 클릭 오름차순 */
 window._bfSortBy = function(col){
   var v=window._bfView;
   if(v.hcol===col){ v.hdir=(v.hdir==='desc'?'asc':'desc'); }
   else { v.hcol=col; v.hdir='desc'; }
+  v.page=0;
   _bfListRender();
 };
 function _bfEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -2306,8 +2331,12 @@ function _bfFiltered(){
 }
 function _bfListRender(){
   var wrap=document.getElementById('bf-list-wrap'); if(!wrap) return;
-  var v=window._bfView, L=_bfFiltered();
-  var cnt=document.getElementById('bf-count'); if(cnt) cnt.textContent='표시 '+L.length+'종 / 전체 '+(window._adminAllBF||[]).length+'종 — 행을 클릭하면 상세 내용을 볼 수 있어요';
+  var v=window._bfView, LA=_bfFiltered();
+  /* [페이지 60 20260903] 한 페이지 60종 */
+  var PG=60, pages=Math.max(1,Math.ceil(LA.length/PG)); v.page=Math.min(Math.max(0,v.page||0),pages-1);
+  var L=LA.slice(v.page*PG,(v.page+1)*PG);
+  var cnt=document.getElementById('bf-count'); if(cnt) cnt.textContent='표시 '+LA.length+'종 / 전체 '+(window._adminAllBF||[]).length+'종 · '+(v.page+1)+'/'+pages+' 페이지 — 행을 클릭하면 상세 내용을 볼 수 있어요';
+  var pagerHTML=(function(){ if(pages<=1) return ''; var b=function(p,l,dis){ return '<button '+(dis?'disabled':'onclick="_bfSetView(\'page\','+p+')"')+' style="padding:7px 12px;border:1.5px solid #E5E7EB;border-radius:9px;background:'+(dis?'#F3F4F6':'#fff')+';color:'+(dis?'#C4C8CF':'#111')+';font-size:12px;font-weight:800;cursor:'+(dis?'default':'pointer')+'">'+l+'</button>'; }; var nums=''; for(var i=0;i<pages;i++){ nums+='<button onclick="_bfSetView(\'page\','+i+')" style="width:30px;height:30px;border-radius:8px;border:1.5px solid '+(i===v.page?'#111':'#E5E7EB')+';background:'+(i===v.page?'#111':'#fff')+';color:'+(i===v.page?'#fff':'#374151')+';font-size:12px;font-weight:800;cursor:pointer">'+(i+1)+'</button>'; } return '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px;flex-wrap:wrap">'+b(v.page-1,'◀ 이전',v.page<=0)+nums+b(v.page+1,'다음 ▶',v.page>=pages-1)+'</div>'; })();
   var tb=document.getElementById('bfm-table'), gb=document.getElementById('bfm-grid');
   if(tb&&gb){ var on='background:#111;color:#fff', off='background:#fff;color:#374151';
     tb.style.cssText='padding:9px 12px;border:0;font-size:12px;font-weight:700;cursor:pointer;'+(v.mode==='table'?on:off);
@@ -2322,7 +2351,7 @@ function _bfListRender(){
         +'<div style="font-size:10px;color:#9CA3AF">'+_bfEsc(bf.id)+' · '+(bf.rare||'')+'</div>'
         +'<div style="font-size:10px;margin-top:4px;color:'+(miss.length?'#D97706':'#059669')+'">'+(miss.length?('⚠️ '+miss.length+'개 미비'):'✅ 완성')+'</div>'
         +'</div>';
-      }).join('')+'</div>';
+      }).join('')+'</div>'+pagerHTML;
     return;
   }
   function _hth(col,label,align,w){
@@ -2347,7 +2376,7 @@ function _bfListRender(){
       +'<button onclick="event.stopPropagation();editBF(\''+bf.id+'\')" class="btn bgr" style="font-size:11px;padding:4px 8px">수정</button>'
       +(bf._builtin?'':'<button onclick="event.stopPropagation();deleteBF(\''+bf.id+'\',\''+_bfEsc(bf.name)+'\')" class="btn br" style="font-size:11px;padding:4px 8px">삭제</button>')
       +'</div></td></tr>';
-    }).join('')+'</tbody></table></div>';
+    }).join('')+'</tbody></table></div>'+pagerHTML;
 }
 // ── 행 클릭 상세 보기 (전 필드 read-only) ──
 async function previewBF(id){
@@ -2406,6 +2435,7 @@ function _bfPhoneHTML(bf){
     h+='<div style="text-align:center;padding:14px 0 4px"><div style="font-size:56px">🦋</div><div style="font-size:19px;font-weight:900">'+esc(bf.name||'')+'</div>'+(sci.length?'<div style="font-size:11px;color:#9CA3AF;font-style:italic">'+esc(sci.join(' · '))+'</div>':'')+'<div style="display:inline-block;background:#F5F3FF;border:1.5px solid #E9E2FF;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:800;color:#7C3AED;margin-top:6px">'+(bf.rare||'')+(rareLabel?' '+rareLabel+'급':'')+'</div></div>';
   }
   var MT={discover:{lb:'최초 발견',ic:'🔭',c:'#2563EB',bg:'#EFF6FF',bd:'#BFDBFE'},last:{lb:'마지막 목격',ic:'🕯️',c:'#57606A',bg:'#F6F8FA',bd:'#D0D7DE'},redisc:{lb:'극적 재발견',ic:'🌅',c:'#16A34A',bg:'#F0FDF4',bd:'#BBF7D0'},record:{lb:'역사 기록',ic:'📜',c:'#B45309',bg:'#FFFBEB',bd:'#FDE68A'}};
+  if(sci.length) h+='<div style="text-align:center;margin-top:9px;font-size:12px;color:#6B7280"><span style="font-size:10px;font-weight:800;color:#9CA3AF;margin-right:6px">학명</span><i>'+esc(bf.sci||'')+'</i>'+((bf.en||bf.enName)?'<span style="color:#9CA3AF"> · '+esc(bf.en||bf.enName)+'</span>':'')+'</div>';   /* [학명 행 20260903] */
   var mo=bf.moment;
   if(mo&&mo.y&&MT[mo.t]){ var M=MT[mo.t];
     h+='<div style="display:flex;align-items:center;gap:11px;margin-top:10px;background:'+M.bg+';border:1.5px solid '+M.bd+';border-radius:14px;padding:10px 13px">'

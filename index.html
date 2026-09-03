@@ -1,4 +1,4 @@
-<!-- build: 20260903c-collection-fix -->
+<!-- build: 20260903e-meta-shards -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -7257,12 +7257,26 @@ function renderBFDogamGrid() {
   const bfs = typeof getMyButterflies==='function' ? getMyButterflies() : [];
   /* [도감 카운터 통일 20260903] 나비 탭 그리드도 도감 모달처럼 전체 종 (미보유=흑백·실명·미리보기) */
   const list = (typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length) ? BUTTERFLY_LIST_ALL : (typeof BUTTERFLY_LIST!=='undefined' ? BUTTERFLY_LIST : []);
-  const sorted = [...list].sort((a,b)=>{
+  const sortedAll = [...list].sort((a,b)=>{
     const ao=bfs.includes(a.id), bo=bfs.includes(b.id);
     if(ao&&!bo)return -1; if(!ao&&bo)return 1;
     return (b.score||0)-(a.score||0);
   });
+  /* [그리드 페이지 20260903] 한 번에 200칸 대신 60개씩 */
+  const GP=60, gpages=Math.max(1,Math.ceil(sortedAll.length/GP));
+  window._bfGridPage=Math.min(Math.max(0,window._bfGridPage||0),gpages-1);
+  const sorted=sortedAll.slice(window._bfGridPage*GP,(window._bfGridPage+1)*GP);
   grid.innerHTML = sorted.map(b=>{
+  /* [그리드 페이지 20260903] 페이저 */
+  try{
+    var pg=document.getElementById('bf-dogam-pager');
+    if(!pg){ pg=document.createElement('div'); pg.id='bf-dogam-pager'; grid.parentNode.insertBefore(pg, grid.nextSibling); }
+    if(gpages>1){
+      var cur=window._bfGridPage, btn=function(p,l,dis){ return '<button '+(dis?'disabled':'onclick="window._bfGridPage='+p+';renderBFDogamGrid()"')+' style="padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:8px;background:'+(dis?'#F3F4F6':'#fff')+';color:'+(dis?'#C4C8CF':'#111')+';font-size:11px;font-weight:800;cursor:'+(dis?'default':'pointer')+'">'+l+'</button>'; };
+      var nums=''; for(var q=0;q<gpages;q++){ nums+='<button onclick="window._bfGridPage='+q+';renderBFDogamGrid()" style="width:26px;height:26px;border-radius:7px;border:1.5px solid '+(q===cur?'var(--theme)':'#E5E7EB')+';background:'+(q===cur?'var(--theme)':'#fff')+';color:'+(q===cur?'#fff':'#6B7280')+';font-size:11px;font-weight:800;cursor:pointer">'+(q+1)+'</button>'; }
+      pg.innerHTML='<div style="display:flex;align-items:center;justify-content:center;gap:5px;margin:2px 0 12px;flex-wrap:wrap">'+btn(cur-1,'◀',cur<=0)+nums+btn(cur+1,'▶',cur>=gpages-1)+'<span style="font-size:10px;color:#9CA3AF;margin-left:4px">'+(cur*GP+1)+'–'+Math.min((cur+1)*GP,sortedAll.length)+' / '+sortedAll.length+'</span></div>';
+    } else pg.innerHTML='';
+  }catch(e){}
     const owned = bfs.includes(b.id);
     const bg = owned ? (b.bg||'#F5F3FF') : '#F3F4F6';
     const bd = owned ? (b.color||'var(--theme)') : '#E5E7EB';
@@ -10649,6 +10663,16 @@ async function loadButterfliesFromFirebase() {
        상세 화면을 열 때 _bfLoadFullImage()가 그 나비 1건만 받아 갈아끼운다. */
     const _metaDoc = await db.collection('settings').doc('butterflyMeta').get();
     const _meta = _metaDoc.exists ? (_metaDoc.data() || {}) : null;
+    /* [메타 샤딩 20260903] 1MiB 한도를 피하려고 목록을 settings/butterflyMeta_1..N 에 나눠 저장한다.
+       매니페스트(butterflyMeta.shards)가 있으면 샤드를 병렬로 받아 합치고, 없으면 예전 방식(list) 그대로. */
+    if (_meta && _meta.shards > 0) {
+      try {
+        const refs = []; for (let s = 1; s <= _meta.shards; s++) refs.push(db.collection('settings').doc('butterflyMeta_' + s).get());
+        const docs = await Promise.all(refs);
+        const merged = []; docs.forEach(d => { const x = d.exists ? (d.data() || {}) : {}; if (Array.isArray(x.list)) merged.push.apply(merged, x.list); });
+        if (merged.length) _meta.list = merged;
+      } catch (e) { console.warn('[나비] 메타 샤드 로드 실패 → 매니페스트 list로 대체', e); }
+    }
     if (!_meta || !Array.isArray(_meta.list) || !_meta.list.length) {
       console.warn('[나비] settings/butterflyMeta 없음 또는 비어 있음 → 내장 목록 유지');
       return;
@@ -10915,11 +10939,10 @@ function showButterflyDogam(){
   var list=(typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[]);
   var selMode=!!window._bfSelMode;
   var sel=window._bfSel||(window._bfSel={});
-  var sorted=list.slice().sort(function(a,b){
-    var ao=bfs.includes(a.id), bo=bfs.includes(b.id);
-    if(ao&&!bo)return -1; if(!ao&&bo)return 1; return (b.score||0)-(a.score||0);
-  });
-  var rows=sorted.map(function(b){
+  /* [도감 검색·정렬·페이지 20260903] 뷰 상태: q 검색 / rare 등급 / own 보유 / sort 정렬 / page(60개씩) */
+  var V=window._dgV||(window._dgV={q:'',rare:'',own:'',sort:'default',page:0});
+  var PAGE=60;
+  var rowOf=function(b){
     var owned=bfs.includes(b.id);
     var svg=(typeof getButterflyCharSVG==='function')?getButterflyCharSVG(b.id,38,owned):'<span style="font-size:22px">🦋</span>';
     /* [도감 전체공개 20260901] 미보유도 실제 이름·희귀도 공개, 썸네일은 흑백 처리 */
@@ -10944,7 +10967,12 @@ function showButterflyDogam(){
       +'</div>'
       +rightEl
       +'</div>';
-  }).join('');
+  };
+  window.__dgRowOf=rowOf;
+  var filtered=_dgFilter(list,bfs,V);
+  var pages=Math.max(1,Math.ceil(filtered.length/PAGE)); if(V.page>=pages) V.page=pages-1; if(V.page<0) V.page=0;
+  var rows=filtered.slice(V.page*PAGE,(V.page+1)*PAGE).map(rowOf).join('');
+
   var pct=list.length?Math.round(bfs.length/list.length*100):0;
   var selCount=Object.keys(sel).filter(function(k){return sel[k];}).length;
   mr.innerHTML='<div class="mbg" onclick="cm()"><div class="modal" onclick="event.stopPropagation()" style="padding:0;max-height:86vh;display:flex;flex-direction:column;width:92%;max-width:440px">'
@@ -10957,10 +10985,65 @@ function showButterflyDogam(){
     +'</div>'
     +'<div style="margin:0 18px 10px;height:6px;background:#E5E7EB;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'#16A34A':'var(--theme)')+';border-radius:99px"></div></div>'
     +(selMode?'<div style="margin:0 18px 8px;font-size:11px;color:#9CA3AF">비울 나비를 탭하세요. 비운 나비는 다시 뽑을 수 있어요.</div>':'')
-    +'<div style="overflow-y:auto;padding:0 14px 16px;display:flex;flex-direction:column;gap:7px">'+rows+'</div>'
+    +_dgToolbarHTML(V)
+    +'<div id="dg-count" style="margin:0 18px 6px;font-size:10.5px;color:#9CA3AF">'+_dgCountTxt(filtered.length,V,PAGE)+'</div>'
+    +'<div id="dg-list" style="overflow-y:auto;padding:0 14px 8px;display:flex;flex-direction:column;gap:7px">'+rows+'</div>'
+    +'<div id="dg-pager">'+_dgPagerHTML(filtered.length,V,PAGE)+'</div>'
     +(selMode?'<div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid #EEF0F3"><button onclick="_bfClearAll()" style="flex:1;background:#fff;border:1px solid #FCA5A5;color:#DC2626;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">전체 비우기</button><button onclick="_bfClearSelected()" style="flex:2;background:'+(selCount?'#DC2626':'#F3F4F6')+';color:'+(selCount?'#fff':'#9CA3AF')+';border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:'+(selCount?'pointer':'default')+'">선택 '+selCount+'개 비우기</button></div>':'')
   +'</div></div>';
 }
+
+/* ── [도감 검색·정렬·페이지 20260903] 헬퍼 ── */
+function _dgFilter(list,bfs,V){
+  var q=(V.q||'').trim().toLowerCase();
+  var L=list.filter(function(b){
+    if(!b) return false;
+    if(q && !(String(b.name||'').toLowerCase().includes(q)||String(b.sci||'').toLowerCase().includes(q)||String(b.en||'').toLowerCase().includes(q))) return false;
+    if(V.rare && String(b.rare||'').length!==parseInt(V.rare)) return false;
+    var ow=bfs.includes(b.id);
+    if(V.own==='y'&&!ow) return false; if(V.own==='n'&&ow) return false;
+    return true;
+  });
+  var s=V.sort||'default';
+  L.sort(function(a,b){
+    if(s==='name') return String(a.name||'').localeCompare(String(b.name||''),'ko');
+    if(s==='rare') return (String(b.rare||'').length-String(a.rare||'').length)||((b.score||0)-(a.score||0));
+    if(s==='scoreDesc') return (b.score||0)-(a.score||0);
+    if(s==='scoreAsc') return (a.score||0)-(b.score||0);
+    var ao=bfs.includes(a.id), bo=bfs.includes(b.id);
+    if(ao&&!bo)return -1; if(!ao&&bo)return 1; return (b.score||0)-(a.score||0);
+  });
+  return L;
+}
+function _dgToolbarHTML(V){
+  var sel=function(v,cur){ return v===cur?' selected':''; };
+  var st='padding:7px 8px;border:1.5px solid var(--border,#E5E7EB);border-radius:9px;font-size:11px;background:var(--bg-card,#fff);color:var(--text1,#111);outline:none;min-width:0';
+  return '<div style="margin:0 14px 8px;display:flex;flex-direction:column;gap:6px">'
+    +'<input value="'+String(V.q||'').replace(/"/g,'&quot;')+'" placeholder="🔍 이름·학명·영문 검색" oninput="_dgSetView(\'q\',this.value)" style="'+st+';width:100%;box-sizing:border-box;padding:8px 10px">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:6px">'
+    +'<select onchange="_dgSetView(\'rare\',this.value)" style="'+st+'"><option value=""'+sel('',V.rare)+'>등급 전체</option><option value="5"'+sel('5',V.rare)+'>⭐5 전설</option><option value="4"'+sel('4',V.rare)+'>⭐4 영웅</option><option value="3"'+sel('3',V.rare)+'>⭐3 희귀</option><option value="2"'+sel('2',V.rare)+'>⭐2 일반</option></select>'
+    +'<select onchange="_dgSetView(\'own\',this.value)" style="'+st+'"><option value=""'+sel('',V.own)+'>보유 전체</option><option value="y"'+sel('y',V.own)+'>보유만</option><option value="n"'+sel('n',V.own)+'>미보유만</option></select>'
+    +'<select onchange="_dgSetView(\'sort\',this.value)" style="'+st+'"><option value="default"'+sel('default',V.sort)+'>보유 우선</option><option value="name"'+sel('name',V.sort)+'>이름순</option><option value="rare"'+sel('rare',V.sort)+'>희귀도 높은순</option><option value="scoreDesc"'+sel('scoreDesc',V.sort)+'>점수 높은순</option><option value="scoreAsc"'+sel('scoreAsc',V.sort)+'>점수 낮은순</option></select>'
+    +'</div></div>';
+}
+function _dgCountTxt(n,V,PAGE){ var pages=Math.max(1,Math.ceil(n/PAGE)); return n+'종 · '+(V.page+1)+'/'+pages+' 페이지 (한 페이지 '+PAGE+'종)'; }
+function _dgPagerHTML(n,V,PAGE){
+  var pages=Math.max(1,Math.ceil(n/PAGE)); if(pages<=1) return '';
+  var b=function(p,label,dis){ return '<button '+(dis?'disabled':'onclick="_dgSetView(\'page\','+p+')"')+' style="padding:7px 12px;border:1.5px solid var(--border,#E5E7EB);border-radius:9px;background:'+(dis?'var(--bg-sub,#F3F4F6)':'var(--bg-card,#fff)')+';color:'+(dis?'#C4C8CF':'var(--text1,#111)')+';font-size:11px;font-weight:800;cursor:'+(dis?'default':'pointer')+'">'+label+'</button>'; };
+  var nums=''; for(var i=0;i<pages;i++){ nums+='<button onclick="_dgSetView(\'page\','+i+')" style="width:28px;height:28px;border-radius:8px;border:1.5px solid '+(i===V.page?'var(--theme)':'var(--border,#E5E7EB)')+';background:'+(i===V.page?'var(--theme)':'var(--bg-card,#fff)')+';color:'+(i===V.page?'#fff':'var(--text2,#6B7280)')+';font-size:11px;font-weight:800;cursor:pointer">'+(i+1)+'</button>'; }
+  return '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px 12px;border-top:1px solid var(--border,#EEF0F3);flex-wrap:wrap">'+b(V.page-1,'◀ 이전',V.page<=0)+nums+b(V.page+1,'다음 ▶',V.page>=pages-1)+'</div>';
+}
+window._dgSetView=function(k,v){
+  var V=window._dgV||(window._dgV={q:'',rare:'',own:'',sort:'default',page:0});
+  if(k==='page'){ V.page=parseInt(v)||0; } else { V[k]=v; V.page=0; }
+  var list=(typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST:[]);
+  var bfs=(typeof getMyButterflies==='function')?getMyButterflies():[];
+  var PAGE=60, filtered=_dgFilter(list,bfs,V);
+  var pages=Math.max(1,Math.ceil(filtered.length/PAGE)); if(V.page>=pages) V.page=pages-1;
+  var el=document.getElementById('dg-list'); if(el&&window.__dgRowOf){ el.innerHTML=filtered.slice(V.page*PAGE,(V.page+1)*PAGE).map(window.__dgRowOf).join(''); if(k==='page') el.scrollTop=0; }
+  var c=document.getElementById('dg-count'); if(c) c.textContent=_dgCountTxt(filtered.length,V,PAGE);
+  var p=document.getElementById('dg-pager'); if(p) p.innerHTML=_dgPagerHTML(filtered.length,V,PAGE);
+};
 function _bfClearMode(on){ window._bfSelMode=!!on; window._bfSel={}; showButterflyDogam(); }
 function _bfClearSelToggle(id){ if(!window._bfSel)window._bfSel={}; if(window._bfSel[id])delete window._bfSel[id]; else window._bfSel[id]=1; showButterflyDogam(); }
 // ── 나비 도감 묘비(tombstone): 삭제 전파용 ──
@@ -11029,7 +11112,8 @@ function showButterflyDetail(id){
   mr.setAttribute('data-bfdetail', id);   /* 원본 도착 시 재렌더 표적 */
   var owned=(typeof getMyButterflies==='function')?getMyButterflies().includes(id):true;
   /* [도감 전체공개 20260901] 미보유는 썸네일만으로 흑백 미리보기 — 원본(대용량) 로드는 보유 시에만 */
-  try{ if(owned && !b.__full && typeof _bfLoadFullImage==='function') _bfLoadFullImage(id); }catch(e){}
+  /* [썸네일 80px 20260903] 미보유도 상세를 열 때만 원본을 지연 로드(흑백 미리보기 화질용) — 목록은 여전히 썸네일만 */
+  try{ if(!b.__full && typeof _bfLoadFullImage==='function') _bfLoadFullImage(id); }catch(e){}
   var svg=(typeof getButterflyCharSVG==='function')?getButterflyCharSVG(b.id,96,owned):'<span style="font-size:56px">🦋</span>';
   var esc=function(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   // **강조** 마크업 → <b> (이름의 유래 핵심 낱말·모습의 구별 포인트)
@@ -11041,13 +11125,13 @@ function showButterflyDetail(id){
   var body;
   if(!owned){
     /* [도감 전체공개 20260901] 미보유 미리보기 — 흑백 이미지 + 이름·희귀도·간단 정보만 */
-    var heroU=b.thumb||'';
+    var heroU=b.imageUrl||b.thumb||'';
     body='<div style="text-align:center;padding:4px 0 0">'
       +(heroU
         ? '<div style="position:relative;border-radius:16px;overflow:hidden;background:var(--bg-sub,#EEF0F3)"><img src="'+heroU+'" style="width:100%;height:200px;object-fit:contain;display:block;filter:grayscale(1);opacity:.8;padding:6px 0;box-sizing:border-box"><div style="position:absolute;top:10px;right:10px;font-size:18px">🔒</div></div>'
         : '<div style="display:inline-block;filter:grayscale(1);opacity:.55;margin:10px 0 2px">'+svg+'</div>')
       +'<div style="font-size:19px;font-weight:900;color:var(--text1,#374151);margin-top:10px">'+esc(b.name||b.id)+'</div>'
-      +(sciLine.length?'<div style="font-size:11.5px;color:var(--text3,#9CA3AF);font-style:italic;margin-top:2px">'+esc(sciLine.join(' · '))+'</div>':'')
+      +(sciLine.length?'<div style="font-size:12px;color:var(--text2,#6B7280);margin-top:3px"><span style="font-size:10px;font-weight:800;color:var(--text3,#9CA3AF);margin-right:6px">학명</span><i>'+esc(b.sci||'')+'</i>'+(b.en?'<span style="color:var(--text3,#9CA3AF)"> · '+esc(b.en)+'</span>':'')+'</div>':'')
       +'<div style="display:inline-block;background:var(--bg-sub,#F5F3FF);border:1.5px solid var(--border,#E9E2FF);border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800;color:'+rareColor+';margin-top:8px">'+(b.rare||'')+(rareLabel?' '+rareLabel+'급':'')+'</div>'
       +'</div>';
     var chipsU=[['🏞️',b.habitat],['📏',b.size],['🗓️',b.season]]
@@ -11076,6 +11160,8 @@ function showButterflyDetail(id){
         +'<div style="display:inline-block;background:#F5F3FF;border:1.5px solid #E9E2FF;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800;color:#7C3AED;margin-top:8px">'+(b.rare||'')+(rareLabel?' '+rareLabel+'급':'')+'</div>'
         +'</div>';
     }
+    /* [학명 행 20260903] 히어로 오버레이와 별도로 학명·영문명을 또렷한 행으로 표시 */
+    if(sciLine.length) h+='<div style="text-align:center;margin-top:9px;font-size:12px;color:var(--text2,#6B7280)"><span style="font-size:10px;font-weight:800;color:var(--text3,#9CA3AF);margin-right:6px">학명</span><i>'+esc(b.sci||'')+'</i>'+(b.en?'<span style="color:var(--text3,#9CA3AF)"> · '+esc(b.en)+'</span>':'')+'</div>';
     // ② 결정적 순간 명판 — moment:{y:'1912', t:'discover|last|redisc|record', d:'한 줄 설명'} (문헌 확인분만 등록)
     var MT={
       discover:{lb:'최초 발견',ic:'🔭',c:'#2563EB',bg:'#EFF6FF',bd:'#BFDBFE'},

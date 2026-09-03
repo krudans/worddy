@@ -1,4 +1,4 @@
-<!-- build: 20260903b-dogam-sci -->
+<!-- build: 20260903c-collection-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -2707,7 +2707,7 @@ function useXP(cost, type) {
 
 
 // ── 도감 수집 시스템 ──
-const MAX_COLLECTION = 100;   /* [도감 확장 20260831] 10 → 100 — 나비도감 200종 시대에 보관함 10칸은 부족. 병합 캡(_colMerge slice)·가득참 교체 모달·빈칸 렌더 모두 이 상수 하나를 따른다 */
+const MAX_COLLECTION = (typeof LEVELS!=='undefined'&&LEVELS.length)?LEVELS.length:8;   /* [보관함 정정 20260903] 성장 캐릭터는 8단계뿐 — 단계당 1칸. (20260831의 '10→100' 확장은 나비 도감이 아닌 이 상수에 잘못 적용됐던 것) */   /* [도감 확장 20260831] 10 → 100 — 나비도감 200종 시대에 보관함 10칸은 부족. 병합 캡(_colMerge slice)·가득참 교체 모달·빈칸 렌더 모두 이 상수 하나를 따른다 */
 
 function getMyCollection() {
   if(Array.isArray(S._collection)) return S._collection;
@@ -2738,6 +2738,8 @@ function _colMerge(fireCol, fireTomb){
   [].concat(Array.isArray(fireCol)?fireCol:[], localCol).forEach(function(it){
     var id=it&&it.id;
     if(id){ if(tomb.has(id)||seen[id]) return; seen[id]=1; }  // id 있으면 묘비/중복 제외, 없으면(레거시) 유지
+    /* [보관함 정정 20260903] 같은 성장 단계(lid)는 한 칸만 — 먼저 온 것(서버 우선) 유지 */
+    var lid=it&&(it.lid||it.lvId); if(lid){ if(seen['lid:'+lid]) return; seen['lid:'+lid]=1; }
     out.push(it);
   });
   out=out.slice(0, (typeof MAX_COLLECTION!=='undefined'?MAX_COLLECTION:10));
@@ -2816,6 +2818,9 @@ function confirmAddToCollection(btn) {
   try { data = typeof btn==='string'?JSON.parse(btn):JSON.parse(btn.getAttribute?btn.getAttribute('data-col'):btn); }
   catch(e) { data = btn; }
   const col = getMyCollection();
+  /* [보관함 정정 20260903] 같은 단계가 이미 있으면 새 칸을 쓰지 않고 그 칸을 최신으로 갱신 */
+  var _lid=data&&(data.lid||data.lvId); var _idx=_lid?col.findIndex(function(x){return x&&(x.lid||x.lvId)===_lid;}):-1;
+  if(_idx>=0){ if(typeof _colTombAdd==='function'&&col[_idx]&&col[_idx].id) _colTombAdd([col[_idx].id]); col[_idx]=data; saveCollection(col); cm(); toast('✅ 같은 단계를 최신 모습으로 갱신했어요 ('+col.length+'/'+MAX_COLLECTION+')'); vib(100); go(); return; }
   if(col.length >= MAX_COLLECTION) {
     showReplaceCollection(data);
     return;
@@ -2937,7 +2942,7 @@ function rPetCare() {
   html += '<div style="background:#fff;border-radius:18px;border:1.5px solid #E5E7EB;padding:16px">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   html += '<div style="font-size:13px;font-weight:800;color:#111">🦋 나비 컬렉션</div>';
-  html += '<span style="font-size:12px;color:var(--theme);font-weight:700;background:#F5F3FF;padding:3px 10px;border-radius:20px">'+myB.length+'/30</span>';
+  html += '<span style="font-size:12px;color:var(--theme);font-weight:700;background:#F5F3FF;padding:3px 10px;border-radius:20px">'+myB.length+'/'+((typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL.length:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:0))+'</span>';
   html += '</div>';
   if(myB.length===0) {
   if(curLvData&&curLvData.isFinal) {
@@ -7250,7 +7255,8 @@ function renderBFDogamGrid() {
   const grid = document.getElementById('bf-dogam-grid');
   if(!grid) return;
   const bfs = typeof getMyButterflies==='function' ? getMyButterflies() : [];
-  const list = typeof BUTTERFLY_LIST!=='undefined' ? BUTTERFLY_LIST : [];
+  /* [도감 카운터 통일 20260903] 나비 탭 그리드도 도감 모달처럼 전체 종 (미보유=흑백·실명·미리보기) */
+  const list = (typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length) ? BUTTERFLY_LIST_ALL : (typeof BUTTERFLY_LIST!=='undefined' ? BUTTERFLY_LIST : []);
   const sorted = [...list].sort((a,b)=>{
     const ao=bfs.includes(a.id), bo=bfs.includes(b.id);
     if(ao&&!bo)return -1; if(!ao&&bo)return 1;
@@ -7261,11 +7267,11 @@ function renderBFDogamGrid() {
     const bg = owned ? (b.bg||'#F5F3FF') : '#F3F4F6';
     const bd = owned ? (b.color||'var(--theme)') : '#E5E7EB';
     const svg = typeof getButterflyCharSVG==='function' ? getButterflyCharSVG(b.id,40,owned) : '<span style="font-size:24px">🦋</span>';
-    const nm = owned ? (b.name||b.id) : '???';
-    const rareStr = owned && b.rare ? b.rare : '';
-    const onclick_str = owned ? "showButterflyDetail('"+b.id+"')" : '';
+    const nm = (b.name||b.id);
+    const rareStr = b.rare || '';
+    const onclick_str = "showButterflyDetail('"+b.id+"')";
     return '<div onclick="'+onclick_str+'" '
-      +'style="text-align:center;padding:5px 3px 4px;border-radius:12px;background:'+bg+';border:1.5px solid '+bd+';overflow:hidden;box-sizing:border-box;cursor:'+(owned?'pointer':'default')+';min-width:0;width:100%">'
+      +'style="text-align:center;padding:5px 3px 4px;border-radius:12px;background:'+bg+';border:1.5px solid '+bd+';overflow:hidden;box-sizing:border-box;cursor:pointer;min-width:0;width:100%">'
       +'<div style="width:40px;height:40px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0'+(owned?';animation:float-bf '+(2.5+Math.random()).toFixed(1)+'s ease-in-out infinite':'')+'">'+svg+'</div>'
       +(rareStr?'<div style="font-size:7px;line-height:1.2;overflow:hidden;white-space:nowrap;width:100%;text-align:center">'+rareStr+'</div>':'')
       +'<div style="font-size:7px;font-weight:700;color:'+(owned?bd:'#C4A46B')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;max-width:100%;box-sizing:border-box">'+nm+'</div>'
@@ -9075,17 +9081,17 @@ function rButterflyTab() {
   html += '<div style="font-size:14px;font-weight:800;color:#111">🦋 반려나비 도감</div>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<button onclick="window._bfSelMode=false;showButterflyDogam()" style="background:#111;color:#fff;border:none;border-radius:10px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer">도감 보기</button>';
-  html += '<span style="font-size:12px;font-weight:700;color:var(--theme);background:#F5F3FF;padding:3px 10px;border-radius:20px">' + butterflies.length + '/30</span>';
+  html += '<span style="font-size:12px;font-weight:700;color:var(--theme);background:#F5F3FF;padding:3px 10px;border-radius:20px">' + butterflies.length + '/'+((typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL.length:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:0))+'</span>';
   html += '</div></div>';
 
   // 진행률 바
   html += '<div style="margin-bottom:10px">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
   html += '<div style="font-size:11px;font-weight:700;color:#111">🦋 나비 도감</div>';
-  html += (function(){var _tot=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:30;return '<div style="font-size:11px;color:' + (butterflies.length>=_tot?'#16A34A':'var(--theme)') + '">' + butterflies.length + '/'+_tot+'종</div>';})();   /* [100종 확장 20260831] */
+  html += (function(){var _tot=((typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL.length:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:0));return '<div style="font-size:11px;color:' + (butterflies.length>=_tot?'#16A34A':'var(--theme)') + '">' + butterflies.length + '/'+_tot+'종</div>';})();   /* [100종 확장 20260831] */
   html += '</div>';
   html += '<div style="background:#E5E7EB;border-radius:4px;height:6px;overflow:hidden">';
-  html += (function(){var _tot=(typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:30;return '<div style="height:100%;background:' + (butterflies.length>=_tot?'#16A34A':'var(--theme)') + ';border-radius:4px;width:' + Math.round(butterflies.length/_tot*100) + '%"></div>';})();   /* [100종 확장 20260831] */
+  html += (function(){var _tot=((typeof BUTTERFLY_LIST_ALL!=='undefined'&&BUTTERFLY_LIST_ALL.length)?BUTTERFLY_LIST_ALL.length:((typeof BUTTERFLY_LIST!=='undefined')?BUTTERFLY_LIST.length:0));return '<div style="height:100%;background:' + (butterflies.length>=_tot?'#16A34A':'var(--theme)') + ';border-radius:4px;width:' + Math.round(butterflies.length/_tot*100) + '%"></div>';})();   /* [100종 확장 20260831] */
   html += '</div>';
   html += '</div>';
 

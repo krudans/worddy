@@ -1,4 +1,4 @@
-<!-- build: 20260908f-market-tab -->
+<!-- build: 20260908h-no-emoji-prefetch -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -3673,7 +3673,7 @@ function rMarket() {
       + '<select onchange="S._mktSort=this.value;S._mktShown=20;go()" style="flex-shrink:0;padding:5px 8px;border-radius:18px;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);color:var(--text2,#374151);font-size:11px;font-weight:700;cursor:pointer;outline:none">'
       + Object.keys(_sortLabels).map(function(k){ return '<option value="'+k+'"'+(_curSort===k?' selected':'')+'>'+_sortLabels[k]+'</option>'; }).join('')
       + '</select>'
-      + '<button onclick="loadMarketPacks().then(()=>go())" title="목록 새로고침" style="flex-shrink:0;margin-left:auto;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,#374151)">⟳</button>'
+      + '<button onclick="loadMarketPacks(0,{full:true}).then(()=>go())" title="목록 새로고침" style="flex-shrink:0;margin-left:auto;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border,#E5E7EB);background:var(--bg-card,#fff);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2,#374151)">⟳</button>'
       + '</div>';
   }
   /* [원서 요청 서비스 20260720] 찾는 원서가 없을 때 요청 → book_requests 적재 → 관리자 등록 → 인앱 알림 */
@@ -4317,23 +4317,32 @@ async function _checkBookRequestDone(){
   }catch(e){console.warn('[wd-io:_checkBookRequestDone]',e);}
 }
 
-async function loadMarketPacks(retryCount) {
+/* ══ [부팅 팩 부분로드 20260908] 부팅마다 packs 컬렉션 전체(102개·32.8MB)를 받아 폰이 수십 초 얼던 문제.
+   부팅(기본)에는 '내가 담은 팩'만 문서 ID로 받고(S._marketPartial=true), 전체 목록은 마켓을 열 때/새로고침 때만 받는다. ══ */
+async function loadMarketPacks(retryCount, opts) {
   retryCount = retryCount || 0;
+  var _full = !!(opts && opts.full) || !!S._marketFullWanted;
   if(typeof db === 'undefined') {
     S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
     return;
   }
   try {
-    const [snap, delSnap] = await Promise.all([
-      db.collection('packs').get(),
-      db.collection('config').doc('deleted_packs').get().catch(()=>null)
-    ]);
+    var snap;
+    const delSnap = await db.collection('config').doc('deleted_packs').get().catch(()=>null);
+    if(_full){
+      snap = await db.collection('packs').get();
+    } else {
+      const _ids = Array.from(new Set((S.books||[]).map(function(b){ return b && b.packId; }).filter(Boolean)));
+      const _docs = await Promise.all(_ids.map(function(id){ return db.collection('packs').doc(id).get().catch(function(){ return null; }); }));
+      snap = { docs: _docs.filter(function(d){ return d && d.exists; }) };
+    }
     const deletedIds = new Set(delSnap?.exists ? (delSnap.data()?.ids || []) : []);
     const fbPacks = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.active !== false && p.name);
     const localPacks = typeof WORD_PACKS !== 'undefined' ? WORD_PACKS : [];
     const fbIds = new Set(fbPacks.map(p => p.id));
     const localOnly = localPacks.filter(p => !fbIds.has(p.id) && !deletedIds.has(p.id));
     S._marketPacks = [...fbPacks, ...localOnly];
+    S._marketPartial = !_full;   /* [부팅 팩 부분로드 20260908] */
     /* [en-only 팩 지원 20260720] packs.words가 ["mustache",...] 문자열 배열인 신형 팩을
        로드 직후 객체 배열로 정규화(사전 오버레이) → 이후 모든 소비 지점(마켓·담기·학습·게임)이 무수정 동작.
        사전 미로드 시엔 {en}만 채워 표시 시 getBookWords 오버레이에 맡긴다(dict_missing 오적재 방지). */
@@ -4354,7 +4363,7 @@ async function loadMarketPacks(retryCount) {
       });
       var _tries=0; (function _next(){ var p=_queue.shift(); if(!p) return; try{ if(typeof BWD_DICT!=='undefined' && BWD_DICT && Object.keys(BWD_DICT).length>1000 && typeof _enrichFromDict==='function'){ p.words=p.words.map(function(w){ return (w&&w._lite)?_enrichFromDict({en:w.en}):w; }); } else { _queue.push(p); if(++_tries>3000) return; } }catch(e){} setTimeout(_next, _tries?200:30); })();
     }catch(e){}
-    console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
+    console.log('[마켓] 팩 로드('+(_full?'전체':'내 팩만')+'):', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
     _migratePackWords(); // 로드 완료 즉시 packId 복원 + 구 데이터 제거
   } catch(e) {
     console.warn('[마켓] Firebase 로드 실패 (시도 ' + (retryCount+1) + '):', e.message);
@@ -4363,7 +4372,7 @@ async function loadMarketPacks(retryCount) {
       const delay = Math.pow(2, retryCount) * 1000;
       await new Promise(res => setTimeout(res, delay));
       if(typeof go === 'function') go(); // 로딩 화면 타이머 업데이트
-      return loadMarketPacks(retryCount + 1);
+      return loadMarketPacks(retryCount + 1, opts);
     }
     S._marketPacks = typeof WORD_PACKS !== 'undefined' ? [...WORD_PACKS] : [];
   }
@@ -12422,7 +12431,7 @@ function switchBook(name) {
   if((!_bw||!_bw.length) && book.words && book.words.length) _bw = book.words;
   if(!_bw || !_bw.length){
     toast('단어를 불러오는 중이에요. 잠시 후 다시 시도해주세요.');
-    if(typeof loadMarketPacks==='function'){ loadMarketPacks().then(function(){ try{ go('mybooks'); }catch(e){} }); }
+    if(typeof loadMarketPacks==='function'){ loadMarketPacks(0,{full:true}).then(function(){ try{ go('mybooks'); }catch(e){} }); }
     return;
   }
   S.words=[..._bw];
@@ -13070,11 +13079,12 @@ function rStudy() {
     return _isCourse ? rCourseDetail() : rPackDetail();
   }
   if(S.stab==='market') {
-    if(S._marketPacks == null) {  // 로드 전(null/undefined)일 때만 로딩화면. 빈 배열([])=로드됐으나 0개 → rMarket 빈상태로 표시(무한 재로드 루프 방지)
+    if(S._marketPacks == null || S._marketPartial) {  // 로드 전 또는 부분 로드(내 팩만) 상태 → 전체 목록 로드 후 표시
       if(!S._mktLoading) {
         S._mktLoading = true;
         S._mktLoadStart = Date.now();
-        loadMarketPacks().then(()=>{ S._mktLoading=false; go(); }).catch(()=>{ S._mktLoading=false; go(); });
+        S._marketFullWanted = true;   /* [부팅 팩 부분로드 20260908] 이후 새로고침도 전체 */
+        loadMarketPacks(0,{full:true}).then(()=>{ S._mktLoading=false; go(); }).catch(()=>{ S._mktLoading=false; go(); });
       }
       // 20초 지나면 강제 해제 후 새로고침 유도
       const _elapsed = Date.now() - (S._mktLoadStart||Date.now());
@@ -18958,6 +18968,15 @@ window._authPending = false;
 
 // 스플래시 상태 업데이트 헬퍼
 function setSplash(pct, msg, step) {
+  /* [부팅 진행 표시 20260908] 경과 초·단계를 계속 갱신해 '멈춘 것'처럼 보이지 않게 */
+  try{
+    if(!window._splashT0){ window._splashT0=Date.now();
+      window._splashTimer=setInterval(function(){ var el=document.getElementById('splash-time'); var sp=document.getElementById('splash-screen'); if(!sp){ clearInterval(window._splashTimer); return; }
+        var s=Math.round((Date.now()-window._splashT0)/1000);
+        if(el){ el.textContent='경과 '+s+'초 · 보통 5~15초 걸려요'+(s>=15?' · 네트워크가 느리면 조금 더 걸려요':'')+(s>=40?' · 계속 멈춰 있으면 앱을 완전히 닫았다 다시 열어 주세요':''); }
+      },1000); }
+    var sp0=document.getElementById('splash-screen'); if(sp0&&!document.getElementById('splash-time')){ var t=document.createElement('div'); t.id='splash-time'; t.style.cssText='font-size:11px;color:#9CA3AF;margin-top:10px'; sp0.appendChild(t); }
+  }catch(e){}
   const bar = document.getElementById('splash-bar');
   const msgEl = document.getElementById('splash-msg');
   const stepEl = document.getElementById('splash-step');
@@ -20112,7 +20131,7 @@ auth.onAuthStateChanged(async user => {
   function sched(){ if(pending)return; pending=true; requestAnimationFrame(function(){pending=false;['body','nav','mr','tw'].forEach(function(id){var el=document.getElementById(id);if(el)notofy(el);});}); }
   function init(){ ['body','nav','mr','tw'].forEach(function(id){var el=document.getElementById(id); if(el){notofy(el); try{new MutationObserver(sched).observe(el,{childList:true,subtree:true});}catch(e){}}});
     try{ new MutationObserver(sched).observe(document.body,{childList:true,subtree:true}); }catch(e){}
-    window._notoReady=true; try{ setTimeout(prefetchEmoji, 2500); }catch(e){} }
+    window._notoReady=true; /* [이모지 프리페치 제거 20260908] 앱 실행마다 이모지 PNG 1,500여 건을 CDN에서 미리 받아 네트워크를 독점하던 것 제거 — 화면에 보이는 이모지만 그때 로드 */ }
   function prefetchEmoji(){
     try{
       if(sessionStorage.getItem('_notoPrefetched')) return;

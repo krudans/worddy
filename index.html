@@ -1,4 +1,4 @@
-<!-- build: 20260908h-no-emoji-prefetch -->
+<!-- build: 20260908i-guest-home-fix -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -1798,7 +1798,7 @@ function _multiLangPanel(en){ try{
   return '<div style="margin-top:14px;width:100%;max-width:340px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:4px 14px;box-sizing:border-box">'+rows+'</div>';
 }catch(e){ return ''; } }
 // 다국어 표시 설정행(다중선택: 영어/한국어/일본어/독일어). 0개(모두 끄기)까지 허용.
-function _toggleShowLang(lang, rr){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs==null)?av.slice():S._showLangs.slice(); var i=sel.indexOf(lang); if(i>=0){ sel.splice(i,1); } else { sel.push(lang); } S._showLangs=av.filter(function(l){return sel.indexOf(l)>=0;}); if(typeof sv==='function') sv(); if((lang==='ja'||lang==='de')&&S._showLangs.indexOf(lang)>=0&&typeof _bwdLangReady==='function'&&!_bwdLangReady(lang)&&typeof _bwdLoadLang==='function'){ _bwdLoadLang(lang).then(function(){ try{ if(typeof rr==='function') rr(); else if(typeof go==='function') go(); }catch(e){} }); } }catch(e){console.warn('[wd-io:_toggleShowLang]',e);} }
+function _toggleShowLang(lang, rr){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs==null)?av.slice():S._showLangs.slice(); var i=sel.indexOf(lang); if(i>=0){ sel.splice(i,1); } else { sel.push(lang); } S._showLangs=av.filter(function(l){return sel.indexOf(l)>=0;}); if(typeof sv==='function') sv(); if((lang==='ja'||lang==='de')&&S._showLangs.indexOf(lang)>=0&&typeof _bwdLangReady==='function'&&!_bwdLangReady(lang)&&typeof _bwdLoadLang==='function'){ _bwdLoadLang(lang).then(function(){ try{ if(!window._appStarted) return; if(typeof rr==='function') rr(); else if(typeof go==='function') go(); }catch(e){} }); } }catch(e){console.warn('[wd-io:_toggleShowLang]',e);} }
 window._toggleShowLang=_toggleShowLang;
 function _multiLangItems(rr){ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var ML=window._MLANG||{}; var sel=_showLangList(); return av.map(function(lang){ var nm=(ML[lang]&&ML[lang].name)||lang; return [nm, "_toggleShowLang('"+lang+"');"+rr, sel.indexOf(lang)>=0]; }); }
 // 선택된 형식에 맞는 단일 예문 {en,kr} 반환 (없으면 null)
@@ -7118,6 +7118,7 @@ function showTestIntro(isRetry=false, skipWarn=false) {
    system_words 기반 sysPool 로더도 이미 부재 — 관련 상태(tCurrentQ 등)도 이 클러스터 전용이었다. */
 function startApp() {
   console.log('[앱] startApp 호출');
+  window._appStarted=true;   /* [게스트 홈 덮어쓰기 버그 수정 20260908] */
   // studyLog 기반 streak 재계산 (복구 후 불일치 방지)
   setTimeout(recalcStreak, 800);
   if(S.words.length > 0) {
@@ -20033,7 +20034,7 @@ auth.onAuthStateChanged(async user => {
       /* [부분 메타 캐시 버그 수정 20260908] 조각을 전역에 바로 합치면 _lvlSorted 가 부분 메타로 정본을 계산·영구 캐시해
          렌더마다 재계산이 반복됐다 → 임시 객체에 모았다가 완료 시 한 번에 대입하고, 메타면 정본 캐시를 비운다. */
       var acc={};
-      var finish=function(){ window[cfg.g]=Object.assign(window[cfg.g]||{}, acc); acc={}; if(name==='bwd-meta'){ window.__bwdMetaReady=true; try{ window._lwSorted=null; window._lwCache={}; window._lwBandStart=null; }catch(e){} try{ var _mr=document.getElementById('mr'); if(typeof go==='function'&&window.S&&!S._gameRunning&&!S._inChExam&&!S._inLevelTest&&!S._inInitLevelTest&&!S._inLearnSession&&!(_mr&&_mr.innerHTML&&_mr.innerHTML.trim())) go(); }catch(e){} } res(true); };
+      var finish=function(){ window[cfg.g]=Object.assign(window[cfg.g]||{}, acc); acc={}; if(name==='bwd-meta'){ window.__bwdMetaReady=true; try{ window._lwSorted=null; window._lwCache={}; window._lwBandStart=null; }catch(e){} /* [게스트 홈 덮어쓰기 버그 수정 20260908] go()는 로그인 여부를 안 보고 홈을 그리므로, 앱이 시작(startApp)됐고 로그인된 상태에서만 재렌더 */ try{ var _mr=document.getElementById('mr'); var _in=!!(window._appStarted && (typeof auth!=='undefined') && auth.currentUser); if(_in&&typeof go==='function'&&window.S&&!S._gameRunning&&!S._inChExam&&!S._inLevelTest&&!S._inInitLevelTest&&!S._inLearnSession&&!(_mr&&_mr.innerHTML&&_mr.innerHTML.trim())) go(); }catch(e){} } res(true); };
       var fallback=function(){ (function next(i){ if(i>=cfg.js.length){ if(name==='bwd-meta'){ window.__bwdMetaReady=true; try{ window._lwSorted=null; window._lwCache={}; window._lwBandStart=null; }catch(e){} } return res(true); } loadScript(cfg.js[i]).then(function(){ next(i+1); }); })(0); };
       if(!window.Worker){ fallback(); return; }
       try{

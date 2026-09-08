@@ -1,4 +1,4 @@
-<!-- build: 20260908d-meta-atomic -->
+<!-- build: 20260908e-enonly-packs -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -4336,14 +4336,22 @@ async function loadMarketPacks(retryCount) {
     /* [en-only 팩 지원 20260720] packs.words가 ["mustache",...] 문자열 배열인 신형 팩을
        로드 직후 객체 배열로 정규화(사전 오버레이) → 이후 모든 소비 지점(마켓·담기·학습·게임)이 무수정 동작.
        사전 미로드 시엔 {en}만 채워 표시 시 getBookWords 오버레이에 맡긴다(dict_missing 오적재 방지). */
+    /* ══ [en-only 팩 20260908] 부팅 32.8MB(팩 102개 × 단어 전필드)의 근본 대책 — 사전과 같은 단어는 문자열(en)만 저장하고
+       앱이 사전으로 채운다. 배열은 '문자열 + 객체' 혼합 가능(사전에 없거나 뜻이 다른 단어는 객체 유지).
+       강화(_enrichFromDict)는 내가 담은 팩만 즉시, 나머지는 유휴 시 팩당 하나씩(폰 메인스레드 보호). 그 전에는 {en}만 채워
+       개수·CEFR바는 정상, 학습 표시는 getBookWords 오버레이가 담당. ══ */
     try{
+      var _dictReady=(typeof BWD_DICT!=='undefined') && BWD_DICT && Object.keys(BWD_DICT).length>1000;
+      var _mine=new Set((S.books||[]).map(function(b){ return b&&b.packId; }).filter(Boolean));
+      var _queue=[];
+      var _norm=function(p, full){ p.words=p.words.map(function(w){ if(typeof w==='string'){ return (full&&_dictReady&&typeof _enrichFromDict==='function')?_enrichFromDict({en:w}):{en:w,_lite:1}; } return w; }); };
       S._marketPacks.forEach(function(p){
-        if(p && Array.isArray(p.words) && p.words.length && typeof p.words[0]==='string'){
-          var _dictReady=(typeof BWD_DICT!=='undefined');
-          p.words=p.words.map(function(en){ return (_dictReady&&typeof _enrichFromDict==='function')?_enrichFromDict({en:en}):{en:en}; });
+        if(p && Array.isArray(p.words) && p.words.length && p.words.some(function(x){ return typeof x==='string'; })){
           p._enOnly=true;
+          if(_mine.has(p.id)) _norm(p,true); else { _norm(p,false); _queue.push(p); }
         }
       });
+      var _tries=0; (function _next(){ var p=_queue.shift(); if(!p) return; try{ if(typeof BWD_DICT!=='undefined' && BWD_DICT && Object.keys(BWD_DICT).length>1000 && typeof _enrichFromDict==='function'){ p.words=p.words.map(function(w){ return (w&&w._lite)?_enrichFromDict({en:w.en}):w; }); } else { _queue.push(p); if(++_tries>3000) return; } }catch(e){} setTimeout(_next, _tries?200:30); })();
     }catch(e){}
     console.log('[마켓] 팩 로드:', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
     _migratePackWords(); // 로드 완료 즉시 packId 복원 + 구 데이터 제거

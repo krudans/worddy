@@ -1,4 +1,4 @@
-<!-- build: 20260908c-studylog-compact -->
+<!-- build: 20260908d-meta-atomic -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -715,6 +715,8 @@ function _lvlSorted(){
   if(window._lwSorted) return window._lwSorted;
   try{
     if(typeof BWD_META==='undefined' || typeof BWD_DICT==='undefined') return [];
+    /* [부분 메타 캐시 버그 수정 20260908] 워커 로더 사용 시 메타가 완전히 들어온 뒤에만 정본을 계산한다 */
+    if(typeof window._bwdLoad==='function' && !window.__bwdMetaReady) return [];
     /* ══ [분류 근거 수정 20260804] 2차 정렬을 '실제 빈도'로 교체 ══
        기존 결함: 2차 정렬이 사전 파일 등재순이었는데 그 파일이 알파벳순이라,
        레벨·챕터가 알파벳 구간으로 잘렸다(레벨1 5챕터에 m~p 단어만 나오고,
@@ -19997,18 +19999,22 @@ auth.onAuthStateChanged(async user => {
   window._bwdLoad=function(name){ window.__bwdP=window.__bwdP||{}; if(window.__bwdP[name]) return window.__bwdP[name];
     var cfg=window.__BWD_SRC[name]; if(!cfg) return Promise.resolve(false);
     window.__bwdP[name]=new Promise(function(res){
-      var fallback=function(){ (function next(i){ if(i>=cfg.js.length) return res(true); loadScript(cfg.js[i]).then(function(){ next(i+1); }); })(0); };
+      /* [부분 메타 캐시 버그 수정 20260908] 조각을 전역에 바로 합치면 _lvlSorted 가 부분 메타로 정본을 계산·영구 캐시해
+         렌더마다 재계산이 반복됐다 → 임시 객체에 모았다가 완료 시 한 번에 대입하고, 메타면 정본 캐시를 비운다. */
+      var acc={};
+      var finish=function(){ window[cfg.g]=Object.assign(window[cfg.g]||{}, acc); acc={}; if(name==='bwd-meta'){ window.__bwdMetaReady=true; try{ window._lwSorted=null; window._lwCache={}; window._lwBandStart=null; }catch(e){} try{ var _mr=document.getElementById('mr'); if(typeof go==='function'&&window.S&&!S._gameRunning&&!S._inChExam&&!S._inLevelTest&&!S._inInitLevelTest&&!S._inLearnSession&&!(_mr&&_mr.innerHTML&&_mr.innerHTML.trim())) go(); }catch(e){} } res(true); };
+      var fallback=function(){ (function next(i){ if(i>=cfg.js.length){ if(name==='bwd-meta'){ window.__bwdMetaReady=true; try{ window._lwSorted=null; window._lwCache={}; window._lwBandStart=null; }catch(e){} } return res(true); } loadScript(cfg.js[i]).then(function(){ next(i+1); }); })(0); };
       if(!window.Worker){ fallback(); return; }
       try{
         window.__bwdW=window.__bwdW||new Worker('js/bwd-worker.js?v='+window.__BWD_VER);
         var w=window.__bwdW;
         /* JSON이 여러 파일이면 순차 로드(각 파일 ≤25MB — GitHub 웹 업로드 한도) */
         (function nextJson(k){
-          if(k>=cfg.json.length) return res(true);
+          if(k>=cfg.json.length) return finish();
           var id=name+':'+k+':'+Date.now();
           var onmsg=function(e){ var m=e.data||{}; if(m.id!==id) return;
             if(m.error){ w.removeEventListener('message',onmsg); console.warn('[bwd-loader] '+name+' 워커 실패 → script 폴백', m.error); fallback(); return; }
-            if(m.part){ window[cfg.g]=Object.assign(window[cfg.g]||{}, m.part); }
+            if(m.part){ Object.assign(acc, m.part); }
             if(m.done){ w.removeEventListener('message',onmsg); nextJson(k+1); } };
           w.addEventListener('message',onmsg);
           w.postMessage({ id:id, url:new URL(cfg.json[k]+'?v='+window.__BWD_VER, location.href).href, chunk:3000 });   /* 워커 기준 경로가 js/ 라 절대 URL로 전달 */

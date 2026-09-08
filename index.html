@@ -1,4 +1,4 @@
-<!-- build: 20260908b-worker-loader -->
+<!-- build: 20260908c-studylog-compact -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -5512,7 +5512,7 @@ function sv() {
       _ownedPacks:S._ownedPacks||[], alStudy:S.alStudy, alGoal:S.alGoal, alStreak:S.alStreak,
       _dailyGoalMin:S._dailyGoalMin||30, _dailyStudiedMin:S._dailyStudiedMin||0,
       _dailyDate:S._dailyDate||'', _dailyXpGiven:S._dailyXpGiven||{},
-      studyLog:S.studyLog||{}, fontFamily:S.fontFamily||'default',
+      studyLog:(typeof _studyLogCompact==='function'?_studyLogCompact(S.studyLog||{}):(S.studyLog||{})), fontFamily:S.fontFamily||'default',   /* [studyLog 색인 폭발 수정 20260908] */
       plan:localStorage.getItem('wd-plan')||'',
       planScope:localStorage.getItem('wd-plan-scope')||'',
       quizGoal:localStorage.getItem('wd-quizgoal')||'',
@@ -5681,6 +5681,9 @@ function sv() {
       const booksData = {books: (S.books||[]).map(b => b.packId ? (({words,...rest})=>rest)(b) : (b&&b.isCurriculum ? {...b, words:(Array.isArray(b.words)?b.words:[]).map(w=>({en:(w&&w.en)||''}))} : b)), words: _myWords, tombBooks:(S._tombBooks||[]), tombWords:(S._tombWords||[]), updatedAt: new Date().toISOString()};   /* [1MiB 저장실패 근본수정 20260720] 커리큘럼 words는 payload에서도 en-only 보장(설계 정본) — 오염돼도 서버엔 절대 비대본이 안 감 */
       db.collection('users').doc(uid).set(saveDataLite, {merge:true})
         .catch(e=>console.warn('Firebase 저장 오류',e));
+      /* [studyLog 색인 폭발 수정 20260908] merge:true 는 깊은 병합이라 압축으로 뺀 과거 날짜의 상세 키(seenEns 등)가
+         서버에 그대로 남는다 → 서버 병합을 한 번 거친 뒤(_slSynced)에는 studyLog 필드만 통째로 교체해 실제로 줄인다. */
+      try{ if(S._slSynced){ db.collection('users').doc(uid).set({studyLog:(typeof _studyLogCompact==='function'?_studyLogCompact(S.studyLog||{}):(S.studyLog||{}))}, {mergeFields:['studyLog']}).catch(function(e){ console.warn('[studyLog 교체 저장 실패]', e&&e.message); }); } }catch(e){}
       // 단어장 별도 저장
       db.collection('user_words').doc(uid).set(booksData, {merge:false})
         .then(()=>{ try{ localStorage.setItem('wd-last-sv', booksData.updatedAt); }catch(e){console.warn('[wd-io:sv]',e);} })   /* [LWW 20260722] 서버 저장 성공 시각 */
@@ -11280,6 +11283,26 @@ function _planDaysBetween(aStr,bStr){ return Math.round((_planParse(bStr)-_planP
 function _planDailyForDate(remaining,dateStr,todayStr){ var days=Math.max(1,_planDaysBetween(todayStr,dateStr)); return Math.max(1,Math.ceil(remaining/days)); }
 
 // 외운 날짜 기록(markDates) 기반 — 오늘/최근 외운 수
+/* ══ [studyLog 색인 폭발 수정 20260908] users 문서 저장 실패("too many index entries", Firestore 문서당 색인 4만 한도)의 원인:
+   일별 기록에 그날 본 단어(seenEns 900+)·XP 단어(xpWords 900+)·외운 단어(markedEns/markBook 190+)를 통째로 담아
+   80일치가 색인 2.7만 건. 이 상세는 '오늘' 집계·XP 중복 방지에만 쓰이므로 최근 2일만 남기고 과거는 집계값으로 압축한다. ══ */
+function _studyLogCompact(sl){
+  try{
+    if(!sl||typeof sl!=='object') return sl;
+    var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+    var keys=Object.keys(sl).sort(), cut=keys.length>2?keys[keys.length-2]:'';
+    var HEAVY={seenEns:1,xpWords:1,markBook:1,markedEns:1};
+    keys.forEach(function(k){
+      if(k>=cut||k===t) return;
+      var e=sl[k]; if(!e||typeof e!=='object') return;
+      if(!(e.seenEns||e.xpWords||e.markBook||e.markedEns)) return;
+      var o={}; Object.keys(e).forEach(function(f){ if(HEAVY[f]) return; var v=e[f]; if(v===null||typeof v!=='object') o[f]=v; });
+      if(o.marked==null && Array.isArray(e.markedEns)) o.marked=e.markedEns.length;
+      sl[k]=o;
+    });
+  }catch(e){}
+  return sl;
+}
 function _seenW(en){ try{ if(!en)return; var t=(typeof today==='function')?today():new Date(Date.now()+9*3600000).toISOString().slice(0,10); _slDay(t); if(!Array.isArray(S.studyLog[t].seenEns))S.studyLog[t].seenEns=[]; var k=String(en); if(S.studyLog[t].seenEns.indexOf(k)<0)S.studyLog[t].seenEns.push(k); }catch(e){} }
 function _todayMemoCount(dayStr){
   // '오늘 외운 단어' 단일 소스 = 오늘 외웠음 표시한 단어 수(재확인 포함, 중복제거, 전체 단어장)
@@ -19367,7 +19390,7 @@ auth.onAuthStateChanged(async user => {
               if(Object.keys(_mb).length){ merged[date].markBook=_mb; }
               if(_lmc||_fmc) merged[date]._mc=1;
             });
-            S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
+            S.studyLog = (typeof _studyLogCompact==='function')?_studyLogCompact(merged):merged; S._slSynced=true; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
             try{ if(typeof _streakFromLog==='function'){ var _ns=_streakFromLog(); if(typeof _ns==='number' && _ns!==S.streak){ console.log('[스트릭 정본] 병합 studyLog 재계산:', S.streak, '→', _ns); S.streak=_ns; localStorage.setItem('wd-st', _ns); } } }catch(_e){}   /* [스트릭 정본 통일 20260811] */
           }
           try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(_data); }catch(_e){}
@@ -19783,7 +19806,7 @@ auth.onAuthStateChanged(async user => {
               if(Object.keys(_mb).length){ merged[date].markBook=_mb; }
               if(_lmc||_fmc) merged[date]._mc=1;
             });
-            S.studyLog = merged; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
+            S.studyLog = (typeof _studyLogCompact==='function')?_studyLogCompact(merged):merged; S._slSynced=true; try{if(typeof _fixInflatedStudyTime==='function')_fixInflatedStudyTime();}catch(_e){}
             try{ if(typeof _streakFromLog==='function'){ var _ns=_streakFromLog(); if(typeof _ns==='number' && _ns!==S.streak){ console.log('[스트릭 정본] 병합 studyLog 재계산:', S.streak, '→', _ns); S.streak=_ns; localStorage.setItem('wd-st', _ns); } } }catch(_e){}   /* [스트릭 정본 통일 20260811] */
           }
           try{ if(typeof _restoreCloudExtras==='function') _restoreCloudExtras(_data); }catch(_e){}

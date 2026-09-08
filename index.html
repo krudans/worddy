@@ -1,4 +1,4 @@
-<!-- build: 20260903f-detail-hotfix -->
+<!-- build: 20260908a-boot-lazy -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -1795,7 +1795,7 @@ function _multiLangPanel(en){ try{
   return '<div style="margin-top:14px;width:100%;max-width:340px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:4px 14px;box-sizing:border-box">'+rows+'</div>';
 }catch(e){ return ''; } }
 // 다국어 표시 설정행(다중선택: 영어/한국어/일본어/독일어). 0개(모두 끄기)까지 허용.
-function _toggleShowLang(lang, rr){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs==null)?av.slice():S._showLangs.slice(); var i=sel.indexOf(lang); if(i>=0){ sel.splice(i,1); } else { sel.push(lang); } S._showLangs=av.filter(function(l){return sel.indexOf(l)>=0;}); if(typeof sv==='function') sv(); }catch(e){console.warn('[wd-io:_toggleShowLang]',e);} }
+function _toggleShowLang(lang, rr){ try{ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var sel=(S._showLangs==null)?av.slice():S._showLangs.slice(); var i=sel.indexOf(lang); if(i>=0){ sel.splice(i,1); } else { sel.push(lang); } S._showLangs=av.filter(function(l){return sel.indexOf(l)>=0;}); if(typeof sv==='function') sv(); if((lang==='ja'||lang==='de')&&S._showLangs.indexOf(lang)>=0&&typeof _bwdLangReady==='function'&&!_bwdLangReady(lang)&&typeof _bwdLoadLang==='function'){ _bwdLoadLang(lang).then(function(){ try{ if(typeof rr==='function') rr(); else if(typeof go==='function') go(); }catch(e){} }); } }catch(e){console.warn('[wd-io:_toggleShowLang]',e);} }
 window._toggleShowLang=_toggleShowLang;
 function _multiLangItems(rr){ var av=(typeof _mAvailLangs==='function')?_mAvailLangs():['en','ko']; var ML=window._MLANG||{}; var sel=_showLangList(); return av.map(function(lang){ var nm=(ML[lang]&&ML[lang].name)||lang; return [nm, "_toggleShowLang('"+lang+"');"+rr, sel.indexOf(lang)>=0]; }); }
 // 선택된 형식에 맞는 단일 예문 {en,kr} 반환 (없으면 null)
@@ -1805,7 +1805,7 @@ window.BWD_JA = window.BWD_JA || {};
 window.BWD_DE = window.BWD_DE || {};
 window._MLANG = { en:{name:'영어',tts:'en-US',flag:'🇬🇧'}, ko:{name:'한국어',tts:'ko-KR',flag:'🇰🇷'}, ja:{name:'일본어',tts:'ja-JP',flag:'🇯🇵'}, de:{name:'독일어',tts:'de-DE',flag:'🇩🇪'} };
 // 데이터가 존재하는 언어 목록(en/ko 항상, ja/de는 데이터 있으면)
-function _mAvailLangs(){ var o=['en','ko']; if(window.BWD_JA&&Object.keys(window.BWD_JA).length)o.push('ja'); if(window.BWD_DE&&Object.keys(window.BWD_DE).length)o.push('de'); return o; }
+function _mAvailLangs(){ return ['en','ko','ja','de']; }   /* [부팅 지연로드 20260908] 언어 목록은 고정, 데이터는 _bwdLoadLang 로 필요 시 로드 */
 // 한 개념(en)에 대해 특정 언어 블록 표준화 → {label,sub,ph,ex:[{t,s}],audioLang} (없으면 null)
 function _mBlock(en, lang){
   en=String(en||'').toLowerCase().trim();
@@ -15528,7 +15528,7 @@ const aiM = aiMFull;
 
 // ── 현재 선택된 단어장에 단어 저장 헬퍼 ──
 // ── [사전 자동 채움] 입력(사진/PDF/엑셀/붙여넣기/수동)으로 들어온 단어를 앱 사전(butterfly dic)에서 조회해 세부정보를 채운다. AI 아님. ──
-function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||(window.BWD_META&&Object.keys(window.BWD_META).length))return; window.__bwdMetaLoaded=true; ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+Date.now();s.async=true;document.head.appendChild(s);}); }catch(e){} }
+function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||(window.BWD_META&&Object.keys(window.BWD_META).length))return; window.__bwdMetaLoaded=true; ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?v='+(window.__BWD_VER||'1');s.async=true;document.head.appendChild(s);}); }catch(e){} }   /* [부팅 지연로드 20260908] 캐시 가능 URL */
 function _dictLookup(en){
   en=String(en||'').trim(); var lo=en.toLowerCase();
   var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:null;
@@ -19961,9 +19961,22 @@ auth.onAuthStateChanged(async user => {
 <script src="js/bwd-suggest.js"></script>
   <script src="js/bwd-fix.js?v=2"></script>
   <script src="js/bwd-dict-ui.js?v=7ex5"></script>
-  <script>(function(){var cb=Date.now();['js/bwd-ex5-1.js','js/bwd-ex5-2.js','js/bwd-ja.js','js/bwd-de.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=false;document.head.appendChild(s);});window.__bwdEx5Loaded=true;
-  // 메타(CEFR/어원/유의어/반의어)도 미리 로드(논블로킹) — 입력 자동채움에 사용
-  if(!window.__bwdMetaLoaded){window.__bwdMetaLoaded=true;['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?cb='+cb;s.async=true;document.head.appendChild(s);});}
+  <script>(function(){
+  /* ══ [부팅 지연로드 20260908] 기존: 5예문 25MB + 일본어 15.7MB + 독일어 14.1MB 를 앱 열 때마다 ?cb=Date.now() 로
+     캐시 없이 전부 내려받아 메인 스레드에서 파싱 → 로그인·첫 화면이 수십 초 멈춤(폰에서 특히).
+     변경: ① 버전 고정 URL(디스크 캐시 재사용) ② 메타는 첫 화면 직후, 5예문은 유휴 시 순차 ③ 일본어·독일어는
+     표시 설정에 켜져 있거나 사용자가 켤 때만 로드. 로드 전에는 단일 예문·영/한만 표시(기존 폴백 경로). ══ */
+  window.__BWD_VER='20260908a';
+  window.__bwdEx5Loaded=true;   /* 구 bwd-dict-ui 의 레거시 단일파일 로더 차단용 플래그(실제 준비 여부는 __bwdEx5Ready) */
+  window._bwdLoad=function(name){ window.__bwdP=window.__bwdP||{}; if(window.__bwdP[name]) return window.__bwdP[name];
+    window.__bwdP[name]=new Promise(function(res){ var s=document.createElement('script'); s.src='js/'+name+'.js?v='+window.__BWD_VER; s.async=true; s.onload=function(){ res(true); }; s.onerror=function(){ delete window.__bwdP[name]; res(false); }; document.head.appendChild(s); });
+    return window.__bwdP[name]; };
+  window._bwdLoadEx5=function(){ if(window.__bwdEx5Ready) return Promise.resolve(true); return _bwdLoad('bwd-ex5-1').then(function(){ return _bwdLoad('bwd-ex5-2'); }).then(function(ok){ window.__bwdEx5Ready=true; return ok; }); };
+  window._bwdLoadLang=function(l){ var n=(l==='ja')?'bwd-ja':((l==='de')?'bwd-de':null); if(!n) return Promise.resolve(false); return _bwdLoad(n); };
+  window._bwdLangReady=function(l){ var o=(l==='ja')?window.BWD_JA:((l==='de')?window.BWD_DE:null); return !!(o&&Object.keys(o).length>100); };
+  function idle(fn,ms){ setTimeout(function(){ if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:5000}); else fn(); }, ms); }
+  idle(function(){ try{ if(typeof _ensureBwdMeta==='function') _ensureBwdMeta(); }catch(e){} }, 1200);
+  idle(function(){ _bwdLoadEx5().then(function(){ try{ var sel=(window.S&&S._showLangs)||null; var want=(sel==null)?['ja','de']:sel; if(want.indexOf('ja')>=0) _bwdLoadLang('ja'); if(want.indexOf('de')>=0) _bwdLoadLang('de'); }catch(e){} }); }, 4000);
   })();</script>
 
 <script>

@@ -1,4 +1,4 @@
-<!-- build: 20260908a-boot-lazy -->
+<!-- build: 20260908b-worker-loader -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -15528,7 +15528,7 @@ const aiM = aiMFull;
 
 // ── 현재 선택된 단어장에 단어 저장 헬퍼 ──
 // ── [사전 자동 채움] 입력(사진/PDF/엑셀/붙여넣기/수동)으로 들어온 단어를 앱 사전(butterfly dic)에서 조회해 세부정보를 채운다. AI 아님. ──
-function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||(window.BWD_META&&Object.keys(window.BWD_META).length))return; window.__bwdMetaLoaded=true; ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?v='+(window.__BWD_VER||'1');s.async=true;document.head.appendChild(s);}); }catch(e){} }   /* [부팅 지연로드 20260908] 캐시 가능 URL */
+function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||(window.BWD_META&&Object.keys(window.BWD_META).length>100))return; window.__bwdMetaLoaded=true; if(typeof _bwdLoad==='function'){ _bwdLoad('bwd-meta'); } else { ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?v='+(window.__BWD_VER||'1');s.async=true;document.head.appendChild(s);}); } }catch(e){} }   /* [부팅 지연로드 20260908] 워커+JSON 로더 사용 */
 function _dictLookup(en){
   en=String(en||'').trim(); var lo=en.toLowerCase();
   var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:null;
@@ -19968,10 +19968,32 @@ auth.onAuthStateChanged(async user => {
      표시 설정에 켜져 있거나 사용자가 켤 때만 로드. 로드 전에는 단일 예문·영/한만 표시(기존 폴백 경로). ══ */
   window.__BWD_VER='20260908a';
   window.__bwdEx5Loaded=true;   /* 구 bwd-dict-ui 의 레거시 단일파일 로더 차단용 플래그(실제 준비 여부는 __bwdEx5Ready) */
+  /* 워커 + JSON 로더: 이름 → {json, global}. 워커 불가·실패 시 기존 <script> 방식으로 폴백 */
+  window.__BWD_SRC={ 'bwd-ex5':{json:['js/bwd-ex5-1.json','js/bwd-ex5-2.json'], g:'BWD_EX5', js:['js/bwd-ex5-1.js','js/bwd-ex5-2.js']}, 'bwd-ja':{json:['js/bwd-ja.json'], g:'BWD_JA', js:['js/bwd-ja.js']}, 'bwd-de':{json:['js/bwd-de.json'], g:'BWD_DE', js:['js/bwd-de.js']}, 'bwd-meta':{json:['js/bwd-meta.json'], g:'BWD_META', js:['js/bwd-meta-1.js','js/bwd-meta-2.js']} };
+  function loadScript(src){ return new Promise(function(res){ var s=document.createElement('script'); s.src=src+'?v='+window.__BWD_VER; s.async=true; s.onload=function(){res(true);}; s.onerror=function(){res(false);}; document.head.appendChild(s); }); }
   window._bwdLoad=function(name){ window.__bwdP=window.__bwdP||{}; if(window.__bwdP[name]) return window.__bwdP[name];
-    window.__bwdP[name]=new Promise(function(res){ var s=document.createElement('script'); s.src='js/'+name+'.js?v='+window.__BWD_VER; s.async=true; s.onload=function(){ res(true); }; s.onerror=function(){ delete window.__bwdP[name]; res(false); }; document.head.appendChild(s); });
+    var cfg=window.__BWD_SRC[name]; if(!cfg) return Promise.resolve(false);
+    window.__bwdP[name]=new Promise(function(res){
+      var fallback=function(){ (function next(i){ if(i>=cfg.js.length) return res(true); loadScript(cfg.js[i]).then(function(){ next(i+1); }); })(0); };
+      if(!window.Worker){ fallback(); return; }
+      try{
+        window.__bwdW=window.__bwdW||new Worker('js/bwd-worker.js?v='+window.__BWD_VER);
+        var w=window.__bwdW;
+        /* JSON이 여러 파일이면 순차 로드(각 파일 ≤25MB — GitHub 웹 업로드 한도) */
+        (function nextJson(k){
+          if(k>=cfg.json.length) return res(true);
+          var id=name+':'+k+':'+Date.now();
+          var onmsg=function(e){ var m=e.data||{}; if(m.id!==id) return;
+            if(m.error){ w.removeEventListener('message',onmsg); console.warn('[bwd-loader] '+name+' 워커 실패 → script 폴백', m.error); fallback(); return; }
+            if(m.part){ window[cfg.g]=Object.assign(window[cfg.g]||{}, m.part); }
+            if(m.done){ w.removeEventListener('message',onmsg); nextJson(k+1); } };
+          w.addEventListener('message',onmsg);
+          w.postMessage({ id:id, url:new URL(cfg.json[k]+'?v='+window.__BWD_VER, location.href).href, chunk:3000 });   /* 워커 기준 경로가 js/ 라 절대 URL로 전달 */
+        })(0);
+      }catch(e){ fallback(); }
+    });
     return window.__bwdP[name]; };
-  window._bwdLoadEx5=function(){ if(window.__bwdEx5Ready) return Promise.resolve(true); return _bwdLoad('bwd-ex5-1').then(function(){ return _bwdLoad('bwd-ex5-2'); }).then(function(ok){ window.__bwdEx5Ready=true; return ok; }); };
+  window._bwdLoadEx5=function(){ if(window.__bwdEx5Ready) return Promise.resolve(true); return _bwdLoad('bwd-ex5').then(function(ok){ window.__bwdEx5Ready=true; return ok; }); };
   window._bwdLoadLang=function(l){ var n=(l==='ja')?'bwd-ja':((l==='de')?'bwd-de':null); if(!n) return Promise.resolve(false); return _bwdLoad(n); };
   window._bwdLangReady=function(l){ var o=(l==='ja')?window.BWD_JA:((l==='de')?window.BWD_DE:null); return !!(o&&Object.keys(o).length>100); };
   function idle(fn,ms){ setTimeout(function(){ if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:5000}); else fn(); }, ms); }

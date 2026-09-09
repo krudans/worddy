@@ -448,6 +448,8 @@ async function rDB(){
   let users=[], uc=0, tu=0, wu=0, mu=0, todayLearners=0, todayWords=0;
   const perDay={}; days14.forEach(d=>perDay[d]={users:0,words:0,xp:0});
   const lidCnt={}; const packUse={};
+  /* [대시보드 지표 추가 20260909] 14일 합계·레벨테스트·게임·나비 */
+  const sum14={marked:0,min:0,gameMin:0,quiz:0}; const lt={n:0,correct:0,total:0,levels:{}}; const gm={plays:0,best:{}}; let bfOwned=0, coupons=0;
   try{
     const s=await db.collection('users').get(); uc=s.size;
     s.forEach(d=>{
@@ -455,7 +457,10 @@ async function rDB(){
       const la=x.lastActive?.slice?.(0,10)||x.lastDate||(typeof x.updatedAt==='string'?x.updatedAt.slice(0,10):null)||null;
       if(la&&la>=td) tu++; if(la&&la>=wa) wu++; if(la&&la>=ma) mu++;
       const sl=x.studyLog||{};
-      days14.forEach(dd=>{ const e=sl[dd]; if(e&&((e.words||0)>0||(e.xp||0)>0||(e.min||0)>0)){ perDay[dd].users++; perDay[dd].words+=(e.words||0); perDay[dd].xp+=(e.xp||0); } });
+      days14.forEach(dd=>{ const e=sl[dd]; if(e&&((e.words||0)>0||(e.xp||0)>0||(e.min||0)>0)){ perDay[dd].users++; perDay[dd].words+=(e.words||0); perDay[dd].xp+=(e.xp||0); } if(e){ sum14.marked+=(e.marked!=null?e.marked:(Array.isArray(e.markedEns)?e.markedEns.length:0)); sum14.min+=(e.min||0); sum14.gameMin+=(e.gameMin||0); sum14.quiz+=(e.quiz||0); } });
+      (x.tHistory||[]).forEach(t=>{ if(!t) return; lt.n++; lt.correct+=(t.correct||0); lt.total+=(t.qTotal||0); const L=t.level||0; lt.levels[L]=(lt.levels[L]||0)+1; });
+      gm.plays+=(x.gamePlayCount||0); Object.entries(x.bestScores||{}).forEach(([k,v])=>{ const sc=(typeof v==='number')?v:(v&&v.score)||0; if(sc>(gm.best[k]||0)) gm.best[k]=sc; });
+      bfOwned+=(x.myButterflies||[]).length; coupons+=(x.bfCoupons||0);
       const te=sl[td]; if(te&&((te.words||0)>0||(te.xp||0)>0)){ todayLearners++; todayWords+=(te.words||0); }
       const lid=x.lid||'egg'; lidCnt[lid]=(lidCnt[lid]||0)+1;
       (x._ownedPacks||[]).forEach(p=>{ const id=(typeof p==='string')?p:(p&&p.id); if(id) packUse[id]=(packUse[id]||0)+1; });
@@ -530,6 +535,27 @@ async function rDB(){
     ${chart14}
   </div>
 
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${kpi('🧠','14일 외운 단어',sum14.marked,'모든 회원 합계',C.purple,'')}
+    ${kpi('⏱️','14일 공부 시간',Math.round(sum14.min/60*10)/10+'h',`${Math.round(sum14.min).toLocaleString()}분`,C.blue,'')}
+    ${kpi('🎮','14일 게임',Math.round(sum14.gameMin)+'분',`총 플레이 ${gm.plays.toLocaleString()}회`,C.green,'')}
+    ${kpi('📝','14일 퀴즈·시험',sum14.quiz,`레벨테스트 누적 ${lt.n}회`,C.orange,'')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="card">
+      <div class="ct">🎯 레벨테스트 <span style="font-size:11px;font-weight:600;color:#9CA3AF">누적 ${lt.n}회 · 평균 정답률 ${lt.total?Math.round(lt.correct/lt.total*100):0}%</span></div>
+      ${lt.n?hbars(Object.keys(lt.levels).sort((a,b)=>a-b).map(L=>['레벨 '+L, lt.levels[L]]),C.orange,v=>v+'회'):'<div style="color:#9CA3AF;font-size:12px">응시 기록 없음</div>'}
+    </div>
+    <div class="card">
+      <div class="ct">🦋 나비·게임</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
+        ${tile(bfOwned,'보유 나비 합계',`회원당 ${uc?Math.round(bfOwned/uc*10)/10:0}마리`,C.purple,"T('bf')")}
+        ${tile(coupons,'미사용 나비 쿠폰','회원 합계',C.orange,"T('cp')")}
+        ${tile(gm.plays,'게임 플레이','누적 횟수',C.green,'')}
+      </div>
+      ${Object.keys(gm.best).length?hbars(Object.entries(gm.best).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>[k,v]),C.green,v=>v.toLocaleString()+'점'):'<div style="color:#9CA3AF;font-size:12px">게임 기록 없음</div>'}
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
     <div class="card">
       <div class="ct">🐛 회원 성장 단계</div>

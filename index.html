@@ -1,4 +1,4 @@
-<!-- build: 20260909b-profile-entry -->
+<!-- build: 20260911a-enrich-perf -->
 <!DOCTYPE html>
 <!-- v=gscore-fix-final-v1 -->
 <html lang="ko">
@@ -4352,7 +4352,7 @@ async function loadMarketPacks(retryCount, opts) {
        강화(_enrichFromDict)는 내가 담은 팩만 즉시, 나머지는 유휴 시 팩당 하나씩(폰 메인스레드 보호). 그 전에는 {en}만 채워
        개수·CEFR바는 정상, 학습 표시는 getBookWords 오버레이가 담당. ══ */
     try{
-      var _dictReady=(typeof BWD_DICT!=='undefined') && BWD_DICT && Object.keys(BWD_DICT).length>1000;
+      var _dictReady=(typeof _dictReadyNow==='function')?_dictReadyNow():((typeof BWD_DICT!=='undefined') && BWD_DICT && Object.keys(BWD_DICT).length>1000);
       var _mine=new Set((S.books||[]).map(function(b){ return b&&b.packId; }).filter(Boolean));
       var _queue=[];
       var _norm=function(p, full){ p.words=p.words.map(function(w){ if(typeof w==='string'){ return (full&&_dictReady&&typeof _enrichFromDict==='function')?_enrichFromDict({en:w}):{en:w,_lite:1}; } return w; }); };
@@ -4362,7 +4362,7 @@ async function loadMarketPacks(retryCount, opts) {
           if(_mine.has(p.id)) _norm(p,true); else { _norm(p,false); _queue.push(p); }
         }
       });
-      var _tries=0; (function _next(){ var p=_queue.shift(); if(!p) return; try{ if(typeof BWD_DICT!=='undefined' && BWD_DICT && Object.keys(BWD_DICT).length>1000 && typeof _enrichFromDict==='function'){ p.words=p.words.map(function(w){ return (w&&w._lite)?_enrichFromDict({en:w.en}):w; }); } else { _queue.push(p); if(++_tries>3000) return; } }catch(e){} setTimeout(_next, _tries?200:30); })();
+      var _tries=0; (function _next(){ var p=_queue.shift(); if(!p) return; try{ if(_dictReadyNow() && typeof _enrichFromDict==='function'){ p.words=p.words.map(function(w){ return (w&&w._lite)?_enrichFromDict({en:w.en}):w; }); } else { _queue.push(p); if(++_tries>3000) return; } }catch(e){} setTimeout(_next, _tries?200:30); })();
     }catch(e){}
     console.log('[마켓] 팩 로드('+(_full?'전체':'내 팩만')+'):', fbPacks.length + '개 Firebase +', localOnly.length + '개 로컬 =', S._marketPacks.length + '개');
     _migratePackWords(); // 로드 완료 즉시 packId 복원 + 구 데이터 제거
@@ -15577,7 +15577,7 @@ const aiM = aiMFull;
 
 // ── 현재 선택된 단어장에 단어 저장 헬퍼 ──
 // ── [사전 자동 채움] 입력(사진/PDF/엑셀/붙여넣기/수동)으로 들어온 단어를 앱 사전(butterfly dic)에서 조회해 세부정보를 채운다. AI 아님. ──
-function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||(window.BWD_META&&Object.keys(window.BWD_META).length>100))return; window.__bwdMetaLoaded=true; if(typeof _bwdLoad==='function'){ _bwdLoad('bwd-meta'); } else { ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?v='+(window.__BWD_VER||'1');s.async=true;document.head.appendChild(s);}); } }catch(e){} }   /* [부팅 지연로드 20260908] 워커+JSON 로더 사용 */
+function _ensureBwdMeta(){ try{ if(window.__bwdMetaLoaded||_metaReadyNow())return; window.__bwdMetaLoaded=true; if(typeof _bwdLoad==='function'){ _bwdLoad('bwd-meta'); } else { ['js/bwd-meta-1.js','js/bwd-meta-2.js'].forEach(function(src){var s=document.createElement('script');s.src=src+'?v='+(window.__BWD_VER||'1');s.async=true;document.head.appendChild(s);}); } }catch(e){} }   /* [부팅 지연로드 20260908] 워커+JSON 로더 사용 */
 function _dictLookup(en){
   en=String(en||'').trim(); var lo=en.toLowerCase();
   var D=(typeof BWD_DICT!=='undefined')?BWD_DICT:null;
@@ -15589,6 +15589,10 @@ function _dictLookup(en){
     de:(window.BWD_DE||{})[en]||(window.BWD_DE||{})[lo]||null,
     meta:(window.BWD_META||{})[en]||(window.BWD_META||{})[lo]||null };
 }
+/* ══ [사전 준비 판정 캐시 20260911] 단어마다 Object.keys(BWD_DICT).length(4만 키 배열 생성, 4ms)를 호출하던 것이
+   홈 렌더를 수 분 멈추게 한 원인(레벨 10개×1000단어 + 내 팩 4000단어 강화). 준비되면 true 로 고정한다. ══ */
+function _dictReadyNow(){ if(window.__dictReadyFlag) return true; try{ if(typeof BWD_DICT!=='undefined' && BWD_DICT && Object.keys(BWD_DICT).length>1000){ window.__dictReadyFlag=true; return true; } }catch(e){} return false; }
+function _metaReadyNow(){ if(window.__metaReadyFlag) return true; try{ if(window.BWD_META && Object.keys(window.BWD_META).length>100){ window.__metaReadyFlag=true; return true; } }catch(e){} return false; }
 function _enrichFromDict(word){
   try{
     if(!word||!word.en) return word;
@@ -15597,7 +15601,7 @@ function _enrichFromDict(word){
     /* [dict_missing 오적재 방지 20260831] 사전(BWD_DICT)이 아직 로드 전이면 모든 단어가 '없음'으로 보여
        수천 건이 허위 적재됨(관리자 NEW 3388 사건 — 부팅 직후 일괄 enrich가 사전 로드보다 먼저 돈 것).
        사전이 실제로 로드된 상태에서만 미등록으로 보고한다. */
-    var _dictReady = (typeof BWD_DICT!=='undefined') && BWD_DICT && Object.keys(BWD_DICT).length>1000;
+    var _dictReady = _dictReadyNow();   /* [사전 준비 판정 캐시 20260911] */
     if(_dictReady && (!e||!e.kr)) _reportMissingDictWord(word.en, word.kr||'');
     var kr=(word.kr&&String(word.kr).trim())?word.kr:((e&&e.kr)||'');
     var meanings=kr?String(kr).split(/[;∙·、]+/).map(function(s){return s.trim();}).filter(Boolean):[];
